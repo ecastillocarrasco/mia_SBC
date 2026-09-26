@@ -30,6 +30,10 @@ async def _capacidades(_: SinParametros, ctx: ToolContext) -> ToolResult:
         {
             "disponible_ahora": ["conversación general", "fecha y hora"],
             "en_migracion": list(DOMINIOS_EN_MIGRACION),
+            "nota": (
+                "Los dominios en migración se irán incorporando por fases; no hay fecha "
+                "comprometida y mIA no avisa por su cuenta cuando estén listos."
+            ),
             "permisos_del_usuario": sorted(p.value for p in ctx.user.permissions),
         }
     )
