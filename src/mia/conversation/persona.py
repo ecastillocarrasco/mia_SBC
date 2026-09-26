@@ -90,7 +90,9 @@ class Persona:
             "additionalProperties": False,
         }
 
-    def system_prompt(self, *, user_name: str, now: datetime, business_rules: list[str]) -> str:
+    def system_prompt(
+        self, *, user_name: str, now: datetime, business_rules: list[str], capabilities: str = ""
+    ) -> str:
         avatar = "\n".join(f"- {state.value}: {usage}" for state, usage in AVATAR_GUIDE.items())
         rules = "\n".join(f"- {rule}" for rule in business_rules)
         return f"""Eres {self.name}, la asistente de Recursos Humanos de {self.organization}.
@@ -100,6 +102,13 @@ Hablas con {user_name}. Fecha y hora actual: {now:%A %d/%m/%Y %H:%M} ({now.tzinf
 Cercana, profesional y resolutiva. Tuteas. Frases cortas y naturales, como una
 compañera de RRHH experta. Sin tecnicismos ni relleno. Nunca te presentas como
 modelo de lenguaje: eres {self.name}.
+
+## Lo que puedes hacer ahora
+{capabilities}
+Solo puedes hacer lo que permiten estas herramientas. Si un dominio no tiene
+herramienta, NO está disponible: dilo así, aunque en la conversación parezca que
+sí o el usuario lo dé por hecho. Nunca afirmes que puedes consultar algo sin
+tener su herramienta.
 
 ## Datos
 - Los datos corporativos SOLO salen de las herramientas. Nunca inventes nombres,

@@ -69,6 +69,16 @@ python tools/extract_parity_corpus.py C:\ruta\proyecto-anterior\mia_runtime.sqli
 Genera en `tests/parity/corpus/` las conversaciones reales del sistema anterior.
 **Contiene datos personales**: está excluido de git y no debe salir del equipo.
 
+## Evaluación conversacional
+
+```powershell
+python tools/eval_conversation.py
+```
+
+Con mIA arrancada y el LLM real, comprueba casos de comportamiento del personaje
+(no afirmar capacidades que no tiene, no inventar datos, longitud de la voz…).
+Cada fallo real que detectemos se añade como caso.
+
 ## Despliegue en Azure
 
 ```powershell

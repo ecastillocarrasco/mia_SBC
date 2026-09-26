@@ -133,7 +133,10 @@ class ConversationEngine:
         messages.append(Message(role="user", content=message))
         now = datetime.now(self._tz)
         system = self.persona.system_prompt(
-            user_name=user.display_name, now=now, business_rules=rules_for_prompt()
+            user_name=user.display_name,
+            now=now,
+            business_rules=rules_for_prompt(),
+            capabilities=self._tools.capabilities_for(user),
         )
         ctx = ToolContext(user=user, request_id=request_id, now=now, session_state=turn.state)
 

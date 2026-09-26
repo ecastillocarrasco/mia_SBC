@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult
 
 # Estado de la migración, visible para que mIA no prometa lo que aún no tiene.
-DOMINIOS_EN_MIGRACION = (
+PENDING_DOMAINS = (
     "empleados y organización",
     "turnos",
     "vacaciones y saldos",
@@ -29,7 +29,7 @@ async def _capacidades(_: SinParametros, ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(
         {
             "disponible_ahora": ["conversación general", "fecha y hora"],
-            "en_migracion": list(DOMINIOS_EN_MIGRACION),
+            "en_migracion": list(PENDING_DOMAINS),
             "nota": (
                 "Los dominios en migración se irán incorporando por fases; no hay fecha "
                 "comprometida y mIA no avisa por su cuenta cuando estén listos."

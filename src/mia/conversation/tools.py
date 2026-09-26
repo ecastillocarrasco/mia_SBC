@@ -92,8 +92,10 @@ class ToolExecution:
 
 
 class ToolRegistry:
-    def __init__(self) -> None:
+    def __init__(self, pending_domains: tuple[str, ...] = ()) -> None:
         self._tools: dict[str, Tool] = {}
+        self.pending_domains = pending_domains
+        """Dominios que mIA todavía no puede consultar (se declaran para que no los prometa)."""
 
     def register(self, tool: Tool) -> None:
         if tool.name in self._tools:
@@ -102,6 +104,15 @@ class ToolRegistry:
 
     def names(self) -> list[str]:
         return sorted(self._tools)
+
+    def capabilities_for(self, user: UserContext) -> str:
+        """Estado real de capacidades, calculado en código: el modelo no lo deduce."""
+        tools = [t for t in self._tools.values() if user.has(t.permission)]
+        lines = ["Herramientas disponibles ahora (esta lista es completa):"]
+        lines += [f"- {t.name}: {t.description.split('. ')[0]}" for t in tools] or ["- ninguna"]
+        if self.pending_domains:
+            lines.append("Dominios que TODAVÍA NO puedes consultar: " + ", ".join(self.pending_domains) + ".")
+        return "\n".join(lines)
 
     def schemas_for(self, user: UserContext) -> list[ToolSchema]:
         """Solo las herramientas que el usuario puede usar: el LLM no ve el resto."""

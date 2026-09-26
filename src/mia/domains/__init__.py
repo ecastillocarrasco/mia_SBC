@@ -13,6 +13,6 @@ from mia.domains import sistema
 
 
 def build_registry() -> ToolRegistry:
-    registry = ToolRegistry()
+    registry = ToolRegistry(pending_domains=sistema.PENDING_DOMAINS)
     sistema.register(registry)
     return registry
