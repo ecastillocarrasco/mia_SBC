@@ -1,0 +1,32 @@
+# Entorno local: PostgreSQL + mIA.
+#   docker compose up -d db        (solo la base de datos, para desarrollar con python -m mia)
+#   docker compose up --build      (todo en contenedores)
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mia
+      POSTGRES_PASSWORD: mia
+      POSTGRES_DB: mia
+    ports:
+      - "5432:5432"
+    volumes:
+      - mia-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mia"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      MIA_DATABASE_URL: postgresql+asyncpg://mia:mia@db:5432/mia
+    ports:
+      - "5001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  mia-db:

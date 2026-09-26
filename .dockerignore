@@ -1,0 +1,29 @@
+# Secretos y certificados: nunca al repositorio
+.env
+.env.*
+!.env.example
+*.pfx
+*.pem
+*.key
+
+# Datos locales (contienen datos personales)
+*.sqlite3
+*.db
+tests/parity/corpus/
+
+# Entorno
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+.git/
+tests/
+docs/
+infra/
+tools/
