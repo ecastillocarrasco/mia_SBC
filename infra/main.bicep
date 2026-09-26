@@ -51,6 +51,36 @@ param voiceId string = ''
 @description('Client ID de la app de Entra ID para Easy Auth (vacío = sin Easy Auth; solo dev)')
 param easyAuthClientId string = ''
 
+@description('SharePoint: tenant de Entra ID donde está registrada la aplicación')
+param sharepointTenantId string = subscription().tenantId
+
+@description('SharePoint: URL del sitio de RRHH (https://<host>/sites/<sitio>)')
+param sharepointSiteUrl string = ''
+
+@description('SharePoint: host (<tenant>.sharepoint.com)')
+param sharepointHost string = ''
+
+@description('SharePoint: Client ID de la aplicación con acceso al sitio')
+param sharepointClientId string = ''
+
+@description('SharePoint: huella del certificado')
+param sharepointThumbprint string = ''
+
+@secure()
+@description('SharePoint: certificado PFX en base64')
+param sharepointPfxBase64 string = ''
+
+@secure()
+@description('SharePoint: contraseña del PFX')
+param sharepointPfxPassword string = ''
+
+@secure()
+@description('Clave HMAC para seudonimizar DNI/NIE (genérala una vez y no la cambies: rompería los cruces)')
+param pseudonymKey string
+
+@description('Programación de la sincronización (cron, UTC)')
+param syncCron string = '*/10 * * * *'
+
 @description('Réplicas mínimas (1 evita arranques en frío)')
 param minReplicas int = 1
 
@@ -61,6 +91,7 @@ var isProd = environmentName == 'prod'
 var image = empty(containerImage) ? 'mcr.microsoft.com/k8se/quickstart:latest' : containerImage
 var voiceEnabled = !empty(voiceApiKey) && !empty(voiceId)
 var easyAuthEnabled = !empty(easyAuthClientId)
+var sharepointEnabled = !empty(sharepointSiteUrl) && !empty(sharepointPfxBase64)
 
 // ---------------------------------------------------------------- observabilidad
 resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
@@ -173,6 +204,24 @@ resource secretVoice 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (voiceE
   properties: { value: voiceApiKey }
 }
 
+resource secretPseudonym 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: vault
+  name: 'pseudonym-key'
+  properties: { value: pseudonymKey }
+}
+
+resource secretPfx 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (sharepointEnabled) {
+  parent: vault
+  name: 'sharepoint-pfx'
+  properties: { value: sharepointPfxBase64, contentType: 'application/x-pkcs12;base64' }
+}
+
+resource secretPfxPassword 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (sharepointEnabled) {
+  parent: vault
+  name: 'sharepoint-pfx-password'
+  properties: { value: sharepointPfxPassword }
+}
+
 resource secretInsights 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: vault
   name: 'appinsights-connection-string'
@@ -261,6 +310,15 @@ var baseSecrets = [
   { name: 'llm-api-key', keyVaultUrl: secretLlm.properties.secretUri, identity: identity.id }
   { name: 'appinsights', keyVaultUrl: secretInsights.properties.secretUri, identity: identity.id }
 ]
+var dataSecrets = [
+  { name: 'pseudonym-key', keyVaultUrl: secretPseudonym.properties.secretUri, identity: identity.id }
+]
+var sharepointSecrets = sharepointEnabled
+  ? [
+      { name: 'sharepoint-pfx', keyVaultUrl: secretPfx!.properties.secretUri, identity: identity.id }
+      { name: 'sharepoint-pfx-password', keyVaultUrl: secretPfxPassword!.properties.secretUri, identity: identity.id }
+    ]
+  : []
 var voiceSecrets = voiceEnabled
   ? [{ name: 'voice-api-key', keyVaultUrl: secretVoice!.properties.secretUri, identity: identity.id }]
   : []
@@ -279,6 +337,20 @@ var baseEnv = [
   { name: 'AZURE_CLIENT_ID', value: identity.properties.clientId }
 ]
 var voiceEnv = voiceEnabled ? [{ name: 'MIA_VOICE__API_KEY', secretRef: 'voice-api-key' }] : []
+var dataEnv = [{ name: 'MIA_DATA__PSEUDONYM_KEY', secretRef: 'pseudonym-key' }]
+var sharepointEnv = sharepointEnabled
+  ? [
+      { name: 'MIA_SHAREPOINT__TENANT_ID', value: sharepointTenantId }
+      { name: 'MIA_SHAREPOINT__CLIENT_ID', value: sharepointClientId }
+      { name: 'MIA_SHAREPOINT__CERT_THUMBPRINT', value: sharepointThumbprint }
+      { name: 'MIA_SHAREPOINT__HOST', value: sharepointHost }
+      { name: 'MIA_SHAREPOINT__RRHH_SITE_URL', value: sharepointSiteUrl }
+      { name: 'MIA_SHAREPOINT__CERT_PFX_BASE64', secretRef: 'sharepoint-pfx' }
+      { name: 'MIA_SHAREPOINT__CERT_PFX_PASSWORD', secretRef: 'sharepoint-pfx-password' }
+    ]
+  : []
+var allSecrets = concat(baseSecrets, dataSecrets, sharepointSecrets, voiceSecrets)
+var allEnv = concat(baseEnv, dataEnv, sharepointEnv, voiceEnv)
 
 resource app 'Microsoft.App/containerApps@2024-03-01' = {
   name: 'ca-${name}'
@@ -300,7 +372,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
         allowInsecure: false
       }
       registries: empty(containerImage) ? [] : [{ server: registry.properties.loginServer, identity: identity.id }]
-      secrets: concat(baseSecrets, voiceSecrets)
+      secrets: allSecrets
     }
     template: {
       containers: [
@@ -308,7 +380,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           name: 'mia'
           image: image
           resources: { cpu: json('0.5'), memory: '1Gi' }
-          env: concat(baseEnv, voiceEnv)
+          env: allEnv
           probes: [
             { type: 'Liveness', httpGet: { path: '/health/live', port: 8000 }, periodSeconds: 30 }
             { type: 'Readiness', httpGet: { path: '/health/ready', port: 8000 }, periodSeconds: 15 }
@@ -316,6 +388,40 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       scale: { minReplicas: minReplicas, maxReplicas: isProd ? 3 : 1 }
+    }
+  }
+}
+
+// Sincronización SharePoint → PostgreSQL: incremental cada 10 minutos, completa una vez al día.
+resource syncJob 'Microsoft.App/jobs@2024-03-01' = if (sharepointEnabled && !empty(containerImage)) {
+  name: 'caj-${name}-sync'
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: { '${identity.id}': {} }
+  }
+  dependsOn: [vaultAccess, registryAccess]
+  properties: {
+    environmentId: appEnvironment.id
+    configuration: {
+      triggerType: 'Schedule'
+      replicaTimeout: 1800
+      replicaRetryLimit: 1
+      scheduleTriggerConfig: { cronExpression: syncCron, parallelism: 1, replicaCompletionCount: 1 }
+      registries: [{ server: registry.properties.loginServer, identity: identity.id }]
+      secrets: allSecrets
+    }
+    template: {
+      containers: [
+        {
+          name: 'sync'
+          image: image
+          command: ['python', '-m', 'mia.sync']
+          resources: { cpu: json('0.5'), memory: '1Gi' }
+          env: allEnv
+        }
+      ]
     }
   }
 }

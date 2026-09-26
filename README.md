@@ -10,12 +10,12 @@ y [docs/migracion.md](docs/migracion.md).
 
 ## Estado
 
-**Fase 1 · cimientos** — completada.
+**Fase 2 · capa de datos** — lista para probar contra SharePoint real.
 
 | Fase | Contenido | Estado |
 |---|---|---|
 | 1 | Estructura, API, motor conversacional, personaje, voz, identidad preparada, base de datos, observabilidad, batería de paridad, infraestructura Azure | ✅ |
-| 2 | Capa de datos: cliente SharePoint/Graph y sincronización incremental a PostgreSQL | ⏳ |
+| 2 | Capa de datos: cliente SharePoint y sincronización incremental a PostgreSQL | 🧪 |
 | 3 | Dominios de más uso: turnos, empleados, vacaciones | ⏳ |
 | 4 | Resto de dominios, informes y correo | ⏳ |
 | 5 | Modo sombra frente al sistema anterior y corte | ⏳ |
@@ -68,6 +68,23 @@ python tools/extract_parity_corpus.py C:\ruta\proyecto-anterior\mia_runtime.sqli
 
 Genera en `tests/parity/corpus/` las conversaciones reales del sistema anterior.
 **Contiene datos personales**: está excluido de git y no debe salir del equipo.
+
+## Sincronización con SharePoint
+
+```powershell
+python -m mia.sync --check       # probar el acceso a cada lista (no escribe nada)
+python -m mia.sync --list        # fuentes y estado
+python -m mia.sync --full        # primera carga completa
+python -m mia.sync               # incremental (o completa si toca)
+python -m mia.sync --loop 300    # en local, repetir cada 5 minutos
+```
+
+Fuentes: empleados, departamentos, turnos, vacaciones y saldo de vacaciones del
+año en curso. La incremental usa el registro de cambios de SharePoint (altas,
+modificaciones y borrados) y solo descarga lo que ha cambiado; una vez al día se
+hace una completa. En Azure la ejecuta un Container Apps Job cada 10 minutos.
+
+Los DNI/NIE nunca se guardan: se sustituyen por un seudónimo HMAC al leerlos.
 
 ## Evaluación conversacional
 

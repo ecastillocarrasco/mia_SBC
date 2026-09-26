@@ -69,3 +69,23 @@ El objetivo es el tiempo hasta el **primer audio**, no el tiempo total:
 | API Responses con salida estructurada | Tool calling y JSON garantizado en la misma llamada |
 | Alembic | Migraciones versionadas y reversibles |
 | Bicep | Infraestructura reproducible en Azure |
+
+## Capa de datos (fase 2)
+
+```
+SharePoint (RRHH) ──sincronización──▶ source_items (réplica, seudonimizada)
+                                    └─▶ hr_* (modelo canónico) ◀── herramientas de mIA
+```
+
+- **Completa**: lee la lista entera siguiendo la paginación, reconstruye la tabla
+  canónica y marca los borrados. El change token se toma antes de leer.
+- **Incremental**: `GetChanges` con el change token; descarga solo los elementos
+  cambiados por ID (columna siempre indexada: sin throttling en listas grandes).
+- **Automática**: incremental cada 10 minutos y completa diaria; si el token
+  caduca, completa.
+- `source_sync_state` guarda el estado de cada fuente; `/api/admin/sources` lo
+  expone y mIA podrá avisar cuando un dato no esté al día.
+- **Privacidad**: los campos sensibles (DocIdentidad, DNIEmpleado) se sustituyen
+  por un HMAC antes de escribir nada. Cuando haga falta el dato real (p. ej. para
+  localizar la carpeta de nóminas) se consultará en el momento, sin persistirlo.
+- Un elemento defectuoso no detiene la sincronización: se registra y se continúa.

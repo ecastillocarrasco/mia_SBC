@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 
 from mia.api.services import Services
-from mia.auth import UserContext
+from mia.auth import Permission, UserContext
 from mia.auth.providers import AuthenticationError
 
 
@@ -25,3 +26,14 @@ async def get_user(request: Request, services: ServicesDep) -> UserContext:
 
 
 UserDep = Annotated[UserContext, Depends(get_user)]
+
+
+def require(permission: Permission) -> Callable[..., Awaitable[UserContext]]:
+    """Dependencia que exige un permiso concreto (403 si no se tiene)."""
+
+    async def dependency(user: UserDep) -> UserContext:
+        if not user.has(permission):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "No tienes permiso para esta operación")
+        return user
+
+    return dependency

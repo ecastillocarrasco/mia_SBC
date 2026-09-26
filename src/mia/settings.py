@@ -72,6 +72,39 @@ class AuthSettings(BaseModel):
     dev_roles: list[str] = Field(default_factory=lambda: ["mia.admin"])
 
 
+class SharePointSettings(BaseModel):
+    """Acceso de aplicación (certificado) al sitio de RRHH."""
+
+    tenant_id: str = ""
+    client_id: str = ""
+    cert_thumbprint: str = ""
+    cert_pfx_path: Path | None = None
+    cert_pfx_base64: SecretStr | None = None
+    """Alternativa a la ruta: el PFX en base64 (así llega desde Key Vault en Azure)."""
+    cert_pfx_password: SecretStr = SecretStr("")
+    cert_pem_path: Path | None = None
+    host: str = ""
+    rrhh_site_url: str = ""
+    timeout_seconds: float = 30.0
+    page_size: int = 2000
+    max_retries: int = 5
+    concurrency: int = 4
+
+    @property
+    def configured(self) -> bool:
+        has_cert = bool(self.cert_pfx_path or self.cert_pfx_base64 or self.cert_pem_path)
+        return bool(
+            self.tenant_id and self.client_id and self.cert_thumbprint and self.rrhh_site_url and has_cert
+        )
+
+
+class DataSettings(BaseModel):
+    pseudonym_key: SecretStr = SecretStr("solo-para-desarrollo-local")
+    """Clave HMAC para seudonimizar identificadores personales (DNI/NIE). En Azure, desde Key Vault."""
+    full_sync_hour: int = 3
+    """Hora local de la sincronización completa diaria (detecta borrados y corrige derivas)."""
+
+
 class FrontendSettings(BaseModel):
     """El frontend actual se sirve desde su ubicación, sin copiarlo."""
 
@@ -110,6 +143,8 @@ class Settings(BaseSettings):
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     frontend: FrontendSettings = Field(default_factory=FrontendSettings)
+    sharepoint: SharePointSettings = Field(default_factory=SharePointSettings)
+    data: DataSettings = Field(default_factory=DataSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
 
     @model_validator(mode="after")
@@ -119,6 +154,11 @@ class Settings(BaseSettings):
                 "MIA_AUTH__MODE=dev no está permitido en producción: "
                 "usa 'easyauth' hasta que se implemente Entra ID."
             )
+        if (
+            self.environment is Environment.PRODUCTION
+            and self.data.pseudonym_key.get_secret_value() == "solo-para-desarrollo-local"
+        ):
+            raise ValueError("En producción MIA_DATA__PSEUDONYM_KEY debe venir de Key Vault.")
         if self.environment is Environment.PRODUCTION and self.llm.provider is LLMProviderName.FAKE:
             raise ValueError("El proveedor LLM 'fake' no está permitido en producción.")
         return self
