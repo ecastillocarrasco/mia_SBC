@@ -3,7 +3,7 @@
 #   docker compose up --build      (todo en contenedores)
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: mia
       POSTGRES_PASSWORD: mia

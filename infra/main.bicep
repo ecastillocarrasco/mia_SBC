@@ -131,7 +131,7 @@ resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
     tier: startsWith(postgresSku, 'Standard_B') ? 'Burstable' : 'GeneralPurpose'
   }
   properties: {
-    version: '16'
+    version: '18'
     administratorLogin: 'miaadmin'
     administratorLoginPassword: postgresAdminPassword
     storage: { storageSizeGB: postgresStorageGb, autoGrow: 'Enabled' }
