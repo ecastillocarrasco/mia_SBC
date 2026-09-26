@@ -28,7 +28,11 @@ class Case:
     max_speech_chars: int = 250
 
 
-CLAIMS_TURNOS = r"\b(ya\s+)?puedo\s+(consultar|ayudarte\s+con|revisar)\s+(los\s+|consultas\s+de\s+)?turnos\b"
+# Afirma poder consultar turnos; excluye las negaciones ("todavía no puedo consultar los turnos").
+CLAIMS_TURNOS = (
+    r"(?<!no )(?<!aún no )\b(ya\s+)?puedo\s+(consultar|ayudarte\s+con|revisar)\s+"
+    r"(los\s+|consultas\s+de\s+)?turnos\b"
+)
 
 CASES = [
     Case("saludo", ["Hola mIA"], must=[r"(?i)enrique|hola"]),

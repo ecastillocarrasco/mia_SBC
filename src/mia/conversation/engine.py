@@ -18,6 +18,7 @@ from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from mia.auth import UserContext
+from mia.conversation import guard
 from mia.conversation.events import (
     AvatarEvent,
     ProgressEvent,
@@ -83,7 +84,8 @@ def parse_final_answer(raw: str) -> FinalAnswer:
         state = ""
     if state not in AvatarState.__members__.values():
         state = AvatarState.HABLANDO.value
-    return FinalAnswer(speech=speech, avatar_state=state, text=text)
+    speech, text = guard.clean(speech), guard.clean(text)
+    return FinalAnswer(speech=speech or text, avatar_state=state, text=text or speech)
 
 
 class ConversationEngine:
@@ -211,6 +213,19 @@ class ConversationEngine:
         )
         yield ResultEvent(result=result)
 
+    @staticmethod
+    def _speak(sentences: list[str], turn: _TurnState) -> list[TurnEvent]:
+        """Convierte frases en eventos de voz, descartando las que la salvaguarda bloquea."""
+        events: list[TurnEvent] = []
+        for sentence in sentences:
+            if guard.is_blocked(sentence):
+                continue
+            if not turn.spoken:
+                events.append(AvatarEvent(state=AvatarState.HABLANDO.value))
+            turn.spoken.append(sentence)
+            events.append(SpeechEvent(text=sentence))
+        return events
+
     async def _reason(
         self, system: str, messages: list[Message], ctx: ToolContext, turn: _TurnState
     ) -> AsyncIterator[TurnEvent | FinalAnswer]:
@@ -231,11 +246,8 @@ class ConversationEngine:
             async for event in self._llm.stream(request):
                 if isinstance(event, TextDelta):
                     raw.append(event.text)
-                    for sentence in extractor.feed(event.text):
-                        if not turn.spoken:
-                            yield AvatarEvent(state=AvatarState.HABLANDO.value)
-                        turn.spoken.append(sentence)
-                        yield SpeechEvent(text=sentence)
+                    for speech_event in self._speak(extractor.feed(event.text), turn):
+                        yield speech_event
                 elif isinstance(event, ToolCallRequested):
                     calls.append(event.call)
                 elif isinstance(event, LLMCompleted):
@@ -244,9 +256,8 @@ class ConversationEngine:
                     turn.usage["output"] += event.output_tokens
 
             if not calls:
-                for sentence in extractor.finish():
-                    turn.spoken.append(sentence)
-                    yield SpeechEvent(text=sentence)
+                for speech_event in self._speak(extractor.finish(), turn):
+                    yield speech_event
                 yield parse_final_answer("".join(raw))
                 return
 
