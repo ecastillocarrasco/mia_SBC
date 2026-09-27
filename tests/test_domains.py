@@ -99,8 +99,49 @@ async def test_person_week_marks_unpublished_days(registry: ToolRegistry) -> Non
 
 
 async def test_department_day_groups_people(registry: ToolRegistry) -> None:
-    result = await call(registry, "turnos_departamento", departamento="cocina")
-    assert result.summary["recuento_por_tipo"] == {"Trabajo": 1}
+    result = await call(registry, "turnos_dia", departamento="cocina")
+    assert result.summary["contexto_del_dia"]["por_tipo"] == {"Trabajo": 1}
+    assert result.summary["contexto_del_dia"]["trabajando_por_franja"] == {"mañana": 1}
+
+
+async def test_whole_company_day_and_shift_band(registry: ToolRegistry) -> None:
+    result = await call(registry, "turnos_dia", franja="mañana")
+    assert result.summary["total_seleccionado"] == 1
+    assert result.summary["personas"][0]["nombre"] == "Ana Gómez"
+    evening = await call(registry, "turnos_dia", franja="noche")
+    assert evening.summary["total_seleccionado"] == 0
+
+
+async def test_unknown_department_is_not_reported_as_no_shifts(registry: ToolRegistry) -> None:
+    """Fallo real: «departamento general» se contestaba como «no hay turnos publicados hoy»."""
+    result = await call(registry, "turnos_dia", departamento="general")
+    assert result.status is ToolStatus.NOT_FOUND
+    assert "No es que no haya turnos" in result.summary["mensaje"]
+    assert "Cocina" in result.summary["departamentos"]
+
+
+async def test_absence_reports_real_start_not_query_start(registry: ToolRegistry) -> None:
+    """AUS-001. Fallo real: «todas las bajas empezaron hoy» al consultar solo hoy."""
+    result = await call(registry, "ausencias")  # solo hoy, 5 de agosto
+    ana = next(p for p in result.summary["periodos"] if p["persona"] == "Ana Ruiz Sanz")
+    assert (ana["desde"], ana["dias"], ana["en_curso"]) == ("2026-08-03", 5, True)
+    assert ana["vuelve"]["fecha"] == "2026-08-10"
+
+
+async def test_person_absence_history_defaults_to_the_year(registry: ToolRegistry) -> None:
+    result = await call(registry, "ausencias", empleado_id=4, tipos=["Baja/IT"])
+    assert result.summary["desde"] == "2026-01-01"
+    # Días acumulados hasta hoy (1: hoy); el periodo completo publicado dura 2.
+    assert result.summary["resumen_por_tipo"]["Baja/IT"] == {"personas": 1, "periodos": 1, "dias": 1}
+    assert result.summary["periodos"][0]["dias"] == 2
+    assert result.state_updates["foco_persona"]["empleado_id"] == 4
+
+
+async def test_reincorporations_list(registry: ToolRegistry) -> None:
+    result = await call(registry, "reincorporaciones")
+    assert result.summary["con_reincorporacion_publicada"] == 1
+    assert result.summary["reincorporaciones"][0]["persona"] == "Ana Ruiz Sanz"
+    assert result.summary["ausencia_termina_pero_sin_turno_publicado"] == 1  # Eva
 
 
 async def test_absences_are_merged_into_periods(registry: ToolRegistry) -> None:

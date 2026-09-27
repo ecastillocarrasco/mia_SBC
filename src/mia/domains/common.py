@@ -23,6 +23,10 @@ MAX_ROWS_FOR_MODEL = 40
 @dataclass(frozen=True, slots=True)
 class Deps:
     db: Database
+    stale_after: timedelta = STALE_AFTER
+
+    async def freshness(self, db: AsyncSession, *sources: str) -> dict[str, Any]:
+        return await freshness(db, *sources, stale_after=self.stale_after)
 
 
 # ------------------------------------------------------------------ parámetros comunes
@@ -130,28 +134,33 @@ def person_problem(match: PersonMatch, query: str | None) -> ToolResult:
 
 
 # ------------------------------------------------------------------ frescura de datos
-async def freshness(db: AsyncSession, *sources: str) -> dict[str, Any]:
-    """Cuándo se sincronizó cada fuente; ``al_dia`` False si hay que avisar al usuario."""
+async def freshness(db: AsyncSession, *sources: str, stale_after: timedelta = STALE_AFTER) -> dict[str, Any]:
+    """Antigüedad de las fuentes consultadas. ``al_dia`` False solo si superan el umbral."""
     states = {
         s.source: s
         for s in (await db.scalars(select(SourceSyncState).where(SourceSyncState.source.in_(sources)))).all()
     }
     now = datetime.now(UTC)
-    stale: list[str] = []
+    oldest: int | None = 0
+    never: list[str] = []
     for source in sources:
         state = states.get(source)
         last = state.last_success_at if state else None
-        if last is not None and last.tzinfo is None:
+        if last is None:
+            never.append(source)
+            continue
+        if last.tzinfo is None:
             last = last.replace(tzinfo=UTC)
-        if last is None or now - last > STALE_AFTER:
-            stale.append(source)
-    info: dict[str, Any] = {"al_dia": not stale}
-    if stale:
-        info["aviso"] = (
-            "Estos datos pueden no estar al día (última sincronización antigua o fallida): "
-            + ", ".join(stale)
-        )
-    return info
+        minutes = int((now - last).total_seconds() // 60)
+        oldest = max(oldest or 0, minutes)
+    if never:
+        return {"al_dia": False, "aviso": "Estas fuentes no se han sincronizado nunca: " + ", ".join(never)}
+    if oldest is not None and oldest > stale_after.total_seconds() // 60:
+        return {
+            "al_dia": False,
+            "aviso": f"Última sincronización hace {oldest} minutos: pueden faltar cambios recientes.",
+        }
+    return {"al_dia": True}
 
 
 # ------------------------------------------------------------------ presentación

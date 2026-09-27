@@ -20,7 +20,6 @@ from mia.domains.common import (
     find_people,
     fmt_date,
     focus_person,
-    freshness,
     person_problem,
     person_summary,
     resolve_department,
@@ -104,7 +103,15 @@ def ficha(deps: Deps) -> Tool:
                         VacationBalance.employee_email == e.email, VacationBalance.year == today.year
                     )
                 )
-            fresh = await freshness(db, "empleados", "turnos", "vacaciones", f"saldo_vacaciones_{today.year}")
+            dept_managers: list[str] = []
+            if e.department_key:
+                units = (
+                    await db.scalars(select(OrgUnit).where(OrgUnit.department_key == e.department_key))
+                ).all()
+                dept_managers = sorted({m["name"] for u in units for m in u.managers or [] if m.get("name")})
+            fresh = await deps.freshness(
+                db, "empleados", "turnos", "vacaciones", f"saldo_vacaciones_{today.year}"
+            )
         accepted = [v for v in vacations if normalize_key(v.status) == ACCEPTED]
         card: dict[str, Any] = {
             "empleado_id": e.sp_id,
@@ -112,7 +119,8 @@ def ficha(deps: Deps) -> Tool:
             "activo": e.active,
             "departamento": e.department,
             "puesto": e.position,
-            "responsable": e.manager_name,
+            "responsable_directo": e.manager_name,
+            "responsables_del_departamento": dept_managers,
             "edad": age(e.birth_date, today),
             "email": e.email,
             "telefono": e.phone,
@@ -169,7 +177,7 @@ def plantilla(deps: Deps) -> Tool:
             if p.estado != "todos":
                 stmt = stmt.where(Employee.active.is_(p.estado == "activos"))
             people = list((await db.scalars(stmt.order_by(Employee.name))).all())
-            fresh = await freshness(db, "empleados")
+            fresh = await deps.freshness(db, "empleados")
         if p.puesto:
             wanted = normalize_key(p.puesto)
             people = [e for e in people if wanted in normalize_key(e.position)]

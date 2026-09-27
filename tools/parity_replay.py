@@ -53,9 +53,12 @@ class TurnResult:
     session_id: str | None = None
     elapsed: int | None = None
     failed: bool = False
+    used_tool: bool = False
 
 
-def _replay_turn(client: httpx.Client, turn: dict[str, Any], session_id: str | None) -> TurnResult:
+def _replay_turn(
+    client: httpx.Client, turn: dict[str, Any], session_id: str | None, previous_used_tool: bool
+) -> TurnResult:
     payload: dict[str, Any] = {"message": turn["question"]}
     if session_id:
         payload["session_id"] = session_id
@@ -68,15 +71,17 @@ def _replay_turn(client: httpx.Client, turn: dict[str, Any], session_id: str | N
     tools = body.get("tools", [])
     elapsed = int(body.get("elapsed_ms", 0))
     flags = []
+    notes = []
     if response.status_code >= 400 or body.get("status") == "error":
         flags.append(f"respuesta de error ({response.status_code})")
     if turn.get("domain") in DATA_DOMAINS and not tools:
-        flags.append("sin herramienta")
+        # Un seguimiento («¿cuántos son?») puede contestarse con el resultado anterior.
+        (notes if previous_used_tool else flags).append("sin herramienta")
     if any(t["status"] in {"error", "source_unavailable"} for t in tools):
         flags.append("error de herramienta")
     if elapsed > SLOW_MS:
         flags.append("lenta")
-    mark = "⚠️ " + ", ".join(flags) if flags else "✅"
+    mark = "⚠️ " + ", ".join(flags) if flags else ("ℹ️ seguimiento " + ", ".join(notes) if notes else "✅")
     tool_names = ", ".join(f"{t['name']}:{t['status']}" for t in tools) or "—"
     lines = [
         f"**{turn['question']}**  ",
@@ -84,7 +89,9 @@ def _replay_turn(client: httpx.Client, turn: dict[str, Any], session_id: str | N
         f"> {str(body.get('answer', '')).strip()[:400]}",
         "",
     ]
-    return TurnResult(lines, bool(flags), body.get("session_id"), elapsed)
+    result = TurnResult(lines, bool(flags), body.get("session_id"), elapsed)
+    result.used_tool = bool(tools)
+    return result
 
 
 def main() -> None:
@@ -108,9 +115,10 @@ def main() -> None:
             ) from None
         for n, conv in enumerate(conversations, 1):
             session_id = None
+            used_tool = False
             lines.append(f"## Conversación {n}")
             for turn in conv["turns"]:
-                result = _replay_turn(client, turn, session_id)
+                result = _replay_turn(client, turn, session_id, used_tool)
                 lines += result.lines
                 flagged += result.flagged
                 if result.elapsed is not None:
@@ -124,6 +132,7 @@ def main() -> None:
                     continue
                 consecutive_errors = 0
                 session_id = result.session_id
+                used_tool = used_tool or result.used_tool
             if consecutive_errors >= 3:
                 break
             print(f"{n}/{len(conversations)} conversaciones", end="\r")

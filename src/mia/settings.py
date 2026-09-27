@@ -102,6 +102,8 @@ class DataSettings(BaseModel):
     pseudonym_key: SecretStr = SecretStr("solo-para-desarrollo-local")
     """Clave HMAC para seudonimizar identificadores personales (DNI/NIE). En Azure, desde Key Vault."""
     full_sync_hour: int = 3
+    stale_after_minutes: int = 30
+    """A partir de cuántos minutos sin sincronizar avisa mIA de que los datos pueden no estar al día."""
     """Hora local de la sincronización completa diaria (detecta borrados y corrige derivas)."""
 
 

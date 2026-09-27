@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
-from mia.data import Employee, ShiftDay, Vacation, VacationBalance
+from mia.data import Employee, Vacation, VacationBalance
 from mia.domains.common import (
     MAX_ROWS_FOR_MODEL,
     Deps,
@@ -19,15 +19,13 @@ from mia.domains.common import (
     department_problem,
     fmt_date,
     focus_person,
-    freshness,
     person_problem,
     resolve_department,
     resolve_person,
     table,
 )
-from mia.domains.turnos import ABSENCE_KINDS
+from mia.domains.turnos import absence_periods
 from mia.domains.turnos.tools import DAY_NAMES
-from mia.sources.mappers.hr import ShiftKind
 from mia.text import normalize_key
 
 ESTADOS = {"aceptadas": "aceptada", "pendientes": "pendiente", "rechazadas": "rechazada"}
@@ -84,7 +82,7 @@ def solicitudes(deps: Deps) -> Tool:
             else:
                 stmt = stmt.where(Vacation.end_date >= today)  # de una persona: en curso y próximas
             rows = list((await db.scalars(stmt.order_by(Vacation.start_date))).all())
-            fresh = await freshness(db, "vacaciones")
+            fresh = await deps.freshness(db, "vacaciones")
         if p.estado != "todas":
             rows = [v for v in rows if normalize_key(v.status) == ESTADOS[p.estado]]
         if p.tipo != "todos":
@@ -151,7 +149,7 @@ def saldos(deps: Deps) -> Tool:
             if p.solo_negativos:
                 stmt = stmt.where(VacationBalance.current_balance < 0)
             rows = list((await db.scalars(stmt.order_by(VacationBalance.current_balance))).all())
-            fresh = await freshness(db, f"saldo_vacaciones_{year}")
+            fresh = await deps.freshness(db, f"saldo_vacaciones_{year}")
         if not rows:
             return ToolResult(
                 ToolStatus.NOT_FOUND, {"mensaje": f"No hay saldos de {year} con esos criterios.", **fresh}
@@ -200,20 +198,6 @@ class ReincorporacionParams(PersonaParams):
     fecha_referencia: date | None = Field(default=None, description="Por defecto hoy")
 
 
-def _absence_end(shifts: list[ShiftDay], start: date) -> date | None:
-    """Último día de la ausencia que incluye ``start`` según los turnos (días consecutivos de ausencia)."""
-    by_day = {s.day: s for s in shifts}
-    day = start
-    if day not in by_day or by_day[day].kind not in ABSENCE_KINDS:
-        return None
-    continues = (*ABSENCE_KINDS, ShiftKind.DESCANSO)
-    while (day + timedelta(days=1)) in by_day and by_day[day + timedelta(days=1)].kind in continues:
-        day += timedelta(days=1)
-    while by_day[day].kind == ShiftKind.DESCANSO:  # los descansos al final no alargan la ausencia
-        day -= timedelta(days=1)
-    return day
-
-
 def reincorporacion(deps: Deps) -> Tool:
     async def handler(p: ReincorporacionParams, ctx: ToolContext) -> ToolResult:
         ref = p.fecha_referencia or ctx.now.date()
@@ -226,14 +210,9 @@ def reincorporacion(deps: Deps) -> Tool:
                 return ToolResult(
                     ToolStatus.NOT_FOUND, {"mensaje": f"No puedo cruzar los turnos de {e.name}."}
                 )
-            shifts = list(
-                (
-                    await db.scalars(
-                        select(ShiftDay)
-                        .where(ShiftDay.person_key == e.person_key, ShiftDay.day >= ref - timedelta(days=1))
-                        .order_by(ShiftDay.day)
-                    )
-                ).all()
+            # Ausencia en curso o la próxima que empiece en los 60 días siguientes (según turnos).
+            periods = await absence_periods(
+                db, lo=ref, hi=ref + timedelta(days=60), person_keys=[e.person_key]
             )
             vacation = None
             if e.email:
@@ -243,33 +222,42 @@ def reincorporacion(deps: Deps) -> Tool:
                     .order_by(Vacation.start_date)
                     .limit(1)
                 )
-            fresh = await freshness(db, "turnos", "vacaciones")
-        today_shift = next((s for s in shifts if s.day == ref), None)
-        reason, end = None, None
-        if today_shift and today_shift.kind in ABSENCE_KINDS:
-            reason, end = today_shift.kind, _absence_end(shifts, ref)
-        elif vacation and normalize_key(vacation.status) == "aceptada" and vacation.end_date:
-            reason, end = "Vacaciones", vacation.end_date
-        if end is None:
+            fresh = await deps.freshness(db, "turnos", "vacaciones")
+        periods.sort(key=lambda x: x.start)
+        period = periods[0] if periods else None
+        if period is None and not (vacation and normalize_key(vacation.status) == "aceptada"):
             return ToolResult(
                 ToolStatus.OK,
                 {
                     "persona": e.name,
                     "ausente": False,
-                    "mensaje": f"{e.name} no está ausente ni tiene vacaciones aceptadas próximas.",
+                    "mensaje": f"{e.name} no está ausente ni tiene ausencias próximas publicadas.",
                     **fresh,
                 },
                 state_updates=focus_person(e),
             )
-        back = next((s for s in shifts if s.day > end and s.kind == ShiftKind.TRABAJO), None)
         summary: dict[str, Any] = {
             "persona": e.name,
-            "motivo": reason,
-            "ausente_hasta": end.isoformat(),
             "regla": "VAC-001: la reincorporación es el primer turno de Trabajo tras el fin de la ausencia.",
             **fresh,
         }
-        if back:
+        if period is not None:
+            summary.update(
+                motivo=period.kind,
+                ausente_desde=period.start.isoformat(),
+                ausente_hasta=period.end.isoformat(),
+                en_curso=period.start <= ref <= period.end,
+            )
+            back = period.return_shift
+        else:
+            assert vacation is not None  # noqa: S101
+            summary.update(
+                motivo="Vacaciones (solicitud aceptada, aún sin reflejo en turnos)",
+                ausente_desde=vacation.start_date.isoformat() if vacation.start_date else None,
+                ausente_hasta=vacation.end_date.isoformat() if vacation.end_date else None,
+            )
+            back = None
+        if back is not None:
             summary["reincorporacion"] = {
                 "fecha": back.day.isoformat(),
                 "dia": DAY_NAMES.get(back.weekday),
@@ -284,8 +272,8 @@ def reincorporacion(deps: Deps) -> Tool:
 
     return Tool(
         "reincorporacion",
-        "Cuándo se reincorpora una persona tras vacaciones, baja o permiso: primer turno de trabajo "
-        "publicado después de la ausencia.",
+        "Cuándo se reincorpora UNA persona tras vacaciones, baja o permiso: primer turno de trabajo "
+        "publicado después de la ausencia. Para listas de varias personas usa 'reincorporaciones'.",
         ReincorporacionParams,
         handler,
         permission=Permission.VACACIONES_LEER,

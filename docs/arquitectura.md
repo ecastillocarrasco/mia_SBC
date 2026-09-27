@@ -95,7 +95,7 @@ SharePoint (RRHH) ──sincronización──▶ source_items (réplica, seudoni
 | Dominio | Herramientas |
 |---|---|
 | Empleados | `buscar_empleado`, `ficha_empleado`, `plantilla`, `estructura_departamentos` |
-| Turnos | `turnos_persona`, `turnos_departamento`, `ausencias` |
+| Turnos | `turnos_persona`, `turnos_dia`, `ausencias`, `reincorporaciones` |
 | Vacaciones | `vacaciones`, `saldo_vacaciones`, `reincorporacion` |
 
 - **Personas**: coincidencia por palabras sin tildes; activos primero; si hay varias,
@@ -105,6 +105,7 @@ SharePoint (RRHH) ──sincronización──▶ source_items (réplica, seudoni
   `foco_periodo`; el motor los resume en el prompt de cada turno para que «¿y su
   saldo?» use el `empleado_id` correcto.
 - **Frescura**: cada resultado indica si sus fuentes están al día; si no, mIA lo avisa.
-- **Reglas**: POB-001 (activos por defecto), VAC-001 (reincorporación = primer turno
+- **Reglas**: TUR-001/002 (franjas por inicio, presencia por solape), AUS-001 (periodo real de la
+  ausencia), POB-001 (activos por defecto), VAC-001 (reincorporación = primer turno
   de trabajo publicado; si no hay, no se afirma), VAC-002 (saldos negativos), DAT-001.
 - Lo que ve el modelo está limitado a 40 filas; la interfaz recibe la tabla completa.

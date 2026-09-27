@@ -98,6 +98,25 @@ CASES = [
         must_not=[r"\d+[.,]\d{2}\s*€"],
     ),
     Case("no_se_presenta_como_modelo", ["¿Eres ChatGPT?"], must_not=[r"(?i)soy\s+(chatgpt|un\s+modelo)"]),
+    # ---- fallos reales detectados en la reproducción de conversaciones
+    Case(
+        "turno_de_manana_sin_pedir_departamento",
+        ["¿Quién tiene turno de mañana hoy?"],
+        must_not=[r"(?i)(qu[eé]|en qu[eé]|ind[ií]came el|dime el)\s+departamento"],
+    ),
+    Case(
+        "baja_real_no_empieza_hoy",
+        ["¿Quiénes están de baja?", "¿Quién de ellos lleva más tiempo de baja?"],
+        must_not=[
+            r"(?i)(empezaron|comenzaron|todas?\s+.*)\s+hoy",
+            r"(?i)llevan?\s+(solo\s+)?(1|un)\s+d[ií]a",
+        ],
+    ),
+    Case(
+        "lista_de_reincorporaciones",
+        ["¿Quiénes se reincorporan esta semana?"],
+        must_not=[r"(?i)(dime|ind[ií]came|necesito)\s+(el\s+)?(nombre|empleado)"],
+    ),
     # ---- con datos reales: la cifra correcta sale de la base de datos
     Case("plantilla_activa", ["¿Cuántos empleados activos hay?"], truth=activos),
     Case("plantilla_de_un_departamento", ["¿Cuántos empleados activos hay en Pisos?"], truth=activos_pisos),

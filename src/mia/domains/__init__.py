@@ -7,6 +7,8 @@ que mIA no los prometa.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from mia.conversation import ToolRegistry
 from mia.data import Database
 from mia.domains import empleados, sistema, turnos, vacaciones
@@ -22,8 +24,8 @@ PENDING_DOMAINS = (
 )
 
 
-def build_registry(db: Database) -> ToolRegistry:
-    deps = Deps(db=db)
+def build_registry(db: Database, stale_after_minutes: int = 30) -> ToolRegistry:
+    deps = Deps(db=db, stale_after=timedelta(minutes=stale_after_minutes))
     registry = ToolRegistry(pending_domains=PENDING_DOMAINS)
     sistema.register(registry)
     empleados.register(registry, deps)

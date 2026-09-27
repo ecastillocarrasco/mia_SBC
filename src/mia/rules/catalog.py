@@ -78,6 +78,27 @@ RULES: tuple[BusinessRule, ...] = (
         ("transversal",),
     ),
     BusinessRule(
+        "TUR-001",
+        "Franjas por hora de inicio",
+        "Turno de mañana = empieza entre 05:00 y 11:59; de tarde = entre 12:00 y 17:59; de noche = "
+        "desde las 18:00 hasta las 04:59. Un 07:00-15:00 es de mañana aunque termine por la tarde.",
+        ("turnos",),
+    ),
+    BusinessRule(
+        "TUR-002",
+        "Presencia por solape",
+        "Quién está trabajando a una hora se decide por solape del horario (un 22:00-06:00 cubre las "
+        "02:00), no por la hora de inicio.",
+        ("turnos",),
+    ),
+    BusinessRule(
+        "AUS-001",
+        "Periodo real de las ausencias",
+        "Desde cuándo y cuántos días lleva alguien ausente se calcula sobre el periodo completo, no sobre "
+        "las fechas consultadas: quien está de baja hoy no empezó hoy.",
+        ("turnos", "vacaciones"),
+    ),
+    BusinessRule(
         "SEL-001",
         "Sin ranking automático de candidatos",
         "En selección se busca y se explica la evidencia de cada CV; no se ordena ni descarta "
