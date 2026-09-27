@@ -124,7 +124,8 @@ async def test_absence_reports_real_start_not_query_start(registry: ToolRegistry
     """AUS-001. Fallo real: «todas las bajas empezaron hoy» al consultar solo hoy."""
     result = await call(registry, "ausencias")  # solo hoy, 5 de agosto
     ana = next(p for p in result.summary["periodos"] if p["persona"] == "Ana Ruiz Sanz")
-    assert (ana["desde"], ana["dias"], ana["en_curso"]) == ("2026-08-03", 5, True)
+    assert (ana["desde"], ana["dias_totales_publicados"], ana["en_curso"]) == ("2026-08-03", 5, True)
+    assert ana["dias_hasta_hoy"] == 3  # del lunes 3 al miércoles 5: lleva 3 días, no 5
     assert ana["vuelve"]["fecha"] == "2026-08-10"
 
 
@@ -133,12 +134,15 @@ async def test_person_absence_history_defaults_to_the_year(registry: ToolRegistr
     assert result.summary["desde"] == "2026-01-01"
     # Días acumulados hasta hoy (1: hoy); el periodo completo publicado dura 2.
     assert result.summary["resumen_por_tipo"]["Baja/IT"] == {"personas": 1, "periodos": 1, "dias": 1}
-    assert result.summary["periodos"][0]["dias"] == 2
+    assert result.summary["periodos"][0]["dias_totales_publicados"] == 2
     assert result.state_updates["foco_persona"]["empleado_id"] == 4
 
 
 async def test_reincorporations_list(registry: ToolRegistry) -> None:
+    only_eva = await call(registry, "reincorporaciones", empleado_ids=[4])
+    assert only_eva.summary["con_reincorporacion_publicada"] == 0
     result = await call(registry, "reincorporaciones")
+    assert result.summary["personas_con_mas_de_un_motivo"] == []
     assert result.summary["con_reincorporacion_publicada"] == 1
     assert result.summary["reincorporaciones"][0]["persona"] == "Ana Ruiz Sanz"
     assert result.summary["ausencia_termina_pero_sin_turno_publicado"] == 1  # Eva

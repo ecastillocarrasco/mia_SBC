@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
-from mia.data import ShiftDay
+from mia.data import Employee, ShiftDay
 from mia.domains.common import (
     MAX_ROWS_FOR_MODEL,
     Deps,
@@ -283,10 +283,12 @@ def _period_view(p: AbsencePeriod, today: date, lo: date, hi: date) -> dict[str,
         "tipo": p.kind,
         "desde": p.start.isoformat(),
         "hasta": p.end.isoformat(),
-        "dias": p.days,
+        "dias_totales_publicados": p.days,
         "dias_en_el_periodo_consultado": p.days_within(lo, hi),
         "en_curso": p.start <= today <= p.end,
     }
+    if p.start <= today:
+        view["dias_hasta_hoy"] = (min(p.end, today) - p.start).days + 1
     if p.starts_before_data:
         view["nota"] = "empezó antes del histórico disponible: puede ser más larga"
     if p.return_shift is not None:
@@ -352,7 +354,10 @@ def ausencias(deps: Deps) -> Tool:
             "desde": lo.isoformat(),
             "hasta": hi.isoformat(),
             "resumen_por_tipo": dict(by_kind),
-            "regla": "AUS-001: 'desde' y 'dias' son los del periodo real completo, no los de la consulta.",
+            "regla": (
+                "AUS-001: 'desde' es el inicio real del periodo. 'dias_hasta_hoy' = cuánto lleva; "
+                "'dias_totales_publicados' incluye días futuros ya publicados."
+            ),
             **fresh,
         }
         if len(views) <= MAX_ROWS_FOR_MODEL:
@@ -366,7 +371,7 @@ def ausencias(deps: Deps) -> Tool:
                 v["tipo"],
                 fmt_date(date.fromisoformat(v["desde"])),
                 fmt_date(date.fromisoformat(v["hasta"])),
-                v["dias"],
+                v["dias_totales_publicados"],
             ]
             for v in views
         ]
@@ -391,8 +396,20 @@ def ausencias(deps: Deps) -> Tool:
 
 
 # ------------------------------------------------------------------ reincorporaciones (lista)
+def _multi_kind(periods: list[AbsencePeriod]) -> list[dict[str, Any]]:
+    kinds: dict[str, set[str]] = defaultdict(set)
+    names: dict[str, str | None] = {}
+    for x in periods:
+        kinds[x.person_key].add(x.kind)
+        names[x.person_key] = x.name
+    return [{"persona": names[k], "motivos": sorted(v)} for k, v in kinds.items() if len(v) > 1]
+
+
 class ReincorporacionesParams(Periodo):
     departamento: str | None = Field(default=None, description="Departamento (opcional)")
+    empleado_ids: list[int] | None = Field(
+        default=None, description="Limitar a estas personas (ids del foco o de una búsqueda)"
+    )
     tipos: list[str] | None = Field(default=None, description="Baja/IT, Vacaciones, Permiso, Asuntos propios")
 
 
@@ -411,7 +428,13 @@ def reincorporaciones(deps: Deps) -> Tool:
                 status, dept_key, options = await resolve_shift_department(db, p.departamento)
                 if status is not ToolStatus.OK:
                     return department_not_found(status, p.departamento, options)
-            periods = await absence_periods(db, lo=lo, hi=hi, kinds=kinds, department_like=dept_key)
+            person_keys = None
+            if p.empleado_ids:
+                keys = await db.scalars(select(Employee.person_key).where(Employee.sp_id.in_(p.empleado_ids)))
+                person_keys = [k for k in keys.all() if k]
+            periods = await absence_periods(
+                db, lo=lo, hi=hi, kinds=kinds, department_like=dept_key, person_keys=person_keys
+            )
             fresh = await deps.freshness(db, "turnos")
         published = [x for x in periods if x.return_shift is not None and lo <= x.return_shift.day <= hi]
         pending = [x for x in periods if x.return_shift is None and x.end <= hi]
@@ -434,6 +457,7 @@ def reincorporaciones(deps: Deps) -> Tool:
             "con_reincorporacion_publicada": len(items),
             "personas_distintas": len({x.person_key for x in published}),
             "por_motivo": dict(Counter(x.kind for x in published)),
+            "personas_con_mas_de_un_motivo": _multi_kind(published),
             "ausencia_termina_pero_sin_turno_publicado": len(pending),
             "regla": "VAC-001: reincorporación = primer turno de trabajo publicado tras la ausencia.",
             **fresh,
