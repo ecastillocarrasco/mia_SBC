@@ -104,7 +104,10 @@ def main() -> None:
     parser.add_argument("--loop", type=int, default=0, help="repetir cada N segundos")
     parser.add_argument("--list", action="store_true", help="mostrar fuentes y estado")
     parser.add_argument("--check", action="store_true", help="probar el acceso a SharePoint sin escribir")
-    sys.exit(asyncio.run(_main(parser.parse_args())))
+    try:
+        sys.exit(asyncio.run(_main(parser.parse_args())))
+    except KeyboardInterrupt:
+        sys.exit(130)
 
 
 if __name__ == "__main__":

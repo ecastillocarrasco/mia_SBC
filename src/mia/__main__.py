@@ -7,6 +7,7 @@ también ese puerto para que el frontend actual funcione sin cambios en local.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 import uvicorn
 
@@ -30,7 +31,8 @@ async def _serve() -> None:
 
 
 def main() -> None:
-    asyncio.run(_serve())
+    with contextlib.suppress(KeyboardInterrupt):
+        asyncio.run(_serve())
 
 
 if __name__ == "__main__":

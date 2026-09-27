@@ -30,6 +30,8 @@ def _redact(_: Any, __: str, event: MutableMapping[str, Any]) -> MutableMapping[
 
 def configure_logging(level: str = "INFO", json_output: bool = True) -> None:
     logging.basicConfig(format="%(message)s", stream=sys.stdout, level=level.upper(), force=True)
+    # httpx registra cada petición con la URL completa: demasiado ruido (y datos) en INFO.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     renderer: Any = (
         structlog.processors.JSONRenderer(ensure_ascii=False)
         if json_output

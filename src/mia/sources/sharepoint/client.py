@@ -175,7 +175,8 @@ class SharePointClient:
                     "DeleteObject": True,
                     "Restore": True,
                     "Item": True,
-                    "FetchLimit": fetch_limit,
+                    # En OData verbose los Edm.Int64 viajan como texto; como número SharePoint da 400.
+                    "FetchLimit": str(fetch_limit),
                     "ChangeTokenStart": {"__metadata": {"type": "SP.ChangeToken"}, "StringValue": current},
                 }
             }

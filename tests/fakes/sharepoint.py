@@ -60,7 +60,12 @@ class FakeSharePoint:
         if token in self.expired_tokens:
             return httpx.Response(400, text="The change token refers to a time before the start of the log")
         start = int(token[1:])
-        limit = int(body["query"].get("FetchLimit", 1000))
+        raw_limit = body["query"].get("FetchLimit", "1000")
+        if not isinstance(raw_limit, str):  # igual que SharePoint real
+            return httpx.Response(
+                400, text="No se puede convertir un valor primitivo en el tipo esperado 'Edm.Int64'"
+            )
+        limit = int(raw_limit)
         entries = [
             {"ChangeType": ct, "ItemId": item_id, "ChangeToken": {"StringValue": f"t{seq}"}}
             for seq, ct, item_id in self.log.get(title, [])
