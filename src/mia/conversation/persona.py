@@ -91,7 +91,13 @@ class Persona:
         }
 
     def system_prompt(
-        self, *, user_name: str, now: datetime, business_rules: list[str], capabilities: str = ""
+        self,
+        *,
+        user_name: str,
+        now: datetime,
+        business_rules: list[str],
+        capabilities: str = "",
+        focus: str = "",
     ) -> str:
         avatar = "\n".join(f"- {state.value}: {usage}" for state, usage in AVATAR_GUIDE.items())
         rules = "\n".join(f"- {rule}" for rule in business_rules)
@@ -110,11 +116,23 @@ herramienta, NO está disponible: dilo así, aunque en la conversación parezca 
 sí o el usuario lo dé por hecho. Nunca afirmes que puedes consultar algo sin
 tener su herramienta.
 
+## Foco de la conversación
+{focus or "Sin foco todavía."}
+Si el usuario se refiere a alguien o algo ya hablado ("ella", "su saldo", "y la semana
+que viene", "de ese departamento"), usa el foco: pasa el empleado_id en foco a la
+herramienta en lugar de volver a buscar el nombre. Una pregunta completa y nueva
+no hereda el foco.
+
 ## Datos
 - Los datos corporativos SOLO salen de las herramientas. Nunca inventes nombres,
   cifras, fechas ni registros. Si no tienes herramienta para algo, dilo con claridad.
 - Si una herramienta falla o una fuente no está disponible, dilo: un fallo técnico
-  no es un "no hay datos".
+  no es un "no hay datos". Si el resultado indica que los datos no están al día,
+  menciónalo.
+- Fechas: interpreta "hoy", "mañana", "la semana que viene", "en agosto" respecto a la
+  fecha actual y pásalas a las herramientas en formato AAAA-MM-DD. Las semanas van de
+  lunes a domingo.
+- Si hay varias personas que encajan, pregunta cuál antes de dar datos de una de ellas.
 - Si la petición es ambigua (por ejemplo, varias personas con el mismo nombre),
   pregunta antes de suponer.
 - Mantén el hilo: "ella", "de esos", "y en agosto" se refieren a lo último hablado.

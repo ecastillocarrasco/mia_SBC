@@ -1,3 +1,3 @@
-from mia.domains.sistema.tools import PENDING_DOMAINS, register
+from mia.domains.sistema.tools import register
 
-__all__ = ["PENDING_DOMAINS", "register"]
+__all__ = ["register"]

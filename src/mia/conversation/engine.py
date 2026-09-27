@@ -72,6 +72,21 @@ class FinalAnswer:
     text: str
 
 
+def describe_focus(state: dict[str, Any]) -> str:
+    """Resumen del foco para el prompt (lo fijan las herramientas con state_updates)."""
+    lines = []
+    person = state.get("foco_persona")
+    if isinstance(person, dict) and person.get("empleado_id"):
+        extra = f", {person['departamento']}" if person.get("departamento") else ""
+        lines.append(f"- Persona: {person.get('nombre')} (empleado_id {person['empleado_id']}{extra})")
+    if state.get("foco_departamento"):
+        lines.append(f"- Departamento: {state['foco_departamento']}")
+    period = state.get("foco_periodo")
+    if isinstance(period, dict) and period.get("desde"):
+        lines.append(f"- Periodo: {period['desde']} a {period.get('hasta', period['desde'])}")
+    return "\n".join(lines)
+
+
 def parse_final_answer(raw: str) -> FinalAnswer:
     try:
         data = json.loads(raw)
@@ -139,6 +154,7 @@ class ConversationEngine:
             now=now,
             business_rules=rules_for_prompt(),
             capabilities=self._tools.capabilities_for(user),
+            focus=describe_focus(turn.state),
         )
         ctx = ToolContext(user=user, request_id=request_id, now=now, session_state=turn.state)
 

@@ -10,13 +10,13 @@ y [docs/migracion.md](docs/migracion.md).
 
 ## Estado
 
-**Fase 2 · capa de datos** — lista para probar contra SharePoint real.
+**Fase 3 · turnos, empleados y vacaciones** — lista para probar con datos reales.
 
 | Fase | Contenido | Estado |
 |---|---|---|
 | 1 | Estructura, API, motor conversacional, personaje, voz, identidad preparada, base de datos, observabilidad, batería de paridad, infraestructura Azure | ✅ |
-| 2 | Capa de datos: cliente SharePoint y sincronización incremental a PostgreSQL | 🧪 |
-| 3 | Dominios de más uso: turnos, empleados, vacaciones | ⏳ |
+| 2 | Capa de datos: cliente SharePoint y sincronización incremental a PostgreSQL | ✅ |
+| 3 | Dominios de más uso: turnos, empleados, vacaciones | 🧪 |
 | 4 | Resto de dominios, informes y correo | ⏳ |
 | 5 | Modo sombra frente al sistema anterior y corte | ⏳ |
 | 6 | Modelo predictivo | ⏳ |
@@ -89,7 +89,8 @@ Los DNI/NIE nunca se guardan: se sustituyen por un seudónimo HMAC al leerlos.
 ## Evaluación conversacional
 
 ```powershell
-python tools/eval_conversation.py
+python tools/eval_conversation.py          # casos de comportamiento y cifras contra la base de datos
+python tools/parity_replay.py --limit 40   # conversaciones reales del sistema anterior → informe
 ```
 
 Con mIA arrancada y el LLM real, comprueba casos de comportamiento del personaje

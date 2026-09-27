@@ -14,9 +14,17 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import date
 
 import httpx
+from sqlalchemy import func, select
+
+from mia.data import Database, Employee, VacationBalance
+from mia.settings import get_settings
+
+Truth = Callable[[Database], Awaitable[int]]
 
 
 @dataclass(frozen=True)
@@ -26,6 +34,30 @@ class Case:
     must_not: list[str] = field(default_factory=list)
     must: list[str] = field(default_factory=list)
     max_speech_chars: int = 250
+    truth: Truth | None = None
+    """Cifra real calculada en la base de datos: la respuesta debe contenerla."""
+
+
+async def _count(db: Database, stmt: object) -> int:
+    async with db.session() as s:
+        return int(await s.scalar(stmt) or 0)  # type: ignore[call-overload]
+
+
+async def activos(db: Database) -> int:
+    return await _count(db, select(func.count()).select_from(Employee).where(Employee.active.is_(True)))
+
+
+async def inactivos(db: Database) -> int:
+    return await _count(db, select(func.count()).select_from(Employee).where(Employee.active.is_(False)))
+
+
+async def saldos_negativos(db: Database) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(VacationBalance)
+        .where(VacationBalance.year == date.today().year, VacationBalance.current_balance < 0)
+    )
+    return await _count(db, stmt)
 
 
 # Afirma poder consultar turnos; excluye las negaciones ("todavía no puedo consultar los turnos").
@@ -58,10 +90,35 @@ CASES = [
         must_not=[r"\d+[.,]\d{2}\s*€"],
     ),
     Case("no_se_presenta_como_modelo", ["¿Eres ChatGPT?"], must_not=[r"(?i)soy\s+(chatgpt|un\s+modelo)"]),
+    # ---- con datos reales: la cifra correcta sale de la base de datos
+    Case("plantilla_activa", ["¿Cuántos empleados activos hay?"], truth=activos),
+    Case("inactivos_son_inactivos", ["¿Cuántos empleados hay?", "¿Y cuántos inactivos?"], truth=inactivos),
+    Case(
+        "saldos_negativos",
+        ["¿Cuántas personas tienen el saldo de vacaciones en negativo?"],
+        truth=saldos_negativos,
+    ),
+    Case(
+        "no_se_inventa_un_departamento",
+        ["¿Cuántas personas hay en el departamento de Astronáutica?"],
+        must=[r"(?i)no\s+(existe|hay|encuentro|tengo)|no\s+.*departamento"],
+        must_not=[r"\bhay\s+\d+\s+personas"],
+    ),
 ]
 
 
+async def _truths() -> dict[str, int]:
+    db = Database(get_settings().database_url)
+    try:
+        return {case.name: await case.truth(db) for case in CASES if case.truth}
+    finally:
+        await db.dispose()
+
+
 def run(url: str) -> int:
+    import asyncio  # noqa: PLC0415
+
+    truths = asyncio.run(_truths())
     failures = 0
     with httpx.Client(base_url=url, timeout=60) as client:
         for case in CASES:
@@ -77,6 +134,8 @@ def run(url: str) -> int:
             speech = str(body.get("speech", ""))
             problems = [f"contiene /{rx}/" for rx in case.must_not if re.search(rx, answer, re.I)]
             problems += [f"falta /{rx}/" for rx in case.must if not re.search(rx, answer)]
+            if case.name in truths and not re.search(rf"\b{truths[case.name]}\b", answer):
+                problems.append(f"la cifra real es {truths[case.name]}")
             if len(speech) > case.max_speech_chars:
                 problems.append(f"voz de {len(speech)} caracteres")
             status = "OK  " if not problems else "FALLA"

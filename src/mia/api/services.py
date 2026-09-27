@@ -35,7 +35,7 @@ class Services:
         provider = llm or build_llm_provider(settings.llm)
         engine = ConversationEngine(
             llm=provider,
-            tools=build_registry(),
+            tools=build_registry(database),
             db=database,
             persona=Persona(),
             timezone=settings.timezone,

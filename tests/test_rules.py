@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from mia.auth import UserContext
 from mia.conversation import Persona
+from mia.data import Database
 from mia.domains import build_registry
 from mia.rules import RULES, rule, rules_for_prompt
 
@@ -26,12 +27,14 @@ def test_persona_forbids_unkeepable_promises() -> None:
 
 
 def test_prompt_states_real_capabilities() -> None:
-    registry = build_registry()
+    registry = build_registry(Database("sqlite+aiosqlite:///:memory:"))
     user = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
     text = registry.capabilities_for(user)
     assert "capacidades" in text
     assert "TODAVÍA NO puedes consultar" in text
-    assert "turnos" in text.split("TODAVÍA NO puedes consultar")[1]
+    available, pending = text.split("TODAVÍA NO puedes consultar")
+    assert "turnos_persona" in available
+    assert "nóminas" in pending and "turnos" not in pending
     prompt = Persona().system_prompt(
         user_name="Enrique", now=datetime.now(UTC), business_rules=[], capabilities=text
     )

@@ -89,3 +89,22 @@ SharePoint (RRHH) ──sincronización──▶ source_items (réplica, seudoni
   por un HMAC antes de escribir nada. Cuando haga falta el dato real (p. ej. para
   localizar la carpeta de nóminas) se consultará en el momento, sin persistirlo.
 - Un elemento defectuoso no detiene la sincronización: se registra y se continúa.
+
+## Herramientas de RRHH (fase 3)
+
+| Dominio | Herramientas |
+|---|---|
+| Empleados | `buscar_empleado`, `ficha_empleado`, `plantilla`, `estructura_departamentos` |
+| Turnos | `turnos_persona`, `turnos_departamento`, `ausencias` |
+| Vacaciones | `vacaciones`, `saldo_vacaciones`, `reincorporacion` |
+
+- **Personas**: coincidencia por palabras sin tildes; activos primero; si hay varias,
+  la herramienta devuelve `ambiguous` con los candidatos y mIA pregunta. Si no hay
+  ninguna, sugiere nombres parecidos. Nunca elige al azar.
+- **Foco**: las herramientas fijan `foco_persona`, `foco_departamento` y
+  `foco_periodo`; el motor los resume en el prompt de cada turno para que «¿y su
+  saldo?» use el `empleado_id` correcto.
+- **Frescura**: cada resultado indica si sus fuentes están al día; si no, mIA lo avisa.
+- **Reglas**: POB-001 (activos por defecto), VAC-001 (reincorporación = primer turno
+  de trabajo publicado; si no hay, no se afirma), VAC-002 (saldos negativos), DAT-001.
+- Lo que ve el modelo está limitado a 40 filas; la interfaz recibe la tabla completa.
