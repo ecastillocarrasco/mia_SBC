@@ -77,5 +77,5 @@ class AuditEvent(Base):
     user_id: Mapped[str] = mapped_column(String(128), index=True)
     action: Mapped[str] = mapped_column(String(64))
     resource: Mapped[str] = mapped_column(String(128))
-    outcome: Mapped[str] = mapped_column(String(16))
+    outcome: Mapped[str] = mapped_column(String(32))
     detail: Mapped[dict[str, Any]] = mapped_column(default=dict)
