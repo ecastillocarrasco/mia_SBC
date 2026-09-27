@@ -26,6 +26,10 @@ class FakeSharePoint:
         self.seq += 1
         self.log.setdefault(title, []).append((self.seq, change_type, item_id))
 
+    def declare_list(self, title: str) -> None:
+        """Marca una lista como existente aunque todavía no tenga elementos (para --check y descubrimiento)."""
+        self.lists.setdefault(title, {})
+
     def put(self, title: str, item: dict[str, Any]) -> None:
         items = self.lists.setdefault(title, {})
         change = 2 if item["ID"] in items else 1
@@ -57,7 +61,9 @@ class FakeSharePoint:
         if rest == "/GetChanges":
             return self._changes(title, json.loads(request.content))
         if rest == "/fields":
-            names = {k for item in self.lists.get(title, {}).values() for k in item}
+            if title not in self.lists:
+                return httpx.Response(404, text=f"List '{title}' does not exist")
+            names = {k for item in self.lists[title].values() for k in item}
             return httpx.Response(200, json={"value": [{"InternalName": n} for n in sorted(names)]})
         if rest == "/items":
             return self._items(title, request)

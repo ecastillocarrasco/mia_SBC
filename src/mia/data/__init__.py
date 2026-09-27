@@ -1,5 +1,6 @@
 from mia.data.db import Database
 from mia.data.hr import (
+    CalendarShift,
     Candidate,
     CvChunk,
     CvDocument,
@@ -10,6 +11,8 @@ from mia.data.hr import (
     OrgUnit,
     Payslip,
     ShiftDay,
+    ShiftTemplate,
+    ShiftTypeCatalog,
     SignedDocument,
     TtCommunication,
     TtCompany,
@@ -18,6 +21,7 @@ from mia.data.hr import (
     TtWorker,
     Vacation,
     VacationBalance,
+    WeekComment,
 )
 from mia.data.models import AuditEvent, Base, ConversationSession, ConversationTurn
 from mia.data.reports import Report
@@ -26,6 +30,7 @@ from mia.data.sources import SourceItem, SourceSyncState
 __all__ = [
     "AuditEvent",
     "Base",
+    "CalendarShift",
     "Candidate",
     "ConversationSession",
     "ConversationTurn",
@@ -40,6 +45,8 @@ __all__ = [
     "Payslip",
     "Report",
     "ShiftDay",
+    "ShiftTemplate",
+    "ShiftTypeCatalog",
     "SignedDocument",
     "SourceItem",
     "SourceSyncState",
@@ -50,4 +57,5 @@ __all__ = [
     "TtWorker",
     "Vacation",
     "VacationBalance",
+    "WeekComment",
 ]

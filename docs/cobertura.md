@@ -93,7 +93,7 @@ listas de SharePoint que leía, se añadieron:
 | Saldo consumido; saldo oficial sin recalcular | `consumido` en saldos, regla VAC-003 | ✅ |
 | Comparar bajas por departamento; quién entra a una hora; publicación por departamento | `personas_por_departamento`, `empieza_a`, `personas_activas_sin_turnos_publicados` | ✅ |
 | Comparar maestros de tipos documentales | `maestros_documentales` | ✅ |
-| **Planificación de turnos v12**: calendarios `Calendario<Departamento>_AAAA` (fuente de planificación e histórico desde 2023), `TipoTurnos`, `TurnosPlantillas`, `ComentariosTurnosSemanas`, auditoría de publicación Turnos↔Calendario, métricas de horas y nocturnidad, disponibilidad cruzada con ETT | — | ⏳ pendiente (fase 4c) |
+| **Planificación de turnos v12**: calendarios `Calendario<Departamento>_AAAA` (histórico real desde 2023, descubiertos automáticamente), `TipoTurnos`, `TurnosPlantillas`, `ComentariosTurnosSemanas`, auditoría de publicación Turnos↔Calendario, métricas de horas y nocturnidad | `turnos_historico`, `catalogo_tipos_turno`, `plantillas_turno`, `comentarios_semana_turno`, `metricas_turnos`, `auditoria_publicacion_turnos` | ✅ (fase 4c) |
 
 ## Reglas de negocio del sistema anterior
 
@@ -104,3 +104,28 @@ saldo oficial sin recalcular, «tener turno no implica trabajar», la carpeta ma
 nóminas, una fila de CV es una candidatura, la falta de evidencia no es falta de
 competencia, importes históricos de ETT frente a estimaciones con tarifas actuales,
 turnos partidos y cohortes privadas para cruces posteriores.
+
+
+## Fase 4c: planificación de turnos v12 (calendarios)
+
+Los calendarios de departamento no son una lista fija: `python -m mia.sync` (y `--check`)
+**descubren automáticamente** qué `Calendario<Departamento>_AAAA` existen de verdad (9
+departamentos × los años desde 2023), sin inventar ni asumir ninguno. `--no-calendars`
+salta ese descubrimiento para una sincronización más rápida cuando no hace falta.
+
+- **`turnos_historico`**: el histórico real de un departamento, con horas y turnos
+  partidos, distinto de la proyección semanal publicada (`turnos_persona`/`turnos_dia`).
+- **`catalogo_tipos_turno`**: el maestro `TipoTurnos` (horarios canónicos por departamento).
+- **`plantillas_turno`**: `TurnosPlantillas` — reglas de generación, nunca histórico real.
+- **`comentarios_semana_turno`**: `ComentariosTurnosSemanas`, contexto de
+  departamento/semana, nunca atribuido a una persona.
+- **`metricas_turnos`**: jornadas, horas y horas nocturnas reales por persona, excluyendo
+  OFF/sin asignación (mismo criterio que el sistema anterior).
+- **`auditoria_publicacion_turnos`**: compara un día entre Turnos (publicado) y Calendario
+  (real) y señala a quién le falta uno de los dos.
+
+Como estas listas identifican a la persona por nombre (no por DNI), las herramientas
+piden que se concrete si hay varias coincidencias, igual que en una búsqueda de
+empleados. Reglas nuevas: PLA-001 (Calendario es la fuente histórica autoritativa),
+PLA-002 (plantillas y comentarios de semana no son histórico) y PLA-003 (personas por
+nombre).

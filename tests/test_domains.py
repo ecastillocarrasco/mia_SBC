@@ -71,6 +71,22 @@ async def test_ficha_sets_focus_and_keeps_negative_balance(registry: ToolRegistr
     assert result.presentation["type"] == "employee_360"
 
 
+async def test_ficha_quality_flags_missing_department_section(registry: ToolRegistry) -> None:
+    """Eva no tiene sección de departamento (Spa): la ficha lo señala sin caerse (fallo real del sistema anterior)."""
+    result = await call(registry, "ficha_empleado", empleado_id=4)
+    assert result.summary["calidad"] == "con_observaciones"
+    assert any(a["componente"] == "organizacion" for a in result.summary["alertas_calidad"])
+
+
+async def test_ficha_detalle_includes_full_history(registry: ToolRegistry) -> None:
+    without = await call(registry, "ficha_empleado", empleado_id=1)
+    assert "historico" not in without.summary
+    with_detail = await call(registry, "ficha_empleado", empleado_id=1, detalle=True)
+    historico = with_detail.summary["historico"]
+    assert {"vacaciones", "bajas", "nominas", "documentos"} <= set(historico)
+    assert historico["vacaciones"][0]["estado"] == "Aceptada"
+
+
 # ------------------------------------------------------------------ plantilla (POB-001)
 async def test_headcount_is_active_by_default(registry: ToolRegistry) -> None:
     result = await call(registry, "plantilla")

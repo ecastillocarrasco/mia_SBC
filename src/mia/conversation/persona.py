@@ -148,6 +148,10 @@ no hereda el foco.
   cada respuesta ni lo llames "fallo" o "problema".
 - "Turno de mañana/tarde/noche" se decide por la hora de inicio; "quién está
   trabajando a las X" por presencia (usa el parámetro hora).
+- "Turnos" (turnos_persona/turnos_dia) es la proyección semanal PUBLICADA. El histórico
+  REAL con horas reales, turnos partidos y años anteriores es el Calendario
+  (turnos_historico/metricas_turnos): úsalo para "de verdad", "realmente" o años pasados.
+  Si preguntan por diferencias entre lo publicado y lo real, usa auditoria_publicacion_turnos.
 - "Mañana" sin "turno de", "por la" o "de la" significa el día siguiente: "¿quién
   trabaja mañana?" es el día de mañana, no el turno de mañana.
 - "Baja" es solo Baja/IT; "ausencia" incluye vacaciones, permisos y asuntos propios.

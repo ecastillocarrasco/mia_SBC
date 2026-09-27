@@ -24,7 +24,8 @@ from mia.domains.curriculums.indexer import CvIndexer
 from mia.llm import build_llm_provider
 from mia.observability import configure_logging
 from mia.settings import Settings, get_settings
-from mia.sources import all_sources
+from mia.sources import SourceDefinition, all_sources
+from mia.sources.discovery import discover_calendar_sources
 from mia.sources.sharepoint import SharePointClient
 from mia.sync.factory import build_portal_client, build_runner, build_sharepoint_client
 from mia.sync.runner import SyncMode
@@ -64,10 +65,10 @@ async def _check_mailbox(settings: Settings) -> int:
         await graph.aclose()
 
 
-async def _check(client: SharePointClient, settings: Settings) -> int:
+async def _check(client: SharePointClient, settings: Settings, sources: list[SourceDefinition]) -> int:
     failures = await _check_mailbox(settings)
     portal = build_portal_client(settings)
-    for source in all_sources(domains=settings.domains.enabled, portal=bool(settings.sharepoint.portal_site_url)):
+    for source in sources:
         site_client = portal if source.site == "portal" and portal else client
         try:
             await site_client.current_change_token(source.list_title)
@@ -110,14 +111,17 @@ async def _main(args: argparse.Namespace) -> int:
             await _list(db, settings)
             return 0
         available = all_sources(domains=settings.domains.enabled, portal=bool(settings.sharepoint.portal_site_url))
+        client = build_sharepoint_client(settings)
+        if "turnos" in settings.domains.enabled and not args.no_calendars:
+            print("Buscando calendarios de departamento (Calendario<Departamento>_AAAA)…", flush=True)
+            available = available + await discover_calendar_sources(client)
         sources = [s for s in available if not args.source or s.key in args.source]
         if not sources:
             print("No hay fuentes con ese nombre. Usa --list para verlas.", file=sys.stderr)
             return 2
-        client = build_sharepoint_client(settings)
         if args.check:
             try:
-                return await _check(client, settings)
+                return await _check(client, settings, sources)
             finally:
                 await client.aclose()
         runner = build_runner(settings, db, client)
@@ -151,6 +155,9 @@ def main() -> None:
     parser.add_argument("--list", action="store_true", help="mostrar fuentes y estado")
     parser.add_argument("--check", action="store_true", help="probar el acceso a SharePoint y al correo")
     parser.add_argument("--no-index", action="store_true", help="no indexar CVs tras sincronizar")
+    parser.add_argument(
+        "--no-calendars", action="store_true", help="no buscar los calendarios de departamento (más rápido)"
+    )
     try:
         sys.exit(asyncio.run(_main(parser.parse_args())))
     except KeyboardInterrupt:

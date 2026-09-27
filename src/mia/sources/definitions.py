@@ -11,6 +11,7 @@ from datetime import date
 from typing import Any
 
 from mia.data import (
+    CalendarShift,
     Candidate,
     CvDocument,
     DocumentTypeConfig,
@@ -19,6 +20,8 @@ from mia.data import (
     OrgUnit,
     Payslip,
     ShiftDay,
+    ShiftTemplate,
+    ShiftTypeCatalog,
     SignedDocument,
     TtCommunication,
     TtCompany,
@@ -27,10 +30,12 @@ from mia.data import (
     TtWorker,
     Vacation,
     VacationBalance,
+    WeekComment,
 )
 from mia.data.models import Base
-from mia.sources.mappers import docs, hr
+from mia.sources.mappers import calendars, docs, hr
 from mia.sources.mappers.common import MapContext
+from mia.text import normalize_key
 
 Mapper = Callable[[dict[str, Any], MapContext], list[dict[str, Any]]]
 
@@ -279,6 +284,86 @@ TIPOS_DOCUMENTO_PORTAL = SourceDefinition(
 )
 
 
+TIPO_TURNOS = SourceDefinition(
+    key="tipo_turnos",
+    list_title="TipoTurnos",
+    select=(
+        "ID,Title,DepartamentoTurno,DescripcionTurno,HorarioInicio,HorarioFin,HorarioInicio2,HorarioFin2,"
+        "HorasNocturnas,HorasTotalesTurno,TurnoPartido"
+    ),
+    model=ShiftTypeCatalog,
+    mapper=calendars.shift_type,
+    owner_column="sp_id",
+    domain="turnos",
+)
+
+TURNOS_PLANTILLAS = SourceDefinition(
+    key="turnos_plantillas",
+    list_title="TurnosPlantillas",
+    select=(
+        "ID,Title,Created,Modified,DepartamentoTurno,EmpleadoTurno,FechaInicioPlantilla,FechaFinPlantilla,"
+        "FechaTurno,Horario_L,Horario_M,Horario_X,Horario_J,Horario_V,Horario_S,Horario_D,ComentariosTurno,"
+        "Num_Turnos_Partidos,SemanaTurno,Totales_Horas_Nocturnas"
+    ),
+    model=ShiftTemplate,
+    mapper=calendars.shift_template,
+    owner_column="sp_id",
+    domain="turnos",
+)
+
+COMENTARIOS_TURNOS_SEMANAS = SourceDefinition(
+    key="comentarios_turnos_semanas",
+    list_title="ComentariosTurnosSemanas",
+    select=(
+        "ID,Title,AnnoTurno,SemanaTurno,DepartamentoTurno,ComentariosTurnoPpal,ComentariosTurnoL,"
+        "ComentariosTurnoM,ComentariosTurnoX,ComentariosTurnoJ,ComentariosTurnoV,ComentariosTurnoS,"
+        "ComentariosTurnoD"
+    ),
+    model=WeekComment,
+    mapper=calendars.week_comment,
+    owner_column="sp_id",
+    domain="turnos",
+)
+
+# ---------------------------------------------------------------------- calendarios (planificación v12)
+CALENDAR_DEPARTMENTS = (
+    "Supermercado",
+    "Restaurante",
+    "Cocina",
+    "Pisos",
+    "RRHH",
+    "Direccion",
+    "Animacion",
+    "Mantenimiento",
+    "Recepcion",
+)
+CALENDAR_BASE_YEAR = 2023
+"""La lista sin sufijo de año representa 2023; desde 2024 el nombre lleva «_AAAA»."""
+
+CALENDAR_SELECT = (
+    "ID,Title,Created,Modified,DepartamentoTurno,EmpleadoTurno,StartDate,EndDate,DescripcionTurno,"
+    "ComentariosTurno,Comments,HorasTotalesTurno,HorasNocturnas,TurnoPartido,SemanaTurno,UltimaPublicacion,"
+    "ContPublicacion,InformeTurnoEnviado"
+)
+
+
+def calendar_title(department: str, year: int) -> str:
+    return f"Calendario{department}" if year == CALENDAR_BASE_YEAR else f"Calendario{department}_{year}"
+
+
+def calendar_source(department: str, year: int) -> SourceDefinition:
+    return SourceDefinition(
+        key=f"calendario_{normalize_key(department)}_{year}",
+        list_title=calendar_title(department, year),
+        select=CALENDAR_SELECT,
+        model=CalendarShift,
+        mapper=calendars.calendar_shift(department, year),
+        owner_column="sp_id",
+        scope={"department": department, "year": year},
+        domain="turnos",
+    )
+
+
 def all_sources(
     today: date | None = None, domains: list[str] | None = None, *, portal: bool = True
 ) -> list[SourceDefinition]:
@@ -302,6 +387,9 @@ def all_sources(
         TT_COMUNICACIONES,
         TIPOS_FIRMA_RRHH,
         TIPOS_DOCUMENTO_PORTAL,
+        TIPO_TURNOS,
+        TURNOS_PLANTILLAS,
+        COMENTARIOS_TURNOS_SEMANAS,
     ]
     # Empleados y departamentos son la base de todos los cruces: siempre se sincronizan.
     base = {"empleados"}

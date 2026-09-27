@@ -10,7 +10,7 @@ y [docs/migracion.md](docs/migracion.md).
 
 ## Estado
 
-**Fase 4b · paridad completa con el sistema anterior** — lista para probar. Ver [docs/cobertura.md](docs/cobertura.md).
+**Fase 4c · planificación de turnos v12 (calendarios)** — paridad completa. Ver [docs/cobertura.md](docs/cobertura.md).
 
 | Fase | Contenido | Estado |
 |---|---|---|

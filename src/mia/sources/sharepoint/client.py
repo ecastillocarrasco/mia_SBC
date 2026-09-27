@@ -195,6 +195,16 @@ class SharePointClient:
         payload = await self._request("GET", f"{self._list_url(title)}/fields", params={"$select": "InternalName"})
         return {str(f.get("InternalName")) for f in payload.get("value", []) if f.get("InternalName")}
 
+    async def list_exists(self, title: str) -> bool:
+        """Para descubrir listas dinámicas (p. ej. Calendario<Departamento>_AAAA): no todas existen."""
+        try:
+            await self.field_names(title)
+        except SharePointError as exc:
+            if "HTTP 404" in str(exc):
+                return False
+            raise
+        return True
+
     async def current_change_token(self, title: str) -> str:
         payload = await self._request("GET", self._list_url(title), params={"$select": "CurrentChangeToken"})
         token = (payload.get("CurrentChangeToken") or {}).get("StringValue")

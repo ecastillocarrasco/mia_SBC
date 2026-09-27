@@ -321,3 +321,98 @@ class DocumentTypeConfig(Base):
     sign_all: Mapped[bool | None] = mapped_column(Boolean)
     """«FirmarTodas»: toda la plantilla debe firmarlo."""
     requires_authorization: Mapped[bool | None] = mapped_column(Boolean)
+
+
+# ---------------------------------------------------------------------- calendarios de turnos (planificación v12)
+class CalendarShift(Base):
+    """Un evento de turno del Calendario<Departamento>_AAAA (fuente histórica real).
+
+    Identifica a la persona por nombre (estas listas no tienen DNI), a diferencia de
+    Turnos: ``turnos_historico`` resuelve el nombre contra Employee en el momento de
+    la consulta, igual que ``buscar_empleado``.
+    """
+
+    __tablename__ = "hr_calendar_shifts"
+    __table_args__ = (
+        Index("ix_hr_calendar_shifts_dept_day", "department_key", "day"),
+        Index("ix_hr_calendar_shifts_person_day", "employee_name_key", "day"),
+    )
+
+    sp_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    department: Mapped[str] = mapped_column(String(256), primary_key=True, autoincrement=False)
+    year: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    """department + year identifican la lista de origen: sus IDs solo son únicos dentro de ella."""
+    department_key: Mapped[str] = mapped_column(String(256), index=True)
+    employee_name: Mapped[str | None] = mapped_column(String(256))
+    employee_name_key: Mapped[str | None] = mapped_column(String(256), index=True)
+    day: Mapped[date] = mapped_column(Date)
+    start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    description: Mapped[str | None] = mapped_column(String(256))
+    comment: Mapped[str | None] = mapped_column(Text)
+    hours_total: Mapped[float | None] = mapped_column(Float)
+    hours_night: Mapped[float | None] = mapped_column(Float)
+    split_shift: Mapped[bool] = mapped_column(Boolean, default=False)
+    kind: Mapped[str] = mapped_column(String(16), default="unknown")
+    """work · off · unassigned · special · unknown (mismo criterio que las métricas del sistema anterior)."""
+    week: Mapped[int | None] = mapped_column(Integer)
+    last_published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    publication_count: Mapped[int | None] = mapped_column(Integer)
+    report_sent: Mapped[bool | None] = mapped_column(Boolean)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ShiftTypeCatalog(Base):
+    """Maestro TipoTurnos: la definición canónica de cada turno por departamento."""
+
+    __tablename__ = "hr_shift_type_catalog"
+
+    sp_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    code: Mapped[str] = mapped_column(String(64))
+    department: Mapped[str | None] = mapped_column(String(256))
+    department_key: Mapped[str | None] = mapped_column(String(256), index=True)
+    description: Mapped[str | None] = mapped_column(String(256))
+    start1: Mapped[str | None] = mapped_column(String(8))
+    end1: Mapped[str | None] = mapped_column(String(8))
+    start2: Mapped[str | None] = mapped_column(String(8))
+    end2: Mapped[str | None] = mapped_column(String(8))
+    hours_total: Mapped[float | None] = mapped_column(Float)
+    hours_night: Mapped[float | None] = mapped_column(Float)
+    split_shift: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ShiftTemplate(Base):
+    """TurnosPlantillas: reglas/patrones de generación de turnos, NO histórico real."""
+
+    __tablename__ = "hr_shift_templates"
+
+    sp_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    department: Mapped[str | None] = mapped_column(String(256))
+    department_key: Mapped[str | None] = mapped_column(String(256), index=True)
+    employee_name: Mapped[str | None] = mapped_column(String(256))
+    employee_name_key: Mapped[str | None] = mapped_column(String(256), index=True)
+    template_start: Mapped[date | None] = mapped_column(Date)
+    template_end: Mapped[date | None] = mapped_column(Date)
+    anchor_date: Mapped[date | None] = mapped_column(Date)
+    schedule: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    """Horario por día de la semana: {"L": "09:00-17:00", ...}."""
+    comment: Mapped[str | None] = mapped_column(Text)
+    split_count: Mapped[int | None] = mapped_column(Integer)
+    night_hours: Mapped[float | None] = mapped_column(Float)
+    week: Mapped[int | None] = mapped_column(Integer)
+
+
+class WeekComment(Base):
+    """ComentariosTurnosSemanas: contexto de departamento/semana. Nunca se atribuye a una persona."""
+
+    __tablename__ = "hr_week_comments"
+    __table_args__ = (Index("ix_hr_week_comments_dept_week", "department_key", "year", "week"),)
+
+    sp_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    department: Mapped[str | None] = mapped_column(String(256))
+    department_key: Mapped[str | None] = mapped_column(String(256))
+    year: Mapped[int | None] = mapped_column(Integer)
+    week: Mapped[int | None] = mapped_column(Integer)
+    main_comment: Mapped[str | None] = mapped_column(Text)
+    day_comments: Mapped[dict[str, Any]] = mapped_column(default=dict)

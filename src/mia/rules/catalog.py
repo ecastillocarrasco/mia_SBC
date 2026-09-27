@@ -128,6 +128,29 @@ RULES: tuple[BusinessRule, ...] = (
         ("correo",),
     ),
     BusinessRule(
+        "PLA-001",
+        "Calendario es el histórico real",
+        "Calendario<Departamento>_AAAA es la fuente histórica y de planificación autoritativa, con horas "
+        "reales; Turnos es la proyección semanal publicada actualmente visible para el empleado. No se "
+        "reconstruye planificación a partir de Turnos.",
+        ("turnos",),
+    ),
+    BusinessRule(
+        "PLA-002",
+        "Plantillas y comentarios no son histórico",
+        "TurnosPlantillas son reglas/patrones de generación, no lo que de verdad ocurrió. "
+        "ComentariosTurnosSemanas es contexto de departamento/semana: nunca se atribuye a una persona ni se "
+        "confunde con el comentario individual de un turno del Calendario.",
+        ("turnos",),
+    ),
+    BusinessRule(
+        "PLA-003",
+        "Personas por nombre en los calendarios",
+        "Calendario, TurnosPlantillas y las métricas identifican a la persona por nombre (no por DNI): con "
+        "nombres repetidos hay que preguntar cuál, igual que en una búsqueda de empleados.",
+        ("turnos",),
+    ),
+    BusinessRule(
         "SEL-001",
         "Sin ranking automático de candidatos",
         "En selección se busca y se explica la evidencia de cada CV; no se ordena ni descarta "

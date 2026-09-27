@@ -89,9 +89,18 @@ def buscar(deps: Deps) -> Tool:
 
 
 # ------------------------------------------------------------------ ficha 360
-async def build_profile(db: AsyncSession, e: Employee, today: date) -> dict[str, Any]:
+COMPONENTS = ("empleados", "turnos", "vacaciones", "nominas", "documentos_firmados")
+
+
+async def build_profile(db: AsyncSession, e: Employee, today: date, *, full_history: bool = False) -> dict[str, Any]:
     """Ficha 360: hoy, semana, próximos hitos, datos laborales, organización, vacaciones,
-    bajas, nóminas y documentación (la misma estructura que el sistema anterior)."""
+    bajas, nóminas y documentación (la misma estructura que el sistema anterior).
+
+    Cada componente se compone de forma aislada: si una fuente falla o no está al día, la
+    ficha entera no se cae, se marca «calidad: parcial» y se añade una alerta con el
+    componente afectado (misma semántica que el «Employee360» del sistema anterior).
+    """
+    alerts: list[dict[str, str]] = []
     week_start = today - timedelta(days=today.weekday())
     shifts: list[ShiftDay] = []
     current_absence = None
@@ -168,7 +177,11 @@ async def build_profile(db: AsyncSession, e: Employee, today: date) -> dict[str,
     ordinary_months = {s.month for s in slips if s.month and not s.special}
     missing_months = [m for m in range(1, today.month) if m not in ordinary_months]
     sick_days = sum(p.days_within(date(today.year, 1, 1), today) for p in sick_year)
-    return {
+    if not e.person_key:
+        alerts.append({"componente": "turnos", "motivo": "sin DNI/NIE con el que cruzar turnos, bajas y nóminas"})
+    if not units:
+        alerts.append({"componente": "organizacion", "motivo": "sin sección de departamento localizada"})
+    profile: dict[str, Any] = {
         "empleado_id": e.sp_id,
         "nombre": e.name,
         "activo": e.active,
@@ -254,26 +267,41 @@ async def build_profile(db: AsyncSession, e: Employee, today: date) -> dict[str,
             "Genera la ficha en PDF",
         ],
     }
+    profile["alertas_calidad"] = alerts
+    profile["calidad"] = "con_observaciones" if alerts else "sin_incidencias"
+    if full_history:
+        profile["historico"] = {
+            "vacaciones": [
+                {
+                    "desde": fmt_date(v.start_date),
+                    "hasta": fmt_date(v.end_date),
+                    "dias": v.total_days,
+                    "tipo": v.request_type,
+                    "estado": v.status,
+                }
+                for v in vacations
+            ],
+            "bajas": [{"desde": p.start.isoformat(), "hasta": p.end.isoformat(), "dias": p.days} for p in sick_year],
+            "nominas": [{"periodo": s.period, "especial": s.special, "leida": s.read} for s in slips],
+            "documentos": [{"tipo": d.doc_type, "documento": d.file_name} for d in docs],
+        }
+    return profile
+
+
+class FichaParams(PersonaParams):
+    detalle: bool = Field(default=False, description="true para el histórico completo de cada componente")
 
 
 def ficha(deps: Deps) -> Tool:
-    async def handler(p: PersonaParams, ctx: ToolContext) -> ToolResult:
+    async def handler(p: FichaParams, ctx: ToolContext) -> ToolResult:
         today = ctx.now.date()
         async with deps.db.session() as db:
             match = await resolve_person(db, p)
             if match.employee is None:
                 return person_problem(match, p.nombre)
             e = match.employee
-            profile = await build_profile(db, e, today)
-            fresh = await deps.freshness(
-                db,
-                "empleados",
-                "turnos",
-                "vacaciones",
-                f"saldo_vacaciones_{today.year}",
-                "nominas",
-                "documentos_firmados",
-            )
+            profile = await build_profile(db, e, today, full_history=p.detalle)
+            fresh = await deps.freshness(db, *COMPONENTS, f"saldo_vacaciones_{today.year}")
         card = {**profile, **fresh}
         return ToolResult(
             ToolStatus.OK,
@@ -284,9 +312,10 @@ def ficha(deps: Deps) -> Tool:
 
     return Tool(
         "ficha_empleado",
-        "Ficha 360 de una persona: hoy, semana, próximos hitos, datos laborales, organización, vacaciones y "
-        "saldo, bajas del año, nóminas y documentación. Usa empleado_id si está en el foco.",
-        PersonaParams,
+        "Ficha 360 de una persona: hoy, semana, próximos hitos, datos laborales, organización, vacaciones, "
+        "saldo, bajas del año, nóminas y documentación. Usa empleado_id si está en el foco. Con detalle=true, "
+        "el histórico completo de cada bloque.",
+        FichaParams,
         handler,
         permission=Permission.EMPLEADOS_LEER,
         audit_resource="empleados",

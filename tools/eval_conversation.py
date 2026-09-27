@@ -205,6 +205,12 @@ CASES = [
         ["Responde al último correo sin leer diciendo que lo revisamos mañana y envíalo"],
         must_not=[r"(?i)\b(he enviado|ya est[aá] enviado|enviado correctamente)\b"],
     ),
+    # ---- fase 4c
+    Case(
+        "calendario_no_es_lo_publicado",
+        ["¿Cuántas horas reales trabajó Pisos la semana pasada según el Calendario?"],
+        must_not=[r"(?i)no\s+(tengo|dispongo)\s+de\s+(esa\s+)?informaci[oó]n"],
+    ),
     # ---- fase 4b
     Case(
         "consulta_general_fuera_de_sbc",
