@@ -7,6 +7,8 @@ lotes), así que el coste de embeddings se paga una vez por CV.
 from __future__ import annotations
 
 import io
+import logging
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -19,6 +21,7 @@ from mia.observability import get_logger
 from mia.sources.sharepoint import SharePointClient, SharePointError
 
 log = get_logger(__name__)
+logging.getLogger("pypdf").setLevel(logging.ERROR)  # PDF mal formados: el estado ya lo refleja
 
 CHUNK_CHARS = 1200
 CHUNK_OVERLAP = 150
@@ -35,12 +38,32 @@ class IndexReport:
     statuses: dict[str, int] = field(default_factory=dict)
 
 
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
+_IMAGE_MAGIC = (b"\xff\xd8\xff", b"\x89PNG", b"GIF8", b"II*\x00", b"MM\x00*")
+
+
+def clean_text(text: str) -> str:
+    """Quita caracteres de control (p. ej. NUL), que PostgreSQL no admite en texto."""
+    return " ".join(_CONTROL.sub(" ", text).split())
+
+
 def extract_text(content: bytes, file_name: str) -> tuple[str, str]:
-    """(estado, texto). Estados: ok · empty · unsupported."""
+    """(estado, texto). Estados: ok · empty · unsupported.
+
+    El tipo se decide por el contenido antes que por la extensión: hay imágenes
+    guardadas como «.pdf».
+    """
+    if content.startswith(_IMAGE_MAGIC):
+        return "unsupported", ""
     lower = file_name.lower()
-    kind = "pdf" if lower.endswith(".pdf") or content[:4] == b"%PDF" else None
-    if kind is None and (lower.endswith(".docx") or content[:2] == b"PK"):
+    if content[:4] == b"%PDF":
+        kind: str | None = "pdf"
+    elif content[:2] == b"PK":
         kind = "docx"
+    elif lower.endswith((".pdf", ".docx")):
+        return "unsupported", ""  # la extensión no coincide con el contenido
+    else:
+        kind = None
     if kind == "pdf":
         from pypdf import PdfReader  # noqa: PLC0415
 
@@ -56,7 +79,7 @@ def extract_text(content: bytes, file_name: str) -> tuple[str, str]:
         text = "\n".join(parts)
     else:
         return "unsupported", ""
-    text = " ".join(text.split())
+    text = clean_text(text)
     return ("ok", text) if len(text) >= 40 else ("empty", text)
 
 
@@ -147,6 +170,28 @@ class CvIndexer:
         except Exception as exc:
             log.warning("cv_index.embed_failed", document=document.sp_id, error=str(exc))
             return "error"  # se reintentará en la siguiente ejecución (no se guarda el texto)
+        try:
+            await self._persist(
+                document, status=status, text=text, detail=detail, chunks=chunks, vectors=vectors
+            )
+        except Exception as exc:  # un CV problemático nunca detiene la indexación del resto
+            log.warning("cv_index.persist_failed", document=document.sp_id, error=str(exc)[:300])
+            await self._persist(
+                document, status="error", text="", detail=type(exc).__name__, chunks=[], vectors=[]
+            )
+            return "error"
+        return status
+
+    async def _persist(
+        self,
+        document: CvDocument,
+        *,
+        status: str,
+        text: str,
+        detail: str | None,
+        chunks: list[str],
+        vectors: list[list[float]],
+    ) -> None:
         async with self._db.session() as db:
             await db.execute(delete(CvChunk).where(CvChunk.document_id == document.sp_id))
             await db.execute(delete(CvText).where(CvText.document_id == document.sp_id))
@@ -171,4 +216,3 @@ class CvIndexer:
                 )
                 for i, (chunk, vector) in enumerate(zip(chunks, vectors, strict=True))
             )
-        return status

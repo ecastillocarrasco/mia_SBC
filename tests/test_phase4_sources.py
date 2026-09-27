@@ -156,3 +156,39 @@ async def test_cv_indexer_processes_only_new_or_changed(db: Database) -> None:
         text = (await s.scalars(select(CvText))).one()
         chunks = await s.scalar(select(func.count()).select_from(CvChunk))
     assert text.status == "ok" and text.candidate_id == 8316 and chunks == 1
+
+
+def test_control_characters_are_removed() -> None:
+    """Fallo real: un PDF con bytes NUL rompía la inserción en PostgreSQL."""
+    from mia.domains.curriculums.indexer import clean_text  # noqa: PLC0415
+
+    assert clean_text("Night\x00 Manager\x07 ﬁeld") == "Night Manager ﬁeld"
+
+
+def test_images_named_pdf_are_unsupported() -> None:
+    """Fallo real: fotos JPEG guardadas como «.pdf»."""
+    assert extract_text(b"\xff\xd8\xff\xe1\x01rest", "8316.pdf") == ("unsupported", "")
+    assert extract_text(b"garbage", "8317.pdf") == ("unsupported", "")
+
+
+async def test_one_bad_cv_does_not_stop_the_rest(tmp_path: Path) -> None:
+    db = await fresh_database(tmp_path, "bad.db")
+    fake = FakeSharePoint(page_size=10)
+    fake.put(
+        "CVDocs",
+        {"ID": 1, "FileLeafRef": "1.pdf", "FileRef": "/CVDocs/1.pdf", "Modified": "2026-09-01T10:00:00Z"},
+    )
+    fake.put(
+        "CVDocs",
+        {"ID": 2, "FileLeafRef": "2.docx", "FileRef": "/CVDocs/2.docx", "Modified": "2026-09-01T10:00:00Z"},
+    )
+    fake.files["/CVDocs/1.pdf"] = b"\xff\xd8\xff\xe1 jpeg"
+    fake.files["/CVDocs/2.docx"] = _docx("Camarera de pisos con experiencia en hoteles y francés.")
+    client = SharePointClient(
+        site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport()
+    )
+    await SyncRunner(db=db, client=client, pseudonymize=Pseudonymizer("k")).run(definitions.CV_DOCS)
+    report = await CvIndexer(db=db, client=client, llm=FakeLLMProvider(), embedding_model="x").run()
+    await client.aclose()
+    await db.dispose()
+    assert report.statuses == {"unsupported": 1, "ok": 1}
