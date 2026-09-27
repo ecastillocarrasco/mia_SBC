@@ -3,11 +3,13 @@ from __future__ import annotations
 import re
 
 import httpx
-from tools.eval_conversation import CLAIMS_TURNOS
+from tools.eval_conversation import claims_capability
 
 from mia.conversation import guard
 from mia.llm.fake import final_answer
 from tests.conftest import Script
+
+CLAIMS_TURNOS = claims_capability("turnos")
 
 
 def test_removes_only_the_promise_sentence() -> None:

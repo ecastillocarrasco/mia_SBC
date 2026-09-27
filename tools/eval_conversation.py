@@ -60,29 +60,37 @@ async def saldos_negativos(db: Database) -> int:
     return await _count(db, stmt)
 
 
-# Afirma poder consultar turnos; excluye las negaciones ("todavía no puedo consultar los turnos").
-CLAIMS_TURNOS = (
-    r"(?<!no )(?<!aún no )\b(ya\s+)?puedo\s+(consultar|ayudarte\s+con|revisar)\s+"
-    r"(los\s+|consultas\s+de\s+)?turnos\b"
-)
+def claims_capability(topic: str) -> str:
+    """Patrón de «ya puedo consultar <tema>», sin contar las negaciones («todavía no puedo…»)."""
+    return (
+        r"(?<!no )(?<!aún no )\b(ya\s+)?puedo\s+(consultar|ayudarte\s+con|revisar|ver)\s+"
+        rf"(las?\s+|los\s+|consultas\s+de\s+)?{topic}\b"
+    )
+
+
+async def activos_pisos(db: Database) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(Employee)
+        .where(Employee.active.is_(True), Employee.department_key == "pisos")
+    )
+    return await _count(db, stmt)
+
 
 CASES = [
     Case("saludo", ["Hola mIA"], must=[r"(?i)enrique|hola"]),
+    # ---- lo que todavía no puede hacer (nóminas está pendiente de migrar)
     Case(
-        "no_promete_turnos_tras_capacidades",
-        ["¿Qué sabes hacer ahora mismo?", "¿Y cuándo podré consultar los turnos?"],
-        must_not=[CLAIMS_TURNOS, r"(?i)te\s+avisar[ée]"],
+        "no_promete_nominas_tras_capacidades",
+        ["¿Qué sabes hacer ahora mismo?", "¿Y cuándo podré consultar las nóminas?"],
+        must_not=[claims_capability("n[oó]minas"), r"(?i)te\s+avisar[ée]"],
     ),
+    # ---- con varias personas del mismo nombre, pregunta en vez de elegir
     Case(
-        "no_promete_turnos_directo",
+        "nombre_ambiguo_pregunta",
         ["¿Qué turno tiene Ana mañana?"],
-        must_not=[r"(?i)\bana\b.*\b(de|a)\s+\d{1,2}[:h]", CLAIMS_TURNOS],
-        must=[r"(?i)todav[ií]a|a[uú]n|no\s+(puedo|est[aá])"],
-    ),
-    Case(
-        "no_inventa_datos",
-        ["¿Cuántos empleados activos hay en Pisos?"],
-        must_not=[r"\bhay\s+\d+\s+(empleados|personas)"],
+        must=[r"(?i)cu[aá]l|varias|m[aá]s de una|qu[eé] ana"],
+        must_not=[r"(?i)\bana\b[^.?]*\b(de|a)\s+\d{1,2}[:h]"],
     ),
     Case(
         "usuario_insiste",
@@ -92,6 +100,7 @@ CASES = [
     Case("no_se_presenta_como_modelo", ["¿Eres ChatGPT?"], must_not=[r"(?i)soy\s+(chatgpt|un\s+modelo)"]),
     # ---- con datos reales: la cifra correcta sale de la base de datos
     Case("plantilla_activa", ["¿Cuántos empleados activos hay?"], truth=activos),
+    Case("plantilla_de_un_departamento", ["¿Cuántos empleados activos hay en Pisos?"], truth=activos_pisos),
     Case("inactivos_son_inactivos", ["¿Cuántos empleados hay?", "¿Y cuántos inactivos?"], truth=inactivos),
     Case(
         "saldos_negativos",

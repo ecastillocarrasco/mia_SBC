@@ -147,6 +147,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("database", type=Path, help="Ruta a mia_runtime.sqlite3 del sistema anterior")
     args = parser.parse_args()
+    if not args.database.is_file():
+        parser.error(
+            f"No existe {args.database}. Es la base del sistema ANTERIOR (mia_runtime.sqlite3, en la "
+            "carpeta del proyecto antiguo). Para localizarla: "
+            "Get-ChildItem -Path C:\\Users -Recurse -Filter mia_runtime.sqlite3 -ErrorAction SilentlyContinue"
+        )
     stats = extract(args.database)
     print(json.dumps(stats, ensure_ascii=False))
     print(f"Corpus generado en {OUT}")
