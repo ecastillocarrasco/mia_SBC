@@ -81,9 +81,9 @@ CASES = [
     Case("saludo", ["Hola mIA"], must=[r"(?i)enrique|hola"]),
     # ---- lo que todavía no puede hacer (nóminas está pendiente de migrar)
     Case(
-        "no_promete_nominas_tras_capacidades",
-        ["¿Qué sabes hacer ahora mismo?", "¿Y cuándo podré consultar las nóminas?"],
-        must_not=[claims_capability("n[oó]minas"), r"(?i)te\s+avisar[ée]"],
+        "no_promete_importes_de_nomina",
+        ["¿Qué sabes hacer con las nóminas?", "¿Y cuándo podré ver los importes?"],
+        must_not=[claims_capability("importes"), r"(?i)te\s+avisar[ée]"],
     ),
     # ---- con varias personas del mismo nombre, pregunta en vez de elegir
     Case(
@@ -204,6 +204,8 @@ def run(url: str) -> int:
             print(f"{status} {case.name:40} {body.get('elapsed_ms', '?'):>6} ms  {'; '.join(problems)}")
             if problems:
                 failures += 1
+                tools = ", ".join(f"{t['name']}:{t['status']}" for t in body.get("tools", [])) or "—"
+                print(f"      herramientas: {tools}")
                 print(f"      respuesta: {answer.strip()[:300]}")
     print(f"\n{len(CASES) - failures}/{len(CASES)} casos correctos")
     return 1 if failures else 0

@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -121,7 +122,7 @@ class CvIndexer:
         self._batch = batch
         self._max_bytes = max_bytes
 
-    async def run(self) -> IndexReport:
+    async def run(self, progress: Callable[[int, int], None] | None = None) -> IndexReport:
         report = IndexReport()
         async with self._db.session() as db:
             alive = select(CvDocument.sp_id)
@@ -142,6 +143,10 @@ class CvIndexer:
             report.statuses[status] = report.statuses.get(status, 0) + 1
             report.indexed += status == "ok"
             report.failed += status == "error"
+            if progress and (
+                report.processed % 25 == 0 or report.processed == min(len(pending), self._batch)
+            ):
+                progress(report.processed, min(len(pending), self._batch))
         log.info(
             "cv_index.finished",
             processed=report.processed,

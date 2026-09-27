@@ -223,3 +223,11 @@ async def test_focus_reaches_the_next_turn(tmp_path: Path) -> None:
     await engine.complete(message="¿Y su saldo?", user=ADMIN, session_id=first.session_id)
     await db.dispose()
     assert "Persona: Ana Ruiz Sanz (empleado_id 1, Pisos)" in llm.requests[-1].system
+
+
+async def test_search_with_several_matches_is_ambiguous_but_lists_them(registry: ToolRegistry) -> None:
+    """Fallo real: con varias «Ana», mIA elegía una por su cuenta."""
+    result = await call(registry, "buscar_empleado", nombre="Ana")
+    assert result.status is ToolStatus.AMBIGUOUS
+    assert len(result.summary["personas"]) == 2 and "pregúntale cuál" in result.summary["mensaje"]
+    assert result.state_updates == {}

@@ -52,11 +52,22 @@ def buscar(deps: Deps) -> Tool:
             people = await find_people(db, p.nombre, include_inactive=p.incluir_inactivos)
         if not people:
             return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": f"Nadie encaja con «{p.nombre}»."})
-        summary = {"total": len(people), "personas": [person_summary(e) for e in people[:MAX_ROWS_FOR_MODEL]]}
+        summary: dict[str, Any] = {
+            "total": len(people),
+            "personas": [person_summary(e) for e in people[:MAX_ROWS_FOR_MODEL]],
+        }
         state = focus_person(people[0]) if len(people) == 1 else {}
+        status = ToolStatus.OK
+        if len(people) > 1:
+            # Si el usuario pedía datos de UNA persona, no se elige por él (fallo real: «el turno de Ana»).
+            status = ToolStatus.AMBIGUOUS
+            summary["mensaje"] = (
+                f"Hay {len(people)} personas que encajan. Si el usuario pedía datos de una sola, "
+                "pregúntale cuál antes de consultar nada; si pedía la lista, muéstrala."
+            )
         rows = [[e.name, e.department, e.position, "Sí" if e.active else "No"] for e in people]
         return ToolResult(
-            ToolStatus.OK,
+            status,
             summary,
             table("Personas", ["Nombre", "Departamento", "Puesto", "Activo"], rows),
             state,

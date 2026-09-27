@@ -92,7 +92,9 @@ async def _index_cvs(settings: Settings, db: Database, client: SharePointClient)
         max_bytes=settings.curriculums.max_file_mb * 1024 * 1024,
     )
     try:
-        r = await indexer.run()
+        r = await indexer.run(
+            progress=lambda done, total: print(f"  indexando CVs… {done}/{total}", flush=True)
+        )
     finally:
         await llm.aclose()
     print(
