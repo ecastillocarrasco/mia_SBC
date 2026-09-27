@@ -27,6 +27,8 @@ dependencies = [
     "openpyxl>=3.1",
     "reportlab>=4",
     "python-pptx>=1",
+    "pypdfium2>=4",
+    "pillow>=10",
 ]
 
 [project.scripts]
@@ -76,7 +78,7 @@ packages = ["mia"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["azure.*", "msal.*", "docx.*", "openpyxl.*", "reportlab.*", "pptx.*"]
+module = ["azure.*", "msal.*", "docx.*", "openpyxl.*", "reportlab.*", "pptx.*", "pypdfium2.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

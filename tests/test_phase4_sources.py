@@ -193,3 +193,34 @@ async def test_one_bad_cv_does_not_stop_the_rest(tmp_path: Path) -> None:
     await db.dispose()
     # La imagen se lee con el modelo multimodal (antes quedaba como no soportada).
     assert report.statuses == {"ok": 2}
+
+
+async def test_scanned_pdf_is_read_visually_and_old_empties_are_retried(tmp_path: Path) -> None:
+    """Parte de los CVs reales son PDF escaneados sin texto: se renderizan y se leen como imagen."""
+    from reportlab.pdfgen import canvas  # noqa: PLC0415
+
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer)
+    pdf.rect(50, 50, 400, 600, fill=1)  # «escaneo»: solo imagen, sin texto
+    pdf.save()
+    db = await fresh_database(tmp_path, "scan.db")
+    fake = FakeSharePoint(page_size=10)
+    fake.put(
+        "CVDocs",
+        {"ID": 1, "FileLeafRef": "77.pdf", "FileRef": "/CVDocs/77.pdf", "Modified": "2026-09-01T10:00:00Z"},
+    )
+    fake.files["/CVDocs/77.pdf"] = buffer.getvalue()
+    client = SharePointClient(
+        site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport()
+    )
+    await SyncRunner(db=db, client=client, pseudonymize=Pseudonymizer("k")).run(definitions.CV_DOCS)
+    async with db.session() as s:  # simula un CV que quedó «empty» antes de existir la lectura visual
+        s.add(CvText(document_id=1, candidate_id=77, status="empty", text=None, source_modified=None))
+    report = await CvIndexer(db=db, client=client, llm=FakeLLMProvider(), embedding_model="x").run()
+    again = await CvIndexer(db=db, client=client, llm=FakeLLMProvider(), embedding_model="x").run()
+    await client.aclose()
+    async with db.session() as s:
+        text = (await s.scalars(select(CvText))).one()
+    await db.dispose()
+    assert report.statuses == {"ok": 1} and again.processed == 0
+    assert text.detail.startswith("ocr: pdf escaneado")

@@ -6,6 +6,7 @@ lotes), así que el coste de embeddings se paga una vez por CV.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import re
@@ -14,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 import numpy as np
-from sqlalchemy import delete, or_, select
+from sqlalchemy import and_, delete, or_, select
 
 from mia.data import CvChunk, CvDocument, CvText, Database
 from mia.llm import LLMProvider
@@ -52,6 +53,26 @@ _MEDIA = {b"\xff\xd8\xff": "image/jpeg", b"\x89PNG": "image/png", b"GIF8": "imag
 
 def image_media_type(content: bytes) -> str | None:
     return next((media for magic, media in _MEDIA.items() if content.startswith(magic)), None)
+
+
+OCR_MAX_PAGES = 3
+
+
+def render_pdf_pages(content: bytes, max_pages: int) -> list[bytes]:
+    """Primeras páginas de un PDF como PNG (para CVs escaneados)."""
+    import pypdfium2 as pdfium  # noqa: PLC0415
+
+    pdf = pdfium.PdfDocument(content)
+    images = []
+    try:
+        for index in range(min(len(pdf), max_pages)):
+            bitmap = pdf[index].render(scale=1.6)
+            buffer = io.BytesIO()
+            bitmap.to_pil().save(buffer, format="PNG")
+            images.append(buffer.getvalue())
+    finally:
+        pdf.close()
+    return images
 
 
 def clean_text(text: str) -> str:
@@ -143,7 +164,17 @@ class CvIndexer:
             stale = (
                 select(CvDocument)
                 .outerjoin(CvText, CvText.document_id == CvDocument.sp_id)
-                .where(or_(CvText.document_id.is_(None), CvText.source_modified != CvDocument.modified_at))
+                .where(
+                    or_(
+                        CvText.document_id.is_(None),
+                        CvText.source_modified != CvDocument.modified_at,
+                        # Escaneados o imágenes que aún no han pasado por la lectura visual.
+                        and_(
+                            CvText.status.in_(("empty", "unsupported")),
+                            or_(CvText.detail.is_(None), CvText.detail.not_like("ocr%")),
+                        ),
+                    )
+                )
                 .order_by(CvDocument.modified_at.desc())
             )
             pending = list((await db.scalars(stale)).all())
@@ -177,8 +208,16 @@ class CvIndexer:
             media = image_media_type(content)
             if status == "unsupported" and media:
                 text = clean_text(await self._llm.read_image(content, media, OCR_INSTRUCTION))
-                status = "ok" if len(text) >= 40 else "empty"
-                detail = "leído de imagen"
+                status, detail = ("ok" if len(text) >= 40 else "empty"), "ocr: imagen"
+            elif status == "empty" and content[:4] == b"%PDF":
+                # PDF escaneado (sin capa de texto): se renderizan las primeras páginas y se leen.
+                pages = await asyncio.to_thread(render_pdf_pages, content, OCR_MAX_PAGES)
+                parts = [await self._llm.read_image(png, "image/png", OCR_INSTRUCTION) for png in pages]
+                text = clean_text("\n".join(parts))
+                status, detail = (
+                    ("ok" if len(text) >= 40 else "empty"),
+                    f"ocr: pdf escaneado ({len(pages)} págs.)",
+                )
         except SharePointError as exc:
             status, detail = ("too_large" if "demasiado grande" in str(exc) else "error"), str(exc)[:300]
         except Exception as exc:  # PDF o DOCX corrupto
