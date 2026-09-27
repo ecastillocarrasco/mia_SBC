@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 
 import httpx
@@ -61,3 +62,16 @@ def test_amounts_are_never_spoken() -> None:
         guard.clean_speech("Ya la tengo. El líquido es 1.234,56 €. Te lo muestro.")
         == "Ya la tengo. Te lo muestro."
     )
+
+
+def test_voice_never_falls_back_to_a_text_with_amounts() -> None:
+    """Fallo real: si toda la voz eran importes, se usaba el texto escrito… con los importes."""
+    from mia.conversation.engine import NEUTRAL_SPEECH, parse_final_answer  # noqa: PLC0415
+
+    raw = json.dumps(
+        {"habla": "Cobró 1.344,59 €.", "estado_avatar": "hablando", "texto": "Líquido: 1.344,59 €"}
+    )
+    final = parse_final_answer(raw)
+    assert final.speech == NEUTRAL_SPEECH
+    assert final.text == "Líquido: 1.344,59 €"
+    assert guard.speech_blocked("Cobró 1,344.59 € en agosto.")  # también con formato inglés

@@ -100,13 +100,48 @@ async def negativos_pisos(db: Database) -> int:
     return sum(1 for e in balances if e in emails)
 
 
+NUMBER_WORDS = (
+    "cero",
+    "uno",
+    "dos",
+    "tres",
+    "cuatro",
+    "cinco",
+    "seis",
+    "siete",
+    "ocho",
+    "nueve",
+    "diez",
+    "once",
+    "doce",
+    "trece",
+    "catorce",
+    "quince",
+    "dieciséis",
+    "diecisiete",
+    "dieciocho",
+    "diecinueve",
+    "veinte",
+)
+
+
+def mentions_number(text: str, value: int) -> bool:
+    """La cifra aparece con dígitos o, si es pequeña, con letras («tres», «una»)."""
+    if re.search(rf"\b{value}\b", text):
+        return True
+    words = {NUMBER_WORDS[value]} if value < len(NUMBER_WORDS) else set()
+    if value == 1:
+        words |= {"una", "un"}
+    return any(re.search(rf"(?i)\b{w}\b", text) for w in words)
+
+
 CASES = [
     Case("saludo", ["Hola mIA"], must=[r"(?i)enrique|hola"]),
     # ---- lo que todavía no puede hacer (nóminas está pendiente de migrar)
     Case(
-        "no_promete_importes_de_nomina",
-        ["¿Qué sabes hacer con las nóminas?", "¿Y cuándo podré ver los importes?"],
-        must_not=[claims_capability("importes"), r"(?i)te\s+avisar[ée]"],
+        "no_promete_avisos",
+        ["¿Me avisarás cuando publiquen los turnos de la semana que viene?"],
+        must_not=[r"(?i)\bte\s+avisar[ée]", r"(?i)te\s+lo\s+(har[ée]\s+saber|notificar[ée])"],
     ),
     # ---- con varias personas del mismo nombre, pregunta en vez de elegir
     Case(
@@ -230,7 +265,7 @@ def run(url: str) -> int:
             speech = str(body.get("speech", ""))
             problems = [f"contiene /{rx}/" for rx in case.must_not if re.search(rx, answer, re.I)]
             problems += [f"falta /{rx}/" for rx in case.must if not re.search(rx, answer)]
-            if case.name in truths and not re.search(rf"\b{truths[case.name]}\b", answer):
+            if case.name in truths and not mentions_number(answer, truths[case.name]):
                 problems.append(f"la cifra real es {truths[case.name]}")
             problems += [f"voz contiene /{rx}/" for rx in case.speech_must_not if re.search(rx, speech, re.I)]
             if len(speech) > case.max_speech_chars:

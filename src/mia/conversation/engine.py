@@ -50,6 +50,7 @@ from mia.rules import rules_for_prompt
 log = get_logger(__name__)
 
 MAX_MESSAGE_CHARS = 4000
+NEUTRAL_SPEECH = "Te lo dejo en pantalla."
 
 
 @dataclass(slots=True)
@@ -105,8 +106,12 @@ def parse_final_answer(raw: str) -> FinalAnswer:
         state = ""
     if state not in AvatarState.__members__.values():
         state = AvatarState.HABLANDO.value
-    speech, text = guard.clean_speech(speech), guard.clean(text)
-    return FinalAnswer(speech=speech or text, avatar_state=state, text=text or speech)
+    cleaned_speech, text = guard.clean_speech(speech), guard.clean(text)
+    if not cleaned_speech:
+        # Nunca se recurre al texto escrito para la voz: puede contener importes u otros datos
+        # que la salvaguarda acaba de retirar (fallo real: «cobró 1.344,59 €» acabó en la voz).
+        cleaned_speech = NEUTRAL_SPEECH if speech else guard.clean_speech(text)
+    return FinalAnswer(speech=cleaned_speech, avatar_state=state, text=text or cleaned_speech)
 
 
 class ConversationEngine:

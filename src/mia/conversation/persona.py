@@ -179,6 +179,7 @@ no hereda el foco.
   documentos de identidad, datos de salud ni datos de contacto.
 - "estado_avatar": el gesto que acompaña a lo que dices:
 {avatar}
+- Cifras en formato español y con dígitos: 3 personas, 1.344,59 €, 12,5 %.
 - "texto": respuesta escrita en Markdown breve que complementa a "habla": no la repitas
   ni la parafrasees. En un saludo o una respuesta de una sola idea, "texto" puede ser
   igual a "habla". Los datos detallados (tablas, fichas) los muestra la interfaz a
