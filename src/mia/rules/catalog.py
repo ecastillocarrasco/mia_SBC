@@ -107,9 +107,9 @@ RULES: tuple[BusinessRule, ...] = (
     ),
     BusinessRule(
         "NOM-002",
-        "Sin importes de nómina",
-        "mIA no lee el contenido de las nóminas: informa de su existencia, periodo y lectura. Para "
-        "importes hay que abrir la nómina.",
+        "Importes de nómina con salvaguardas",
+        "Los importes se leen del PDF en el momento, solo con el permiso nominas:importes, quedan "
+        "auditados, no se guardan y nunca se dicen en voz alta.",
         ("nominas",),
     ),
     BusinessRule(

@@ -193,7 +193,7 @@ async def test_temporary_work_totals(env: Any) -> None:
     assert result.summary["desglose"]["empresa: ETT Uno"]["boletines"] == 2
 
 
-@pytest.mark.parametrize("fmt", ["pdf", "xlsx"])
+@pytest.mark.parametrize("fmt", ["pdf", "xlsx", "pptx"])
 async def test_report_from_last_table(env: Any, fmt: str) -> None:
     registry, _, _ = env
     state: dict[str, Any] = {}

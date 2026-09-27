@@ -17,4 +17,5 @@ def build_llm_provider(settings: LLMSettings) -> LLMProvider:
         base_url=settings.base_url,
         timeout_seconds=settings.timeout_seconds,
         azure=settings.provider is LLMProviderName.AZURE_OPENAI,
+        web_search=settings.web_search,
     )

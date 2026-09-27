@@ -191,4 +191,5 @@ async def test_one_bad_cv_does_not_stop_the_rest(tmp_path: Path) -> None:
     report = await CvIndexer(db=db, client=client, llm=FakeLLMProvider(), embedding_model="x").run()
     await client.aclose()
     await db.dispose()
-    assert report.statuses == {"unsupported": 1, "ok": 1}
+    # La imagen se lee con el modelo multimodal (antes quedaba como no soportada).
+    assert report.statuses == {"ok": 2}

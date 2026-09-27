@@ -10,7 +10,7 @@ y [docs/migracion.md](docs/migracion.md).
 
 ## Estado
 
-**Fase 4 · resto de dominios** — lista para probar con datos reales.
+**Fase 4b · paridad completa con el sistema anterior** — lista para probar. Ver [docs/cobertura.md](docs/cobertura.md).
 
 | Fase | Contenido | Estado |
 |---|---|---|

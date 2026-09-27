@@ -178,3 +178,19 @@ def test_daily_full_sync_is_scheduled(runner: SyncRunner) -> None:
     state.last_full_at = datetime.now(UTC)
     assert runner._decide(state, SyncMode.AUTO) is SyncMode.INCREMENTAL
     assert runner._decide(None, SyncMode.INCREMENTAL) is SyncMode.FULL
+
+
+async def test_optional_field_is_requested_only_if_it_exists(
+    runner: SyncRunner, db: Database, fake: FakeSharePoint
+) -> None:
+    await runner.run(definitions.EMPLEADOS)
+    assert "Nacionalidad" not in str(fake.requests[-1].url.params.get("$select"))
+    fake.put(
+        EMP,
+        {"ID": 1, "Nombre": "Ana Ruiz", "Activo": True, "Departamento": "Pisos", "Nacionalidad": "Italia"},
+    )
+    runner._fields.clear()  # un proceso nuevo vuelve a mirar las columnas
+    await runner.run(definitions.EMPLEADOS, SyncMode.FULL)
+    async with db.session() as s:
+        ana = await s.get(Employee, 1)
+    assert ana is not None and ana.nationality == "Italia"

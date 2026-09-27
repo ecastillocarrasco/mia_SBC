@@ -42,3 +42,20 @@ def clean(text: str) -> str:
     result = "\n".join(kept).strip()
     log.info("guard.removed_promise")
     return result
+
+
+# Importes: «1.234,56 €», «1234 euros», «850€». La voz nunca los dice (salarios, nóminas).
+_MONEY = re.compile(r"\d[\d.,]*\s*(?:€|euros?\b)|(?:€)\s*\d", re.IGNORECASE)
+
+
+def speech_blocked(sentence: str) -> bool:
+    """Frases que no se locutan: compromisos imposibles o importes."""
+    return is_blocked(sentence) or bool(_MONEY.search(sentence))
+
+
+def clean_speech(text: str) -> str:
+    if not _MONEY.search(text):
+        return clean(text)
+    kept = [p for p in _SENTENCES.split(clean(text)) if not _MONEY.search(p)]
+    log.info("guard.removed_amount_from_speech")
+    return " ".join(kept).strip()

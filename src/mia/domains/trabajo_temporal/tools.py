@@ -5,12 +5,12 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
-from mia.data import TtCompany, TtTimesheet, TtWorker
+from mia.data import TtCommunication, TtCompany, TtRate, TtTimesheet, TtWorker
 from mia.domains.common import MAX_ROWS_FOR_MODEL, Deps, Periodo, fmt_date, table
 from mia.text import normalize_key
 
@@ -156,6 +156,179 @@ def boletines(deps: Deps) -> Tool:
     )
 
 
+# ------------------------------------------------------------------ fase 4b
+class EstimarParams(BaseModel):
+    empresa: str = Field(description="Empresa de trabajo temporal")
+    horas_normales: float = Field(default=0, ge=0)
+    horas_nocturnas: float = Field(default=0, ge=0)
+    dietas: float = Field(default=0, ge=0)
+    aplicar_recargo_corta_duracion: bool = False
+
+
+def estimar_coste(deps: Deps) -> Tool:
+    async def handler(p: EstimarParams, ctx: ToolContext) -> ToolResult:
+        async with deps.db.session() as db:
+            rates = list((await db.scalars(select(TtRate))).all())
+        rate = next((r for r in rates if normalize_key(p.empresa) in r.company_key), None)
+        if rate is None:
+            return ToolResult(
+                ToolStatus.NOT_FOUND,
+                {
+                    "mensaje": "No hay tarifas para esa empresa.",
+                    "empresas_con_tarifa": [r.company for r in rates],
+                },
+            )
+        base = (
+            p.horas_normales * (rate.price_normal or 0)
+            + p.horas_nocturnas * (rate.price_night or 0)
+            + p.dietas * (rate.price_diet or 0)
+        )
+        surcharge = (rate.short_contract_surcharge or 0) if p.aplicar_recargo_corta_duracion else 0.0
+        return ToolResult(
+            ToolStatus.OK,
+            {
+                "empresa": rate.company,
+                "tarifas": {
+                    "hora_normal": rate.price_normal,
+                    "hora_nocturna": rate.price_night,
+                    "dieta": rate.price_diet,
+                },
+                "coste_base": round(base, 2),
+                "recargo_pct": surcharge,
+                "coste_estimado": round(base * (1 + surcharge / 100), 2),
+                "nota": "Estimación con las tarifas actuales de SettingsTT; no sustituye el importe "
+                "histórico de los boletines.",
+            },
+        )
+
+    return Tool(
+        "estimar_coste_tt",
+        "Estima el coste de horas de ETT con las tarifas actuales de la empresa.",
+        EstimarParams,
+        handler,
+        permission=Permission.TRABAJO_TEMPORAL_LEER,
+    )
+
+
+class AnomaliasParams(Periodo):
+    empresa: str | None = None
+
+
+def anomalias(deps: Deps) -> Tool:
+    async def handler(p: AnomaliasParams, ctx: ToolContext) -> ToolResult:
+        today = ctx.now.date()
+        lo, hi = p.resolve(today.replace(day=1), default_days=0)
+        if not p.desde and not p.hasta:
+            hi = today
+        async with deps.db.session() as db:
+            rows = list((await db.scalars(select(TtTimesheet).where(TtTimesheet.day.between(lo, hi)))).all())
+            rates = {r.company_key: r for r in (await db.scalars(select(TtRate))).all()}
+        if p.empresa:
+            rows = [r for r in rows if normalize_key(p.empresa) in normalize_key(r.company)]
+        issues: list[dict[str, Any]] = []
+        seen: dict[tuple[str | None, Any], int] = defaultdict(int)
+        for r in rows:
+            seen[(normalize_key(r.worker_name), r.day)] += 1
+        for r in rows:
+            problems = []
+            if (r.hours_total or 0) > 12:
+                problems.append("más de 12 horas en un día")
+            if (r.hours_total or 0) <= 0:
+                problems.append("sin horas")
+            if seen[(normalize_key(r.worker_name), r.day)] > 1:
+                problems.append("más de un boletín de la misma persona el mismo día")
+            rate = rates.get(normalize_key(r.company))
+            if rate and r.amount and r.hours_total:
+                expected = (r.hours_normal or 0) * (rate.price_normal or 0) + (r.hours_night or 0) * (
+                    rate.price_night or 0
+                )
+                if expected and abs(r.amount - expected) / expected > 0.25:
+                    problems.append("importe muy distinto a las tarifas actuales (orientativo)")
+            if problems:
+                issues.append(
+                    {
+                        "fecha": fmt_date(r.day),
+                        "trabajador": r.worker_name,
+                        "empresa": r.company,
+                        "horas": r.hours_total,
+                        "importe": r.amount,
+                        "motivos": problems,
+                    }
+                )
+        return ToolResult(
+            ToolStatus.OK,
+            {
+                "desde": lo.isoformat(),
+                "hasta": hi.isoformat(),
+                "boletines_revisados": len(rows),
+                "con_anomalias": len(issues),
+                "anomalias": issues[:40],
+            },
+            table(
+                "Anomalías en boletines TT",
+                ["Fecha", "Trabajador", "Empresa", "Horas", "Importe", "Motivos"],
+                [
+                    [
+                        i["fecha"],
+                        i["trabajador"],
+                        i["empresa"],
+                        i["horas"],
+                        i["importe"],
+                        "; ".join(i["motivos"]),
+                    ]
+                    for i in issues
+                ],
+            ),
+        )
+
+    return Tool(
+        "anomalias_tt",
+        "Detecta boletines de ETT anómalos: exceso de horas, sin horas, duplicados e "
+        "importes alejados de las tarifas.",
+        AnomaliasParams,
+        handler,
+        permission=Permission.TRABAJO_TEMPORAL_LEER,
+    )
+
+
+class ComunicacionesParams(BaseModel):
+    buscar: str | None = None
+
+
+def comunicaciones(deps: Deps) -> Tool:
+    async def handler(p: ComunicacionesParams, ctx: ToolContext) -> ToolResult:
+        async with deps.db.session() as db:
+            rows = list(
+                (await db.scalars(select(TtCommunication).order_by(TtCommunication.created_at.desc()))).all()
+            )
+        if p.buscar:
+            rows = [r for r in rows if normalize_key(p.buscar) in normalize_key(f"{r.title} {r.file_name}")]
+        items = [
+            {
+                "documento": r.file_name or r.title,
+                "fecha": fmt_date(r.created_at.date()) if r.created_at else None,
+            }
+            for r in rows
+        ]
+        return ToolResult(
+            ToolStatus.OK,
+            {
+                "total": len(items),
+                "comunicaciones": items[:40],
+                "nota": "Documentos de comunicación con ETT; no equivalen 1:1 a boletines.",
+            },
+            table("Comunicaciones ETT", ["Documento", "Fecha"], [list(i.values()) for i in items]),
+        )
+
+    return Tool(
+        "comunicaciones_tt",
+        "Documentos de comunicación con las empresas de trabajo temporal.",
+        ComunicacionesParams,
+        handler,
+        permission=Permission.TRABAJO_TEMPORAL_LEER,
+    )
+
+
 def register(registry: ToolRegistry, deps: Deps) -> None:
-    for factory in (trabajadores, boletines):
+    for factory in (trabajadores, boletines, estimar_coste, anomalias, comunicaciones):
         registry.register(factory(deps))

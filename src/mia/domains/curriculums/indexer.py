@@ -43,6 +43,17 @@ _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
 _IMAGE_MAGIC = (b"\xff\xd8\xff", b"\x89PNG", b"GIF8", b"II*\x00", b"MM\x00*")
 
 
+OCR_INSTRUCTION = (
+    "Transcribe literalmente el texto de este currículum (datos, experiencia, formación, idiomas). "
+    "No añadas comentarios ni valoraciones."
+)
+_MEDIA = {b"\xff\xd8\xff": "image/jpeg", b"\x89PNG": "image/png", b"GIF8": "image/gif"}
+
+
+def image_media_type(content: bytes) -> str | None:
+    return next((media for magic, media in _MEDIA.items() if content.startswith(magic)), None)
+
+
 def clean_text(text: str) -> str:
     """Quita caracteres de control (p. ej. NUL), que PostgreSQL no admite en texto."""
     return " ".join(_CONTROL.sub(" ", text).split())
@@ -163,6 +174,11 @@ class CvIndexer:
         try:
             content = await self._client.download(document.file_ref, self._max_bytes)
             status, text = extract_text(content, document.file_name)
+            media = image_media_type(content)
+            if status == "unsupported" and media:
+                text = clean_text(await self._llm.read_image(content, media, OCR_INSTRUCTION))
+                status = "ok" if len(text) >= 40 else "empty"
+                detail = "leído de imagen"
         except SharePointError as exc:
             status, detail = ("too_large" if "demasiado grande" in str(exc) else "error"), str(exc)[:300]
         except Exception as exc:  # PDF o DOCX corrupto

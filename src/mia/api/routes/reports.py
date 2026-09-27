@@ -15,6 +15,7 @@ router = APIRouter(prefix="/api", tags=["informes"])
 MEDIA = {
     "pdf": "application/pdf",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 
 

@@ -56,11 +56,19 @@ async def test_typo_suggests_close_names(registry: ToolRegistry) -> None:
 
 async def test_ficha_sets_focus_and_keeps_negative_balance(registry: ToolRegistry) -> None:
     result = await call(registry, "ficha_empleado", nombre="Ana Ruiz")
-    assert result.summary["turno_hoy"]["tipo"] == "Vacaciones"
-    assert result.summary["saldo_vacaciones"] == -2.5
-    assert result.summary["solicitudes_pendientes"] == 1
+    card = result.summary
+    assert card["hoy"]["turno"]["tipo"] == "Vacaciones"
+    assert card["hoy"]["ausencia_en_curso"] == {
+        "tipo": "Vacaciones",
+        "desde": "2026-08-03",
+        "dias_hasta_hoy": 3,
+    }
+    assert [d["tipo"] for d in card["semana_actual"]][:5] == ["Vacaciones"] * 5
+    assert card["proximos_hitos"][0]["vuelve"] == "2026-08-10"
+    assert card["vacaciones"]["saldo_actual"] == -2.5 and card["vacaciones"]["pendientes"] == 1
+    assert set(card) >= {"ficha_laboral", "organizacion", "bajas_este_anio", "documentacion", "indicadores"}
     assert result.state_updates["foco_persona"]["empleado_id"] == 1
-    assert result.presentation["type"] == "employee_card"
+    assert result.presentation["type"] == "employee_360"
 
 
 # ------------------------------------------------------------------ plantilla (POB-001)
@@ -79,7 +87,8 @@ async def test_inactive_means_inactive(registry: ToolRegistry) -> None:
 async def test_department_is_matched_loosely(registry: ToolRegistry) -> None:
     result = await call(registry, "plantilla", departamento="cocina", estado="todos")
     assert result.summary["total"] == 2 and result.summary["departamento"] == "Cocina"
-    assert result.state_updates == {"foco_departamento": "Cocina"}
+    assert result.state_updates["foco_departamento"] == "Cocina"
+    assert result.state_updates["ultima_poblacion"]["total"] == 2
 
 
 async def test_unknown_department_lists_options(registry: ToolRegistry) -> None:
@@ -231,3 +240,22 @@ async def test_search_with_several_matches_is_ambiguous_but_lists_them(registry:
     assert result.status is ToolStatus.AMBIGUOUS
     assert len(result.summary["personas"]) == 2 and "pregúntale cuál" in result.summary["mensaje"]
     assert result.state_updates == {}
+
+
+async def test_cohort_crosses_previous_result(registry: ToolRegistry) -> None:
+    """CTX-002: «de esos, ¿quién tiene saldo negativo?» se calcula sobre el resultado anterior."""
+    state: dict[str, Any] = {}
+    ctx = ToolContext(user=ADMIN, request_id=None, now=NOW, session_state=state)
+    pisos = await registry.execute(ToolCall("a", "plantilla", json.dumps({"departamento": "pisos"})), ctx)
+    state.update(pisos.result.state_updates)
+    crossed = await registry.execute(
+        ToolCall("b", "saldo_vacaciones", json.dumps({"sobre_resultado_anterior": True})), ctx
+    )
+    assert [s["persona"] for s in crossed.result.summary["saldos"]] == ["Ana Ruiz Sanz"]
+    without = await registry.execute(ToolCall("c", "saldo_vacaciones", json.dumps({})), ctx)
+    assert without.result.summary["total_personas"] == 2
+
+
+async def test_cohort_without_previous_result(registry: ToolRegistry) -> None:
+    result = await call(registry, "saldo_vacaciones", sobre_resultado_anterior=True)
+    assert result.status is ToolStatus.NOT_FOUND

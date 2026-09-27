@@ -40,7 +40,7 @@ class FakeSharePoint:
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self._handle)
 
-    def _handle(self, request: httpx.Request) -> httpx.Response:
+    def _handle(self, request: httpx.Request) -> httpx.Response:  # noqa: PLR0911
         self.requests.append(request)
         if self.fail_next:
             return httpx.Response(self.fail_next.pop(0), headers={"Retry-After": "0"}, text="fallo simulado")
@@ -56,6 +56,9 @@ class FakeSharePoint:
             return httpx.Response(200, json={"CurrentChangeToken": {"StringValue": f"t{self.seq}"}})
         if rest == "/GetChanges":
             return self._changes(title, json.loads(request.content))
+        if rest == "/fields":
+            names = {k for item in self.lists.get(title, {}).values() for k in item}
+            return httpx.Response(200, json={"value": [{"InternalName": n} for n in sorted(names)]})
         if rest == "/items":
             return self._items(title, request)
         return httpx.Response(404, text="ruta no simulada")

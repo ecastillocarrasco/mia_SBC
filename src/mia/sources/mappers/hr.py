@@ -49,6 +49,7 @@ def employee(item: dict[str, Any], ctx: MapContext) -> list[Row]:
             "person_key": text(item.get("DocIdentidad")),  # ya seudonimizado en la ingesta
             "manager_name": manager_name,
             "manager_email": manager_email,
+            "nationality": text(item.get("Nacionalidad")),
         }
     ]
 
@@ -111,6 +112,21 @@ def shift_kind(value: Any) -> str:
     return ShiftKind.OTRO
 
 
+def shift_segments(raw: str | None) -> list[tuple[str, str]]:
+    """Todos los tramos de un turno: «10:00-14:00 / 18:00-22:00» → dos tramos (turno partido)."""
+    return [(a.zfill(5), b.zfill(5)) for a, b in _HOURS.findall(raw or "")]
+
+
+def shift_hours(segments: list[tuple[str, str]]) -> float:
+    """Horas del turno sumando tramos; los que cruzan medianoche se cuentan bien. DESCANSO no computa."""
+    total = 0
+    for start, end in segments:
+        a = int(start[:2]) * 60 + int(start[3:])
+        b = int(end[:2]) * 60 + int(end[3:])
+        total += (b - a) % (24 * 60) or 24 * 60
+    return round(total / 60, 2)
+
+
 def _int(value: Any) -> int | None:
     raw = str(value or "").strip()
     return int(raw) if raw.isdigit() else None
@@ -130,7 +146,7 @@ def shift_week(item: dict[str, Any], ctx: MapContext) -> list[Row]:
         except ValueError:
             return []
         raw = text(item.get(f"Turno_{code}"))
-        hours = _HOURS.search(raw or "")
+        segments = shift_segments(raw)
         area = (raw.split("|", 1)[0].strip() or None) if raw and "|" in raw else None
         rows.append(
             {
@@ -147,8 +163,10 @@ def shift_week(item: dict[str, Any], ctx: MapContext) -> list[Row]:
                 "raw_value": raw,
                 "kind": shift_kind(raw),
                 "area": area,
-                "start_time": hours.group(1).zfill(5) if hours else None,
-                "end_time": hours.group(2).zfill(5) if hours else None,
+                "start_time": segments[0][0] if segments else None,
+                "end_time": segments[-1][1] if segments else None,
+                "segments": ",".join(f"{a}-{b}" for a, b in segments) or None,
+                "hours": shift_hours(segments) if shift_kind(raw) == ShiftKind.TRABAJO else 0.0,
                 "comment": text(item.get(f"Comentarios_{code}")),
                 "published_by": text(item.get("Publicador")),
             }

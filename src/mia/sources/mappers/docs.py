@@ -257,3 +257,83 @@ def tt_timesheet(item: dict[str, Any], ctx: MapContext) -> list[Row]:
             "amount": number(item.get("ImporteBoletinTT")),
         }
     ]
+
+
+# ------------------------------------------------------------------ fase 4b
+def new_hire(item: dict[str, Any], ctx: MapContext) -> list[Row]:
+    name = " ".join(filter(None, [text(item.get("Nombre")), text(item.get("Apellidos"))])) or text(
+        item.get("Title")
+    )
+    return [
+        {
+            "sp_id": int(item["ID"]),
+            "name": name or f"Alta {item['ID']}",
+            "name_key": normalize_key(name),
+            "department": text(item.get("Departamento")),
+            "position": text(item.get("Puesto")),
+            "email": email(item.get("Mail")),
+            "account": text(item.get("Usuario365") or item.get("userAccount")),
+            "person_key": text(item.get("DNI")),  # ya seudonimizado en la ingesta
+            "created_at": sp_datetime(item.get("Created")),
+        }
+    ]
+
+
+def _decimal_es(value: Any) -> float | None:
+    raw = str(value or "").strip()
+    if "," in raw:
+        raw = raw.replace(".", "").replace(",", ".")
+    return number(raw)
+
+
+def tt_rate(item: dict[str, Any], ctx: MapContext) -> list[Row]:
+    company = text(item.get("Title")) or f"Empresa {item['ID']}"
+    return [
+        {
+            "sp_id": int(item["ID"]),
+            "company": company,
+            "company_key": normalize_key(company),
+            "normal_start": text(item.get("HInicioNormal")),
+            "normal_end": text(item.get("HFinNormal")),
+            "night_start": text(item.get("HInicioNocturna")),
+            "night_end": text(item.get("HFinNocturna")),
+            "price_normal": _decimal_es(item.get("PrecioHNormal")),
+            "price_night": _decimal_es(item.get("PrecioHNocturna")),
+            "price_diet": _decimal_es(item.get("PrecioDieta")),
+            "short_contract_surcharge": _decimal_es(item.get("RecargoCortaDuracion")),
+        }
+    ]
+
+
+def tt_communication(item: dict[str, Any], ctx: MapContext) -> list[Row]:
+    if _is_folder(item):
+        return []
+    return [
+        {
+            "sp_id": int(item["ID"]),
+            "title": text(item.get("Title")),
+            "file_name": text(item.get("FileLeafRef")),
+            "created_at": sp_datetime(item.get("Created")),
+        }
+    ]
+
+
+def document_type_config(site: str) -> Any:
+    def mapper(item: dict[str, Any], ctx: MapContext) -> list[Row]:
+        name = text(item.get("Title"))
+        if not name:
+            return []
+        return [
+            {
+                "site": site,
+                "sp_id": int(item["ID"]),
+                "name": name,
+                "name_key": normalize_key(name),
+                "sign_all": boolean(item.get("FirmarTodas")) if item.get("FirmarTodas") is not None else None,
+                "requires_authorization": (
+                    boolean(item.get("ReqAutorizacion")) if item.get("ReqAutorizacion") is not None else None
+                ),
+            }
+        ]
+
+    return mapper

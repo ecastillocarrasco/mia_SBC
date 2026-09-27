@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 from datetime import date
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,13 +15,18 @@ from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolSt
 from mia.data import Employee, ShiftDay
 from mia.domains.common import (
     MAX_ROWS_FOR_MODEL,
+    CohortParams,
     Deps,
     Periodo,
     PersonaParams,
     days_between,
+    employees_for,
     fmt_date,
     focus_person,
+    no_population,
     person_problem,
+    population_state,
+    previous_population,
     resolve_person,
     table,
 )
@@ -64,13 +69,20 @@ def starts_in(shift: ShiftDay, franja: str) -> bool:
 
 
 def works_at(shift: ShiftDay, minute: int) -> bool:
-    """TUR-002: presencia por solape (un turno 22:00-06:00 cubre las 02:00)."""
-    start, end = _minutes(shift.start_time), _minutes(shift.end_time)
-    if start is None or end is None:
-        return False
-    if end <= start:
-        end += 24 * 60
-    return start <= minute < end or start <= minute + 24 * 60 < end
+    """TUR-002: presencia por solape de cada tramo (un 22:00-06:00 cubre las 02:00; un turno
+    partido 10-14 / 18-22 no cubre las 16:00)."""
+    tramos = [t.split("-") for t in (shift.segments or "").split(",") if "-" in t]
+    if not tramos and shift.start_time and shift.end_time:
+        tramos = [[shift.start_time, shift.end_time]]
+    for a, b in tramos:
+        start, end = _minutes(a), _minutes(b)
+        if start is None or end is None:
+            continue
+        if end <= start:
+            end += 24 * 60
+        if start <= minute < end or start <= minute + 24 * 60 < end:
+            return True
+    return False
 
 
 def franja_of(shift: ShiftDay) -> str | None:
@@ -175,7 +187,7 @@ def turnos_persona(deps: Deps) -> Tool:
 
 
 # ------------------------------------------------------------------ turnos de un día
-class TurnosDiaParams(BaseModel):
+class TurnosDiaParams(CohortParams):
     fecha: date | None = Field(default=None, description="Día AAAA-MM-DD (por defecto hoy)")
     departamento: str | None = Field(
         default=None, description="Departamento (opcional; sin él, toda la plantilla)"
@@ -214,6 +226,12 @@ def turnos_dia(deps: Deps) -> Tool:
             )
         selected = shifts
         criteria = []
+        if p.sobre_resultado_anterior:
+            if (previous := previous_population(ctx)) is None:
+                return no_population()
+            keys = set(previous["person_keys"])
+            selected = [s for s in selected if s.person_key in keys]
+            criteria.append(f"de: {previous['etiqueta']}")
         if p.tipo:
             wanted = normalize_key(p.tipo)
             selected = [s for s in selected if wanted in normalize_key(s.kind)]
@@ -251,6 +269,9 @@ def turnos_dia(deps: Deps) -> Tool:
             ]
         rows = [[s.employee_name, s.department, s.kind, s.raw_value, s.area, s.comment] for s in selected]
         state: dict[str, Any] = {"foco_periodo": {"desde": day.isoformat()}}
+        async with deps.db.session() as db:
+            people = await employees_for(db, person_keys={s.person_key for s in selected if s.person_key})
+        state.update(population_state(f"turnos {day.isoformat()} ({summary['criterio']})", people))
         if dept_key:
             state["foco_departamento"] = shifts[0].department
         return ToolResult(
@@ -296,7 +317,7 @@ def _period_view(p: AbsencePeriod, today: date, lo: date, hi: date) -> dict[str,
     return view
 
 
-class AusenciasParams(Periodo):
+class AusenciasParams(Periodo, CohortParams):
     empleado_id: int | None = Field(default=None, description="Persona concreta (del foco o de una búsqueda)")
     nombre: str | None = Field(default=None, description="Nombre de la persona, si no hay empleado_id")
     departamento: str | None = Field(default=None, description="Departamento (opcional)")
@@ -306,6 +327,59 @@ class AusenciasParams(Periodo):
     ordenar_por: Literal["duracion", "inicio"] = Field(
         default="duracion", description="Por defecto, las más largas"
     )
+
+
+def _absence_summary(
+    periods: list[AbsencePeriod], today: date, lo: date, hi: date
+) -> tuple[dict[str, Any], list[list[Any]]]:
+    views = [_period_view(x, today, lo, hi) for x in periods]
+    by_kind: dict[str, dict[str, int]] = defaultdict(lambda: {"personas": 0, "periodos": 0, "dias": 0})
+    seen: dict[str, set[str]] = defaultdict(set)
+    for x in periods:
+        by_kind[x.kind]["periodos"] += 1
+        by_kind[x.kind]["dias"] += x.days_within(lo, hi)
+        seen[x.kind].add(x.person_key)
+    for kind, keys in seen.items():
+        by_kind[kind]["personas"] = len(keys)
+    summary: dict[str, Any] = {
+        "desde": lo.isoformat(),
+        "hasta": hi.isoformat(),
+        "resumen_por_tipo": dict(by_kind),
+        "regla": (
+            "AUS-001: 'desde' es el inicio real del periodo. 'dias_hasta_hoy' = cuánto lleva; "
+            "'dias_totales_publicados' incluye días futuros ya publicados."
+        ),
+    }
+    key = "periodos" if len(views) <= MAX_ROWS_FOR_MODEL else "periodos_mas_relevantes"
+    summary[key] = views[:MAX_ROWS_FOR_MODEL]
+    rows = [
+        [
+            v["persona"],
+            v["departamento"],
+            v["tipo"],
+            fmt_date(date.fromisoformat(v["desde"])),
+            fmt_date(date.fromisoformat(v["hasta"])),
+            v["dias_totales_publicados"],
+        ]
+        for v in views
+    ]
+    return summary, rows
+
+
+def _last_sick_leave(periods: list[AbsencePeriod], today: date) -> dict[str, Any]:
+    last = max((x for x in periods if x.kind == ShiftKind.BAJA), key=lambda x: x.start, default=None)
+    return {
+        "ultima_baja_it": (
+            {
+                "desde": last.start.isoformat(),
+                "hasta": last.end.isoformat(),
+                "en_curso": last.start <= today <= last.end,
+            }
+            if last
+            else "ninguna en el periodo consultado"
+        ),
+        "nota_bajas": "«Baja» es solo Baja/IT: unas vacaciones o un permiso no son una baja.",
+    }
 
 
 def ausencias(deps: Deps) -> Tool:
@@ -335,47 +409,30 @@ def ausencias(deps: Deps) -> Tool:
                 status, dept_key, options = await resolve_shift_department(db, p.departamento)
                 if status is not ToolStatus.OK:
                     return department_not_found(status, p.departamento, options)
+            if p.sobre_resultado_anterior and person_keys is None:
+                if (previous := previous_population(ctx)) is None:
+                    return no_population()
+                person_keys = list(previous["person_keys"])
             periods = await absence_periods(
                 db, lo=lo, hi=hi, kinds=kinds, person_keys=person_keys, department_like=dept_key
             )
+            people = await employees_for(db, person_keys={x.person_key for x in periods})
             fresh = await deps.freshness(db, "turnos")
         key = (lambda x: -x.days) if p.ordenar_por == "duracion" else (lambda x: x.start.toordinal())
         periods.sort(key=key)
-        views = [_period_view(x, today, lo, hi) for x in periods]
-        by_kind: dict[str, dict[str, int]] = defaultdict(lambda: {"personas": 0, "periodos": 0, "dias": 0})
-        seen: dict[str, set[str]] = defaultdict(set)
-        for x in periods:
-            by_kind[x.kind]["periodos"] += 1
-            by_kind[x.kind]["dias"] += x.days_within(lo, hi)
-            seen[x.kind].add(x.person_key)
-        for kind, people in seen.items():
-            by_kind[kind]["personas"] = len(people)
-        summary: dict[str, Any] = {
-            "desde": lo.isoformat(),
-            "hasta": hi.isoformat(),
-            "resumen_por_tipo": dict(by_kind),
-            "regla": (
-                "AUS-001: 'desde' es el inicio real del periodo. 'dias_hasta_hoy' = cuánto lleva; "
-                "'dias_totales_publicados' incluye días futuros ya publicados."
-            ),
-            **fresh,
-        }
-        if len(views) <= MAX_ROWS_FOR_MODEL:
-            summary["periodos"] = views
-        else:
-            summary["periodos_mas_relevantes"] = views[:MAX_ROWS_FOR_MODEL]
-        rows = [
-            [
-                v["persona"],
-                v["departamento"],
-                v["tipo"],
-                fmt_date(date.fromisoformat(v["desde"])),
-                fmt_date(date.fromisoformat(v["hasta"])),
-                v["dias_totales_publicados"],
-            ]
-            for v in views
-        ]
+        summary, rows = _absence_summary(periods, today, lo, hi)
+        summary.update(fresh)
         state["foco_periodo"] = {"desde": lo.isoformat(), "hasta": hi.isoformat()}
+        if person_keys and len(person_keys) == 1:
+            summary.update(_last_sick_leave(periods, today))
+        elif periods and p.ordenar_por == "duracion":
+            # «¿quién lleva más?» → la siguiente pregunta («desde cuándo») se refiere a esa persona.
+            top = await _employee_by_key(deps, periods[0].person_key)
+            if top is not None:
+                state.update(focus_person(top))
+                summary["persona_destacada"] = {"nombre": top.name, "empleado_id": top.sp_id}
+        if person_keys is None or p.sobre_resultado_anterior:
+            state.update(population_state(f"ausencias {lo.isoformat()}–{hi.isoformat()}", people))
         return ToolResult(
             ToolStatus.OK,
             summary,
@@ -405,7 +462,7 @@ def _multi_kind(periods: list[AbsencePeriod]) -> list[dict[str, Any]]:
     return [{"persona": names[k], "motivos": sorted(v)} for k, v in kinds.items() if len(v) > 1]
 
 
-class ReincorporacionesParams(Periodo):
+class ReincorporacionesParams(Periodo, CohortParams):
     departamento: str | None = Field(default=None, description="Departamento (opcional)")
     empleado_ids: list[int] | None = Field(
         default=None, description="Limitar a estas personas (ids del foco o de una búsqueda)"
@@ -432,11 +489,16 @@ def reincorporaciones(deps: Deps) -> Tool:
             if p.empleado_ids:
                 keys = await db.scalars(select(Employee.person_key).where(Employee.sp_id.in_(p.empleado_ids)))
                 person_keys = [k for k in keys.all() if k]
+            elif p.sobre_resultado_anterior:
+                if (previous := previous_population(ctx)) is None:
+                    return no_population()
+                person_keys = list(previous["person_keys"])
             periods = await absence_periods(
                 db, lo=lo, hi=hi, kinds=kinds, department_like=dept_key, person_keys=person_keys
             )
             fresh = await deps.freshness(db, "turnos")
-        published = [x for x in periods if x.return_shift is not None and lo <= x.return_shift.day <= hi]
+            published = [x for x in periods if x.return_shift is not None and lo <= x.return_shift.day <= hi]
+            people = await employees_for(db, person_keys={x.person_key for x in published})
         pending = [x for x in periods if x.return_shift is None and x.end <= hi]
         published.sort(key=lambda x: x.return_shift.day if x.return_shift else x.end)
         items = [
@@ -469,7 +531,10 @@ def reincorporaciones(deps: Deps) -> Tool:
             ToolStatus.OK,
             summary,
             table("Reincorporaciones", ["Persona", "Departamento", "Motivo", "Vuelve", "Turno"], rows),
-            {"foco_periodo": {"desde": lo.isoformat(), "hasta": hi.isoformat()}},
+            {
+                "foco_periodo": {"desde": lo.isoformat(), "hasta": hi.isoformat()},
+                **population_state(f"reincorporaciones {lo.isoformat()}–{hi.isoformat()}", people),
+            },
         )
 
     return Tool(
@@ -481,6 +546,12 @@ def reincorporaciones(deps: Deps) -> Tool:
         permission=Permission.TURNOS_LEER,
         audit_resource="turnos",
     )
+
+
+async def _employee_by_key(deps: Deps, person_key: str) -> Employee | None:
+    async with deps.db.session() as db:
+        people = await employees_for(db, person_keys={person_key})
+    return people[0] if people else None
 
 
 def register(registry: ToolRegistry, deps: Deps) -> None:

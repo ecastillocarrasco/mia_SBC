@@ -50,6 +50,9 @@ class LLMSettings(BaseModel):
     timeout_seconds: float = 45.0
     max_output_tokens: int = 1200
     max_tool_rounds: int = 4
+    web_search: bool = True
+    """Búsqueda web del proveedor para consultas generales (tiempo, actualidad). Si el proveedor no la
+    admite, se desactiva sola."""
 
 
 class VoiceSettings(BaseModel):
@@ -85,6 +88,8 @@ class SharePointSettings(BaseModel):
     cert_pem_path: Path | None = None
     host: str = ""
     rrhh_site_url: str = ""
+    portal_site_url: str = ""
+    """Sitio del portal corporativo (maestro TipoDocumento). Vacío = esa fuente no se sincroniza."""
     timeout_seconds: float = 30.0
     page_size: int = 2000
     max_retries: int = 5
@@ -103,6 +108,8 @@ class DataSettings(BaseModel):
     """Clave HMAC para seudonimizar identificadores personales (DNI/NIE). En Azure, desde Key Vault."""
     full_sync_hour: int = 3
     stale_after_minutes: int = 30
+    content_enabled: bool = True
+    """Lectura en el momento del contenido de nóminas y documentos (con permiso propio y auditoría)."""
     """A partir de cuántos minutos sin sincronizar avisa mIA de que los datos pueden no estar al día."""
     """Hora local de la sincronización completa diaria (detecta borrados y corrige derivas)."""
 
@@ -116,6 +123,7 @@ ALL_DOMAINS = (
     "nominas",
     "documentos",
     "trabajo_temporal",
+    "analitica",
     "informes",
 )
 
@@ -144,6 +152,8 @@ class CurriculumSettings(BaseModel):
 
 class ReportSettings(BaseModel):
     directory: Path = Path("informes")
+    logo_path: Path | None = None
+    """Logo corporativo para la plantilla de informes (antes MIA_SBC_LOGO_PATH)."""
     ttl_hours: int = 24
     max_rows: int = 5000
 

@@ -26,14 +26,16 @@ from mia.observability import configure_logging
 from mia.settings import Settings, get_settings
 from mia.sources import all_sources
 from mia.sources.sharepoint import SharePointClient
-from mia.sync.factory import build_runner, build_sharepoint_client
+from mia.sync.factory import build_portal_client, build_runner, build_sharepoint_client
 from mia.sync.runner import SyncMode
 
 
-async def _list(db: Database, domains: list[str]) -> None:
+async def _list(db: Database, settings: Settings) -> None:
     async with db.session() as session:
         states = {s.source: s for s in (await session.scalars(select(SourceSyncState))).all()}
-    for source in all_sources(domains=domains):
+    for source in all_sources(
+        domains=settings.domains.enabled, portal=bool(settings.sharepoint.portal_site_url)
+    ):
         state = states.get(source.key)
         if state is None:
             print(f"{source.key:28} nunca sincronizada")
@@ -66,11 +68,15 @@ async def _check_mailbox(settings: Settings) -> int:
 
 async def _check(client: SharePointClient, settings: Settings) -> int:
     failures = await _check_mailbox(settings)
-    for source in all_sources(domains=settings.domains.enabled):
+    portal = build_portal_client(settings)
+    for source in all_sources(
+        domains=settings.domains.enabled, portal=bool(settings.sharepoint.portal_site_url)
+    ):
+        site_client = portal if source.site == "portal" and portal else client
         try:
-            await client.current_change_token(source.list_title)
+            await site_client.current_change_token(source.list_title)
             first: list[dict[str, object]] = await anext(
-                client.iter_items(source.list_title, select="ID"), []
+                site_client.iter_items(source.list_title, select="ID"), []
             )
             print(
                 f"OK    {source.key:28} '{source.list_title}' accesible ({len(first)} en la primera página)"
@@ -78,6 +84,8 @@ async def _check(client: SharePointClient, settings: Settings) -> int:
         except Exception as exc:
             failures += 1
             print(f"FALLA {source.key:28} lista '{source.list_title}': {str(exc)[:200]}")
+    if portal:
+        await portal.aclose()
     return 1 if failures else 0
 
 
@@ -109,9 +117,11 @@ async def _main(args: argparse.Namespace) -> int:
     db = Database(settings.database_url)
     try:
         if args.list:
-            await _list(db, settings.domains.enabled)
+            await _list(db, settings)
             return 0
-        available = all_sources(domains=settings.domains.enabled)
+        available = all_sources(
+            domains=settings.domains.enabled, portal=bool(settings.sharepoint.portal_site_url)
+        )
         sources = [s for s in available if not args.source or s.key in args.source]
         if not sources:
             print("No hay fuentes con ese nombre. Usa --list para verlas.", file=sys.stderr)

@@ -51,3 +51,13 @@ def test_eval_pattern_ignores_negations() -> None:
     assert re.search(CLAIMS_TURNOS, "Ya puedo consultar los turnos", re.I)
     assert not re.search(CLAIMS_TURNOS, "Todavía no puedo consultar los turnos de Ana", re.I)
     assert not re.search(CLAIMS_TURNOS, "Aún no puedo consultar turnos", re.I)
+
+
+def test_amounts_are_never_spoken() -> None:
+    assert guard.speech_blocked("Su líquido fue de 1.234,56 €.")
+    assert guard.speech_blocked("Cobró 980 euros.")
+    assert not guard.speech_blocked("Tiene 3 nóminas sin leer.")
+    assert (
+        guard.clean_speech("Ya la tengo. El líquido es 1.234,56 €. Te lo muestro.")
+        == "Ya la tengo. Te lo muestro."
+    )

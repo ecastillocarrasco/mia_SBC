@@ -8,19 +8,32 @@ de la conversación vive en el servidor.
 
 from __future__ import annotations
 
+import asyncio
+import json
+import re
+from collections.abc import Callable
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from mia import __version__
 from mia.api.deps import ServicesDep, UserDep
 from mia.api.routes.chat import prime
+from mia.api.routes.reports import MEDIA
 from mia.api.routes.voice import stream_speech
 from mia.api.sse import to_ndjson
 from mia.conversation import TurnResult
 from mia.conversation.events import ProgressEvent, ResultEvent, ToolEvent
+from mia.conversation.tools import ToolContext, ToolStatus
+from mia.domains.informes.document import to_document
+from mia.domains.informes.render import RENDERERS
+from mia.llm import ToolCall
+from mia.observability import current_request_id
+from mia.text import normalize_key
 
 router = APIRouter(tags=["compatibilidad"], include_in_schema=False)
 
@@ -100,3 +113,50 @@ async def legacy_llm_health(services: ServicesDep) -> dict[str, Any]:
         "provider": services.settings.llm.provider.value,
         "assistant_identity": "mIA",
     }
+
+
+# ------------------------------------------------------------------ informes (botones del frontend actual)
+LEGACY_MODULES: dict[str, tuple[str, Callable[[dict[str, Any]], dict[str, Any]]]] = {
+    "ficha360": ("ficha_empleado", lambda body: {"nombre": body.get("nombre")}),
+    "dashboard_rrhh": ("panel_rrhh", lambda body: {}),
+    "dashboard": ("panel_rrhh", lambda body: {}),
+    "rrhh": ("panel_rrhh", lambda body: {}),
+    "departamentos": ("estructura_departamentos", lambda body: {}),
+    "empleados": ("plantilla", lambda body: {}),
+    "empleados_calidad": ("calidad_datos", lambda body: {}),
+    "vacaciones_pendientes": ("vacaciones", lambda body: {"estado": "pendientes"}),
+    "vacaciones_analitica": ("analitica_vacaciones", lambda body: {"anio": body.get("anio")}),
+    "saldo_vacaciones": ("saldo_vacaciones", lambda body: {}),
+    "curriculums": ("candidaturas", lambda body: {}),
+    "nominas": ("nominas_persona", lambda body: {"nombre": body.get("nombre"), "anio": body.get("anio")}),
+}
+
+
+@router.post("/api/mia/informes/generar")
+async def legacy_report(body: dict[str, Any], services: ServicesDep, user: UserDep) -> Response:
+    """Botones «Informe PDF / Exportar Excel» del frontend actual: genera el fichero y lo devuelve."""
+    module = normalize_key(str(body.get("modulo") or "")).replace(" ", "_")
+    fmt = {"excel": "xlsx", "xls": "xlsx"}.get(
+        str(body.get("formato") or "pdf").lower(), str(body.get("formato") or "pdf").lower()
+    )
+    if module not in LEGACY_MODULES or fmt not in RENDERERS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Módulo o formato de informe no soportado")
+    tool, args = LEGACY_MODULES[module]
+    params = {k: v for k, v in args(body).items() if v not in (None, "")}
+    ctx = ToolContext(
+        user=user, request_id=current_request_id(), now=datetime.now(ZoneInfo(services.settings.timezone))
+    )
+    execution = await services.engine.tools.execute(ToolCall("informe", tool, json.dumps(params)), ctx)
+    if execution.result.status is not ToolStatus.OK or not execution.result.presentation:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No hay datos para ese informe")
+    document = to_document(execution.result.presentation)
+    logo = services.settings.reports.logo_path
+    content = await asyncio.to_thread(
+        RENDERERS[fmt], document, ctx.now, logo if logo and logo.is_file() else None
+    )
+    name = re.sub(r"[^\w\- ]+", "", document.title).strip()[:60] or "informe"
+    return Response(
+        content,
+        media_type=MEDIA.get(fmt, "application/octet-stream"),
+        headers={"Content-Disposition": f'attachment; filename="{name}.{fmt}"'},
+    )

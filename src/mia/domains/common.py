@@ -30,6 +30,8 @@ class Deps:
     """Settings de la aplicación (correo, informes, currículums)."""
     graph: Any = None
     """Cliente de Microsoft Graph (correo), si está configurado."""
+    sharepoint: Any = None
+    """Cliente de SharePoint (RRHH) para leer documentos en el momento, si está configurado."""
     services: dict[str, Any] = field(default_factory=dict)
     """Servicios compartidos por varias herramientas de un dominio (índice de CVs, almacén de informes)."""
 
@@ -228,3 +230,52 @@ def department_problem(match: DepartmentMatch, query: str | None) -> ToolResult:
         else "No existe ese departamento"
     )
     return ToolResult(match.status, {"mensaje": f"{verb} («{query}»).", "departamentos": list(match.options)})
+
+
+# ------------------------------------------------------------------ cohortes (CTX-002)
+POPULATION = "ultima_poblacion"
+MAX_POPULATION = 2000
+
+
+class CohortParams(BaseModel):
+    sobre_resultado_anterior: bool = Field(
+        default=False,
+        description="true si el usuario se refiere al resultado anterior («de esos», «de ellas»)",
+    )
+
+
+def population_state(label: str, employees: list[Employee]) -> dict[str, Any]:
+    """Conserva en privado la población de una respuesta para poder cruzarla después."""
+    people = employees[:MAX_POPULATION]
+    return {
+        POPULATION: {
+            "etiqueta": label,
+            "total": len(employees),
+            "empleado_ids": [e.sp_id for e in people],
+            "person_keys": [e.person_key for e in people if e.person_key],
+            "emails": [e.email for e in people if e.email],
+        }
+    }
+
+
+def previous_population(ctx: Any) -> dict[str, Any] | None:
+    value = ctx.session_state.get(POPULATION)
+    return value if isinstance(value, dict) else None
+
+
+def no_population() -> ToolResult:
+    return ToolResult(ToolStatus.NOT_FOUND, "No hay un resultado anterior con personas sobre el que cruzar.")
+
+
+async def employees_for(
+    db: AsyncSession, *, person_keys: set[str] | None = None, emails: set[str] | None = None
+) -> list[Employee]:
+    """Empleados a partir de seudónimos o emails (para convertir un resultado en población)."""
+    conditions = []
+    if person_keys:
+        conditions.append(Employee.person_key.in_(person_keys))
+    if emails:
+        conditions.append(Employee.email.in_(emails))
+    if not conditions:
+        return []
+    return list((await db.scalars(select(Employee).where(or_(*conditions)).order_by(Employee.name))).all())

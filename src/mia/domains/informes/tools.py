@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -16,12 +16,17 @@ from mia.conversation.tools import LAST_TABLE
 from mia.data import Report
 from mia.data.models import _uuid
 from mia.domains.common import Deps
-from mia.domains.informes.render import to_pdf, to_xlsx
+from mia.domains.informes.document import Document, to_document
+from mia.domains.informes.render import RENDERERS
 
 
 class InformeParams(BaseModel):
-    formato: Literal["pdf", "xlsx"] = Field(description="pdf o xlsx (Excel)")
+    formato: Literal["pdf", "xlsx", "pptx"] = Field(description="pdf, xlsx (Excel) o pptx (PowerPoint)")
     titulo: str | None = Field(default=None, description="Título (por defecto, el de la tabla)")
+
+
+def _render(fmt: str, document: Document, generated: datetime, logo: Path | None) -> bytes:
+    return RENDERERS[fmt](document, generated, logo if logo and logo.is_file() else None)
 
 
 def _write(path: Path, content: bytes) -> None:
@@ -31,17 +36,21 @@ def _write(path: Path, content: bytes) -> None:
 
 def generar(deps: Deps) -> Tool:
     async def handler(p: InformeParams, ctx: ToolContext) -> ToolResult:
-        table_data = ctx.session_state.get(LAST_TABLE)
-        if not table_data:
+        presentation = ctx.session_state.get(LAST_TABLE)
+        if not presentation:
             return ToolResult(
-                ToolStatus.NOT_FOUND, "No hay ningún resultado en tabla reciente para convertir en informe."
+                ToolStatus.NOT_FOUND,
+                "No hay ningún resultado reciente (tabla, panel o ficha) para el informe.",
             )
         settings = deps.settings.reports if deps.settings else None
         directory = Path(settings.directory if settings else "informes")
         ttl = timedelta(hours=settings.ttl_hours if settings else 24)
-        title = p.titulo or table_data["title"]
-        render = to_pdf if p.formato == "pdf" else to_xlsx
-        content = render(title, table_data["columns"], table_data["rows"], ctx.now)
+        document = to_document(presentation)
+        if p.titulo:
+            document.title = p.titulo
+        title = document.title
+        logo_path = settings.logo_path if settings else None
+        content = await asyncio.to_thread(_render, p.formato, document, ctx.now, logo_path)
         report_id = _uuid()
         path = directory / f"{report_id}.{p.formato}"
         await asyncio.to_thread(_write, path, content)
@@ -64,7 +73,7 @@ def generar(deps: Deps) -> Tool:
             ToolStatus.OK,
             {
                 "informe": file_name,
-                "filas": len(table_data["rows"]),
+                "secciones": len(document.blocks),
                 "enlace": url,
                 "caduca_en_horas": int(ttl.total_seconds() // 3600),
             },
@@ -73,7 +82,8 @@ def generar(deps: Deps) -> Tool:
 
     return Tool(
         "generar_informe",
-        "Genera un PDF o un Excel con el último resultado en tabla de la conversación y devuelve el enlace.",
+        "Genera un PDF, Excel o PowerPoint (plantilla corporativa) con el último resultado de la "
+        "conversación: una tabla, el panel de RRHH, una ficha 360… y devuelve el enlace.",
         InformeParams,
         handler,
         permission=Permission.INFORMES_GENERAR,

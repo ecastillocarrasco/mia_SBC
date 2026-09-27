@@ -35,6 +35,8 @@ class Employee(Base):
     person_key: Mapped[str | None] = mapped_column(String(64), index=True)
     manager_name: Mapped[str | None] = mapped_column(String(256))
     manager_email: Mapped[str | None] = mapped_column(String(256))
+    nationality: Mapped[str | None] = mapped_column(String(128))
+    """Opcional: se rellena cuando la columna exista en EmpleadosCorporativos. Solo usos agregados."""
 
 
 class OrgUnit(Base):
@@ -77,6 +79,9 @@ class ShiftDay(Base):
     area: Mapped[str | None] = mapped_column(String(128))
     start_time: Mapped[str | None] = mapped_column(String(5))
     end_time: Mapped[str | None] = mapped_column(String(5))
+    segments: Mapped[str | None] = mapped_column(String(64))
+    """Tramos «HH:MM-HH:MM» separados por comas (varios en un turno partido)."""
+    hours: Mapped[float | None] = mapped_column(Float)
     comment: Mapped[str | None] = mapped_column(Text)
     published_by: Mapped[str | None] = mapped_column(String(256))
 
@@ -254,3 +259,65 @@ class TtTimesheet(Base):
     hours_total: Mapped[float | None] = mapped_column(Float)
     diet: Mapped[float | None] = mapped_column(Float)
     amount: Mapped[float | None] = mapped_column(Float)
+
+
+# ---------------------------------------------------------------------- fase 4b
+class NewHire(Base):
+    """Lista AltaEmpleados (aprovisionamiento). No determina si alguien está activo y
+    su fecha de creación no es la de incorporación. La contraseña nunca se lee."""
+
+    __tablename__ = "hr_new_hires"
+
+    sp_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    name: Mapped[str] = mapped_column(String(256))
+    name_key: Mapped[str] = mapped_column(String(256), index=True)
+    department: Mapped[str | None] = mapped_column(String(256))
+    position: Mapped[str | None] = mapped_column(String(256))
+    email: Mapped[str | None] = mapped_column(String(256))
+    account: Mapped[str | None] = mapped_column(String(256))
+    person_key: Mapped[str | None] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TtRate(Base):
+    """Tarifas actuales de una ETT (SettingsTT). Solo para estimaciones; el importe histórico
+    está en los boletines."""
+
+    __tablename__ = "hr_tt_rates"
+
+    sp_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    company: Mapped[str] = mapped_column(String(256))
+    company_key: Mapped[str] = mapped_column(String(256), index=True)
+    normal_start: Mapped[str | None] = mapped_column(String(8))
+    normal_end: Mapped[str | None] = mapped_column(String(8))
+    night_start: Mapped[str | None] = mapped_column(String(8))
+    night_end: Mapped[str | None] = mapped_column(String(8))
+    price_normal: Mapped[float | None] = mapped_column(Float)
+    price_night: Mapped[float | None] = mapped_column(Float)
+    price_diet: Mapped[float | None] = mapped_column(Float)
+    short_contract_surcharge: Mapped[float | None] = mapped_column(Float)
+
+
+class TtCommunication(Base):
+    """Documento de la biblioteca ComunicacionesBoletinesTT (no tiene relación 1:1 con boletines)."""
+
+    __tablename__ = "hr_tt_communications"
+
+    sp_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    title: Mapped[str | None] = mapped_column(String(512))
+    file_name: Mapped[str | None] = mapped_column(String(512))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DocumentTypeConfig(Base):
+    """Maestros de tipos documentales: TiposDocumentosFirma (RRHH) y TipoDocumento (portal)."""
+
+    __tablename__ = "hr_document_types"
+
+    site: Mapped[str] = mapped_column(String(16), primary_key=True)
+    sp_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    name: Mapped[str] = mapped_column(String(256))
+    name_key: Mapped[str] = mapped_column(String(256), index=True)
+    sign_all: Mapped[bool | None] = mapped_column(Boolean)
+    """«FirmarTodas»: toda la plantilla debe firmarlo."""
+    requires_authorization: Mapped[bool | None] = mapped_column(Boolean)

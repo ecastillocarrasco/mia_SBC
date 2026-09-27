@@ -14,6 +14,7 @@ from typing import Any
 from mia.conversation import ToolRegistry
 from mia.data import Database
 from mia.domains import (
+    analitica,
     correo,
     curriculums,
     documentos,
@@ -36,7 +37,8 @@ DOMAINS: dict[str, tuple[str, Callable[[ToolRegistry, Deps], None]]] = {
     "nominas": ("nóminas", nominas.register),
     "documentos": ("documentación firmada", documentos.register),
     "trabajo_temporal": ("trabajo temporal", trabajo_temporal.register),
-    "informes": ("informes PDF/Excel", informes.register),
+    "analitica": ("panel y analítica de RRHH", analitica.register),
+    "informes": ("informes PDF/Excel/PowerPoint", informes.register),
 }
 
 
@@ -47,11 +49,17 @@ def build_registry(
     settings: Any = None,
     llm: Any = None,
     graph: Any = None,
+    sharepoint: Any = None,
     enabled: list[str] | None = None,
 ) -> ToolRegistry:
     active = [d for d in DOMAINS if enabled is None or d in enabled]
     deps = Deps(
-        db=db, stale_after=timedelta(minutes=stale_after_minutes), llm=llm, settings=settings, graph=graph
+        db=db,
+        stale_after=timedelta(minutes=stale_after_minutes),
+        llm=llm,
+        settings=settings,
+        graph=graph,
+        sharepoint=sharepoint,
     )
     registry = ToolRegistry(pending_domains=tuple(DOMAINS[d][0] for d in DOMAINS if d not in active))
     sistema.register(registry)

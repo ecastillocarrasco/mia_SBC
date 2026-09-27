@@ -81,6 +81,12 @@ def describe_focus(state: dict[str, Any]) -> str:
         lines.append(f"- Persona: {person.get('nombre')} (empleado_id {person['empleado_id']}{extra})")
     if state.get("foco_departamento"):
         lines.append(f"- Departamento: {state['foco_departamento']}")
+    population = state.get("ultima_poblacion")
+    if isinstance(population, dict) and population.get("total") is not None:
+        lines.append(
+            f"- Último resultado con personas: {population.get('etiqueta')} ({population['total']}). "
+            "Para «de esos/ellas», usa sobre_resultado_anterior=true."
+        )
     period = state.get("foco_periodo")
     if isinstance(period, dict) and period.get("desde"):
         lines.append(f"- Periodo: {period['desde']} a {period.get('hasta', period['desde'])}")
@@ -99,7 +105,7 @@ def parse_final_answer(raw: str) -> FinalAnswer:
         state = ""
     if state not in AvatarState.__members__.values():
         state = AvatarState.HABLANDO.value
-    speech, text = guard.clean(speech), guard.clean(text)
+    speech, text = guard.clean_speech(speech), guard.clean(text)
     return FinalAnswer(speech=speech or text, avatar_state=state, text=text or speech)
 
 
@@ -238,7 +244,7 @@ class ConversationEngine:
         """Convierte frases en eventos de voz, descartando las que la salvaguarda bloquea."""
         events: list[TurnEvent] = []
         for sentence in sentences:
-            if guard.is_blocked(sentence):
+            if guard.speech_blocked(sentence):
                 continue
             if not turn.spoken:
                 events.append(AvatarEvent(state=AvatarState.HABLANDO.value))
@@ -304,6 +310,10 @@ class ConversationEngine:
                     elapsed_ms=execution.elapsed_ms,
                 )
         raise LLMError("Se superó el número máximo de rondas de herramientas")  # pragma: no cover
+
+    @property
+    def tools(self) -> ToolRegistry:
+        return self._tools
 
     async def complete(self, *, message: str, user: UserContext, session_id: str | None) -> TurnResult:
         """Ejecuta el turno completo y devuelve solo el resultado final."""

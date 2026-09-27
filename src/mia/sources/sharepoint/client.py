@@ -83,6 +83,13 @@ class SharePointClient:
             raise SharePointError(f"Fichero demasiado grande ({len(response.content)} bytes)")
         return response.content
 
+    async def download_item_file(self, title: str, item_id: int, max_bytes: int) -> bytes:
+        """Fichero de un elemento de biblioteca por su ID (sin la ruta, que puede contener un DNI)."""
+        response = await self._raw("GET", f"{self._list_url(title)}/items({int(item_id)})/File/$value")
+        if len(response.content) > max_bytes:
+            raise SharePointError(f"Fichero demasiado grande ({len(response.content)} bytes)")
+        return response.content
+
     async def _raw(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         refreshed = False
         for attempt in range(self._max_retries + 1):
@@ -184,6 +191,13 @@ class SharePointClient:
             async for page in self.iter_items(title, select=select, expand=expand, filter_expr=expr):
                 results.extend(page)
         return results
+
+    async def field_names(self, title: str) -> set[str]:
+        """Nombres internos de las columnas de una lista (para campos opcionales que aún no existen)."""
+        payload = await self._request(
+            "GET", f"{self._list_url(title)}/fields", params={"$select": "InternalName"}
+        )
+        return {str(f.get("InternalName")) for f in payload.get("value", []) if f.get("InternalName")}
 
     async def current_change_token(self, title: str) -> str:
         payload = await self._request("GET", self._list_url(title), params={"$select": "CurrentChangeToken"})

@@ -53,5 +53,8 @@ class FakeLLMProvider:
             vectors.append(vector)
         return vectors
 
+    async def read_image(self, content: bytes, media_type: str, instruction: str) -> str:
+        return "Texto leído de una imagen: camarera de pisos con experiencia en hoteles de playa y francés."
+
     async def aclose(self) -> None:
         return None

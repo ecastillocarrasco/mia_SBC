@@ -24,10 +24,26 @@ def build_sharepoint_client(settings: Settings) -> SharePointClient:
     )
 
 
+def build_portal_client(settings: Settings) -> SharePointClient | None:
+    sp = settings.sharepoint
+    if not sp.portal_site_url or not sp.configured:
+        return None
+    return SharePointClient(
+        site_url=sp.portal_site_url,
+        tokens=CertificateTokenProvider(sp),
+        timeout_seconds=sp.timeout_seconds,
+        page_size=sp.page_size,
+        max_retries=sp.max_retries,
+        concurrency=sp.concurrency,
+    )
+
+
 def build_runner(settings: Settings, db: Database, client: SharePointClient) -> SyncRunner:
+    portal = build_portal_client(settings)
     return SyncRunner(
         db=db,
         client=client,
+        site_clients={"portal": portal} if portal else None,
         pseudonymize=Pseudonymizer(settings.data.pseudonym_key.get_secret_value()),
         timezone=settings.timezone,
         full_sync_hour=settings.data.full_sync_hour,

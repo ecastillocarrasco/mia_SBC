@@ -151,14 +151,16 @@ class ToolRegistry:
             return ToolResult(ToolStatus.ERROR, "Error técnico al consultar la fuente de datos")
 
 
-LAST_TABLE = "ultima_tabla"
+LAST_TABLE = "ultima_presentacion"
 
 
 def remember_table(state: dict[str, Any], presentation: dict[str, Any] | None, max_rows: int) -> None:
-    """Guarda la última tabla mostrada en la conversación, para poder convertirla en informe."""
-    if presentation and presentation.get("type") == "table" and presentation.get("columns"):
-        state[LAST_TABLE] = {
-            "title": presentation.get("title") or "Informe",
-            "columns": presentation["columns"],
-            "rows": list(presentation.get("rows") or [])[:max_rows],
-        }
+    """Guarda el último resultado mostrado (tabla, panel, ficha 360…) para convertirlo en informe."""
+    if not presentation or presentation.get("type") in {None, "download"}:
+        return
+    stored = dict(presentation)
+    if stored.get("type") == "table":
+        stored["rows"] = list(stored.get("rows") or [])[:max_rows]
+    for sub_table in stored.get("tables") or []:
+        sub_table["rows"] = list(sub_table.get("rows") or [])[:max_rows]
+    state[LAST_TABLE] = stored

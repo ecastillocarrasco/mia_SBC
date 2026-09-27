@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
@@ -66,14 +66,18 @@ class SyncRunner:
         db: Database,
         client: SharePointClient,
         pseudonymize: Pseudonymizer,
+        site_clients: dict[str, SharePointClient] | None = None,
         timezone: str = "Europe/Madrid",
         full_sync_hour: int = 3,
     ) -> None:
         self._db = db
+        self._base_client = client
+        self._site_clients = {"rrhh": client, **(site_clients or {})}
         self._client = client
         self._pseudonymize = pseudonymize
         self._tz = ZoneInfo(timezone)
         self._full_sync_hour = full_sync_hour
+        self._fields: dict[str, set[str]] = {}
 
     # ------------------------------------------------------------ API
     async def run_all(
@@ -81,12 +85,23 @@ class SyncRunner:
     ) -> list[SyncReport]:
         return [await self.run(source, mode) for source in sources]
 
+    async def _with_optional_fields(self, source: SourceDefinition) -> SourceDefinition:
+        if not source.optional_fields:
+            return source
+        if source.list_title not in self._fields:  # una consulta por lista y proceso
+            self._fields[source.list_title] = await self._client.field_names(source.list_title)
+        existing = self._fields[source.list_title]
+        present = [f for f in source.optional_fields if f in existing]
+        return replace(source, select=",".join([source.select, *present])) if present else source
+
     async def run(self, source: SourceDefinition, mode: SyncMode = SyncMode.AUTO) -> SyncReport:
         started = time.perf_counter()
+        self._client = self._site_clients.get(source.site, self._base_client)
         state = await self._load_state(source.key)
         effective = self._decide(state, mode)
         report = SyncReport(source=source.key, mode=effective)
         try:
+            source = await self._with_optional_fields(source)
             if effective is SyncMode.INCREMENTAL:
                 try:
                     await self._incremental(source, state, report)

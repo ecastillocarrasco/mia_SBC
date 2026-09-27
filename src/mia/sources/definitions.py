@@ -13,12 +13,16 @@ from typing import Any
 from mia.data import (
     Candidate,
     CvDocument,
+    DocumentTypeConfig,
     Employee,
+    NewHire,
     OrgUnit,
     Payslip,
     ShiftDay,
     SignedDocument,
+    TtCommunication,
     TtCompany,
+    TtRate,
     TtTimesheet,
     TtWorker,
     Vacation,
@@ -44,11 +48,15 @@ class SourceDefinition:
     expand: str | None = None
     sensitive_fields: tuple[str, ...] = ()
     """Identificadores personales: se seudonimizan antes de guardar nada."""
+    optional_fields: tuple[str, ...] = ()
+    """Columnas que pueden no existir todavía en la lista (se piden solo si existen)."""
     identity_folders: bool = False
     """Biblioteca con carpetas por DNI/NIE: se seudonimizan las rutas y se añade «_person_key»."""
     scope: dict[str, Any] = field(default_factory=dict)
     """Columnas fijas de esta fuente en la tabla canónica (p. ej. el año del saldo)."""
     year: int | None = None
+    site: str = "rrhh"
+    """Sitio de SharePoint: «rrhh» (por defecto) o «portal»."""
     domain: str = "empleados"
     """Dominio al que pertenece (si el dominio está desactivado, la fuente no se sincroniza)."""
 
@@ -61,6 +69,7 @@ EMPLEADOS = SourceDefinition(
         "Responsable/Title,Responsable/EMail"
     ),
     expand="Responsable",
+    optional_fields=("Nacionalidad",),
     model=Employee,
     mapper=hr.employee,
     owner_column="sp_id",
@@ -210,7 +219,68 @@ TT_BOLETINES = SourceDefinition(
 )
 
 
-def all_sources(today: date | None = None, domains: list[str] | None = None) -> list[SourceDefinition]:
+ALTAS = SourceDefinition(
+    key="altas_empleados",
+    list_title="AltaEmpleados",
+    select="ID,Title,Created,Nombre,Apellidos,Departamento,Puesto,Mail,Usuario365,userAccount,DNI",
+    model=NewHire,
+    mapper=docs.new_hire,
+    owner_column="sp_id",
+    sensitive_fields=("DNI",),
+    domain="empleados",
+)
+
+TT_TARIFAS = SourceDefinition(
+    key="tt_tarifas",
+    list_title="SettingsTT",
+    select=(
+        "ID,Title,HInicioNormal,HFinNormal,HInicioNocturna,HFinNocturna,PrecioHNormal,PrecioHNocturna,"
+        "PrecioDieta,RecargoCortaDuracion"
+    ),
+    model=TtRate,
+    mapper=docs.tt_rate,
+    owner_column="sp_id",
+    domain="trabajo_temporal",
+)
+
+TT_COMUNICACIONES = SourceDefinition(
+    key="tt_comunicaciones",
+    list_title="ComunicacionesBoletinesTT",
+    select="ID,Title,FileSystemObjectType,FileLeafRef,Created",
+    model=TtCommunication,
+    mapper=docs.tt_communication,
+    owner_column="sp_id",
+    identity_folders=True,
+    domain="trabajo_temporal",
+)
+
+TIPOS_FIRMA_RRHH = SourceDefinition(
+    key="tipos_documentos_firma",
+    list_title="TiposDocumentosFirma",
+    select="ID,Title,FirmarTodas,ReqAutorizacion",
+    model=DocumentTypeConfig,
+    mapper=docs.document_type_config("rrhh"),
+    owner_column="sp_id",
+    scope={"site": "rrhh"},
+    domain="documentos",
+)
+
+TIPOS_DOCUMENTO_PORTAL = SourceDefinition(
+    key="tipos_documento_portal",
+    list_title="TipoDocumento",
+    select="ID,Title,ReqAutorizacion",
+    model=DocumentTypeConfig,
+    mapper=docs.document_type_config("portal"),
+    owner_column="sp_id",
+    scope={"site": "portal"},
+    site="portal",
+    domain="documentos",
+)
+
+
+def all_sources(
+    today: date | None = None, domains: list[str] | None = None, *, portal: bool = True
+) -> list[SourceDefinition]:
     """Fuentes de los dominios activos. El saldo se sincroniza para el año en curso."""
     year = (today or date.today()).year
     sources = [
@@ -226,7 +296,16 @@ def all_sources(today: date | None = None, domains: list[str] | None = None) -> 
         TT_EMPRESAS,
         TT_TRABAJADORES,
         TT_BOLETINES,
+        ALTAS,
+        TT_TARIFAS,
+        TT_COMUNICACIONES,
+        TIPOS_FIRMA_RRHH,
+        TIPOS_DOCUMENTO_PORTAL,
     ]
     # Empleados y departamentos son la base de todos los cruces: siempre se sincronizan.
     base = {"empleados"}
-    return [s for s in sources if domains is None or s.domain in base or s.domain in domains]
+    return [
+        s
+        for s in sources
+        if (domains is None or s.domain in base or s.domain in domains) and (portal or s.site != "portal")
+    ]

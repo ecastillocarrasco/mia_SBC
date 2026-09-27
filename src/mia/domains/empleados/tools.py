@@ -3,29 +3,36 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
-from mia.data import Employee, OrgUnit, ShiftDay, Vacation, VacationBalance
+from mia.data import Employee, OrgUnit, Payslip, ShiftDay, SignedDocument, Vacation, VacationBalance
 from mia.domains.common import (
     MAX_ROWS_FOR_MODEL,
+    CohortParams,
     Deps,
     PersonaParams,
     department_problem,
     find_people,
     fmt_date,
     focus_person,
+    no_population,
     person_problem,
     person_summary,
+    population_state,
+    previous_population,
     resolve_department,
     resolve_person,
     table,
 )
+from mia.domains.turnos.periods import AbsencePeriod, absence_periods
+from mia.sources.mappers.hr import ShiftKind
 from mia.text import normalize_key
 
 ACCEPTED = "aceptada"
@@ -84,63 +91,137 @@ def buscar(deps: Deps) -> Tool:
 
 
 # ------------------------------------------------------------------ ficha 360
-def ficha(deps: Deps) -> Tool:
-    async def handler(p: PersonaParams, ctx: ToolContext) -> ToolResult:
-        today = ctx.now.date()
-        async with deps.db.session() as db:
-            match = await resolve_person(db, p)
-            if match.employee is None:
-                return person_problem(match, p.nombre)
-            e = match.employee
-            shift = None
-            if e.person_key:
-                shift = await db.scalar(
-                    select(ShiftDay).where(ShiftDay.person_key == e.person_key, ShiftDay.day == today)
-                )
-            vacations: list[Vacation] = []
-            balance = None
-            if e.email:
-                vacations = list(
-                    (
-                        await db.scalars(
-                            select(Vacation)
-                            .where(Vacation.employee_email == e.email, Vacation.end_date >= today)
-                            .order_by(Vacation.start_date)
-                        )
-                    ).all()
-                )
-                balance = await db.scalar(
-                    select(VacationBalance).where(
-                        VacationBalance.employee_email == e.email, VacationBalance.year == today.year
+async def build_profile(db: AsyncSession, e: Employee, today: date) -> dict[str, Any]:
+    """Ficha 360: hoy, semana, próximos hitos, datos laborales, organización, vacaciones,
+    bajas, nóminas y documentación (la misma estructura que el sistema anterior)."""
+    week_start = today - timedelta(days=today.weekday())
+    shifts: list[ShiftDay] = []
+    current_absence = None
+    sick_year: list[AbsencePeriod] = []
+    if e.person_key:
+        shifts = list(
+            (
+                await db.scalars(
+                    select(ShiftDay)
+                    .where(
+                        ShiftDay.person_key == e.person_key,
+                        ShiftDay.day.between(week_start, today + timedelta(days=21)),
                     )
+                    .order_by(ShiftDay.day)
                 )
-            dept_managers: list[str] = []
-            if e.department_key:
-                units = (
-                    await db.scalars(select(OrgUnit).where(OrgUnit.department_key == e.department_key))
-                ).all()
-                dept_managers = sorted({m["name"] for u in units for m in u.managers or [] if m.get("name")})
-            fresh = await deps.freshness(
-                db, "empleados", "turnos", "vacaciones", f"saldo_vacaciones_{today.year}"
+            ).all()
+        )
+        now_periods = await absence_periods(db, lo=today, hi=today, person_keys=[e.person_key])
+        current_absence = now_periods[0] if now_periods else None
+        sick_year = await absence_periods(
+            db, lo=date(today.year, 1, 1), hi=today, kinds=(ShiftKind.BAJA,), person_keys=[e.person_key]
+        )
+    vacations: list[Vacation] = []
+    balance = None
+    if e.email:
+        vacations = list(
+            (
+                await db.scalars(
+                    select(Vacation)
+                    .where(Vacation.employee_email == e.email, Vacation.end_date >= today)
+                    .order_by(Vacation.start_date)
+                )
+            ).all()
+        )
+        balance = await db.scalar(
+            select(VacationBalance).where(
+                VacationBalance.employee_email == e.email, VacationBalance.year == today.year
             )
-        accepted = [v for v in vacations if normalize_key(v.status) == ACCEPTED]
-        card: dict[str, Any] = {
-            "empleado_id": e.sp_id,
-            "nombre": e.name,
-            "activo": e.active,
-            "departamento": e.department,
+        )
+    units = list((await db.scalars(select(OrgUnit).where(OrgUnit.department_key == e.department_key))).all())
+    managers = sorted({m["name"] for u in units for m in u.managers or [] if m.get("name")})
+    slips: list[Payslip] = []
+    docs: list[SignedDocument] = []
+    if e.person_key:
+        slips = list(
+            (
+                await db.scalars(
+                    select(Payslip).where(Payslip.person_key == e.person_key, Payslip.year == today.year)
+                )
+            ).all()
+        )
+        docs = list(
+            (await db.scalars(select(SignedDocument).where(SignedDocument.person_key == e.person_key))).all()
+        )
+    by_day = {s.day: s for s in shifts}
+    today_shift = by_day.get(today)
+    accepted = [v for v in vacations if normalize_key(v.status) == ACCEPTED]
+    upcoming: list[dict[str, Any]] = []
+    if current_absence is not None:
+        back = current_absence.return_shift
+        upcoming.append(
+            {
+                "hito": f"fin de {current_absence.kind}",
+                "fecha": current_absence.end.isoformat(),
+                "vuelve": back.day.isoformat() if back else "sin turno publicado",
+            }
+        )
+    for v in accepted[:2]:
+        if v.start_date and v.start_date > today:
+            upcoming.append(
+                {
+                    "hito": v.request_type or "Vacaciones",
+                    "fecha": v.start_date.isoformat(),
+                    "hasta": v.end_date.isoformat() if v.end_date else None,
+                }
+            )
+    next_rest = next((s for s in shifts if s.day > today and s.kind == ShiftKind.DESCANSO), None)
+    if next_rest:
+        upcoming.append({"hito": "próximo descanso", "fecha": next_rest.day.isoformat()})
+    ordinary_months = {s.month for s in slips if s.month and not s.special}
+    missing_months = [m for m in range(1, today.month) if m not in ordinary_months]
+    sick_days = sum(p.days_within(date(today.year, 1, 1), today) for p in sick_year)
+    return {
+        "empleado_id": e.sp_id,
+        "nombre": e.name,
+        "activo": e.active,
+        "hoy": {
+            "turno": {"tipo": today_shift.kind, "horario": today_shift.raw_value}
+            if today_shift
+            else "sin turno publicado",
+            "ausencia_en_curso": (
+                {
+                    "tipo": current_absence.kind,
+                    "desde": current_absence.start.isoformat(),
+                    "dias_hasta_hoy": (today - current_absence.start).days + 1,
+                }
+                if current_absence
+                else None
+            ),
+        },
+        "semana_actual": [
+            {
+                "fecha": d.isoformat(),
+                "tipo": by_day[d].kind if d in by_day else "Sin publicar",
+                "horario": by_day[d].raw_value if d in by_day else None,
+            }
+            for d in (week_start + timedelta(days=i) for i in range(7))
+        ],
+        "proximos_hitos": upcoming,
+        "ficha_laboral": {
             "puesto": e.position,
-            "responsable_directo": e.manager_name,
-            "responsables_del_departamento": dept_managers,
+            "departamento": e.department,
+            "codigo_empleado": e.employee_code,
             "edad": age(e.birth_date, today),
             "email": e.email,
             "telefono": e.phone,
-            "turno_hoy": (
-                {"tipo": shift.kind, "horario": shift.raw_value, "comentario": shift.comment}
-                if shift
-                else None
-            ),
-            "vacaciones_en_curso_o_proximas": [
+            "cuenta": e.account,
+            "nacionalidad": e.nationality,
+        },
+        "organizacion": {
+            "responsable_directo": e.manager_name,
+            "responsables_del_departamento": managers,
+            "secciones_del_departamento": sorted({u.section for u in units if u.section}),
+        },
+        "vacaciones": {
+            "saldo_actual": balance.current_balance if balance else None,
+            "saldo_total": balance.total_balance if balance else None,
+            "aceptadas_proximas": [
                 {
                     "desde": fmt_date(v.start_date),
                     "hasta": fmt_date(v.end_date),
@@ -149,16 +230,70 @@ def ficha(deps: Deps) -> Tool:
                 }
                 for v in accepted[:3]
             ],
-            "solicitudes_pendientes": sum(1 for v in vacations if normalize_key(v.status) == PENDING),
+            "pendientes": sum(1 for v in vacations if normalize_key(v.status) == PENDING),
+        },
+        "bajas_este_anio": {
+            "periodos": len(sick_year),
+            "dias": sick_days,
+            "ultima": (
+                {"desde": sick_year[-1].start.isoformat(), "hasta": sick_year[-1].end.isoformat()}
+                if sick_year
+                else None
+            ),
+        },
+        "documentacion": {
+            "nominas_este_anio": len(slips),
+            "nominas_no_leidas": sum(1 for s in slips if s.read is False),
+            "meses_sin_nomina": missing_months,
+            "documentos_por_tipo": dict(Counter(d.doc_type for d in docs)),
+        },
+        "indicadores": {
             "saldo_vacaciones": balance.current_balance if balance else None,
-            **fresh,
-        }
-        return ToolResult(ToolStatus.OK, card, {"type": "employee_card", **card}, focus_person(e))
+            "dias_de_baja_este_anio": sick_days,
+            "nominas_no_leidas": sum(1 for s in slips if s.read is False),
+            "documentos_firmados": len(docs),
+        },
+        "acciones_rapidas": [
+            "Muéstrame sus turnos",
+            "Muéstrame sus vacaciones",
+            "Muéstrame sus bajas",
+            "Muéstrame sus nóminas",
+            "Muéstrame sus documentos",
+            "Genera la ficha en PDF",
+        ],
+    }
+
+
+def ficha(deps: Deps) -> Tool:
+    async def handler(p: PersonaParams, ctx: ToolContext) -> ToolResult:
+        today = ctx.now.date()
+        async with deps.db.session() as db:
+            match = await resolve_person(db, p)
+            if match.employee is None:
+                return person_problem(match, p.nombre)
+            e = match.employee
+            profile = await build_profile(db, e, today)
+            fresh = await deps.freshness(
+                db,
+                "empleados",
+                "turnos",
+                "vacaciones",
+                f"saldo_vacaciones_{today.year}",
+                "nominas",
+                "documentos_firmados",
+            )
+        card = {**profile, **fresh}
+        return ToolResult(
+            ToolStatus.OK,
+            card,
+            {"type": "employee_360", "title": f"Ficha 360 · {e.name}", **card},
+            focus_person(e),
+        )
 
     return Tool(
         "ficha_empleado",
-        "Ficha completa de una persona: puesto, departamento, responsable, turno de hoy, vacaciones "
-        "próximas y saldo. Usa empleado_id si está en el foco.",
+        "Ficha 360 de una persona: hoy, semana, próximos hitos, datos laborales, organización, vacaciones y "
+        "saldo, bajas del año, nóminas y documentación. Usa empleado_id si está en el foco.",
         PersonaParams,
         handler,
         permission=Permission.EMPLEADOS_LEER,
@@ -167,13 +302,13 @@ def ficha(deps: Deps) -> Tool:
 
 
 # ------------------------------------------------------------------ plantilla
-class PlantillaParams(BaseModel):
+class PlantillaParams(CohortParams):
     departamento: str | None = Field(default=None, description="Departamento (opcional)")
     puesto: str | None = Field(default=None, description="Puesto o parte del nombre del puesto (opcional)")
     estado: Literal["activos", "inactivos", "todos"] = Field(
         default="activos", description="Por defecto solo activos (regla POB-001)"
     )
-    agrupar_por: Literal["departamento", "puesto"] | None = None
+    agrupar_por: Literal["departamento", "puesto", "nacionalidad"] | None = None
 
 
 def plantilla(deps: Deps) -> Tool:
@@ -187,6 +322,11 @@ def plantilla(deps: Deps) -> Tool:
                 stmt = stmt.where(Employee.department_key == dept.key)
             if p.estado != "todos":
                 stmt = stmt.where(Employee.active.is_(p.estado == "activos"))
+            if p.sobre_resultado_anterior:
+                previous = previous_population(ctx)
+                if previous is None:
+                    return no_population()
+                stmt = stmt.where(Employee.sp_id.in_(previous["empleado_ids"]))
             people = list((await db.scalars(stmt.order_by(Employee.name))).all())
             fresh = await deps.freshness(db, "empleados")
         if p.puesto:
@@ -200,12 +340,15 @@ def plantilla(deps: Deps) -> Tool:
             **fresh,
         }
         if p.agrupar_por:
-            field = "department" if p.agrupar_por == "departamento" else "position"
+            field = {"departamento": "department", "puesto": "position", "nacionalidad": "nationality"}[
+                p.agrupar_por
+            ]
             counts = Counter(getattr(e, field) or "Sin dato" for e in people)
             summary["por_" + p.agrupar_por] = dict(counts.most_common())
         if len(people) <= MAX_ROWS_FOR_MODEL:
             summary["personas"] = [person_summary(e) for e in people]
-        state = {"foco_departamento": dept.name} if dept.name else {}
+        state: dict[str, Any] = {"foco_departamento": dept.name} if dept.name else {}
+        state.update(population_state(f"plantilla {p.estado} {dept.name or ''}".strip(), people))
         rows = [[e.name, e.department, e.position] for e in people]
         return ToolResult(
             ToolStatus.OK,

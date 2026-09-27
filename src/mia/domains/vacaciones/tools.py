@@ -13,13 +13,18 @@ from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolSt
 from mia.data import Employee, Vacation, VacationBalance
 from mia.domains.common import (
     MAX_ROWS_FOR_MODEL,
+    CohortParams,
     Deps,
     Periodo,
     PersonaParams,
     department_problem,
+    employees_for,
     fmt_date,
     focus_person,
+    no_population,
     person_problem,
+    population_state,
+    previous_population,
     resolve_department,
     resolve_person,
     table,
@@ -42,7 +47,7 @@ class _OptionalPerson(BaseModel):
 
 
 # ------------------------------------------------------------------ solicitudes
-class VacacionesParams(_OptionalPerson, Periodo):
+class VacacionesParams(_OptionalPerson, Periodo, CohortParams):
     departamento: str | None = Field(default=None, description="Departamento (opcional)")
     estado: Literal["aceptadas", "pendientes", "rechazadas", "todas"] = Field(
         default="aceptadas", description="Por defecto solo las aceptadas"
@@ -81,12 +86,19 @@ def solicitudes(deps: Deps) -> Tool:
                 state["foco_periodo"] = {"desde": start.isoformat(), "hasta": end.isoformat()}
             else:
                 stmt = stmt.where(Vacation.end_date >= today)  # de una persona: en curso y próximas
+            if p.sobre_resultado_anterior:
+                if (previous := previous_population(ctx)) is None:
+                    return no_population()
+                stmt = stmt.where(Vacation.employee_email.in_(previous["emails"]))
             rows = list((await db.scalars(stmt.order_by(Vacation.start_date))).all())
             fresh = await deps.freshness(db, "vacaciones")
         if p.estado != "todas":
             rows = [v for v in rows if normalize_key(v.status) == ESTADOS[p.estado]]
         if p.tipo != "todos":
             rows = [v for v in rows if normalize_key(v.request_type) == normalize_key(p.tipo)]
+        async with deps.db.session() as db:
+            people = await employees_for(db, emails={v.employee_email for v in rows if v.employee_email})
+        state.update(population_state(f"vacaciones ({p.estado})", people))
         items = [
             {
                 "persona": v.employee_name,
@@ -125,7 +137,7 @@ def solicitudes(deps: Deps) -> Tool:
 
 
 # ------------------------------------------------------------------ saldos
-class SaldoParams(_OptionalPerson):
+class SaldoParams(_OptionalPerson, CohortParams):
     departamento: str | None = Field(default=None, description="Departamento (opcional)")
     solo_negativos: bool = Field(default=False, description="Solo saldos por debajo de cero")
     anio: int | None = Field(default=None, description="Año del saldo (por defecto el actual)")
@@ -148,7 +160,13 @@ def saldos(deps: Deps) -> Tool:
                 stmt = stmt.where(VacationBalance.department.ilike(f"%{p.departamento}%"))
             if p.solo_negativos:
                 stmt = stmt.where(VacationBalance.current_balance < 0)
+            if p.sobre_resultado_anterior:
+                if (previous := previous_population(ctx)) is None:
+                    return no_population()
+                stmt = stmt.where(VacationBalance.employee_email.in_(previous["emails"]))
             rows = list((await db.scalars(stmt.order_by(VacationBalance.current_balance))).all())
+            people = await employees_for(db, emails={b.employee_email for b in rows if b.employee_email})
+            state.update(population_state(f"saldos {year}", people))
             fresh = await deps.freshness(db, f"saldo_vacaciones_{year}")
         if not rows:
             return ToolResult(

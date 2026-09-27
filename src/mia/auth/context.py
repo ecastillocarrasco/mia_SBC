@@ -19,7 +19,10 @@ class Permission(StrEnum):
     TURNOS_LEER = "turnos:leer"
     VACACIONES_LEER = "vacaciones:leer"
     NOMINAS_LEER = "nominas:leer"
+    NOMINAS_IMPORTES = "nominas:importes"
+    """Contenido económico de las nóminas: se lee en el momento, se audita y nunca se guarda."""
     DOCUMENTOS_LEER = "documentos:leer"
+    DOCUMENTOS_CONTENIDO = "documentos:contenido"
     CURRICULUMS_LEER = "curriculums:leer"
     TRABAJO_TEMPORAL_LEER = "trabajo_temporal:leer"
     CORREO_LEER = "correo:leer"
@@ -46,6 +49,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
     "mia.rrhh": _LECTURA_RRHH
     | {
         Permission.NOMINAS_LEER,
+        Permission.NOMINAS_IMPORTES,
+        Permission.DOCUMENTOS_CONTENIDO,
         Permission.CURRICULUMS_LEER,
         Permission.CORREO_LEER,
         Permission.CORREO_ENVIAR,

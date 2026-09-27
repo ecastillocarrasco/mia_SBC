@@ -108,3 +108,44 @@ async def test_failed_event_becomes_llm_error() -> None:
     with pytest.raises(LLMError, match="boom"):
         _ = [e async for e in provider.stream(LLMRequest(system="s", messages=[]))]
     await provider.aclose()
+
+
+async def test_rate_limit_is_retried() -> None:
+    """Fallo real: con muchas preguntas seguidas, un 429 se convertía en «problema técnico»."""
+    calls = {"n": 0}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(429, headers={"retry-after": "0"}, text="rate limit")
+        return httpx.Response(200, content=_sse({"type": "response.output_text.delta", "delta": "ok"}))
+
+    provider = _provider(httpx.MockTransport(handle))
+    events = [e async for e in provider.stream(LLMRequest(system="s", messages=[]))]
+    await provider.aclose()
+    assert events == [TextDelta("ok")] and calls["n"] == 2
+
+
+async def test_web_search_is_dropped_if_the_provider_rejects_it() -> None:
+    bodies: list[dict[str, object]] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        bodies.append(body)
+        if any(t.get("type") == "web_search" for t in body.get("tools", [])):
+            return httpx.Response(400, text='{"error": "tool type web_search is not supported"}')
+        return httpx.Response(200, content=_sse({"type": "response.output_text.delta", "delta": "hola"}))
+
+    provider = OpenAIResponsesProvider(
+        api_key="k",
+        model="m",
+        base_url="https://llm.test/v1",
+        timeout_seconds=5,
+        transport=httpx.MockTransport(handle),
+        web_search=True,
+    )
+    first = [e async for e in provider.stream(LLMRequest(system="s", messages=[]))]
+    second = [e async for e in provider.stream(LLMRequest(system="s", messages=[]))]
+    await provider.aclose()
+    assert first == second == [TextDelta("hola")]
+    assert len(bodies) == 3  # rechazo + reintento sin búsqueda + segunda petición ya sin ella

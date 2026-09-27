@@ -26,6 +26,7 @@ dependencies = [
     "python-docx>=1.1",
     "openpyxl>=3.1",
     "reportlab>=4",
+    "python-pptx>=1",
 ]
 
 [project.scripts]
@@ -75,5 +76,9 @@ packages = ["mia"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["azure.*", "msal.*", "docx.*", "openpyxl.*", "reportlab.*"]
+module = ["azure.*", "msal.*", "docx.*", "openpyxl.*", "reportlab.*", "pptx.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["mia.domains.informes.render"]
+disallow_untyped_calls = false

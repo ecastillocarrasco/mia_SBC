@@ -11,7 +11,8 @@ from mia.domains import build_registry
 from mia.llm import LLMProvider, build_llm_provider
 from mia.settings import Settings
 from mia.sources.graph import GraphClient
-from mia.sources.sharepoint import CertificateTokenProvider
+from mia.sources.sharepoint import CertificateTokenProvider, SharePointClient
+from mia.sync.factory import build_sharepoint_client
 from mia.voice import CachedVoice, build_voice
 
 
@@ -37,6 +38,7 @@ class Services:
     identity: IdentityProvider
     engine: ConversationEngine
     graph: GraphClient | None = None
+    sharepoint: SharePointClient | None = None
 
     @classmethod
     def build(
@@ -50,6 +52,7 @@ class Services:
         database = db or Database(settings.database_url)
         provider = llm or build_llm_provider(settings.llm)
         graph = build_graph_client(settings)
+        sharepoint = build_sharepoint_client(settings) if settings.sharepoint.configured else None
         engine = ConversationEngine(
             llm=provider,
             tools=build_registry(
@@ -58,6 +61,7 @@ class Services:
                 settings=settings,
                 llm=provider,
                 graph=graph,
+                sharepoint=sharepoint,
                 enabled=settings.domains.enabled,
             ),
             db=database,
@@ -75,6 +79,7 @@ class Services:
             identity=build_identity_provider(settings.auth),
             engine=engine,
             graph=graph,
+            sharepoint=sharepoint,
         )
 
     async def aclose(self) -> None:
@@ -82,4 +87,6 @@ class Services:
         await self.voice.aclose()
         if self.graph is not None:
             await self.graph.aclose()
+        if self.sharepoint is not None:
+            await self.sharepoint.aclose()
         await self.db.dispose()
