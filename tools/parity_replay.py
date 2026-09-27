@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,47 @@ def _conversations(domain: str | None, limit: int) -> list[dict[str, Any]]:
     return selected[:limit]
 
 
+@dataclass
+class TurnResult:
+    lines: list[str]
+    flagged: bool
+    session_id: str | None = None
+    elapsed: int | None = None
+    failed: bool = False
+
+
+def _replay_turn(client: httpx.Client, turn: dict[str, Any], session_id: str | None) -> TurnResult:
+    payload: dict[str, Any] = {"message": turn["question"]}
+    if session_id:
+        payload["session_id"] = session_id
+    try:
+        response = client.post("/api/chat", json=payload)
+        body = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        error = f"⚠️ error de conexión: {type(exc).__name__}: {exc}"
+        return TurnResult([f"**{turn['question']}**  ", error, ""], flagged=True, failed=True)
+    tools = body.get("tools", [])
+    elapsed = int(body.get("elapsed_ms", 0))
+    flags = []
+    if response.status_code >= 400 or body.get("status") == "error":
+        flags.append(f"respuesta de error ({response.status_code})")
+    if turn.get("domain") in DATA_DOMAINS and not tools:
+        flags.append("sin herramienta")
+    if any(t["status"] in {"error", "source_unavailable"} for t in tools):
+        flags.append("error de herramienta")
+    if elapsed > SLOW_MS:
+        flags.append("lenta")
+    mark = "⚠️ " + ", ".join(flags) if flags else "✅"
+    tool_names = ", ".join(f"{t['name']}:{t['status']}" for t in tools) or "—"
+    lines = [
+        f"**{turn['question']}**  ",
+        f"{mark} · {elapsed} ms · herramientas: {tool_names}  ",
+        f"> {str(body.get('answer', '')).strip()[:400]}",
+        "",
+    ]
+    return TurnResult(lines, bool(flags), body.get("session_id"), elapsed)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--url", default="http://127.0.0.1:5001")
@@ -56,35 +98,34 @@ def main() -> None:
     lines = ["# Reproducción de conversaciones reales", ""]
     latencies: list[int] = []
     flagged = 0
+    consecutive_errors = 0
     with httpx.Client(base_url=args.url, timeout=90) as client:
+        try:
+            client.get("/health/live").raise_for_status()
+        except httpx.HTTPError:
+            raise SystemExit(
+                f"mIA no responde en {args.url}: arráncala con «python -m mia» en otra ventana."
+            ) from None
         for n, conv in enumerate(conversations, 1):
             session_id = None
             lines.append(f"## Conversación {n}")
             for turn in conv["turns"]:
-                payload: dict[str, Any] = {"message": turn["question"]}
-                if session_id:
-                    payload["session_id"] = session_id
-                body = client.post("/api/chat", json=payload).json()
-                session_id = body.get("session_id")
-                tools = body.get("tools", [])
-                elapsed = int(body.get("elapsed_ms", 0))
-                latencies.append(elapsed)
-                flags = []
-                if turn.get("domain") in DATA_DOMAINS and not tools:
-                    flags.append("sin herramienta")
-                if any(t["status"] in {"error", "source_unavailable"} for t in tools):
-                    flags.append("error de herramienta")
-                if elapsed > SLOW_MS:
-                    flags.append("lenta")
-                flagged += bool(flags)
-                mark = "⚠️ " + ", ".join(flags) if flags else "✅"
-                tool_names = ", ".join(f"{t['name']}:{t['status']}" for t in tools) or "—"
-                lines += [
-                    f"**{turn['question']}**  ",
-                    f"{mark} · {elapsed} ms · herramientas: {tool_names}  ",
-                    f"> {str(body.get('answer', '')).strip()[:400]}",
-                    "",
-                ]
+                result = _replay_turn(client, turn, session_id)
+                lines += result.lines
+                flagged += result.flagged
+                if result.elapsed is not None:
+                    latencies.append(result.elapsed)
+                if result.failed:
+                    consecutive_errors += 1
+                    if consecutive_errors >= 3:
+                        lines.append("_Reproducción detenida: el servidor no responde (revisa su consola)._")
+                        print("\nEl servidor ha dejado de responder: revisa la consola de mIA.")
+                        break
+                    continue
+                consecutive_errors = 0
+                session_id = result.session_id
+            if consecutive_errors >= 3:
+                break
             print(f"{n}/{len(conversations)} conversaciones", end="\r")
     turns = len(latencies)
     p90 = sorted(latencies)[int(0.9 * (turns - 1))] if latencies else 0
