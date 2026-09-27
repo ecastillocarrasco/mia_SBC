@@ -89,15 +89,11 @@ def boletines(deps: Deps) -> Tool:
             rows = [r for r in rows if normalize_key(p.empresa) in normalize_key(r.company)]
         if p.trabajador:
             rows = [
-                r
-                for r in rows
-                if all(t in normalize_key(r.worker_name) for t in normalize_key(p.trabajador).split())
+                r for r in rows if all(t in normalize_key(r.worker_name) for t in normalize_key(p.trabajador).split())
             ]
         if p.estado:
             rows = [r for r in rows if normalize_key(p.estado) in normalize_key(r.status)]
-        totals: dict[str, dict[str, float]] = defaultdict(
-            lambda: {"boletines": 0, "horas": 0.0, "importe": 0.0}
-        )
+        totals: dict[str, dict[str, float]] = defaultdict(lambda: {"boletines": 0, "horas": 0.0, "importe": 0.0})
         for r in rows:
             for key in (f"empresa: {r.company}", f"departamento: {r.department}"):
                 totals[key]["boletines"] += 1
@@ -283,8 +279,7 @@ def anomalias(deps: Deps) -> Tool:
 
     return Tool(
         "anomalias_tt",
-        "Detecta boletines de ETT anómalos: exceso de horas, sin horas, duplicados e "
-        "importes alejados de las tarifas.",
+        "Detecta boletines de ETT anómalos: exceso de horas, sin horas, duplicados e importes alejados de las tarifas.",
         AnomaliasParams,
         handler,
         permission=Permission.TRABAJO_TEMPORAL_LEER,
@@ -298,9 +293,7 @@ class ComunicacionesParams(BaseModel):
 def comunicaciones(deps: Deps) -> Tool:
     async def handler(p: ComunicacionesParams, ctx: ToolContext) -> ToolResult:
         async with deps.db.session() as db:
-            rows = list(
-                (await db.scalars(select(TtCommunication).order_by(TtCommunication.created_at.desc()))).all()
-            )
+            rows = list((await db.scalars(select(TtCommunication).order_by(TtCommunication.created_at.desc()))).all())
         if p.buscar:
             rows = [r for r in rows if normalize_key(p.buscar) in normalize_key(f"{r.title} {r.file_name}")]
         items = [

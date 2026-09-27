@@ -102,9 +102,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("year", "sp_id"),
     )
     with op.batch_alter_table("hr_vacation_balances", schema=None) as batch_op:
-        batch_op.create_index(
-            batch_op.f("ix_hr_vacation_balances_employee_email"), ["employee_email"], unique=False
-        )
+        batch_op.create_index(batch_op.f("ix_hr_vacation_balances_employee_email"), ["employee_email"], unique=False)
 
     op.create_table(
         "hr_vacations",

@@ -87,9 +87,7 @@ async def legacy_chat(body: LegacyChatRequest, services: ServicesDep, user: User
 
 
 @router.post("/api/mia/chat/stream")
-async def legacy_chat_stream(
-    body: LegacyChatRequest, services: ServicesDep, user: UserDep
-) -> StreamingResponse:
+async def legacy_chat_stream(body: LegacyChatRequest, services: ServicesDep, user: UserDep) -> StreamingResponse:
     events = await prime(services.engine.run(message=body.message, user=user, session_id=body.session_id))
     return StreamingResponse(to_ndjson(events, _legacy_stream_event), media_type="application/x-ndjson")
 
@@ -151,9 +149,7 @@ async def legacy_report(body: dict[str, Any], services: ServicesDep, user: UserD
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No hay datos para ese informe")
     document = to_document(execution.result.presentation)
     logo = services.settings.reports.logo_path
-    content = await asyncio.to_thread(
-        RENDERERS[fmt], document, ctx.now, logo if logo and logo.is_file() else None
-    )
+    content = await asyncio.to_thread(RENDERERS[fmt], document, ctx.now, logo if logo and logo.is_file() else None)
     name = re.sub(r"[^\w\- ]+", "", document.title).strip()[:60] or "informe"
     return Response(
         content,

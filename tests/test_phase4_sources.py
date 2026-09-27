@@ -92,9 +92,7 @@ async def test_identity_folders_never_store_the_id(db: Database) -> None:
             "FileRef": "/RRHH/Docs/12345678Z/Contrato_12345678Z_2024.pdf",
         },
     )
-    client = SharePointClient(
-        site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport()
-    )
+    client = SharePointClient(site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport())
     pseudo = Pseudonymizer("clave")
     runner = SyncRunner(db=db, client=client, pseudonymize=pseudo)
     await runner.run(definitions.NOMINAS)
@@ -120,9 +118,7 @@ def _docx(text: str) -> bytes:
 
 
 def test_text_extraction_and_chunks() -> None:
-    status, text = extract_text(
-        _docx("Camarera de pisos con cinco años de experiencia.\nInglés alto."), "1.docx"
-    )
+    status, text = extract_text(_docx("Camarera de pisos con cinco años de experiencia.\nInglés alto."), "1.docx")
     assert status == "ok" and "Inglés alto" in text
     assert extract_text(b"\x89PNG....", "foto.png")[0] == "unsupported"
     chunks = chunk_text("palabra " * 600)
@@ -143,9 +139,7 @@ async def test_cv_indexer_processes_only_new_or_changed(db: Database) -> None:
     fake.files["/CVDocs/8316.docx"] = _docx(
         "Recepcionista con experiencia en hoteles de cinco estrellas y alemán fluido."
     )
-    client = SharePointClient(
-        site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport()
-    )
+    client = SharePointClient(site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport())
     await SyncRunner(db=db, client=client, pseudonymize=Pseudonymizer("k")).run(definitions.CV_DOCS)
     indexer = CvIndexer(db=db, client=client, llm=FakeLLMProvider(), embedding_model="x")
     first = await indexer.run()
@@ -184,9 +178,7 @@ async def test_one_bad_cv_does_not_stop_the_rest(tmp_path: Path) -> None:
     )
     fake.files["/CVDocs/1.pdf"] = b"\xff\xd8\xff\xe1 jpeg"
     fake.files["/CVDocs/2.docx"] = _docx("Camarera de pisos con experiencia en hoteles y francés.")
-    client = SharePointClient(
-        site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport()
-    )
+    client = SharePointClient(site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport())
     await SyncRunner(db=db, client=client, pseudonymize=Pseudonymizer("k")).run(definitions.CV_DOCS)
     report = await CvIndexer(db=db, client=client, llm=FakeLLMProvider(), embedding_model="x").run()
     await client.aclose()
@@ -210,9 +202,7 @@ async def test_scanned_pdf_is_read_visually_and_old_empties_are_retried(tmp_path
         {"ID": 1, "FileLeafRef": "77.pdf", "FileRef": "/CVDocs/77.pdf", "Modified": "2026-09-01T10:00:00Z"},
     )
     fake.files["/CVDocs/77.pdf"] = buffer.getvalue()
-    client = SharePointClient(
-        site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport()
-    )
+    client = SharePointClient(site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport())
     await SyncRunner(db=db, client=client, pseudonymize=Pseudonymizer("k")).run(definitions.CV_DOCS)
     async with db.session() as s:  # simula un CV que quedó «empty» antes de existir la lectura visual
         s.add(CvText(document_id=1, candidate_id=77, status="empty", text=None, source_modified=None))

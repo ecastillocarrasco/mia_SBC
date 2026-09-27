@@ -18,15 +18,9 @@ from mia.voice import CachedVoice, build_voice
 
 def build_graph_client(settings: Settings) -> GraphClient | None:
     """Graph para el correo: misma aplicación y certificado que SharePoint."""
-    if (
-        "correo" not in settings.domains.enabled
-        or not settings.mail.mailbox
-        or not settings.sharepoint.configured
-    ):
+    if "correo" not in settings.domains.enabled or not settings.mail.mailbox or not settings.sharepoint.configured:
         return None
-    return GraphClient(
-        CertificateTokenProvider(settings.sharepoint, scope="https://graph.microsoft.com/.default")
-    )
+    return GraphClient(CertificateTokenProvider(settings.sharepoint, scope="https://graph.microsoft.com/.default"))
 
 
 @dataclass(slots=True)

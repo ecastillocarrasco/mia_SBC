@@ -86,9 +86,7 @@ async def _seed(db: Database, llm: FakeLLMProvider) -> None:
             )
         )
     rows.append(Payslip(sp_id=200, person_key="pk-ana", year=2026, month=7, period="2026-07", special=True))
-    rows.append(
-        SignedDocument(sp_id=1, person_key="pk-ana", doc_type="Protección de datos", file_name="LOPD.pdf")
-    )
+    rows.append(SignedDocument(sp_id=1, person_key="pk-ana", doc_type="Protección de datos", file_name="LOPD.pdf"))
     rows += [
         TtTimesheet(
             sp_id=1,
@@ -213,10 +211,12 @@ async def test_report_from_last_table(env: Any, fmt: str) -> None:
 
 # ------------------------------------------------------------------ correo (COR-001)
 class _FakeGraph:
-    def __init__(self) -> None:
+    def __init__(self, recipient: str = "ana@x.test") -> None:
         self.sent: list[str] = []
+        self.recipient = recipient
+        self.patched: list[str] = []
 
-    def handler(self, request: httpx.Request) -> httpx.Response:
+    def handler(self, request: httpx.Request) -> httpx.Response:  # noqa: PLR0911
         path = request.url.path
         if path.endswith("/mailFolders/inbox/messages"):
             return httpx.Response(
@@ -238,6 +238,13 @@ class _FakeGraph:
         if path.endswith("/send"):
             self.sent.append(path)
             return httpx.Response(202)
+        if path.endswith("/messages/DRAFT-1") and request.method == "PATCH":
+            self.patched.append(path)
+            return httpx.Response(200, json={})
+        if path.endswith("/messages/DRAFT-1") and request.method == "DELETE":
+            return httpx.Response(204)
+        if path.endswith("/messages/DRAFT-1"):
+            return httpx.Response(200, json={"toRecipients": [{"emailAddress": {"address": self.recipient}}]})
         if "/messages/AAMk-1" in path:
             return httpx.Response(
                 200,
@@ -259,21 +266,15 @@ async def test_mail_send_requires_a_previous_draft_and_explicit_confirmation(env
     assert inbox.summary["correos"][0]["ref"] == "c1"
     read = await call(registry, "leer_correo", state, ref="c1")
     assert read.summary["texto"] == "Hola & gracias"
-    draft = await call(
-        registry, "preparar_respuesta", state, ref="c1", texto="Recibido, gracias.", request_id="t1"
-    )
+    draft = await call(registry, "preparar_respuesta", state, ref="c1", texto="Recibido, gracias.", request_id="t1")
     assert draft.summary["borrador"] == "b1"
-    same_turn = await call(
-        registry, "enviar_borrador", state, borrador="b1", message="envíalo", request_id="t1"
-    )
+    same_turn = await call(registry, "enviar_borrador", state, borrador="b1", message="envíalo", request_id="t1")
     assert same_turn.status is ToolStatus.PERMISSION_DENIED
     no_confirmation = await call(
         registry, "enviar_borrador", state, borrador="b1", message="¿qué pone?", request_id="t2"
     )
     assert no_confirmation.status is ToolStatus.PERMISSION_DENIED
-    hesitant = await call(
-        registry, "enviar_borrador", state, borrador="b1", message="no, espera", request_id="t3"
-    )
+    hesitant = await call(registry, "enviar_borrador", state, borrador="b1", message="no, espera", request_id="t3")
     assert hesitant.status is ToolStatus.PERMISSION_DENIED
     assert fake.sent == []
     ok = await call(registry, "enviar_borrador", state, borrador="b1", message="Sí, envíalo", request_id="t4")
@@ -287,3 +288,40 @@ async def test_disabled_domain_is_not_offered(env: Any) -> None:
     names = {t.name for t in registry.schemas_for(ADMIN)}
     assert "nominas_persona" not in names and "buscar_empleado" in names
     assert "nóminas" in registry.capabilities_for(ADMIN)
+
+
+async def _mail_env(env: Any, recipient: str) -> tuple[ToolRegistry, dict[str, Any], _FakeGraph, GraphClient]:
+    _, db, settings = env
+    fake = _FakeGraph(recipient)
+    graph = GraphClient(StaticTokenProvider(), transport=httpx.MockTransport(fake.handler))
+    registry = build_registry(db, settings=settings, graph=graph)
+    state: dict[str, Any] = {}
+    await call(registry, "correos_sin_leer", state)
+    await call(registry, "preparar_respuesta", state, ref="c1", texto="Recibido.", request_id="t1")
+    return registry, state, fake, graph
+
+
+async def test_mail_to_noreply_is_never_sent(env: Any) -> None:
+    registry, state, fake, graph = await _mail_env(env, "no-reply@empresa.test")
+    result = await call(registry, "enviar_borrador", state, borrador="b1", message="sí, envíalo", request_id="t2")
+    await graph.aclose()
+    assert result.status is ToolStatus.PERMISSION_DENIED and fake.sent == []
+
+
+async def test_editing_a_draft_requires_confirming_again(env: Any) -> None:
+    registry, state, fake, graph = await _mail_env(env, "ana@x.test")
+    await call(registry, "modificar_borrador", state, borrador="b1", texto="Recibido, gracias.", request_id="t2")
+    same_turn = await call(registry, "enviar_borrador", state, borrador="b1", message="envíalo", request_id="t2")
+    assert same_turn.status is ToolStatus.PERMISSION_DENIED and fake.patched
+    ok = await call(registry, "enviar_borrador", state, borrador="b1", message="sí", request_id="t3")
+    again = await call(registry, "enviar_borrador", state, borrador="b1", message="sí", request_id="t4")
+    await graph.aclose()
+    assert ok.status is ToolStatus.OK and again.status is ToolStatus.PERMISSION_DENIED and len(fake.sent) == 1
+
+
+async def test_discarded_draft_cannot_be_sent(env: Any) -> None:
+    registry, state, fake, graph = await _mail_env(env, "ana@x.test")
+    assert (await call(registry, "descartar_borrador", state, borrador="b1")).status is ToolStatus.OK
+    result = await call(registry, "enviar_borrador", state, borrador="b1", message="sí", request_id="t2")
+    await graph.aclose()
+    assert result.status is ToolStatus.NOT_FOUND and fake.sent == []

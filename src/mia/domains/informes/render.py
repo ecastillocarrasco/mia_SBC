@@ -50,10 +50,7 @@ def to_xlsx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
             for c, value in enumerate(row, 1):
                 ws.cell(row=r, column=c, value=value)
         for c, name in enumerate(columns, 1):
-            width = (
-                max([len(str(name))] + [len(str(row[c - 1] or "")) for row in rows[:500] if len(row) >= c])
-                + 2
-            )
+            width = max([len(str(name))] + [len(str(row[c - 1] or "")) for row in rows[:500] if len(row) >= c]) + 2
             ws.column_dimensions[get_column_letter(c)].width = min(max(width, 8), 60)
         ws.freeze_panes = ws.cell(row=header + 1, column=1)
         if rows and columns:

@@ -48,9 +48,7 @@ def age(birth: date | None, today: date) -> int | None:
 # ------------------------------------------------------------------ buscar
 class BuscarParams(BaseModel):
     nombre: str = Field(description="Nombre o parte del nombre")
-    incluir_inactivos: bool = Field(
-        default=False, description="Incluir personas que ya no están en plantilla"
-    )
+    incluir_inactivos: bool = Field(default=False, description="Incluir personas que ya no están en plantilla")
 
 
 def buscar(deps: Deps) -> Tool:
@@ -129,9 +127,7 @@ async def build_profile(db: AsyncSession, e: Employee, today: date) -> dict[str,
             ).all()
         )
         balance = await db.scalar(
-            select(VacationBalance).where(
-                VacationBalance.employee_email == e.email, VacationBalance.year == today.year
-            )
+            select(VacationBalance).where(VacationBalance.employee_email == e.email, VacationBalance.year == today.year)
         )
     units = list((await db.scalars(select(OrgUnit).where(OrgUnit.department_key == e.department_key))).all())
     managers = sorted({m["name"] for u in units for m in u.managers or [] if m.get("name")})
@@ -140,14 +136,10 @@ async def build_profile(db: AsyncSession, e: Employee, today: date) -> dict[str,
     if e.person_key:
         slips = list(
             (
-                await db.scalars(
-                    select(Payslip).where(Payslip.person_key == e.person_key, Payslip.year == today.year)
-                )
+                await db.scalars(select(Payslip).where(Payslip.person_key == e.person_key, Payslip.year == today.year))
             ).all()
         )
-        docs = list(
-            (await db.scalars(select(SignedDocument).where(SignedDocument.person_key == e.person_key))).all()
-        )
+        docs = list((await db.scalars(select(SignedDocument).where(SignedDocument.person_key == e.person_key))).all())
     by_day = {s.day: s for s in shifts}
     today_shift = by_day.get(today)
     accepted = [v for v in vacations if normalize_key(v.status) == ACCEPTED]
@@ -340,9 +332,7 @@ def plantilla(deps: Deps) -> Tool:
             **fresh,
         }
         if p.agrupar_por:
-            field = {"departamento": "department", "puesto": "position", "nacionalidad": "nationality"}[
-                p.agrupar_por
-            ]
+            field = {"departamento": "department", "puesto": "position", "nacionalidad": "nationality"}[p.agrupar_por]
             counts = Counter(getattr(e, field) or "Sin dato" for e in people)
             summary["por_" + p.agrupar_por] = dict(counts.most_common())
         if len(people) <= MAX_ROWS_FOR_MODEL:

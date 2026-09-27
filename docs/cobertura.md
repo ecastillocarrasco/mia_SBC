@@ -79,6 +79,22 @@ desarrollo y exponían listas sin autenticación.
 |---|---|---|
 | Outlook: pendientes, detalle, adjuntos, borradores, envío | `correos_sin_leer`, `buscar_correos`, `leer_correo`, `preparar_respuesta`, `enviar_borrador` (confirmación obligatoria) | ✅ |
 
+## Segunda auditoría (intenciones reales y listas usadas)
+
+Contrastando las 157 intenciones que el sistema anterior resolvió de verdad y todas las
+listas de SharePoint que leía, se añadieron:
+
+| Sistema anterior | mIA | Estado |
+|---|---|---|
+| Álgebra de resultados (`v12_reference_*`: contar, filtrar, proyectar, ordenar, agrupar, intersecar) | `operar_resultado`, `cruzar_resultados` | ✅ |
+| Descarga de CV, nómina y documento firmado (`…/documento`) | `GET /api/documents/{cv\|nomina\|documento}/{id}` con permiso y auditoría | ✅ |
+| Correo: revisar, descartar y listar borradores; bloqueo no-reply; triaje a fondo | `modificar_borrador`, `descartar_borrador`, `borradores_guardados`, `incluir_texto` | ✅ |
+| «Si el DNI del campo y el de la carpeta de Turnos no coinciden, se excluye» | Exclusión en la sincronización (queda como incidencia) | ✅ |
+| Saldo consumido; saldo oficial sin recalcular | `consumido` en saldos, regla VAC-003 | ✅ |
+| Comparar bajas por departamento; quién entra a una hora; publicación por departamento | `personas_por_departamento`, `empieza_a`, `personas_activas_sin_turnos_publicados` | ✅ |
+| Comparar maestros de tipos documentales | `maestros_documentales` | ✅ |
+| **Planificación de turnos v12**: calendarios `Calendario<Departamento>_AAAA` (fuente de planificación e histórico desde 2023), `TipoTurnos`, `TurnosPlantillas`, `ComentariosTurnosSemanas`, auditoría de publicación Turnos↔Calendario, métricas de horas y nocturnidad, disponibilidad cruzada con ETT | — | ⏳ pendiente (fase 4c) |
+
 ## Reglas de negocio del sistema anterior
 
 Las 40 reglas de su base de conocimiento están en el catálogo (`rules/catalog.py`),

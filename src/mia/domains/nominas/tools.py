@@ -34,9 +34,7 @@ from mia.domains.common import (
 from mia.domains.content import MAX_BYTES, content_unavailable, pdf_lines
 from mia.domains.nominas.parser import parse_payslip
 
-RULE = (
-    "Metadatos (existencia, periodo, lectura). Para importes: nomina_importes o evolucion_nominas (NOM-002)."
-)
+RULE = "Metadatos (existencia, periodo, lectura). Para importes: nomina_importes o evolucion_nominas (NOM-002)."
 
 
 def _belongs(e: Employee) -> Any:
@@ -68,7 +66,13 @@ def nominas_persona(deps: Deps) -> Tool:
             rows = list((await db.scalars(stmt.order_by(Payslip.period, Payslip.sp_id))).all())
             fresh = await deps.freshness(db, "nominas")
         items = [
-            {"periodo": r.period, "concepto": r.label, "paga_especial": r.special, "leida": r.read}
+            {
+                "periodo": r.period,
+                "concepto": r.label,
+                "paga_especial": r.special,
+                "leida": r.read,
+                "enlace": f"/api/documents/nomina/{r.sp_id}",
+            }
             for r in rows
         ]
         months = {r.month for r in rows if r.month and not r.special}
@@ -89,9 +93,9 @@ def nominas_persona(deps: Deps) -> Tool:
             summary,
             table(
                 f"Nóminas {year} · {e.name}",
-                ["Periodo", "Concepto", "Especial", "Leída"],
+                ["Periodo", "Concepto", "Especial", "Leída", "Enlace"],
                 [
-                    [i["periodo"], i["concepto"], "Sí" if i["paga_especial"] else "", i["leida"]]
+                    [i["periodo"], i["concepto"], "Sí" if i["paga_especial"] else "", i["leida"], i["enlace"]]
                     for i in items
                 ],
             ),
@@ -180,9 +184,7 @@ def register(registry: ToolRegistry, deps: Deps) -> None:
 
 
 # ------------------------------------------------------------------ importes (NOM-003)
-AMOUNTS_RULE = (
-    "NOM-003: importes leídos en el momento del PDF de la nómina; no se guardan. No los digas en voz alta."
-)
+AMOUNTS_RULE = "NOM-003: importes leídos en el momento del PDF de la nómina; no se guardan. No los digas en voz alta."
 
 
 async def _read_amounts(deps: Deps, slip: Payslip) -> dict[str, Any]:
@@ -217,13 +219,9 @@ def nomina_importes(deps: Deps) -> Tool:
                 stmt = stmt.where(Payslip.period == p.periodo)
             if not p.incluir_pagas_especiales:
                 stmt = stmt.where(Payslip.special.is_(False))
-            slips = list(
-                (await db.scalars(stmt.order_by(Payslip.period.desc()).limit(3 if p.periodo else 1))).all()
-            )
+            slips = list((await db.scalars(stmt.order_by(Payslip.period.desc()).limit(3 if p.periodo else 1))).all())
         if not slips:
-            return ToolResult(
-                ToolStatus.NOT_FOUND, {"mensaje": f"No hay nómina de {e.name} para ese periodo."}
-            )
+            return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": f"No hay nómina de {e.name} para ese periodo."})
         results = [await _read_amounts(deps, s) for s in slips]
         return ToolResult(
             ToolStatus.OK,
@@ -259,9 +257,7 @@ def evolucion_nominas(deps: Deps) -> Tool:
             e = match.employee
             slips = list(
                 (
-                    await db.scalars(
-                        select(Payslip).where(_belongs(e), Payslip.year == year).order_by(Payslip.period)
-                    )
+                    await db.scalars(select(Payslip).where(_belongs(e), Payslip.year == year).order_by(Payslip.period))
                 ).all()
             )
         if not slips:
@@ -288,9 +284,7 @@ def evolucion_nominas(deps: Deps) -> Tool:
                 sum(r["importes"]["liquido"] for r in results if r.get("importes", {}).get("liquido")), 2
             ),
             "liquido_medio_ordinario": (
-                round(sum(r["importes"]["liquido"] for r in ordinary) / len(ordinary), 2)
-                if ordinary
-                else None
+                round(sum(r["importes"]["liquido"] for r in ordinary) / len(ordinary), 2) if ordinary else None
             ),
             "regla": AMOUNTS_RULE,
         }

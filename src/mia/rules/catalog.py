@@ -58,6 +58,14 @@ RULES: tuple[BusinessRule, ...] = (
         ("vacaciones",),
     ),
     BusinessRule(
+        "VAC-003",
+        "Saldo oficial",
+        "SaldoActual es el saldo oficial disponible: no se recalcula a partir de las solicitudes. Lo consumido "
+        "es SaldoTotal − SaldoActual. Para «¿cuánto le quedará tras estas vacaciones?» se explica que el saldo "
+        "oficial se actualiza en la fuente, sin inventar el cálculo.",
+        ("vacaciones",),
+    ),
+    BusinessRule(
         "DAT-001",
         "Un fallo técnico no es un cero",
         "Si una fuente falla o no cubre el periodo, se informa del problema; nunca se presenta como "

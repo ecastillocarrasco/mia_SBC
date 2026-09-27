@@ -178,6 +178,11 @@ def saldos(deps: Deps) -> Tool:
                 "departamento": b.department,
                 "saldo_actual": b.current_balance,
                 "saldo_total": b.total_balance,
+                "consumido": (
+                    round(b.total_balance - b.current_balance, 2)
+                    if b.total_balance is not None and b.current_balance is not None
+                    else None
+                ),
             }
             for b in rows
         ]
@@ -225,13 +230,9 @@ def reincorporacion(deps: Deps) -> Tool:
                 return person_problem(match, p.nombre)
             e = match.employee
             if not e.person_key:
-                return ToolResult(
-                    ToolStatus.NOT_FOUND, {"mensaje": f"No puedo cruzar los turnos de {e.name}."}
-                )
+                return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": f"No puedo cruzar los turnos de {e.name}."})
             # Ausencia en curso o la próxima que empiece en los 60 días siguientes (según turnos).
-            periods = await absence_periods(
-                db, lo=ref, hi=ref + timedelta(days=60), person_keys=[e.person_key]
-            )
+            periods = await absence_periods(db, lo=ref, hi=ref + timedelta(days=60), person_keys=[e.person_key])
             vacation = None
             if e.email:
                 vacation = await db.scalar(

@@ -93,11 +93,7 @@ async def absence_periods(
 ) -> list[AbsencePeriod]:
     """Periodos completos de las personas ausentes en algún día de [lo, hi]."""
     if person_keys is None:
-        stmt = (
-            select(ShiftDay.person_key)
-            .distinct()
-            .where(ShiftDay.day.between(lo, hi), ShiftDay.kind.in_(kinds))
-        )
+        stmt = select(ShiftDay.person_key).distinct().where(ShiftDay.day.between(lo, hi), ShiftDay.kind.in_(kinds))
         if department_like:
             stmt = stmt.where(ShiftDay.department_key.like(f"%{department_like}%"))
         person_keys = [k for k in (await db.scalars(stmt)).all() if k]

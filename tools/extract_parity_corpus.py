@@ -43,9 +43,7 @@ def extract(db_path: Path) -> dict[str, Any]:
         for row in con.execute("SELECT request_id, primary_domain FROM query_plans WHERE request_id NOT NULL")
     }
     executions: dict[str, tuple[str, str, float]] = {}
-    query = (
-        "SELECT request_id, executor, status, elapsed_ms FROM execution_log_v12 WHERE request_id IS NOT NULL"
-    )
+    query = "SELECT request_id, executor, status, elapsed_ms FROM execution_log_v12 WHERE request_id IS NOT NULL"
     for request_id, executor, status, elapsed in con.execute(query):
         executions[request_id] = (executor, status, float(elapsed or 0))
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from mia.auth import Permission
@@ -60,7 +60,15 @@ def documentos_persona(deps: Deps) -> Tool:
             docs = [d for d in docs if normalize_key(p.tipo) in normalize_key(d.doc_type)]
         if p.anio:
             docs = [d for d in docs if d.doc_year == p.anio]
-        items = [{"tipo": d.doc_type, "documento": d.file_name, "anio": d.doc_year} for d in docs]
+        items = [
+            {
+                "tipo": d.doc_type,
+                "documento": d.file_name,
+                "anio": d.doc_year,
+                "enlace": f"/api/documents/documento/{d.sp_id}",
+            }
+            for d in docs
+        ]
         summary: dict[str, Any] = {
             "persona": e.name,
             "total": len(items),
@@ -72,7 +80,7 @@ def documentos_persona(deps: Deps) -> Tool:
         return ToolResult(
             ToolStatus.OK,
             summary,
-            table(f"Documentos de {e.name}", ["Tipo", "Documento", "Año"], [list(i.values()) for i in items]),
+            table(f"Documentos de {e.name}", ["Tipo", "Documento", "Año", "Enlace"], [list(i.values()) for i in items]),
             focus_person(e),
         )
 
@@ -109,9 +117,7 @@ def documentos_faltantes(deps: Deps) -> Tool:
                 stmt = stmt.where(Employee.sp_id.in_(previous["empleado_ids"]))
             employees = list((await db.scalars(stmt.order_by(Employee.name))).all())
             docs = (
-                await db.execute(
-                    select(SignedDocument.person_key, SignedDocument.doc_type, SignedDocument.file_name)
-                )
+                await db.execute(select(SignedDocument.person_key, SignedDocument.doc_type, SignedDocument.file_name))
             ).all()
             fresh = await deps.freshness(db, "documentos_firmados", "empleados")
         if p.tipo:
@@ -119,15 +125,11 @@ def documentos_faltantes(deps: Deps) -> Tool:
         else:
             async with deps.db.session() as db:
                 mandatory = (
-                    await db.scalars(
-                        select(DocumentTypeConfig.name_key).where(DocumentTypeConfig.sign_all.is_(True))
-                    )
+                    await db.scalars(select(DocumentTypeConfig.name_key).where(DocumentTypeConfig.sign_all.is_(True)))
                 ).all()
             wanted = list(dict.fromkeys(mandatory))
             if not wanted:
-                return ToolResult(
-                    ToolStatus.NOT_FOUND, "No hay tipos marcados como obligatorios (FirmarTodas)."
-                )
+                return ToolResult(ToolStatus.NOT_FOUND, "No hay tipos marcados como obligatorios (FirmarTodas).")
         missing_by_type = {}
         for w in wanted:
             having = {k for k, t, f in docs if k and (w in normalize_key(t) or w in normalize_key(f))}
@@ -167,16 +169,60 @@ def documentos_faltantes(deps: Deps) -> Tool:
     )
 
 
+class SinParametros(BaseModel):
+    pass
+
+
+def maestros(deps: Deps) -> Tool:
+    async def handler(_: SinParametros, ctx: ToolContext) -> ToolResult:
+        async with deps.db.session() as db:
+            rows = list((await db.scalars(select(DocumentTypeConfig))).all())
+        by_key: dict[str, dict[str, Any]] = {}
+        for r in rows:
+            entry = by_key.setdefault(r.name_key, {"tipo": r.name, "en_rrhh": False, "en_portal": False})
+            entry[f"en_{r.site}"] = True
+            if r.site == "rrhh":
+                entry["firmar_todas"] = r.sign_all
+            entry[f"autorizacion_{r.site}"] = r.requires_authorization
+        items = sorted(by_key.values(), key=lambda x: x["tipo"])
+        for item in items:
+            if item["en_rrhh"] and item["en_portal"]:
+                item["autorizacion_coincide"] = item.get("autorizacion_rrhh") == item.get("autorizacion_portal")
+        return ToolResult(
+            ToolStatus.OK,
+            {
+                "tipos": items,
+                "solo_en_rrhh": [i["tipo"] for i in items if not i["en_portal"]],
+                "solo_en_portal": [i["tipo"] for i in items if not i["en_rrhh"]],
+            },
+            table(
+                "Maestros de tipos documentales",
+                ["Tipo", "RRHH", "Portal", "Firmar todas", "Autorización coincide"],
+                [
+                    [i["tipo"], i["en_rrhh"], i["en_portal"], i.get("firmar_todas"), i.get("autorizacion_coincide")]
+                    for i in items
+                ],
+            ),
+        )
+
+    return Tool(
+        "maestros_documentales",
+        "Tipos documentales de firma (RRHH y portal): cuáles son obligatorios "
+        "para todos y diferencias entre ambos maestros.",
+        SinParametros,
+        handler,
+        permission=Permission.DOCUMENTOS_LEER,
+    )
+
+
 def register(registry: ToolRegistry, deps: Deps) -> None:
-    for factory in (documentos_persona, documentos_faltantes, leer_documento):
+    for factory in (documentos_persona, documentos_faltantes, leer_documento, maestros):
         registry.register(factory(deps))
 
 
 class LeerParams(PersonaParams):
     tipo: str | None = Field(default=None, description=f"Tipo del documento: {TYPES}")
-    documento: str | None = Field(
-        default=None, description="Nombre (o parte) del fichero, si hay varios del tipo"
-    )
+    documento: str | None = Field(default=None, description="Nombre (o parte) del fichero, si hay varios del tipo")
 
 
 def leer_documento(deps: Deps) -> Tool:
@@ -191,11 +237,7 @@ def leer_documento(deps: Deps) -> Tool:
             docs: list[SignedDocument] = []
             if e.person_key:
                 docs = list(
-                    (
-                        await db.scalars(
-                            select(SignedDocument).where(SignedDocument.person_key == e.person_key)
-                        )
-                    ).all()
+                    (await db.scalars(select(SignedDocument).where(SignedDocument.person_key == e.person_key))).all()
                 )
         if p.tipo:
             docs = [d for d in docs if normalize_key(p.tipo) in normalize_key(d.doc_type)]
@@ -215,13 +257,9 @@ def leer_documento(deps: Deps) -> Tool:
             content = await deps.sharepoint.download_item_file("DocumentosFirmadosV2", doc.sp_id, MAX_BYTES)
             text = document_text(content)
         except Exception as exc:
-            return ToolResult(
-                ToolStatus.SOURCE_UNAVAILABLE, f"No he podido abrir el documento: {type(exc).__name__}"
-            )
+            return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, f"No he podido abrir el documento: {type(exc).__name__}")
         if not text:
-            return ToolResult(
-                ToolStatus.ERROR, "El documento no tiene texto legible (¿es una imagen escaneada?)"
-            )
+            return ToolResult(ToolStatus.ERROR, "El documento no tiene texto legible (¿es una imagen escaneada?)")
         view = {
             "persona": e.name,
             "tipo": doc.doc_type,

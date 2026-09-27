@@ -98,9 +98,7 @@ class SharePointSettings(BaseModel):
     @property
     def configured(self) -> bool:
         has_cert = bool(self.cert_pfx_path or self.cert_pfx_base64 or self.cert_pem_path)
-        return bool(
-            self.tenant_id and self.client_id and self.cert_thumbprint and self.rrhh_site_url and has_cert
-        )
+        return bool(self.tenant_id and self.client_id and self.cert_thumbprint and self.rrhh_site_url and has_cert)
 
 
 class DataSettings(BaseModel):
@@ -187,9 +185,7 @@ class Settings(BaseSettings):
     """Puerto adicional (5002) para el frontend actual en local, que espera el gateway ahí."""
     timezone: str = "Europe/Madrid"
     database_url: str = "postgresql+asyncpg://mia:mia@localhost:5432/mia"
-    cors_origins: list[str] = Field(
-        default_factory=lambda: ["http://127.0.0.1:5173", "http://localhost:5173"]
-    )
+    cors_origins: list[str] = Field(default_factory=lambda: ["http://127.0.0.1:5173", "http://localhost:5173"])
     history_turns: int = 12
 
     llm: LLMSettings = Field(default_factory=LLMSettings)
@@ -208,8 +204,7 @@ class Settings(BaseSettings):
     def _fail_closed_in_production(self) -> Settings:
         if self.environment is Environment.PRODUCTION and self.auth.mode is AuthMode.DEV:
             raise ValueError(
-                "MIA_AUTH__MODE=dev no está permitido en producción: "
-                "usa 'easyauth' hasta que se implemente Entra ID."
+                "MIA_AUTH__MODE=dev no está permitido en producción: usa 'easyauth' hasta que se implemente Entra ID."
             )
         if (
             self.environment is Environment.PRODUCTION

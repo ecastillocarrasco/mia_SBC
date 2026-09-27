@@ -56,9 +56,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
         Permission.CORREO_ENVIAR,
     },
     "mia.seleccion": frozenset({Permission.CURRICULUMS_LEER, Permission.EMPLEADOS_LEER}),
-    "mia.responsable": frozenset(
-        {Permission.EMPLEADOS_LEER, Permission.TURNOS_LEER, Permission.VACACIONES_LEER}
-    ),
+    "mia.responsable": frozenset({Permission.EMPLEADOS_LEER, Permission.TURNOS_LEER, Permission.VACACIONES_LEER}),
 }
 
 

@@ -36,9 +36,7 @@ async def test_owner_downloads_report(client: httpx.AsyncClient, services: Servi
     assert response.headers["content-type"] == "application/pdf"
 
 
-async def test_other_user_cannot_download(
-    client: httpx.AsyncClient, services: Services, tmp_path: Path
-) -> None:
+async def test_other_user_cannot_download(client: httpx.AsyncClient, services: Services, tmp_path: Path) -> None:
     url = await _report(services, tmp_path, expires_in=timedelta(hours=1))
     services.identity = DevIdentityProvider(AuthSettings(dev_user_id="otra-persona"))
     assert (await client.get(url)).status_code == 404

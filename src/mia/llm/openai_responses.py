@@ -33,9 +33,7 @@ def _input_items(messages: list[Message]) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for message in messages:
         if message.role == "tool":
-            items.append(
-                {"type": "function_call_output", "call_id": message.tool_call_id, "output": message.content}
-            )
+            items.append({"type": "function_call_output", "call_id": message.tool_call_id, "output": message.content})
             continue
         if message.content:
             items.append({"role": message.role, "content": message.content})
@@ -169,9 +167,7 @@ class OpenAIResponsesProvider:
                     if response.status_code in self.RETRY_STATUS and attempt < self.MAX_RETRIES:
                         await response.aread()
                         delay = _retry_delay(response.headers.get("retry-after"), attempt)
-                        log.warning(
-                            "llm.retry", status=response.status_code, attempt=attempt + 1, delay=delay
-                        )
+                        log.warning("llm.retry", status=response.status_code, attempt=attempt + 1, delay=delay)
                         await asyncio.sleep(delay)
                         continue
                     if response.status_code >= 400:

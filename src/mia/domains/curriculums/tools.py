@@ -16,14 +16,12 @@ from sqlalchemy import select
 
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
-from mia.data import Candidate, CvText
+from mia.data import Candidate, CvDocument, CvText
 from mia.domains.common import MAX_ROWS_FOR_MODEL, Deps, fmt_date, table
 from mia.domains.curriculums.search import CvSearchIndex
 from mia.text import normalize_key
 
-RULE = (
-    "SEL-001: resultados por coincidencia con la búsqueda, no un ranking de idoneidad. No descartes a nadie."
-)
+RULE = "SEL-001: resultados por coincidencia con la búsqueda, no un ranking de idoneidad. No descartes a nadie."
 
 
 def _candidate_view(c: Candidate) -> dict[str, Any]:
@@ -68,15 +66,11 @@ def buscar(deps: Deps) -> Tool:
                 {"mensaje": "Ningún CV indexado encaja con la búsqueda y los filtros.", **fresh},
             )
         results = [{**_candidate_view(candidates[h.candidate_id]), "evidencia": h.evidence} for h in hits]
-        rows = [
-            [r["nombre"], r["departamento"], r["estado"], r["fecha"], r["evidencia"][:160]] for r in results
-        ]
+        rows = [[r["nombre"], r["departamento"], r["estado"], r["fecha"], r["evidencia"][:160]] for r in results]
         return ToolResult(
             ToolStatus.OK,
             {"consulta": p.consulta, "coincidencias": results, "regla": RULE, **fresh},
-            table(
-                f"CVs: {p.consulta}", ["Candidatura", "Departamento", "Estado", "Fecha", "Evidencia"], rows
-            ),
+            table(f"CVs: {p.consulta}", ["Candidatura", "Departamento", "Estado", "Fecha", "Evidencia"], rows),
         )
 
     return Tool(
@@ -160,15 +154,13 @@ def ficha_candidato(deps: Deps) -> Tool:
                 return ToolResult(status, {"candidatos": [_candidate_view(c) for c in matches[:10]]})
             candidate = matches[0]
             cv = await db.scalar(select(CvText).where(CvText.candidate_id == candidate.sp_id))
+            doc_id = await db.scalar(select(CvDocument.sp_id).where(CvDocument.candidate_id == candidate.sp_id))
         view = {
             **_candidate_view(candidate),
             "experiencia_declarada": candidate.experience,
             "comentarios": candidate.comments,
-            "cv": (
-                {"estado": cv.status, "extracto": (cv.text or "")[:2500]}
-                if cv
-                else {"estado": "sin CV indexado"}
-            ),
+            "cv": ({"estado": cv.status, "extracto": (cv.text or "")[:2500]} if cv else {"estado": "sin CV indexado"}),
+            "documento": f"/api/documents/cv/{doc_id}" if doc_id else None,
             "regla": RULE,
         }
         return ToolResult(ToolStatus.OK, view, {"type": "candidate_card", **view})

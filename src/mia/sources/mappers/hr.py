@@ -138,6 +138,11 @@ def shift_week(item: dict[str, Any], ctx: MapContext) -> list[Row]:
     person_key = text(item.get("DNIEmpleado"))  # ya seudonimizado en la ingesta
     if not person_key or year is None or week is None:
         return []
+    folder_key = item.get("_person_key")
+    if folder_key and folder_key != person_key:
+        # Regla del sistema anterior: si el DNI del campo y el de la carpeta no coinciden, el registro
+        # se excluye del cruce y queda anotado (item_errors de la sincronización).
+        raise ValueError("El DNI de la fila y el de su carpeta no coinciden: registro excluido")
     department = text(item.get("DepartamentoTurno"))
     rows: list[Row] = []
     for code, iso_day in WEEKDAYS:

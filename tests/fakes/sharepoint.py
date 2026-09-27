@@ -70,9 +70,7 @@ class FakeSharePoint:
         start = int(token[1:])
         raw_limit = body["query"].get("FetchLimit", "1000")
         if not isinstance(raw_limit, str):  # igual que SharePoint real
-            return httpx.Response(
-                400, text="No se puede convertir un valor primitivo en el tipo esperado 'Edm.Int64'"
-            )
+            return httpx.Response(400, text="No se puede convertir un valor primitivo en el tipo esperado 'Edm.Int64'")
         limit = int(raw_limit)
         entries = [
             {"ChangeType": ct, "ItemId": item_id, "ChangeToken": {"StringValue": f"t{seq}"}}

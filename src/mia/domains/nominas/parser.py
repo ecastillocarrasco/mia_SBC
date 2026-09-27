@@ -27,9 +27,7 @@ HEADER = re.compile(
 )
 LIQUID = (
     re.compile(r"([0-9][0-9.]*,[0-9]{2})\s+L[ií]quido\s+a\s+[Pp]?ercibir", re.IGNORECASE),
-    re.compile(
-        r"L[ií]quido(?:\s+total)?\s+(?:a\s+[Pp]?ercibir)?.{0,40}?([0-9][0-9.]*,[0-9]{2})", re.IGNORECASE
-    ),
+    re.compile(r"L[ií]quido(?:\s+total)?\s+(?:a\s+[Pp]?ercibir)?.{0,40}?([0-9][0-9.]*,[0-9]{2})", re.IGNORECASE),
     re.compile(r"Neto\s+a\s+percibir.{0,40}?([0-9][0-9.]*,[0-9]{2})", re.IGNORECASE),
 )
 
@@ -61,18 +59,14 @@ def parse_payslip(text: str) -> dict[str, Any]:
         if match := pattern.search(joined):
             out["liquido"] = amount_es(match.group(1))
             break
-    irpf_line = next(
-        (line for line in lines if re.search(r"Tributaci[oó]n\s+I\.?R\.?P\.?F\.?", line, re.I)), None
-    )
+    irpf_line = next((line for line in lines if re.search(r"Tributaci[oó]n\s+I\.?R\.?P\.?F\.?", line, re.I)), None)
     if irpf_line:
         if pct := re.search(r"\(\s*([0-9]{1,2}(?:[.,][0-9]{1,2})?)\s*%\s*\)", irpf_line):
             out["irpf_porcentaje"] = amount_es(pct.group(1).replace(".", ","))
         if amt := re.search(r"\)\s*([0-9][0-9.]*,[0-9]{2})(?:\s|$)", irpf_line):
             out["irpf_importe"] = amount_es(amt.group(1))
     if out["irpf_porcentaje"] is None and (
-        pct := re.search(
-            r"(?:I\.?R\.?P\.?F\.?|retenci[oó]n).{0,30}?([0-9]{1,2}(?:[.,][0-9]{1,2})?)\s*%", joined, re.I
-        )
+        pct := re.search(r"(?:I\.?R\.?P\.?F\.?|retenci[oó]n).{0,30}?([0-9]{1,2}(?:[.,][0-9]{1,2})?)\s*%", joined, re.I)
     ):
         out["irpf_porcentaje"] = amount_es(pct.group(1).replace(".", ","))
     check = None

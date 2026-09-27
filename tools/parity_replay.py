@@ -121,9 +121,7 @@ def main() -> None:
         try:
             client.get("/health/live").raise_for_status()
         except httpx.HTTPError:
-            raise SystemExit(
-                f"mIA no responde en {args.url}: arráncala con «python -m mia» en otra ventana."
-            ) from None
+            raise SystemExit(f"mIA no responde en {args.url}: arráncala con «python -m mia» en otra ventana.") from None
         for n, conv in enumerate(conversations, 1):
             session_id = None
             used_tool = False

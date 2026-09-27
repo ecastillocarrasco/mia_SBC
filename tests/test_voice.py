@@ -69,9 +69,7 @@ async def test_elevenlabs_streams_audio() -> None:
 
 
 async def test_elevenlabs_error_is_voice_error() -> None:
-    provider = ElevenLabsVoiceProvider(
-        _settings(), transport=httpx.MockTransport(lambda r: httpx.Response(401))
-    )
+    provider = ElevenLabsVoiceProvider(_settings(), transport=httpx.MockTransport(lambda r: httpx.Response(401)))
     with pytest.raises(VoiceError):
         _ = [c async for c in provider.stream("Hola")]
     await provider.aclose()

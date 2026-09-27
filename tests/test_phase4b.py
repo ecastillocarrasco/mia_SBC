@@ -63,9 +63,7 @@ async def env(tmp_path: Path) -> AsyncIterator[tuple[ToolRegistry, Database]]:
         s.add_all(
             [
                 Payslip(sp_id=501, person_key="pk-ana", year=2026, month=7, period="2026-07", special=False),
-                SignedDocument(
-                    sp_id=601, person_key="pk-ana", doc_type="Contrato", file_name="Contrato_2024.pdf"
-                ),
+                SignedDocument(sp_id=601, person_key="pk-ana", doc_type="Contrato", file_name="Contrato_2024.pdf"),
                 TtRate(
                     sp_id=1,
                     company="ETT Uno",
@@ -117,9 +115,7 @@ async def test_payslip_amounts_are_read_on_demand(env: Any) -> None:
 async def test_payslip_amounts_need_their_own_permission(env: Any) -> None:
     registry, _ = env
     rrhh_reader = UserContext("r", "Lectura", roles=frozenset({"mia.responsable"}))
-    assert (
-        await call(registry, "nomina_importes", rrhh_reader, empleado_id=1)
-    ).status is ToolStatus.PERMISSION_DENIED
+    assert (await call(registry, "nomina_importes", rrhh_reader, empleado_id=1)).status is ToolStatus.PERMISSION_DENIED
 
 
 async def test_document_content_is_read(env: Any) -> None:
@@ -167,3 +163,25 @@ async def test_temporary_work_cost_and_anomalies(env: Any) -> None:
     anomalies = await call(registry, "anomalias_tt", desde="2026-08-01", hasta="2026-08-31")
     assert anomalies.summary["con_anomalias"] == 1
     assert "más de 12 horas" in anomalies.summary["anomalias"][0]["motivos"][0]
+
+
+async def test_document_master_comparison(env: Any) -> None:
+    registry, db = env
+    from mia.data import DocumentTypeConfig  # noqa: PLC0415
+
+    async with db.session() as s:
+        s.add_all(
+            [
+                DocumentTypeConfig(
+                    site="rrhh", sp_id=1, name="LOPD", name_key="lopd", sign_all=True, requires_authorization=False
+                ),
+                DocumentTypeConfig(site="portal", sp_id=1, name="LOPD", name_key="lopd", requires_authorization=True),
+                DocumentTypeConfig(site="rrhh", sp_id=2, name="PRL", name_key="prl", sign_all=False),
+            ]
+        )
+    result = await call(registry, "maestros_documentales")
+    assert result.summary["solo_en_rrhh"] == ["PRL"]
+    lopd = next(t for t in result.summary["tipos"] if t["tipo"] == "LOPD")
+    assert lopd["firmar_todas"] is True and lopd["autorizacion_coincide"] is False
+    mandatory = await call(registry, "documentos_faltantes")
+    assert mandatory.summary["tipo"] == "obligatorios (FirmarTodas)"

@@ -33,9 +33,7 @@ def configure_logging(level: str = "INFO", json_output: bool = True) -> None:
     # httpx registra cada petición con la URL completa: demasiado ruido (y datos) en INFO.
     logging.getLogger("httpx").setLevel(logging.WARNING)
     renderer: Any = (
-        structlog.processors.JSONRenderer(ensure_ascii=False)
-        if json_output
-        else structlog.dev.ConsoleRenderer()
+        structlog.processors.JSONRenderer(ensure_ascii=False) if json_output else structlog.dev.ConsoleRenderer()
     )
     structlog.configure(
         processors=[

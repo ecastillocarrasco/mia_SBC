@@ -56,9 +56,7 @@ async def test_invalid_avatar_state_falls_back(client: httpx.AsyncClient, script
 async def test_tool_flow_streams_filler_then_answer(client: httpx.AsyncClient, script: list[Script]) -> None:
     def scripted(req: LLMRequest) -> list:  # type: ignore[type-arg]
         if req.messages[-1].role == "tool":
-            return final_answer(
-                "Aún estoy migrando los datos de RRHH.", "Todavía estoy migrando esos datos. Pronto."
-            )
+            return final_answer("Aún estoy migrando los datos de RRHH.", "Todavía estoy migrando esos datos. Pronto.")
         return tool_call("capacidades", {})
 
     script[0] = scripted
@@ -92,9 +90,7 @@ async def test_llm_failure_returns_graceful_error(client: httpx.AsyncClient, scr
     assert body["avatar_state"] == "confundida"
 
 
-async def test_audited_tool_leaves_trace(
-    client: httpx.AsyncClient, services: Services, script: list[Script]
-) -> None:
+async def test_audited_tool_leaves_trace(client: httpx.AsyncClient, services: Services, script: list[Script]) -> None:
 
     class Params(BaseModel):
         nombre: str
@@ -102,9 +98,7 @@ async def test_audited_tool_leaves_trace(
     async def handler(params: Params, ctx: ToolContext) -> ToolResult:
         return ToolResult.ok({"encontrado": params.nombre}, {"type": "ficha"})
 
-    services.engine._tools.register(
-        Tool("ficha_prueba", "Prueba", Params, handler, audit_resource="empleados")
-    )
+    services.engine._tools.register(Tool("ficha_prueba", "Prueba", Params, handler, audit_resource="empleados"))
 
     def scripted(req: LLMRequest) -> list:  # type: ignore[type-arg]
         if req.messages[-1].role == "tool":

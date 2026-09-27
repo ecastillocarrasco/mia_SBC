@@ -42,9 +42,7 @@ def fake() -> FakeSharePoint:
 
 @pytest.fixture
 async def runner(db: Database, fake: FakeSharePoint) -> AsyncIterator[SyncRunner]:
-    client = SharePointClient(
-        site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport()
-    )
+    client = SharePointClient(site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport())
     yield SyncRunner(db=db, client=client, pseudonymize=Pseudonymizer("clave"), full_sync_hour=3)
     await client.aclose()
 
@@ -95,9 +93,7 @@ async def test_nothing_changed_is_cheap(runner: SyncRunner, fake: FakeSharePoint
     assert len(fake.requests) - before == 1  # solo la consulta al registro de cambios
 
 
-async def test_expired_token_falls_back_to_full(
-    runner: SyncRunner, db: Database, fake: FakeSharePoint
-) -> None:
+async def test_expired_token_falls_back_to_full(runner: SyncRunner, db: Database, fake: FakeSharePoint) -> None:
     await runner.run(definitions.EMPLEADOS)
     async with db.session() as s:
         token = (await s.get(SourceSyncState, "empleados")).change_token  # type: ignore[union-attr]
@@ -115,9 +111,7 @@ async def test_full_sync_detects_deletions(runner: SyncRunner, db: Database, fak
     assert await _count(db, Employee) == 1
 
 
-async def test_shift_weeks_are_replaced_not_duplicated(
-    runner: SyncRunner, db: Database, fake: FakeSharePoint
-) -> None:
+async def test_shift_weeks_are_replaced_not_duplicated(runner: SyncRunner, db: Database, fake: FakeSharePoint) -> None:
     week = {
         "ID": 10,
         "AnnoTurno": "2026",

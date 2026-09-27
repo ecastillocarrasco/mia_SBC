@@ -80,9 +80,7 @@ class SyncRunner:
         self._fields: dict[str, set[str]] = {}
 
     # ------------------------------------------------------------ API
-    async def run_all(
-        self, sources: list[SourceDefinition], mode: SyncMode = SyncMode.AUTO
-    ) -> list[SyncReport]:
+    async def run_all(self, sources: list[SourceDefinition], mode: SyncMode = SyncMode.AUTO) -> list[SyncReport]:
         return [await self.run(source, mode) for source in sources]
 
     async def _with_optional_fields(self, source: SourceDefinition) -> SourceDefinition:
@@ -149,9 +147,7 @@ class SyncRunner:
     async def _full(self, source: SourceDefinition, report: SyncReport) -> None:
         token = await self._client.current_change_token(source.list_title)
         items: dict[int, dict[str, Any]] = {}
-        async for page in self._client.iter_items(
-            source.list_title, select=source.select, expand=source.expand
-        ):
+        async for page in self._client.iter_items(source.list_title, select=source.select, expand=source.expand):
             for item in page:
                 if item.get("ID") is not None:
                     items[int(item["ID"])] = self._sanitize(source, item)
@@ -163,15 +159,11 @@ class SyncRunner:
             report.rows = await self._insert_canonical(db, source, list(items.values()), report)
             await self._set_token(db, source, token, full=True)
 
-    async def _incremental(
-        self, source: SourceDefinition, state: SourceSyncState | None, report: SyncReport
-    ) -> None:
+    async def _incremental(self, source: SourceDefinition, state: SourceSyncState | None, report: SyncReport) -> None:
         assert state is not None and state.change_token  # noqa: S101  (garantizado por _decide)
         changes, token = await self._client.changes_since(source.list_title, state.change_token)
         wanted = sorted(c.item_id for c in changes if not c.deleted)
-        fetched = await self._client.items_by_id(
-            source.list_title, wanted, select=source.select, expand=source.expand
-        )
+        fetched = await self._client.items_by_id(source.list_title, wanted, select=source.select, expand=source.expand)
         items = {int(i["ID"]): self._sanitize(source, i) for i in fetched if i.get("ID") is not None}
         # Cambiado y luego borrado: el registro dice "modificado" pero ya no existe.
         deleted = sorted({c.item_id for c in changes if c.deleted} | (set(wanted) - set(items)))
@@ -252,15 +244,11 @@ class SyncRunner:
             )
             await db.execute(stmt)
 
-    async def _mark_missing_deleted(
-        self, db: AsyncSession, source: SourceDefinition, present: set[int]
-    ) -> int:
+    async def _mark_missing_deleted(self, db: AsyncSession, source: SourceDefinition, present: set[int]) -> int:
         existing = set(
             (
                 await db.scalars(
-                    select(SourceItem.item_id).where(
-                        SourceItem.source == source.key, SourceItem.deleted.is_(False)
-                    )
+                    select(SourceItem.item_id).where(SourceItem.source == source.key, SourceItem.deleted.is_(False))
                 )
             ).all()
         )

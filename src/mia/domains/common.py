@@ -41,9 +41,7 @@ class Deps:
 
 # ------------------------------------------------------------------ parámetros comunes
 class PersonaParams(BaseModel):
-    empleado_id: int | None = Field(
-        default=None, description="ID de la persona (del foco o de una búsqueda previa)"
-    )
+    empleado_id: int | None = Field(default=None, description="ID de la persona (del foco o de una búsqueda previa)")
     nombre: str | None = Field(default=None, description="Nombre o parte del nombre, si no hay empleado_id")
 
     @model_validator(mode="after")
@@ -225,9 +223,7 @@ async def resolve_department(db: AsyncSession, query: str | None) -> DepartmentM
 
 def department_problem(match: DepartmentMatch, query: str | None) -> ToolResult:
     verb = (
-        "Hay varios departamentos que encajan"
-        if match.status is ToolStatus.AMBIGUOUS
-        else "No existe ese departamento"
+        "Hay varios departamentos que encajan" if match.status is ToolStatus.AMBIGUOUS else "No existe ese departamento"
     )
     return ToolResult(match.status, {"mensaje": f"{verb} («{query}»).", "departamentos": list(match.options)})
 

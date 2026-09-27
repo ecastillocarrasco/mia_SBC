@@ -35,11 +35,7 @@ def document_text(content: bytes) -> str | None:
 
 def content_unavailable(deps: Any) -> ToolResult | None:
     if deps.sharepoint is None:
-        return ToolResult(
-            ToolStatus.SOURCE_UNAVAILABLE, "SharePoint no está configurado para leer documentos"
-        )
+        return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, "SharePoint no está configurado para leer documentos")
     if deps.settings is not None and not deps.settings.data.content_enabled:
-        return ToolResult(
-            ToolStatus.PERMISSION_DENIED, "La lectura de contenido está desactivada en la configuración"
-        )
+        return ToolResult(ToolStatus.PERMISSION_DENIED, "La lectura de contenido está desactivada en la configuración")
     return None

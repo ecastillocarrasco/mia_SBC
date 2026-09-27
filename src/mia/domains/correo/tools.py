@@ -21,6 +21,7 @@ from mia.sources.graph import GraphClient, GraphError
 
 _TAGS = re.compile(r"<[^>]+>")
 _CONFIRM = re.compile(r"\b(s[ií]|env[ií]a(lo)?|adelante|confirm[oa]|de acuerdo|vale|ok)\b", re.IGNORECASE)
+_NOREPLY = re.compile(r"no-?reply|do-?not-?reply|noresponder", re.IGNORECASE)
 _DENY = re.compile(r"\b(no|espera|todav[ií]a no|cancela)\b", re.IGNORECASE)
 SELECT = "id,subject,from,receivedDateTime,bodyPreview,hasAttachments,isRead"
 
@@ -71,6 +72,7 @@ def _mailbox(deps: Deps) -> str:
 # ------------------------------------------------------------------ lectura
 class PendientesParams(BaseModel):
     limite: int = Field(default=15, ge=1, le=50)
+    incluir_texto: bool = Field(default=False, description="true para un triaje a fondo (lee el cuerpo de cada correo)")
 
 
 def pendientes(deps: Deps) -> Tool:
@@ -83,14 +85,18 @@ def pendientes(deps: Deps) -> Tool:
                 f"{_mailbox(deps)}/mailFolders/inbox/messages",
                 params={
                     "$filter": "isRead eq false",
-                    "$top": p.limite,
+                    "$top": min(p.limite, 10) if p.incluir_texto else p.limite,
                     "$orderby": "receivedDateTime desc",
-                    "$select": SELECT,
+                    "$select": f"{SELECT},body" if p.incluir_texto else SELECT,
                 },
             )
         except GraphError as exc:
             return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, f"No he podido leer el buzón: {exc}")
-        items = _remember(ctx, payload.get("value", []))
+        messages = payload.get("value", [])
+        items = _remember(ctx, messages)
+        if p.incluir_texto:
+            for item, message in zip(items, messages, strict=True):
+                item["texto"] = _plain(message.get("body"))[:1200]
         return ToolResult(
             ToolStatus.OK,
             {"sin_leer_mostrados": len(items), "correos": items},
@@ -161,16 +167,12 @@ def leer(deps: Deps) -> Tool:
             return problem
         message_id = ctx.session_state.get("correos", {}).get(p.ref)
         if not message_id:
-            return ToolResult(
-                ToolStatus.NOT_FOUND, "No conozco esa referencia: lista o busca los correos antes."
-            )
+            return ToolResult(ToolStatus.NOT_FOUND, "No conozco esa referencia: lista o busca los correos antes.")
         try:
             message = await deps.graph.request(
                 "GET",
                 f"{_mailbox(deps)}/messages/{message_id}",
-                params={
-                    "$select": "subject,from,toRecipients,ccRecipients,receivedDateTime,body,hasAttachments"
-                },
+                params={"$select": "subject,from,toRecipients,ccRecipients,receivedDateTime,body,hasAttachments"},
             )
             attachments: list[dict[str, Any]] = []
             if message.get("hasAttachments"):
@@ -218,9 +220,7 @@ def borrador(deps: Deps) -> Tool:
             return ToolResult(ToolStatus.PERMISSION_DENIED, "La preparación de borradores está desactivada")
         message_id = ctx.session_state.get("correos", {}).get(p.ref)
         if not message_id:
-            return ToolResult(
-                ToolStatus.NOT_FOUND, "No conozco esa referencia: lista o busca los correos antes."
-            )
+            return ToolResult(ToolStatus.NOT_FOUND, "No conozco esa referencia: lista o busca los correos antes.")
         try:
             draft = await deps.graph.request(
                 "POST", f"{_mailbox(deps)}/messages/{message_id}/createReply", json={"comment": p.texto}
@@ -263,11 +263,11 @@ def _send_blocker(deps: Deps, draft: dict[str, Any] | None, ctx: ToolContext) ->
     if not draft:
         return ToolResult(ToolStatus.NOT_FOUND, "No existe ese borrador en esta conversación.")
     if draft.get("request_id") == ctx.request_id:
-        return ToolResult(
-            denied, "El borrador se acaba de preparar: enséñaselo al usuario y espera su confirmación."
-        )
+        return ToolResult(denied, "El borrador se acaba de preparar: enséñaselo al usuario y espera su confirmación.")
     if not _CONFIRM.search(ctx.user_message) or _DENY.search(ctx.user_message):
         return ToolResult(denied, "Falta la confirmación expresa del usuario para enviar. Pregúntale.")
+    if draft.get("enviado"):
+        return ToolResult(denied, "Ese borrador ya se envió.")
     return None
 
 
@@ -280,6 +280,15 @@ def enviar(deps: Deps) -> Tool:
             return blocker
         assert draft is not None  # noqa: S101
         try:
+            message = await deps.graph.request(
+                "GET", f"{_mailbox(deps)}/messages/{draft['id']}", params={"$select": "toRecipients"}
+            )
+            to = [r.get("emailAddress", {}).get("address", "") for r in message.get("toRecipients", [])]
+            if any(_NOREPLY.search(a) for a in to):
+                return ToolResult(
+                    ToolStatus.PERMISSION_DENIED,
+                    "El destinatario es una dirección que no admite respuestas (no-reply): no se envía.",
+                )
             await deps.graph.request("POST", f"{_mailbox(deps)}/messages/{draft['id']}/send")
         except GraphError as exc:
             return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, f"No he podido enviar el correo: {exc}")
@@ -296,6 +305,105 @@ def enviar(deps: Deps) -> Tool:
     )
 
 
+class ModificarParams(BaseModel):
+    borrador: str = Field(description="Referencia del borrador (b1, b2…)")
+    texto: str = Field(description="Nuevo texto de la respuesta", min_length=1, max_length=5000)
+
+
+def modificar(deps: Deps) -> Tool:
+    async def handler(p: ModificarParams, ctx: ToolContext) -> ToolResult:
+        if problem := _unavailable(deps):
+            return problem
+        draft = ctx.session_state.get("borradores", {}).get(p.borrador)
+        if not draft or draft.get("enviado"):
+            return ToolResult(ToolStatus.NOT_FOUND, "No hay ese borrador pendiente en esta conversación.")
+        try:
+            await deps.graph.request(
+                "PATCH",
+                f"{_mailbox(deps)}/messages/{draft['id']}",
+                json={"body": {"contentType": "Text", "content": p.texto}},
+            )
+        except GraphError as exc:
+            return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, f"No he podido modificar el borrador: {exc}")
+        draft["request_id"] = ctx.request_id  # cambiado: hay que volver a enseñarlo antes de enviar
+        return ToolResult(
+            ToolStatus.OK,
+            {
+                "borrador": p.borrador,
+                "texto": p.texto,
+                "mensaje": "Borrador actualizado; enséñalo y espera confirmación.",
+            },
+            {"type": "mail_draft", "borrador": p.borrador, "texto": p.texto},
+        )
+
+    return Tool(
+        "modificar_borrador",
+        "Cambia el texto de un borrador preparado (antes de enviarlo).",
+        ModificarParams,
+        handler,
+        permission=Permission.CORREO_ENVIAR,
+        audit_resource="correo",
+    )
+
+
+class DescartarParams(BaseModel):
+    borrador: str
+
+
+def descartar(deps: Deps) -> Tool:
+    async def handler(p: DescartarParams, ctx: ToolContext) -> ToolResult:
+        if problem := _unavailable(deps):
+            return problem
+        drafts = ctx.session_state.get("borradores", {})
+        draft = drafts.get(p.borrador)
+        if not draft or draft.get("enviado"):
+            return ToolResult(ToolStatus.NOT_FOUND, "No hay ese borrador pendiente en esta conversación.")
+        try:
+            await deps.graph.request("DELETE", f"{_mailbox(deps)}/messages/{draft['id']}")
+        except GraphError as exc:
+            return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, f"No he podido descartar el borrador: {exc}")
+        drafts.pop(p.borrador, None)
+        return ToolResult(ToolStatus.OK, {"descartado": p.borrador})
+
+    return Tool(
+        "descartar_borrador",
+        "Elimina un borrador preparado que ya no se quiere enviar.",
+        DescartarParams,
+        handler,
+        permission=Permission.CORREO_ENVIAR,
+        audit_resource="correo",
+    )
+
+
+class GuardadosParams(BaseModel):
+    limite: int = Field(default=10, ge=1, le=30)
+
+
+def guardados(deps: Deps) -> Tool:
+    async def handler(p: GuardadosParams, ctx: ToolContext) -> ToolResult:
+        if problem := _unavailable(deps):
+            return problem
+        try:
+            payload = await deps.graph.request(
+                "GET",
+                f"{_mailbox(deps)}/mailFolders/drafts/messages",
+                params={"$top": p.limite, "$orderby": "lastModifiedDateTime desc", "$select": SELECT},
+            )
+        except GraphError as exc:
+            return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, f"No he podido leer los borradores: {exc}")
+        items = _remember(ctx, payload.get("value", []))
+        return ToolResult(ToolStatus.OK, {"borradores_en_el_buzon": items})
+
+    return Tool(
+        "borradores_guardados",
+        "Borradores guardados en el buzón de RRHH.",
+        GuardadosParams,
+        handler,
+        permission=Permission.CORREO_LEER,
+        audit_resource="correo",
+    )
+
+
 def register(registry: ToolRegistry, deps: Deps) -> None:
-    for factory in (pendientes, buscar, leer, borrador, enviar):
+    for factory in (pendientes, buscar, leer, borrador, enviar, modificar, descartar, guardados):
         registry.register(factory(deps))

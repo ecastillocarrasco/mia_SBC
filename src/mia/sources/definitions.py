@@ -96,12 +96,13 @@ TURNOS = SourceDefinition(
         "ID,AnnoTurno,SemanaTurno,EmpleadoTurno,DepartamentoTurno,MailContacto,DNIEmpleado,"
         "Turno_L,Turno_M,Turno_X,Turno_J,Turno_V,Turno_S,Turno_D,"
         "Comentarios_L,Comentarios_M,Comentarios_X,Comentarios_J,Comentarios_V,Comentarios_S,Comentarios_D,"
-        "Publicador,Modified"
+        "Publicador,Modified,FileDirRef"
     ),
     model=ShiftDay,
     mapper=hr.shift_week,
     owner_column="sp_item_id",
     sensitive_fields=("DNIEmpleado",),
+    identity_folders=True,
     domain="turnos",
 )
 

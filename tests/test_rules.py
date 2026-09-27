@@ -27,9 +27,7 @@ def test_persona_forbids_unkeepable_promises() -> None:
 
 
 def test_prompt_states_real_capabilities() -> None:
-    registry = build_registry(
-        Database("sqlite+aiosqlite:///:memory:"), enabled=["empleados", "turnos", "vacaciones"]
-    )
+    registry = build_registry(Database("sqlite+aiosqlite:///:memory:"), enabled=["empleados", "turnos", "vacaciones"])
     user = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
     text = registry.capabilities_for(user)
     assert "capacidades" in text
@@ -37,8 +35,6 @@ def test_prompt_states_real_capabilities() -> None:
     available, pending = text.split("TODAVÍA NO puedes consultar")
     assert "turnos_persona" in available
     assert "nóminas" in pending and "turnos" not in pending
-    prompt = Persona().system_prompt(
-        user_name="Enrique", now=datetime.now(UTC), business_rules=[], capabilities=text
-    )
+    prompt = Persona().system_prompt(user_name="Enrique", now=datetime.now(UTC), business_rules=[], capabilities=text)
     assert "NO está disponible" in prompt
     assert text in prompt

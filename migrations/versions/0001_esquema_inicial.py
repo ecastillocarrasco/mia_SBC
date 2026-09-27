@@ -80,9 +80,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     with op.batch_alter_table("conversation_turns", schema=None) as batch_op:
-        batch_op.create_index(
-            "ix_conversation_turns_session_created", ["session_id", "created_at"], unique=False
-        )
+        batch_op.create_index("ix_conversation_turns_session_created", ["session_id", "created_at"], unique=False)
 
     # ### end Alembic commands ###
 

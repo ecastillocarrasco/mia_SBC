@@ -64,9 +64,7 @@ class SharePointClient:
         self._max_retries = max_retries
         self._backoff_base = backoff_base
         self._semaphore = asyncio.Semaphore(concurrency)
-        self._http = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout_seconds, connect=10.0), transport=transport
-        )
+        self._http = httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=10.0), transport=transport)
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -194,9 +192,7 @@ class SharePointClient:
 
     async def field_names(self, title: str) -> set[str]:
         """Nombres internos de las columnas de una lista (para campos opcionales que aún no existen)."""
-        payload = await self._request(
-            "GET", f"{self._list_url(title)}/fields", params={"$select": "InternalName"}
-        )
+        payload = await self._request("GET", f"{self._list_url(title)}/fields", params={"$select": "InternalName"})
         return {str(f.get("InternalName")) for f in payload.get("value", []) if f.get("InternalName")}
 
     async def current_change_token(self, title: str) -> str:
@@ -206,9 +202,7 @@ class SharePointClient:
             raise SharePointError(f"La lista {title} no devuelve CurrentChangeToken")
         return str(token)
 
-    async def changes_since(
-        self, title: str, token: str, *, fetch_limit: int = 1000
-    ) -> tuple[list[Change], str]:
+    async def changes_since(self, title: str, token: str, *, fetch_limit: int = 1000) -> tuple[list[Change], str]:
         """Cambios de elementos desde ``token`` (paginando el registro). Devuelve cambios y nuevo token."""
         latest: dict[int, Change] = {}
         current = token

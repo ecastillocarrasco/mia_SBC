@@ -13,9 +13,7 @@ from tests.fakes.sharepoint import FakeSharePoint
 SITE = "https://contoso.sharepoint.com/sites/rrhh"
 
 
-def _client(
-    fake: FakeSharePoint, tokens: StaticTokenProvider | None = None, retries: int = 3
-) -> SharePointClient:
+def _client(fake: FakeSharePoint, tokens: StaticTokenProvider | None = None, retries: int = 3) -> SharePointClient:
     return SharePointClient(
         site_url=SITE,
         tokens=tokens or StaticTokenProvider(),

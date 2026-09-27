@@ -164,3 +164,15 @@ def remember_table(state: dict[str, Any], presentation: dict[str, Any] | None, m
     for sub_table in stored.get("tables") or []:
         sub_table["rows"] = list(sub_table.get("rows") or [])[:max_rows]
     state[LAST_TABLE] = stored
+
+
+HISTORY = "historial_poblaciones"
+MAX_HISTORY = 6
+
+
+def remember_population(state: dict[str, Any], population: dict[str, Any] | None) -> None:
+    """Guarda las últimas poblaciones (personas de cada resultado) para poder cruzarlas entre sí."""
+    if not population:
+        return
+    history = [p for p in state.get(HISTORY, []) if p.get("etiqueta") != population.get("etiqueta")]
+    state[HISTORY] = [*history, population][-MAX_HISTORY:]

@@ -72,9 +72,7 @@ def claims_capability(topic: str) -> str:
 
 async def activos_pisos(db: Database) -> int:
     stmt = (
-        select(func.count())
-        .select_from(Employee)
-        .where(Employee.active.is_(True), Employee.department_key == "pisos")
+        select(func.count()).select_from(Employee).where(Employee.active.is_(True), Employee.department_key == "pisos")
     )
     return await _count(db, stmt)
 
@@ -84,9 +82,7 @@ async def negativos_pisos(db: Database) -> int:
         emails = set(
             (
                 await s.scalars(
-                    select(Employee.email).where(
-                        Employee.active.is_(True), Employee.department_key == "pisos"
-                    )
+                    select(Employee.email).where(Employee.active.is_(True), Employee.department_key == "pisos")
                 )
             ).all()
         )

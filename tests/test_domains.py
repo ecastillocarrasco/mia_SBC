@@ -206,7 +206,11 @@ async def test_stale_data_is_flagged(tmp_path: Path) -> None:
 async def test_tools_follow_permissions(registry: ToolRegistry) -> None:
     nobody = UserContext("x", "Invitado")
     names = [t.name for t in registry.schemas_for(nobody)]
-    assert names == ["capacidades"]
+    assert set(names) == {
+        "capacidades",
+        "operar_resultado",
+        "cruzar_resultados",
+    }  # solo operan sobre lo ya visto
     result = await call(registry, "plantilla", user=nobody)
     assert result.status is ToolStatus.PERMISSION_DENIED
 

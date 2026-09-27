@@ -102,9 +102,7 @@ def day_view(s: ShiftDay) -> dict[str, Any]:
     }
 
 
-async def resolve_shift_department(
-    db: AsyncSession, query: str | None
-) -> tuple[ToolStatus, str | None, list[str]]:
+async def resolve_shift_department(db: AsyncSession, query: str | None) -> tuple[ToolStatus, str | None, list[str]]:
     """Departamento tal como aparece en Turnos. Devuelve (estado, clave, opciones)."""
     if not (query or "").strip():
         return ToolStatus.OK, None, []
@@ -122,14 +120,8 @@ async def resolve_shift_department(
 
 def department_not_found(status: ToolStatus, query: str | None, options: list[str]) -> ToolResult:
     """Nunca se convierte en «no hay turnos»: el problema es el nombre del departamento."""
-    verb = (
-        "Hay varios departamentos que encajan"
-        if status is ToolStatus.AMBIGUOUS
-        else "No existe ese departamento"
-    )
-    return ToolResult(
-        status, {"mensaje": f"{verb} («{query}»). No es que no haya turnos.", "departamentos": options}
-    )
+    verb = "Hay varios departamentos que encajan" if status is ToolStatus.AMBIGUOUS else "No existe ese departamento"
+    return ToolResult(status, {"mensaje": f"{verb} («{query}»). No es que no haya turnos.", "departamentos": options})
 
 
 # ------------------------------------------------------------------ turnos de una persona
@@ -189,19 +181,16 @@ def turnos_persona(deps: Deps) -> Tool:
 # ------------------------------------------------------------------ turnos de un día
 class TurnosDiaParams(CohortParams):
     fecha: date | None = Field(default=None, description="Día AAAA-MM-DD (por defecto hoy)")
-    departamento: str | None = Field(
-        default=None, description="Departamento (opcional; sin él, toda la plantilla)"
-    )
+    departamento: str | None = Field(default=None, description="Departamento (opcional; sin él, toda la plantilla)")
     franja: Franja | None = Field(
         default=None,
         description="Turno de mañana (empieza 05:00-11:59), tarde (12:00-17:59) o noche (18:00-04:59)",
     )
+    empieza_a: str | None = Field(default=None, description="HH:MM: quién entra exactamente a esa hora")
     hora: str | None = Field(
         default=None, description="HH:MM para saber quién está trabajando a esa hora (presencia, no inicio)"
     )
-    tipo: str | None = Field(
-        default=None, description="Trabajo, Descanso, Vacaciones, Baja/IT… (por defecto todos)"
-    )
+    tipo: str | None = Field(default=None, description="Trabajo, Descanso, Vacaciones, Baja/IT… (por defecto todos)")
 
 
 def turnos_dia(deps: Deps) -> Tool:
@@ -214,9 +203,7 @@ def turnos_dia(deps: Deps) -> Tool:
             stmt = select(ShiftDay).where(ShiftDay.day == day)
             if dept_key:
                 stmt = stmt.where(ShiftDay.department_key == dept_key)
-            shifts = list(
-                (await db.scalars(stmt.order_by(ShiftDay.department, ShiftDay.employee_name))).all()
-            )
+            shifts = list((await db.scalars(stmt.order_by(ShiftDay.department, ShiftDay.employee_name))).all())
             fresh = await deps.freshness(db, "turnos")
         if not shifts:
             scope = f"en {p.departamento}" if p.departamento else "en ninguna parte de la plantilla"
@@ -239,6 +226,9 @@ def turnos_dia(deps: Deps) -> Tool:
         if p.franja:
             selected = [s for s in selected if s.kind == ShiftKind.TRABAJO and starts_in(s, p.franja)]
             criteria.append(f"turno de {p.franja} (por hora de inicio)")
+        if p.empieza_a and (start := _minutes(p.empieza_a)) is not None:
+            selected = [s for s in selected if s.kind == ShiftKind.TRABAJO and _minutes(s.start_time) == start]
+            criteria.append(f"entra a las {p.empieza_a}")
         if p.hora and (minute := _minutes(p.hora)) is not None:
             selected = [s for s in selected if s.kind == ShiftKind.TRABAJO and works_at(s, minute)]
             criteria.append(f"trabajando a las {p.hora}")
@@ -248,9 +238,8 @@ def turnos_dia(deps: Deps) -> Tool:
             "departamento": shifts[0].department if dept_key else "toda la plantilla",
             "criterio": ", ".join(criteria) or "todos los turnos del día",
             "total_seleccionado": len(selected),
-            "seleccion_por_departamento": dict(
-                Counter(s.department or "Sin dato" for s in selected).most_common()
-            ),
+            "horas_seleccionadas": round(sum(s.hours or 0 for s in selected), 1),
+            "seleccion_por_departamento": dict(Counter(s.department or "Sin dato" for s in selected).most_common()),
             "contexto_del_dia": {
                 "por_tipo": dict(Counter(s.kind for s in shifts).most_common()),
                 "trabajando_por_franja": dict(Counter(franja_of(s) or "sin horario" for s in working)),
@@ -324,9 +313,7 @@ class AusenciasParams(Periodo, CohortParams):
     tipos: list[str] | None = Field(
         default=None, description="Baja/IT, Vacaciones, Permiso, Asuntos propios (por defecto todos)"
     )
-    ordenar_por: Literal["duracion", "inicio"] = Field(
-        default="duracion", description="Por defecto, las más largas"
-    )
+    ordenar_por: Literal["duracion", "inicio"] = Field(default="duracion", description="Por defecto, las más largas")
 
 
 def _absence_summary(
@@ -341,10 +328,14 @@ def _absence_summary(
         seen[x.kind].add(x.person_key)
     for kind, keys in seen.items():
         by_kind[kind]["personas"] = len(keys)
+    dept_people: dict[str, set[str]] = defaultdict(set)
+    for x in periods:
+        dept_people[x.department or "Sin dato"].add(x.person_key)
     summary: dict[str, Any] = {
         "desde": lo.isoformat(),
         "hasta": hi.isoformat(),
         "resumen_por_tipo": dict(by_kind),
+        "personas_por_departamento": dict(sorted(((d, len(k)) for d, k in dept_people.items()), key=lambda kv: -kv[1])),
         "regla": (
             "AUS-001: 'desde' es el inicio real del periodo. 'dias_hasta_hoy' = cuánto lleva; "
             "'dias_totales_publicados' incluye días futuros ya publicados."
@@ -386,9 +377,7 @@ def ausencias(deps: Deps) -> Tool:
     async def handler(p: AusenciasParams, ctx: ToolContext) -> ToolResult:
         today = ctx.now.date()
         kinds = tuple(
-            k
-            for k in ABSENCE_KINDS
-            if not p.tipos or any(normalize_key(t) in normalize_key(k) for t in p.tipos)
+            k for k in ABSENCE_KINDS if not p.tipos or any(normalize_key(t) in normalize_key(k) for t in p.tipos)
         )
         state: dict[str, Any] = {}
         async with deps.db.session() as db:
@@ -475,9 +464,7 @@ def reincorporaciones(deps: Deps) -> Tool:
         today = ctx.now.date()
         lo, hi = p.resolve(today, default_days=14)
         kinds = tuple(
-            k
-            for k in ABSENCE_KINDS
-            if not p.tipos or any(normalize_key(t) in normalize_key(k) for t in p.tipos)
+            k for k in ABSENCE_KINDS if not p.tipos or any(normalize_key(t) in normalize_key(k) for t in p.tipos)
         )
         async with deps.db.session() as db:
             dept_key = None

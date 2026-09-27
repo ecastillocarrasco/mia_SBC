@@ -34,9 +34,7 @@ def test_normal_text_is_untouched() -> None:
     assert guard.clean(text) == text
 
 
-async def test_engine_never_says_or_shows_the_promise(
-    client: httpx.AsyncClient, script: list[Script]
-) -> None:
+async def test_engine_never_says_or_shows_the_promise(client: httpx.AsyncClient, script: list[Script]) -> None:
     script[0] = lambda req: final_answer(
         "Aún no está disponible. Te avisaré cuando lo esté.",
         "Aún no puedo consultarlo. Te avisaré en cuanto pueda.",
@@ -58,19 +56,14 @@ def test_amounts_are_never_spoken() -> None:
     assert guard.speech_blocked("Su líquido fue de 1.234,56 €.")
     assert guard.speech_blocked("Cobró 980 euros.")
     assert not guard.speech_blocked("Tiene 3 nóminas sin leer.")
-    assert (
-        guard.clean_speech("Ya la tengo. El líquido es 1.234,56 €. Te lo muestro.")
-        == "Ya la tengo. Te lo muestro."
-    )
+    assert guard.clean_speech("Ya la tengo. El líquido es 1.234,56 €. Te lo muestro.") == "Ya la tengo. Te lo muestro."
 
 
 def test_voice_never_falls_back_to_a_text_with_amounts() -> None:
     """Fallo real: si toda la voz eran importes, se usaba el texto escrito… con los importes."""
     from mia.conversation.engine import NEUTRAL_SPEECH, parse_final_answer  # noqa: PLC0415
 
-    raw = json.dumps(
-        {"habla": "Cobró 1.344,59 €.", "estado_avatar": "hablando", "texto": "Líquido: 1.344,59 €"}
-    )
+    raw = json.dumps({"habla": "Cobró 1.344,59 €.", "estado_avatar": "hablando", "texto": "Líquido: 1.344,59 €"})
     final = parse_final_answer(raw)
     assert final.speech == NEUTRAL_SPEECH
     assert final.text == "Líquido: 1.344,59 €"

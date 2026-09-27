@@ -28,10 +28,7 @@ def _is_folder(item: dict[str, Any]) -> bool:
 
 # ------------------------------------------------------------------ selección
 def candidate(item: dict[str, Any], ctx: MapContext) -> list[Row]:
-    name = (
-        " ".join(filter(None, [text(item.get("FirstName")), text(item.get("Title"))]))
-        or f"Candidatura {item['ID']}"
-    )
+    name = " ".join(filter(None, [text(item.get("FirstName")), text(item.get("Title"))])) or f"Candidatura {item['ID']}"
     department = text(item.get("DepartamentoCV"))
     return [
         {
@@ -261,9 +258,7 @@ def tt_timesheet(item: dict[str, Any], ctx: MapContext) -> list[Row]:
 
 # ------------------------------------------------------------------ fase 4b
 def new_hire(item: dict[str, Any], ctx: MapContext) -> list[Row]:
-    name = " ".join(filter(None, [text(item.get("Nombre")), text(item.get("Apellidos"))])) or text(
-        item.get("Title")
-    )
+    name = " ".join(filter(None, [text(item.get("Nombre")), text(item.get("Apellidos"))])) or text(item.get("Title"))
     return [
         {
             "sp_id": int(item["ID"]),

@@ -31,7 +31,13 @@ from mia.conversation.events import (
 )
 from mia.conversation.persona import AvatarState, Persona
 from mia.conversation.speech import SpeechExtractor
-from mia.conversation.tools import ToolContext, ToolExecution, ToolRegistry, remember_table
+from mia.conversation.tools import (
+    ToolContext,
+    ToolExecution,
+    ToolRegistry,
+    remember_population,
+    remember_table,
+)
 from mia.data import Database
 from mia.data.repositories import AuditRepository, ConversationRepository
 from mia.llm import (
@@ -138,9 +144,7 @@ class ConversationEngine:
         self._max_tool_rounds = max_tool_rounds
         self._max_output_tokens = max_output_tokens
 
-    async def run(
-        self, *, message: str, user: UserContext, session_id: str | None
-    ) -> AsyncIterator[TurnEvent]:
+    async def run(self, *, message: str, user: UserContext, session_id: str | None) -> AsyncIterator[TurnEvent]:
         message = message.strip()[:MAX_MESSAGE_CHARS]
         request_id = current_request_id()
 
@@ -169,9 +173,7 @@ class ConversationEngine:
             capabilities=self._tools.capabilities_for(user),
             focus=describe_focus(turn.state),
         )
-        ctx = ToolContext(
-            user=user, request_id=request_id, now=now, session_state=turn.state, user_message=message
-        )
+        ctx = ToolContext(user=user, request_id=request_id, now=now, session_state=turn.state, user_message=message)
 
         status: Literal["ok", "error"] = "ok"
         try:
@@ -185,9 +187,7 @@ class ConversationEngine:
         except LLMError as exc:
             log.error("conversation.llm_failed", error=str(exc))
             status = "error"
-            final = FinalAnswer(
-                self.persona.error_phrase, AvatarState.CONFUNDIDA.value, self.persona.error_phrase
-            )
+            final = FinalAnswer(self.persona.error_phrase, AvatarState.CONFUNDIDA.value, self.persona.error_phrase)
             yield SpeechEvent(text=final.speech)
 
         yield AvatarEvent(state=final.avatar_state)
@@ -304,10 +304,9 @@ class ConversationEngine:
             for execution in executions:
                 turn.state.update(execution.result.state_updates)
                 remember_table(turn.state, execution.result.presentation, self._max_report_rows)
+                remember_population(turn.state, execution.result.state_updates.get("ultima_poblacion"))
                 messages.append(
-                    Message(
-                        role="tool", content=execution.as_llm_output(), tool_call_id=execution.call.call_id
-                    )
+                    Message(role="tool", content=execution.as_llm_output(), tool_call_id=execution.call.call_id)
                 )
                 yield ToolEvent(
                     name=execution.call.name,

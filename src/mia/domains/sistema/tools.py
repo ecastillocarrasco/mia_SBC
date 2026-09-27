@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult
+from mia.domains.sistema import resultados
 
 
 class SinParametros(BaseModel):
@@ -12,6 +13,8 @@ class SinParametros(BaseModel):
 
 
 def register(registry: ToolRegistry) -> None:
+    resultados.register(registry)
+
     async def capacidades(_: SinParametros, ctx: ToolContext) -> ToolResult:
         return ToolResult.ok(
             {

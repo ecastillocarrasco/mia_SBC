@@ -43,9 +43,7 @@ async def test_voice_unavailable_is_503(client: httpx.AsyncClient) -> None:
 
 
 async def test_legacy_report_buttons_return_a_file(client: httpx.AsyncClient) -> None:
-    response = await client.post(
-        "/api/mia/informes/generar", json={"modulo": "dashboard_rrhh", "formato": "excel"}
-    )
+    response = await client.post("/api/mia/informes/generar", json={"modulo": "dashboard_rrhh", "formato": "excel"})
     assert response.status_code == 200
     assert "spreadsheetml" in response.headers["content-type"]
     bad = await client.post("/api/mia/informes/generar", json={"modulo": "inventado", "formato": "pdf"})

@@ -68,16 +68,12 @@ def to_document(presentation: dict[str, Any]) -> Document:
         doc.blocks.append(Block("table", doc.title, presentation))
         return doc
     if kind == "dashboard":
-        doc.blocks.append(
-            Block("kpis", "Indicadores", {_label(k): _flat(v) for k, v in presentation["kpis"].items()})
-        )
+        doc.blocks.append(Block("kpis", "Indicadores", {_label(k): _flat(v) for k, v in presentation["kpis"].items()}))
         doc.blocks += [Block("table", t["title"], t) for t in presentation.get("tables", []) if t.get("rows")]
         return doc
     if presentation.get("indicadores"):
         doc.blocks.append(
-            Block(
-                "kpis", "Indicadores", {_label(k): _flat(v) for k, v in presentation["indicadores"].items()}
-            )
+            Block("kpis", "Indicadores", {_label(k): _flat(v) for k, v in presentation["indicadores"].items()})
         )
     for key, value in presentation.items():
         if key in SKIP or key == "indicadores":
@@ -86,11 +82,7 @@ def to_document(presentation: dict[str, Any]) -> Document:
             doc.blocks.append(_list_table(_label(key), value))
         elif isinstance(value, dict):
             doc.blocks.append(Block("section", _label(key), {_label(k): _flat(v) for k, v in value.items()}))
-    simple = {
-        _label(k): _flat(v)
-        for k, v in presentation.items()
-        if k not in SKIP and not isinstance(v, dict | list)
-    }
+    simple = {_label(k): _flat(v) for k, v in presentation.items() if k not in SKIP and not isinstance(v, dict | list)}
     if simple:
         doc.blocks.insert(0, Block("section", "Datos", simple))
     return doc

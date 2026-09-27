@@ -11,9 +11,7 @@ from mia.domains.turnos.periods import ABSENCE_KINDS, build_periods
 from mia.domains.turnos.tools import starts_in, works_at
 
 
-def shift(
-    start: str | None, end: str | None, kind: str = "Trabajo", day: date = date(2026, 8, 3)
-) -> ShiftDay:
+def shift(start: str | None, end: str | None, kind: str = "Trabajo", day: date = date(2026, 8, 3)) -> ShiftDay:
     return ShiftDay(
         sp_item_id=1,
         day=day,

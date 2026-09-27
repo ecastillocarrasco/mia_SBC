@@ -185,9 +185,7 @@ class CvIndexer:
             report.statuses[status] = report.statuses.get(status, 0) + 1
             report.indexed += status == "ok"
             report.failed += status == "error"
-            if progress and (
-                report.processed % 25 == 0 or report.processed == min(len(pending), self._batch)
-            ):
+            if progress and (report.processed % 25 == 0 or report.processed == min(len(pending), self._batch)):
                 progress(report.processed, min(len(pending), self._batch))
         log.info(
             "cv_index.finished",
@@ -231,14 +229,10 @@ class CvIndexer:
             log.warning("cv_index.embed_failed", document=document.sp_id, error=str(exc))
             return "error"  # se reintentará en la siguiente ejecución (no se guarda el texto)
         try:
-            await self._persist(
-                document, status=status, text=text, detail=detail, chunks=chunks, vectors=vectors
-            )
+            await self._persist(document, status=status, text=text, detail=detail, chunks=chunks, vectors=vectors)
         except Exception as exc:  # un CV problemático nunca detiene la indexación del resto
             log.warning("cv_index.persist_failed", document=document.sp_id, error=str(exc)[:300])
-            await self._persist(
-                document, status="error", text="", detail=type(exc).__name__, chunks=[], vectors=[]
-            )
+            await self._persist(document, status="error", text="", detail=type(exc).__name__, chunks=[], vectors=[])
             return "error"
         return status
 

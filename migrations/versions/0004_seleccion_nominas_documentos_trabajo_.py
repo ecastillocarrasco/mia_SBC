@@ -143,9 +143,7 @@ def upgrade() -> None:
     )
     with op.batch_alter_table("hr_tt_timesheets", schema=None) as batch_op:
         batch_op.create_index(batch_op.f("ix_hr_tt_timesheets_day"), ["day"], unique=False)
-        batch_op.create_index(
-            batch_op.f("ix_hr_tt_timesheets_department_key"), ["department_key"], unique=False
-        )
+        batch_op.create_index(batch_op.f("ix_hr_tt_timesheets_department_key"), ["department_key"], unique=False)
 
     op.create_table(
         "hr_tt_workers",

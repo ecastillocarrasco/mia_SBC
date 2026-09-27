@@ -67,9 +67,7 @@ async def seed(db: Database, *, fresh: bool = True) -> None:
     # Eva: baja hoy y mañana; aún sin turnos publicados después.
     for i, kind in enumerate(["Trabajo", "Trabajo", "Baja/IT", "Baja/IT"]):
         day = date(2026, 8, 3) + timedelta(days=i)
-        rows.append(
-            _shift(200, "pk-eva", "Eva Sol", "Spa", day, kind, "Baja" if kind == "Baja/IT" else "9:00-17:00")
-        )
+        rows.append(_shift(200, "pk-eva", "Eva Sol", "Spa", day, kind, "Baja" if kind == "Baja/IT" else "9:00-17:00"))
     # Ana Gómez trabaja hoy en Cocina.
     rows.append(_shift(300, "pk-anag", "Ana Gómez", "Cocina", TODAY, "Trabajo", "Cocina | 8:00-16:00"))
     rows += [

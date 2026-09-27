@@ -78,9 +78,7 @@ async def _department_snapshot(db: AsyncSession, day: date, dept_key: str | None
 # ------------------------------------------------------------------ panel
 class PanelParams(BaseModel):
     fecha: date | None = Field(default=None, description="Día del panel (por defecto hoy)")
-    departamento: str | None = Field(
-        default=None, description="Para el panel de un departamento (departamento 360)"
-    )
+    departamento: str | None = Field(default=None, description="Para el panel de un departamento (departamento 360)")
 
 
 def panel(deps: Deps) -> Tool:
@@ -92,9 +90,7 @@ def panel(deps: Deps) -> Tool:
                 return department_problem(dept, p.departamento)
             snapshot = await _department_snapshot(db, day, dept.key)
             absences = await absence_periods(db, lo=day, hi=day, department_like=dept.key)
-            coming_back = await absence_periods(
-                db, lo=day, hi=day + timedelta(days=7), department_like=dept.key
-            )
+            coming_back = await absence_periods(db, lo=day, hi=day + timedelta(days=7), department_like=dept.key)
             by_dept = (
                 await db.execute(
                     select(Employee.department, func.count())
@@ -104,23 +100,17 @@ def panel(deps: Deps) -> Tool:
                 )
             ).all()
             last_month = (day.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
-            slips = await db.scalar(
-                select(func.count()).select_from(Payslip).where(Payslip.period == last_month)
-            )
+            slips = await db.scalar(select(func.count()).select_from(Payslip).where(Payslip.period == last_month))
             tt = (
                 await db.execute(
-                    select(
-                        func.count(), func.sum(TtTimesheet.hours_total), func.sum(TtTimesheet.amount)
-                    ).where(TtTimesheet.day.between(day.replace(day=1), day))
+                    select(func.count(), func.sum(TtTimesheet.hours_total), func.sum(TtTimesheet.amount)).where(
+                        TtTimesheet.day.between(day.replace(day=1), day)
+                    )
                 )
             ).one()
             fresh = await deps.freshness(db, "empleados", "turnos", "vacaciones")
         returns = sorted(
-            [
-                x
-                for x in coming_back
-                if x.return_shift and day <= x.return_shift.day <= day + timedelta(days=7)
-            ],
+            [x for x in coming_back if x.return_shift and day <= x.return_shift.day <= day + timedelta(days=7)],
             key=lambda x: x.return_shift.day if x.return_shift else day,
         )
         longest = max(absences, key=lambda x: (day - x.start).days, default=None)
@@ -183,9 +173,7 @@ def panel(deps: Deps) -> Tool:
                 ),
             ],
         }
-        return ToolResult(
-            ToolStatus.OK, summary, presentation, {"foco_departamento": dept.name} if dept.name else {}
-        )
+        return ToolResult(ToolStatus.OK, summary, presentation, {"foco_departamento": dept.name} if dept.name else {})
 
     return Tool(
         "panel_rrhh",
@@ -199,9 +187,7 @@ def panel(deps: Deps) -> Tool:
 
 # ------------------------------------------------------------------ comparar departamentos
 class CompararParams(BaseModel):
-    departamentos: list[str] = Field(
-        description="Departamentos a comparar (2 o más)", min_length=2, max_length=8
-    )
+    departamentos: list[str] = Field(description="Departamentos a comparar (2 o más)", min_length=2, max_length=8)
     fecha: date | None = None
 
 
@@ -257,21 +243,29 @@ def cobertura(deps: Deps) -> Tool:
             if p.departamento:
                 stmt = stmt.where(ShiftDay.department_key.like(f"%{normalize_key(p.departamento)}%"))
             shifts = list((await db.scalars(stmt)).all())
+            staff = list((await db.scalars(select(Employee).where(Employee.active.is_(True)))).all())
             fresh = await deps.freshness(db, "turnos")
+        published = {s.person_key for s in shifts}
+        unpublished = Counter(
+            e.department or "Sin dato"
+            for e in staff
+            if e.person_key
+            and e.person_key not in published
+            and (not p.departamento or normalize_key(p.departamento) in (e.department_key or ""))
+        )
         days: dict[date, Counter[str]] = defaultdict(Counter)
         for s in shifts:
             days[s.day][s.kind] += 1
             if s.kind == ShiftKind.TRABAJO:
                 days[s.day][f"franja {franja_of(s) or 'sin horario'}"] += 1
-        view = [
-            {"fecha": d.isoformat(), **dict(days[d])} for d in (start + timedelta(days=i) for i in range(7))
-        ]
+        view = [{"fecha": d.isoformat(), **dict(days[d])} for d in (start + timedelta(days=i) for i in range(7))]
         working: list[int] = [int(days[date.fromisoformat(str(v["fecha"]))][ShiftKind.TRABAJO]) for v in view]
         summary = {
             "semana": f"{start.isoformat()} a {end.isoformat()}",
             "departamento": p.departamento or "toda la plantilla",
             "dias": view,
             "dia_con_menos_personal": view[working.index(min(working))]["fecha"] if shifts else None,
+            "personas_activas_sin_turnos_publicados": dict(unpublished.most_common()),
             **fresh,
         }
         cols = ["Fecha", "Trabajo", "Mañana", "Tarde", "Noche", "Descanso", "Vacaciones", "Baja/IT"]
@@ -416,11 +410,7 @@ def calidad(deps: Deps) -> Tool:
         async with deps.db.session() as db:
             staff = list((await db.scalars(select(Employee).where(Employee.active.is_(True)))).all())
             balances = set(
-                (
-                    await db.scalars(
-                        select(VacationBalance.employee_email).where(VacationBalance.year == year)
-                    )
-                ).all()
+                (await db.scalars(select(VacationBalance.employee_email).where(VacationBalance.year == year))).all()
             )
             shift_keys = set((await db.scalars(select(ShiftDay.person_key).distinct())).all())
             candidates = list((await db.scalars(select(Candidate.email))).all())
