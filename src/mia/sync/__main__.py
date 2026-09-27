@@ -18,19 +18,22 @@ import sys
 
 from sqlalchemy import select
 
+from mia.api.services import build_graph_client
 from mia.data import Database, SourceSyncState
+from mia.domains.curriculums.indexer import CvIndexer
+from mia.llm import build_llm_provider
 from mia.observability import configure_logging
-from mia.settings import get_settings
+from mia.settings import Settings, get_settings
 from mia.sources import all_sources
 from mia.sources.sharepoint import SharePointClient
 from mia.sync.factory import build_runner, build_sharepoint_client
 from mia.sync.runner import SyncMode
 
 
-async def _list(db: Database) -> None:
+async def _list(db: Database, domains: list[str]) -> None:
     async with db.session() as session:
         states = {s.source: s for s in (await session.scalars(select(SourceSyncState))).all()}
-    for source in all_sources():
+    for source in all_sources(domains=domains):
         state = states.get(source.key)
         if state is None:
             print(f"{source.key:28} nunca sincronizada")
@@ -41,9 +44,29 @@ async def _list(db: Database) -> None:
             print(f"{'':28} error: {state.last_error[:150]}")
 
 
-async def _check(client: SharePointClient) -> int:
-    failures = 0
-    for source in all_sources():
+async def _check_mailbox(settings: Settings) -> int:
+    graph = build_graph_client(settings)
+    if graph is None:
+        print("—     correo                       buzón sin configurar (MIA_MAIL__MAILBOX) o desactivado")
+        return 0
+    try:
+        await graph.request(
+            "GET",
+            f"{graph.user_path(settings.mail.mailbox)}/mailFolders/inbox",
+            params={"$select": "id,unreadItemCount"},
+        )
+        print(f"OK    correo                       buzón {settings.mail.mailbox} accesible")
+        return 0
+    except Exception as exc:
+        print(f"FALLA correo                       {str(exc)[:200]}")
+        return 1
+    finally:
+        await graph.aclose()
+
+
+async def _check(client: SharePointClient, settings: Settings) -> int:
+    failures = await _check_mailbox(settings)
+    for source in all_sources(domains=settings.domains.enabled):
         try:
             await client.current_change_token(source.list_title)
             first: list[dict[str, object]] = await anext(
@@ -58,22 +81,43 @@ async def _check(client: SharePointClient) -> int:
     return 1 if failures else 0
 
 
+async def _index_cvs(settings: Settings, db: Database, client: SharePointClient) -> None:
+    llm = build_llm_provider(settings.llm)
+    indexer = CvIndexer(
+        db=db,
+        client=client,
+        llm=llm,
+        embedding_model=settings.curriculums.embedding_model,
+        batch=settings.curriculums.index_batch,
+        max_bytes=settings.curriculums.max_file_mb * 1024 * 1024,
+    )
+    try:
+        r = await indexer.run()
+    finally:
+        await llm.aclose()
+    print(
+        f"{'indexación de CVs':28} procesados {r.processed:>5}  indexados {r.indexed:>5}  "
+        f"errores {r.failed:>4}  pendientes {r.pending:>5}  {r.statuses}"
+    )
+
+
 async def _main(args: argparse.Namespace) -> int:
     settings = get_settings()
     configure_logging(settings.observability.log_level, settings.observability.log_json)
     db = Database(settings.database_url)
     try:
         if args.list:
-            await _list(db)
+            await _list(db, settings.domains.enabled)
             return 0
-        sources = [s for s in all_sources() if not args.source or s.key in args.source]
+        available = all_sources(domains=settings.domains.enabled)
+        sources = [s for s in available if not args.source or s.key in args.source]
         if not sources:
             print("No hay fuentes con ese nombre. Usa --list para verlas.", file=sys.stderr)
             return 2
         client = build_sharepoint_client(settings)
         if args.check:
             try:
-                return await _check(client)
+                return await _check(client, settings)
             finally:
                 await client.aclose()
         runner = build_runner(settings, db, client)
@@ -87,6 +131,8 @@ async def _main(args: argparse.Namespace) -> int:
                         f"{r.source:28} {r.mode.value:11} {r.status:5} leídos {r.fetched:>6}  "
                         f"borrados {r.deleted:>5}  filas {r.rows:>7}  {r.elapsed_ms:>6} ms{extra}"
                     )
+                if "curriculums" in settings.domains.enabled and not args.no_index:
+                    await _index_cvs(settings, db, client)
                 if not args.loop:
                     return 0 if all(r.status == "ok" for r in reports) else 1
                 mode = SyncMode.AUTO
@@ -103,7 +149,8 @@ def main() -> None:
     parser.add_argument("--source", action="append", help="solo esta fuente (repetible)")
     parser.add_argument("--loop", type=int, default=0, help="repetir cada N segundos")
     parser.add_argument("--list", action="store_true", help="mostrar fuentes y estado")
-    parser.add_argument("--check", action="store_true", help="probar el acceso a SharePoint sin escribir")
+    parser.add_argument("--check", action="store_true", help="probar el acceso a SharePoint y al correo")
+    parser.add_argument("--no-index", action="store_true", help="no indexar CVs tras sincronizar")
     try:
         sys.exit(asyncio.run(_main(parser.parse_args())))
     except KeyboardInterrupt:

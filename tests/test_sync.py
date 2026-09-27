@@ -9,10 +9,11 @@ from typing import Any
 import pytest
 from sqlalchemy import func, select
 
-from mia.data import Base, Database, Employee, ShiftDay, SourceItem, SourceSyncState, VacationBalance
+from mia.data import Database, Employee, ShiftDay, SourceItem, SourceSyncState, VacationBalance
 from mia.sources import Pseudonymizer, definitions
 from mia.sources.sharepoint import SharePointClient, StaticTokenProvider
 from mia.sync import SyncMode, SyncRunner
+from tests.dbutil import fresh_database
 from tests.fakes.sharepoint import FakeSharePoint
 
 EMP = definitions.EMPLEADOS.list_title
@@ -20,9 +21,7 @@ EMP = definitions.EMPLEADOS.list_title
 
 @pytest.fixture
 async def db(tmp_path: Path) -> AsyncIterator[Database]:
-    database = Database(f"sqlite+aiosqlite:///{tmp_path / 'sync.db'}")
-    async with database.engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    database = await fresh_database(tmp_path, "sync.db")
     yield database
     await database.dispose()
 

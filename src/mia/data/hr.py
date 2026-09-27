@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, Date, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, Index, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mia.data.models import Base
@@ -113,3 +113,144 @@ class VacationBalance(Base):
     current_balance: Mapped[float | None] = mapped_column(Float)
     total_balance: Mapped[float | None] = mapped_column(Float)
     modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ---------------------------------------------------------------------- selección
+class Candidate(Base):
+    """Candidatura (lista CurriculosVitae)."""
+
+    __tablename__ = "hr_candidates"
+
+    sp_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    name: Mapped[str] = mapped_column(String(256))
+    name_key: Mapped[str] = mapped_column(String(256), index=True)
+    email: Mapped[str | None] = mapped_column(String(256))
+    phone: Mapped[str | None] = mapped_column(String(64))
+    department: Mapped[str | None] = mapped_column(String(256))
+    department_key: Mapped[str | None] = mapped_column(String(256), index=True)
+    experience: Mapped[str | None] = mapped_column(Text)
+    languages: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str | None] = mapped_column(String(64))
+    comments: Mapped[str | None] = mapped_column(Text)
+    applied_on: Mapped[date | None] = mapped_column(Date)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CvDocument(Base):
+    """Fichero de la biblioteca CVDocs (nombre = ID de la candidatura)."""
+
+    __tablename__ = "hr_cv_documents"
+
+    sp_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    candidate_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    file_name: Mapped[str] = mapped_column(String(512))
+    file_ref: Mapped[str] = mapped_column(Text)
+    modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CvText(Base):
+    """Texto extraído de un CV. Vive fuera del ciclo de sincronización para no reextraer a diario."""
+
+    __tablename__ = "hr_cv_texts"
+
+    document_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    candidate_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    source_modified: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(32))
+    """ok · empty · unsupported · too_large · error"""
+    text: Mapped[str | None] = mapped_column(Text)
+    detail: Mapped[str | None] = mapped_column(Text)
+    extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CvChunk(Base):
+    __tablename__ = "hr_cv_chunks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_id: Mapped[int] = mapped_column(Integer, index=True)
+    candidate_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[bytes | None] = mapped_column(LargeBinary)
+    """float32 empaquetado; la búsqueda se hace en memoria (≈1.400 CVs)."""
+
+
+# ---------------------------------------------------------------------- nóminas y documentos
+class Payslip(Base):
+    """Metadatos de una nómina (biblioteca Nominas). El contenido no se lee ni se guarda."""
+
+    __tablename__ = "hr_payslips"
+    __table_args__ = (Index("ix_hr_payslips_person_period", "person_key", "period"),)
+
+    sp_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    person_key: Mapped[str | None] = mapped_column(String(64))
+    employee_name: Mapped[str | None] = mapped_column(String(256))
+    employee_email: Mapped[str | None] = mapped_column(String(256), index=True)
+    year: Mapped[int | None] = mapped_column(Integer)
+    month: Mapped[int | None] = mapped_column(Integer)
+    period: Mapped[str | None] = mapped_column(String(7))
+    label: Mapped[str | None] = mapped_column(String(128))
+    special: Mapped[bool] = mapped_column(Boolean, default=False)
+    read: Mapped[bool | None] = mapped_column(Boolean)
+    file_name: Mapped[str | None] = mapped_column(String(512))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SignedDocument(Base):
+    """Documento firmado de una persona (biblioteca DocumentosFirmadosV2): solo existencia y tipo."""
+
+    __tablename__ = "hr_signed_documents"
+
+    sp_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    person_key: Mapped[str | None] = mapped_column(String(64), index=True)
+    doc_type: Mapped[str] = mapped_column(String(64))
+    file_name: Mapped[str | None] = mapped_column(String(512))
+    doc_year: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ---------------------------------------------------------------------- trabajo temporal
+class TtCompany(Base):
+    __tablename__ = "hr_tt_companies"
+
+    sp_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    name: Mapped[str] = mapped_column(String(256))
+    cif: Mapped[str | None] = mapped_column(String(32))
+    email: Mapped[str | None] = mapped_column(String(256))
+    phone: Mapped[str | None] = mapped_column(String(64))
+
+
+class TtWorker(Base):
+    __tablename__ = "hr_tt_workers"
+
+    sp_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    name: Mapped[str] = mapped_column(String(256))
+    name_key: Mapped[str] = mapped_column(String(256), index=True)
+    department: Mapped[str | None] = mapped_column(String(256))
+    company: Mapped[str | None] = mapped_column(String(256))
+    email: Mapped[str | None] = mapped_column(String(256))
+    phone: Mapped[str | None] = mapped_column(String(64))
+    visible: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class TtTimesheet(Base):
+    """Boletín de horas de trabajo temporal."""
+
+    __tablename__ = "hr_tt_timesheets"
+
+    sp_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    day: Mapped[date | None] = mapped_column(Date, index=True)
+    worker_name: Mapped[str | None] = mapped_column(String(256))
+    worker_id: Mapped[int | None] = mapped_column(Integer)
+    company: Mapped[str | None] = mapped_column(String(256))
+    company_id: Mapped[int | None] = mapped_column(Integer)
+    department: Mapped[str | None] = mapped_column(String(256))
+    department_key: Mapped[str | None] = mapped_column(String(256), index=True)
+    status: Mapped[str | None] = mapped_column(String(64))
+    start_time: Mapped[str | None] = mapped_column(String(8))
+    end_time: Mapped[str | None] = mapped_column(String(8))
+    hours_normal: Mapped[float | None] = mapped_column(Float)
+    hours_night: Mapped[float | None] = mapped_column(Float)
+    hours_total: Mapped[float | None] = mapped_column(Float)
+    diet: Mapped[float | None] = mapped_column(Float)
+    amount: Mapped[float | None] = mapped_column(Float)

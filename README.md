@@ -10,14 +10,14 @@ y [docs/migracion.md](docs/migracion.md).
 
 ## Estado
 
-**Fase 3 · turnos, empleados y vacaciones** — lista para probar con datos reales.
+**Fase 4 · resto de dominios** — lista para probar con datos reales.
 
 | Fase | Contenido | Estado |
 |---|---|---|
 | 1 | Estructura, API, motor conversacional, personaje, voz, identidad preparada, base de datos, observabilidad, batería de paridad, infraestructura Azure | ✅ |
 | 2 | Capa de datos: cliente SharePoint y sincronización incremental a PostgreSQL | ✅ |
-| 3 | Dominios de más uso: turnos, empleados, vacaciones | 🧪 |
-| 4 | Resto de dominios, informes y correo | ⏳ |
+| 3 | Dominios de más uso: turnos, empleados, vacaciones | ✅ |
+| 4 | Currículums, correo, nóminas, documentación firmada, trabajo temporal, informes y CI con PostgreSQL | 🧪 |
 | 5 | Modo sombra frente al sistema anterior y corte | ⏳ |
 | 6 | Modelo predictivo | ⏳ |
 | — | Autenticación Entra ID (MSAL) | Fase posterior; el hueco ya existe |
@@ -79,8 +79,10 @@ python -m mia.sync               # incremental (o completa si toca)
 python -m mia.sync --loop 300    # en local, repetir cada 5 minutos
 ```
 
-Fuentes: empleados, departamentos, turnos, vacaciones y saldo de vacaciones del
-año en curso. La incremental usa el registro de cambios de SharePoint (altas,
+Fuentes: empleados, departamentos, turnos, vacaciones, saldo del año en curso,
+candidaturas y CVs, nóminas (solo metadatos), documentación firmada y trabajo
+temporal. Tras sincronizar se indexan los CVs nuevos o modificados (`--no-index`
+para saltarlo). La incremental usa el registro de cambios de SharePoint (altas,
 modificaciones y borrados) y solo descarga lo que ha cambiado; una vez al día se
 hace una completa. En Azure la ejecuta un Container Apps Job cada 10 minutos.
 

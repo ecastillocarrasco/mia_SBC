@@ -27,7 +27,9 @@ def test_persona_forbids_unkeepable_promises() -> None:
 
 
 def test_prompt_states_real_capabilities() -> None:
-    registry = build_registry(Database("sqlite+aiosqlite:///:memory:"))
+    registry = build_registry(
+        Database("sqlite+aiosqlite:///:memory:"), enabled=["empleados", "turnos", "vacaciones"]
+    )
     user = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
     text = registry.capabilities_for(user)
     assert "capacidades" in text

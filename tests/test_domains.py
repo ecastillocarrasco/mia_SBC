@@ -13,9 +13,9 @@ import pytest
 
 from mia.auth import UserContext
 from mia.conversation import ToolContext, ToolRegistry, ToolStatus
-from mia.data import Base, Database
 from mia.domains import build_registry
 from mia.llm import ToolCall
+from tests.dbutil import fresh_database
 from tests.hr_seed import TODAY, seed
 
 NOW = datetime(TODAY.year, TODAY.month, TODAY.day, 10, 0, tzinfo=ZoneInfo("Europe/Madrid"))
@@ -24,9 +24,7 @@ ADMIN = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
 
 @pytest.fixture
 async def registry(tmp_path: Path) -> AsyncIterator[ToolRegistry]:
-    db = Database(f"sqlite+aiosqlite:///{tmp_path / 'hr.db'}")
-    async with db.engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    db = await fresh_database(tmp_path, "hr.db")
     await seed(db)
     yield build_registry(db)
     await db.dispose()
@@ -189,9 +187,7 @@ async def test_return_is_not_guessed_without_published_shifts(registry: ToolRegi
 
 # ------------------------------------------------------------------ transversal
 async def test_stale_data_is_flagged(tmp_path: Path) -> None:
-    db = Database(f"sqlite+aiosqlite:///{tmp_path / 'stale.db'}")
-    async with db.engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    db = await fresh_database(tmp_path, "stale.db")
     await seed(db, fresh=False)
     result = await call(build_registry(db), "plantilla")
     await db.dispose()
@@ -212,9 +208,7 @@ async def test_focus_reaches_the_next_turn(tmp_path: Path) -> None:
     from mia.llm.base import LLMRequest  # noqa: PLC0415
     from mia.llm.fake import FakeLLMProvider, final_answer, tool_call  # noqa: PLC0415
 
-    db = Database(f"sqlite+aiosqlite:///{tmp_path / 'focus.db'}")
-    async with db.engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    db = await fresh_database(tmp_path, "focus.db")
     await seed(db)
 
     def script(req: LLMRequest) -> list[Any]:

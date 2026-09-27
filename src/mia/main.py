@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from mia import __version__
 from mia.api.errors import install_error_handlers
 from mia.api.middleware import RequestContextMiddleware
-from mia.api.routes import admin, chat, compat, health, voice
+from mia.api.routes import admin, chat, compat, health, reports, voice
 from mia.api.routes.frontend import mount_frontend
 from mia.api.services import Services
 from mia.observability import configure_logging, get_logger
@@ -60,7 +60,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
         allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
     )
     install_error_handlers(app)
-    for router in (health.router, chat.router, voice.router, admin.router, compat.router):
+    for router in (health.router, chat.router, voice.router, reports.router, admin.router, compat.router):
         app.include_router(router)
     mount_frontend(app, settings.frontend)
     return app

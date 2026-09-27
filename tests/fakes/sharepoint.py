@@ -19,6 +19,7 @@ class FakeSharePoint:
         self.fail_next: list[int] = []
         self.expired_tokens: set[str] = set()
         self.requests: list[httpx.Request] = []
+        self.files: dict[str, bytes] = {}
 
     # --------------------------------------------------------------- datos
     def _log(self, title: str, change_type: int, item_id: int) -> None:
@@ -44,6 +45,10 @@ class FakeSharePoint:
         if self.fail_next:
             return httpx.Response(self.fail_next.pop(0), headers={"Retry-After": "0"}, text="fallo simulado")
         path = unquote(request.url.path)
+        file_match = re.search(r"GetFileByServerRelativeUrl\('(.+?)'\)/\$value$", path)
+        if file_match:
+            content = self.files.get(file_match.group(1).replace("''", "'"))
+            return httpx.Response(200, content=content) if content is not None else httpx.Response(404)
         match = re.search(r"getbytitle\('(.+?)'\)(.*)$", path)
         assert match, path
         title, rest = match.group(1).replace("''", "'"), match.group(2)

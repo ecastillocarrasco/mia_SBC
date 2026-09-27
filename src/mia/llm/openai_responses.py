@@ -104,6 +104,17 @@ class OpenAIResponsesProvider:
     async def aclose(self) -> None:
         await self._client.aclose()
 
+    async def embed(self, texts: list[str], model: str) -> list[list[float]]:
+        """Embeddings para la búsqueda semántica (en Azure, «model» es el nombre del despliegue)."""
+        try:
+            response = await self._client.post("/embeddings", json={"model": model, "input": texts})
+        except httpx.HTTPError as exc:
+            raise LLMError(f"Error de red al calcular embeddings: {exc}") from exc
+        if response.status_code >= 400:
+            raise LLMError(f"Embeddings HTTP {response.status_code}: {response.text[:300]}")
+        data = sorted(response.json().get("data", []), key=lambda d: d.get("index", 0))
+        return [list(map(float, d["embedding"])) for d in data]
+
     async def stream(self, request: LLMRequest) -> AsyncIterator[LLMEvent]:
         payload = build_payload(self._model, request)
         try:

@@ -99,6 +99,27 @@ RULES: tuple[BusinessRule, ...] = (
         ("turnos", "vacaciones"),
     ),
     BusinessRule(
+        "NOM-001",
+        "Periodo de la nómina",
+        "El mes de una nómina sale de MesNomina y, si no, del nombre del fichero (2026-08_Agosto.pdf). Un "
+        "código no mensual (2025-71_Extra Julio) es una paga especial, no el mes 71 ni el 7 ordinario.",
+        ("nominas",),
+    ),
+    BusinessRule(
+        "NOM-002",
+        "Sin importes de nómina",
+        "mIA no lee el contenido de las nóminas: informa de su existencia, periodo y lectura. Para "
+        "importes hay que abrir la nómina.",
+        ("nominas",),
+    ),
+    BusinessRule(
+        "COR-001",
+        "Correo: enviar solo con confirmación",
+        "mIA puede leer, buscar y preparar borradores. Solo envía un borrador que el usuario ya ha visto "
+        "y cuando lo confirma expresamente en su último mensaje.",
+        ("correo",),
+    ),
+    BusinessRule(
         "SEL-001",
         "Sin ranking automático de candidatos",
         "En selección se busca y se explica la evidencia de cada CV; no se ordena ni descarta "

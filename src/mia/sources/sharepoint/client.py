@@ -74,6 +74,38 @@ class SharePointClient:
     def _list_url(self, title: str) -> str:
         return f"{self._site}/_api/web/lists/getbytitle('{_escape(title)}')"
 
+    async def download(self, server_relative_url: str, max_bytes: int) -> bytes:
+        """Contenido de un fichero de una biblioteca (con límite de tamaño)."""
+        path = server_relative_url.replace("'", "''")
+        url = f"{self._site}/_api/web/GetFileByServerRelativeUrl('{path}')/$value"
+        response = await self._raw("GET", url)
+        if len(response.content) > max_bytes:
+            raise SharePointError(f"Fichero demasiado grande ({len(response.content)} bytes)")
+        return response.content
+
+    async def _raw(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        refreshed = False
+        for attempt in range(self._max_retries + 1):
+            headers = {"Authorization": f"Bearer {await self._tokens.token(force_refresh=refreshed)}"}
+            try:
+                async with self._semaphore:
+                    response = await self._http.request(method, url, headers=headers, **kwargs)
+            except httpx.HTTPError as exc:
+                if attempt >= self._max_retries:
+                    raise SharePointError(f"No se ha podido conectar con SharePoint: {exc}") from exc
+                await self._sleep(attempt, None)
+                continue
+            if response.status_code == 401 and not refreshed:
+                refreshed = True
+                continue
+            if response.status_code in _RETRY_STATUS and attempt < self._max_retries:
+                await self._sleep(attempt, response.headers.get("Retry-After"))
+                continue
+            if response.status_code >= 400:
+                raise SharePointError(f"SharePoint HTTP {response.status_code}: {response.text[:300]}")
+            return response
+        raise SharePointError("Se agotaron los reintentos con SharePoint")  # pragma: no cover
+
     async def _request(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
         refreshed = False
         for attempt in range(self._max_retries + 1):

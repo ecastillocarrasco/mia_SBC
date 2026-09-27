@@ -26,7 +26,7 @@ from mia.data import Database, SourceItem, SourceSyncState
 from mia.observability import get_logger
 from mia.sources.definitions import SourceDefinition
 from mia.sources.mappers.common import MapContext
-from mia.sources.pseudonym import Pseudonymizer
+from mia.sources.pseudonym import Pseudonymizer, mask_ids, pseudonymize_path
 from mia.sources.sharepoint import ChangeTokenExpiredError, SharePointClient
 
 log = get_logger(__name__)
@@ -182,6 +182,16 @@ class SyncRunner:
         for name in source.sensitive_fields:
             if name in clean:
                 clean[name] = self._pseudonymize(clean[name])
+        if source.identity_folders:
+            person_key = None
+            for name in ("FileRef", "FileDirRef"):
+                if isinstance(clean.get(name), str):
+                    clean[name], key = pseudonymize_path(clean[name], self._pseudonymize)
+                    person_key = person_key or key
+            for name in ("FileLeafRef", "Title"):
+                if isinstance(clean.get(name), str):
+                    clean[name] = mask_ids(clean[name])
+            clean["_person_key"] = person_key
         return clean
 
     def _scope(self, source: SourceDefinition) -> list[Any]:

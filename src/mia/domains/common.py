@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import difflib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -24,6 +24,14 @@ MAX_ROWS_FOR_MODEL = 40
 class Deps:
     db: Database
     stale_after: timedelta = STALE_AFTER
+    llm: Any = None
+    """Proveedor LLM (para embeddings de la búsqueda de CVs)."""
+    settings: Any = None
+    """Settings de la aplicación (correo, informes, currículums)."""
+    graph: Any = None
+    """Cliente de Microsoft Graph (correo), si está configurado."""
+    services: dict[str, Any] = field(default_factory=dict)
+    """Servicios compartidos por varias herramientas de un dominio (índice de CVs, almacén de informes)."""
 
     async def freshness(self, db: AsyncSession, *sources: str) -> dict[str, Any]:
         return await freshness(db, *sources, stale_after=self.stale_after)

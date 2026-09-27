@@ -7,12 +7,12 @@ import httpx
 import pytest
 
 from mia.api.services import Services
-from mia.data import Base, Database
 from mia.llm.base import LLMEvent, LLMRequest
 from mia.llm.fake import FakeLLMProvider, final_answer
 from mia.main import create_app
 from mia.settings import Environment, LLMProviderName, Settings
 from mia.voice import CachedVoice, NullVoiceProvider
+from tests.dbutil import fresh_database, test_database_url
 
 Script = Callable[[LLMRequest], list[LLMEvent]]
 
@@ -20,7 +20,7 @@ Script = Callable[[LLMRequest], list[LLMEvent]]
 def make_settings(tmp_path: Path, **overrides: object) -> Settings:
     values: dict[str, object] = {
         "environment": Environment.TEST,
-        "database_url": f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
+        "database_url": test_database_url(tmp_path),
         "llm": {"provider": LLMProviderName.FAKE},
         "observability": {"log_json": False, "log_level": "WARNING"},
     }
@@ -40,10 +40,8 @@ def script() -> list[Script]:
 
 
 @pytest.fixture
-async def services(settings: Settings, script: list[Script]) -> AsyncIterator[Services]:
-    db = Database(settings.database_url)
-    async with db.engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+async def services(settings: Settings, script: list[Script], tmp_path: Path) -> AsyncIterator[Services]:
+    db = await fresh_database(tmp_path)
     llm = FakeLLMProvider(lambda req: script[0](req))  # noqa: PLW0108  (lee el guion vigente)
     built = Services.build(settings, llm=llm, db=db, voice=CachedVoice(NullVoiceProvider()))
     yield built

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from mia.llm.base import LLMCompleted, LLMEvent, LLMRequest, TextDelta, ToolCall, ToolCallRequested
+from mia.text import normalize_key
 
 Script = Callable[[LLMRequest], list[LLMEvent]]
 
@@ -40,6 +42,16 @@ class FakeLLMProvider:
         self.requests.append(request)
         for event in self._script(request):
             yield event
+
+    async def embed(self, texts: list[str], model: str) -> list[list[float]]:
+        """Embeddings deterministas de bolsa de palabras (suficiente para probar la búsqueda)."""
+        vectors = []
+        for text in texts:
+            vector = [0.0] * 64
+            for word in normalize_key(text).split():
+                vector[int(hashlib.md5(word.encode()).hexdigest(), 16) % 64] += 1.0  # noqa: S324
+            vectors.append(vector)
+        return vectors
 
     async def aclose(self) -> None:
         return None

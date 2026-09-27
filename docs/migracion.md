@@ -26,7 +26,7 @@ Se mantienen como alias en `api/routes/compat.py` hasta rehacer el frontend:
 | `POST /api/mia/voice` | ✅ alias (ahora en streaming) |
 | `GET /api/version`, `GET /api/mia/v4/health` | ✅ alias |
 | `GET /mia`, `/mia-assets/*` | ✅ opcional, desde la carpeta anterior |
-| `POST /api/mia/informes/generar` | ⏳ fase 4 |
+| `POST /api/mia/informes/generar` | Sustituida por la herramienta `generar_informe` y `GET /api/reports/{id}` |
 
 Rutas nuevas: `POST /api/chat`, `POST /api/chat/stream` (SSE), `POST /api/voice/stream`,
 `GET /health/live`, `GET /health/ready`.
@@ -55,7 +55,12 @@ similares) **no se migran**: exponían cualquier lista sin autenticación.
 | `MIA_RRHH_URL` | `MIA_SHAREPOINT__RRHH_SITE_URL` |
 | `MIA_SITE_URL` (portal) | No se usa: todas las fuentes actuales están en el sitio de RRHH |
 | — | `MIA_DATA__PSEUDONYM_KEY` (nueva: seudonimización de DNI/NIE) |
-| `MIA_OUTLOOK_*` | Fase 4 (`MIA_MAIL__*`) |
+| `MIA_OUTLOOK_MAILBOX` | `MIA_MAIL__MAILBOX` |
+| `MIA_OUTLOOK_SEND_ENABLED` | `MIA_MAIL__SEND_ENABLED` (por defecto `false`) |
+| `MIA_OUTLOOK_DRAFT_WRITE_ENABLED` | `MIA_MAIL__DRAFTS_ENABLED` |
+| `MIA_OUTLOOK_MAX_MESSAGES` | `MIA_MAIL__MAX_MESSAGES` |
+| `MIA_OUTLOOK_*_MAILBOX`, `MIA_OUTLOOK_SEND_TEST_RECIPIENT` | Eliminadas: un único buzón |
+| `MIA_NOMINAS_PERMITIR_CONTENIDO`, `MIA_DOCUMENTOS_FIRMADOS_PERMITIR_CONTENIDO` | Eliminadas: el contenido no se lee (NOM-002, FIR-001) |
 | `MIA_WEB_SEARCH_ENABLED`, `MIA_WEATHER_*`, `MIA_DEFAULT_LOCATION` | Asistente general (fase 4) |
 | `MIA_LLM_MODE`, `MIA_LLM_RESPONDER`, `MIA_V12_CHAT_URL`, `MIA_LLM_EXPOSE_DEBUG`, `MIA_LLM_RPM_LIMIT` | Eliminadas: ya no aplican |
 

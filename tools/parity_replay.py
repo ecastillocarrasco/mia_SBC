@@ -27,7 +27,18 @@ from typing import Any
 import httpx
 
 CORPUS = Path(__file__).resolve().parents[1] / "tests" / "parity" / "corpus"
-DATA_DOMAINS = {"empleados", "departamentos", "turnos", "vacaciones", "saldo_vacaciones"}
+DATA_DOMAINS = {
+    "empleados",
+    "departamentos",
+    "turnos",
+    "vacaciones",
+    "saldo_vacaciones",
+    "curriculums",
+    "correo",
+    "nominas",
+    "documentos_firmados",
+    "trabajo_temporal",
+}
 SLOW_MS = 8000
 
 

@@ -31,7 +31,7 @@ from mia.conversation.events import (
 )
 from mia.conversation.persona import AvatarState, Persona
 from mia.conversation.speech import SpeechExtractor
-from mia.conversation.tools import ToolContext, ToolExecution, ToolRegistry
+from mia.conversation.tools import ToolContext, ToolExecution, ToolRegistry, remember_table
 from mia.data import Database
 from mia.data.repositories import AuditRepository, ConversationRepository
 from mia.llm import (
@@ -115,7 +115,9 @@ class ConversationEngine:
         history_turns: int = 12,
         max_tool_rounds: int = 4,
         max_output_tokens: int = 1200,
+        max_report_rows: int = 5000,
     ) -> None:
+        self._max_report_rows = max_report_rows
         self._llm = llm
         self._tools = tools
         self._db = db
@@ -156,7 +158,9 @@ class ConversationEngine:
             capabilities=self._tools.capabilities_for(user),
             focus=describe_focus(turn.state),
         )
-        ctx = ToolContext(user=user, request_id=request_id, now=now, session_state=turn.state)
+        ctx = ToolContext(
+            user=user, request_id=request_id, now=now, session_state=turn.state, user_message=message
+        )
 
         status: Literal["ok", "error"] = "ok"
         try:
@@ -288,6 +292,7 @@ class ConversationEngine:
             messages.append(Message(role="assistant", content="".join(raw), tool_calls=tuple(calls)))
             for execution in executions:
                 turn.state.update(execution.result.state_updates)
+                remember_table(turn.state, execution.result.presentation, self._max_report_rows)
                 messages.append(
                     Message(
                         role="tool", content=execution.as_llm_output(), tool_call_id=execution.call.call_id

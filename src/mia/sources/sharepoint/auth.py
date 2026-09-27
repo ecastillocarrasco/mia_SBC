@@ -60,8 +60,9 @@ def _private_key_pem(settings: SharePointSettings) -> str:
 class CertificateTokenProvider:
     REFRESH_MARGIN_SECONDS = 300
 
-    def __init__(self, settings: SharePointSettings) -> None:
+    def __init__(self, settings: SharePointSettings, scope: str | None = None) -> None:
         self._settings = settings
+        self._scope = scope or f"https://{settings.host}/.default"
         self._app: msal.ConfidentialClientApplication | None = None
         self._token: str | None = None
         self._expires_at = 0.0
@@ -80,8 +81,7 @@ class CertificateTokenProvider:
         return self._app
 
     def _acquire(self) -> dict[str, Any]:
-        scope = [f"https://{self._settings.host}/.default"]
-        result: dict[str, Any] = self._client().acquire_token_for_client(scopes=scope)
+        result: dict[str, Any] = self._client().acquire_token_for_client(scopes=[self._scope])
         return result
 
     async def token(self, *, force_refresh: bool = False) -> str:

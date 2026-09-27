@@ -10,9 +10,22 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from mia.data import Employee, OrgUnit, ShiftDay, Vacation, VacationBalance
+from mia.data import (
+    Candidate,
+    CvDocument,
+    Employee,
+    OrgUnit,
+    Payslip,
+    ShiftDay,
+    SignedDocument,
+    TtCompany,
+    TtTimesheet,
+    TtWorker,
+    Vacation,
+    VacationBalance,
+)
 from mia.data.models import Base
-from mia.sources.mappers import hr
+from mia.sources.mappers import docs, hr
 from mia.sources.mappers.common import MapContext
 
 Mapper = Callable[[dict[str, Any], MapContext], list[dict[str, Any]]]
@@ -31,9 +44,13 @@ class SourceDefinition:
     expand: str | None = None
     sensitive_fields: tuple[str, ...] = ()
     """Identificadores personales: se seudonimizan antes de guardar nada."""
+    identity_folders: bool = False
+    """Biblioteca con carpetas por DNI/NIE: se seudonimizan las rutas y se añade «_person_key»."""
     scope: dict[str, Any] = field(default_factory=dict)
     """Columnas fijas de esta fuente en la tabla canónica (p. ej. el año del saldo)."""
     year: int | None = None
+    domain: str = "empleados"
+    """Dominio al que pertenece (si el dominio está desactivado, la fuente no se sincroniza)."""
 
 
 EMPLEADOS = SourceDefinition(
@@ -76,6 +93,7 @@ TURNOS = SourceDefinition(
     mapper=hr.shift_week,
     owner_column="sp_item_id",
     sensitive_fields=("DNIEmpleado",),
+    domain="turnos",
 )
 
 VACACIONES = SourceDefinition(
@@ -89,6 +107,7 @@ VACACIONES = SourceDefinition(
     model=Vacation,
     mapper=hr.vacation,
     owner_column="sp_id",
+    domain="vacaciones",
 )
 
 
@@ -103,10 +122,111 @@ def saldo_vacaciones(year: int) -> SourceDefinition:
         owner_column="sp_id",
         scope={"year": year},
         year=year,
+        domain="vacaciones",
     )
 
 
-def all_sources(today: date | None = None) -> list[SourceDefinition]:
-    """Fuentes activas. El saldo se sincroniza para el año en curso."""
+CURRICULUMS = SourceDefinition(
+    key="curriculums",
+    list_title="CurriculosVitae",
+    select="ID,FirstName,Title,EMail,Telefono,DepartamentoCV,ExpPrevia,Idiomas,EstadoCV,ComentariosCV,Fecha,Created",
+    model=Candidate,
+    mapper=docs.candidate,
+    owner_column="sp_id",
+    domain="curriculums",
+)
+
+CV_DOCS = SourceDefinition(
+    key="cv_docs",
+    list_title="CVDocs",
+    select="ID,FileSystemObjectType,FileLeafRef,FileRef,Modified",
+    model=CvDocument,
+    mapper=docs.cv_document,
+    owner_column="sp_id",
+    domain="curriculums",
+)
+
+NOMINAS = SourceDefinition(
+    key="nominas",
+    list_title="Nominas",
+    select=(
+        "ID,FileSystemObjectType,FileLeafRef,FileRef,FileDirRef,Title,MesNomina,Leido,Created,"
+        "UsuarioNomina/Title,UsuarioNomina/EMail"
+    ),
+    expand="UsuarioNomina",
+    model=Payslip,
+    mapper=docs.payslip,
+    owner_column="sp_id",
+    identity_folders=True,
+    domain="nominas",
+)
+
+DOCUMENTOS_FIRMADOS = SourceDefinition(
+    key="documentos_firmados",
+    list_title="DocumentosFirmadosV2",
+    select="ID,FileSystemObjectType,FileLeafRef,FileRef,FileDirRef,Created",
+    model=SignedDocument,
+    mapper=docs.signed_document,
+    owner_column="sp_id",
+    identity_folders=True,
+    domain="documentos",
+)
+
+TT_EMPRESAS = SourceDefinition(
+    key="tt_empresas",
+    list_title="EmpresasTT",
+    select="ID,Title,CIFEmpresaTT,MailEmpresaTT,TelefonoEmpresaTT",
+    model=TtCompany,
+    mapper=docs.tt_company,
+    owner_column="sp_id",
+    domain="trabajo_temporal",
+)
+
+TT_TRABAJADORES = SourceDefinition(
+    key="tt_trabajadores",
+    list_title="EmpleadosTT",
+    select=(
+        "ID,NombreEmpleadoTT,ApellidosEmpleadoTT,DepartamentoEmpleadoTT,EmpresaTTEmpleadoTT,"
+        "MailEmpleadoTT,TelefonoEmpleadoTT,VisibleEmpleadoTT"
+    ),
+    model=TtWorker,
+    mapper=docs.tt_worker,
+    owner_column="sp_id",
+    domain="trabajo_temporal",
+)
+
+TT_BOLETINES = SourceDefinition(
+    key="tt_boletines",
+    list_title="BoletinesTT",
+    select=(
+        "ID,FechaBoletinTT,EmpleadoBoletinTT,IDEmpleadoBoletinTT,EmpresaBoletinTT,IDEmpresaBoletinTT,"
+        "DepartamentoBoletinTT,EstadoBoletinTT,HoraEntradaBoletinTT,HoraSalidaBoletinTT,"
+        "HorasNormalesBoletinTT,HorasNocturnasBoletinTT,HorasTotalesBoletinTT,DietaBoletinTT,ImporteBoletinTT"
+    ),
+    model=TtTimesheet,
+    mapper=docs.tt_timesheet,
+    owner_column="sp_id",
+    domain="trabajo_temporal",
+)
+
+
+def all_sources(today: date | None = None, domains: list[str] | None = None) -> list[SourceDefinition]:
+    """Fuentes de los dominios activos. El saldo se sincroniza para el año en curso."""
     year = (today or date.today()).year
-    return [EMPLEADOS, DEPARTAMENTOS, TURNOS, VACACIONES, saldo_vacaciones(year)]
+    sources = [
+        EMPLEADOS,
+        DEPARTAMENTOS,
+        TURNOS,
+        VACACIONES,
+        saldo_vacaciones(year),
+        CURRICULUMS,
+        CV_DOCS,
+        NOMINAS,
+        DOCUMENTOS_FIRMADOS,
+        TT_EMPRESAS,
+        TT_TRABAJADORES,
+        TT_BOLETINES,
+    ]
+    # Empleados y departamentos son la base de todos los cruces: siempre se sincronizan.
+    base = {"empleados"}
+    return [s for s in sources if domains is None or s.domain in base or s.domain in domains]

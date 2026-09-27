@@ -21,6 +21,11 @@ dependencies = [
     "tzdata>=2024.1",
     "msal>=1.30,<2",
     "cryptography>=43",
+    "numpy>=1.26",
+    "pypdf>=4",
+    "python-docx>=1.1",
+    "openpyxl>=3.1",
+    "reportlab>=4",
 ]
 
 [project.scripts]
@@ -58,7 +63,7 @@ select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "S", "SIM", "RUF", "PL"]
 ignore = ["PLR0913", "PLR2004", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106", "PLR2004", "SLF001"]
+"tests/**" = ["S101", "S105", "S106", "PLR2004", "SLF001", "ASYNC240", "E501"]
 "tools/**" = ["S608", "T201"]
 "migrations/**" = ["E501"]
 
@@ -70,5 +75,5 @@ packages = ["mia"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["azure.*", "msal.*"]
+module = ["azure.*", "msal.*", "docx.*", "openpyxl.*", "reportlab.*"]
 ignore_missing_imports = true

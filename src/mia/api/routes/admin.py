@@ -26,7 +26,7 @@ async def sources(services: ServicesDep, _: AdminDep) -> list[dict[str, Any]]:
         states = {s.source: s for s in (await db.scalars(select(SourceSyncState))).all()}
     now = datetime.now(UTC)
     result = []
-    for source in all_sources():
+    for source in all_sources(domains=services.settings.domains.enabled):
         state = states.get(source.key)
         age = None
         if state and state.last_success_at:

@@ -109,3 +109,31 @@ SharePoint (RRHH) ──sincronización──▶ source_items (réplica, seudoni
   ausencia), POB-001 (activos por defecto), VAC-001 (reincorporación = primer turno
   de trabajo publicado; si no hay, no se afirma), VAC-002 (saldos negativos), DAT-001.
 - Lo que ve el modelo está limitado a 40 filas; la interfaz recibe la tabla completa.
+
+## Fase 4: resto de dominios
+
+| Dominio | Herramientas | Fuente |
+|---|---|---|
+| Selección | `buscar_candidatos`, `candidaturas`, `ficha_candidato` | CurriculosVitae + CVDocs (texto extraído y embeddings) |
+| Correo | `correos_sin_leer`, `buscar_correos`, `leer_correo`, `preparar_respuesta`, `enviar_borrador` | Microsoft Graph, en el momento |
+| Nóminas | `nominas_persona`, `nominas_periodo` | Biblioteca Nominas (solo metadatos) |
+| Documentación | `documentos_persona`, `documentos_faltantes` | DocumentosFirmadosV2 (solo tipo) |
+| Trabajo temporal | `trabajadores_tt`, `boletines_tt` | EmpresasTT, EmpleadosTT, BoletinesTT |
+| Informes | `generar_informe` | Última tabla de la conversación → PDF/Excel |
+
+- **Interruptores**: `MIA_DOMAINS__ENABLED`. Un dominio desactivado no se ofrece al modelo,
+  no se sincroniza y mIA lo declara como no disponible.
+- **Carpetas por DNI/NIE** (nóminas y documentos): al sincronizar, las rutas se
+  seudonimizan y cualquier DNI/NIE de los nombres de fichero se oculta. El cruce con la
+  plantilla se hace por el mismo seudónimo HMAC que Empleados y Turnos.
+- **CVs**: el texto se extrae una vez por versión del fichero (`hr_cv_texts`), fuera del
+  ciclo de sincronización; la búsqueda se hace en memoria sobre embeddings normalizados.
+  Con ≈1.400 CVs responde en milisegundos; si el volumen crece se pasará a pgvector sin
+  cambiar las herramientas.
+- **Correo (COR-001)**: enviar exige un borrador preparado en un turno anterior y la
+  confirmación expresa en el mensaje actual; además `MIA_MAIL__SEND_ENABLED`. Las tres
+  condiciones se comprueban en código.
+- **Informes**: solo los descarga quien los pidió y caducan (`MIA_REPORTS__TTL_HOURS`).
+  En producción conviene moverlos a Blob Storage (la cuenta ya está en la infraestructura).
+- **CI**: toda la batería se ejecuta también contra PostgreSQL, además de subir y bajar
+  las migraciones.

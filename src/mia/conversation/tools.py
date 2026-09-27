@@ -41,6 +41,8 @@ class ToolContext:
     request_id: str | None
     now: datetime
     session_state: dict[str, Any] = field(default_factory=dict)
+    user_message: str = ""
+    """Mensaje del usuario en este turno (para acciones que exigen confirmación explícita)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,3 +149,16 @@ class ToolRegistry:
         except Exception:
             log.exception("tool.failed", tool=tool.name)
             return ToolResult(ToolStatus.ERROR, "Error técnico al consultar la fuente de datos")
+
+
+LAST_TABLE = "ultima_tabla"
+
+
+def remember_table(state: dict[str, Any], presentation: dict[str, Any] | None, max_rows: int) -> None:
+    """Guarda la última tabla mostrada en la conversación, para poder convertirla en informe."""
+    if presentation and presentation.get("type") == "table" and presentation.get("columns"):
+        state[LAST_TABLE] = {
+            "title": presentation.get("title") or "Informe",
+            "columns": presentation["columns"],
+            "rows": list(presentation.get("rows") or [])[:max_rows],
+        }

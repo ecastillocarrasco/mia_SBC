@@ -17,7 +17,7 @@ def register(registry: ToolRegistry) -> None:
             {
                 "disponible_ahora": registry.capabilities_for(ctx.user),
                 "todavia_no_disponible": list(registry.pending_domains),
-                "nota": "Los dominios pendientes se incorporan por fases; no hay fecha comprometida.",
+                "nota": "Lo no disponible está desactivado o pendiente; no hay fecha comprometida.",
             }
         )
 

@@ -107,6 +107,47 @@ class DataSettings(BaseModel):
     """Hora local de la sincronización completa diaria (detecta borrados y corrige derivas)."""
 
 
+ALL_DOMAINS = (
+    "empleados",
+    "turnos",
+    "vacaciones",
+    "curriculums",
+    "correo",
+    "nominas",
+    "documentos",
+    "trabajo_temporal",
+    "informes",
+)
+
+
+class DomainSettings(BaseModel):
+    enabled: list[str] = Field(default_factory=lambda: list(ALL_DOMAINS))
+    """Interruptor por dominio: si uno falla con datos reales se desactiva sin afectar al resto."""
+
+
+class MailSettings(BaseModel):
+    """Buzón compartido (Microsoft Graph, misma aplicación y certificado que SharePoint)."""
+
+    mailbox: str = ""
+    max_messages: int = 50
+    drafts_enabled: bool = True
+    send_enabled: bool = False
+    """Enviar exige además confirmación explícita del usuario en la conversación."""
+
+
+class CurriculumSettings(BaseModel):
+    embedding_model: str = "text-embedding-3-small"
+    index_batch: int = 200
+    """CVs nuevos o modificados que se indexan por ejecución de la sincronización."""
+    max_file_mb: int = 15
+
+
+class ReportSettings(BaseModel):
+    directory: Path = Path("informes")
+    ttl_hours: int = 24
+    max_rows: int = 5000
+
+
 class FrontendSettings(BaseModel):
     """El frontend actual se sirve desde su ubicación, sin copiarlo."""
 
@@ -147,6 +188,10 @@ class Settings(BaseSettings):
     frontend: FrontendSettings = Field(default_factory=FrontendSettings)
     sharepoint: SharePointSettings = Field(default_factory=SharePointSettings)
     data: DataSettings = Field(default_factory=DataSettings)
+    domains: DomainSettings = Field(default_factory=DomainSettings)
+    mail: MailSettings = Field(default_factory=MailSettings)
+    curriculums: CurriculumSettings = Field(default_factory=CurriculumSettings)
+    reports: ReportSettings = Field(default_factory=ReportSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
 
     @model_validator(mode="after")

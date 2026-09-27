@@ -81,6 +81,12 @@ param pseudonymKey string
 @description('Programación de la sincronización (cron, UTC)')
 param syncCron string = '*/10 * * * *'
 
+@description('Buzón compartido para el dominio de correo (vacío = correo desactivado)')
+param mailMailbox string = ''
+
+@description('Permitir que mIA envíe correos (siempre con confirmación explícita del usuario)')
+param mailSendEnabled bool = false
+
 @description('Réplicas mínimas (1 evita arranques en frío)')
 param minReplicas int = 1
 
@@ -337,7 +343,12 @@ var baseEnv = [
   { name: 'AZURE_CLIENT_ID', value: identity.properties.clientId }
 ]
 var voiceEnv = voiceEnabled ? [{ name: 'MIA_VOICE__API_KEY', secretRef: 'voice-api-key' }] : []
-var dataEnv = [{ name: 'MIA_DATA__PSEUDONYM_KEY', secretRef: 'pseudonym-key' }]
+var dataEnv = [
+  { name: 'MIA_DATA__PSEUDONYM_KEY', secretRef: 'pseudonym-key' }
+  { name: 'MIA_MAIL__MAILBOX', value: mailMailbox }
+  { name: 'MIA_MAIL__SEND_ENABLED', value: string(mailSendEnabled) }
+  { name: 'MIA_REPORTS__DIRECTORY', value: '/tmp/informes' }
+]
 var sharepointEnv = sharepointEnabled
   ? [
       { name: 'MIA_SHAREPOINT__TENANT_ID', value: sharepointTenantId }
