@@ -3,26 +3,18 @@
 Tres mundos sobre un mismo núcleo. Todos hablan con el backend nuevo (`/api/chat/stream`,
 `/api/voice/stream`) y comparten sesión: puedes empezar en 2D y seguir en 3D.
 
-| Mundo | Ruta | Para qué |
+| Mundo | Ruta | Código |
 |---|---|---|
-| 2D | `/src/worlds/2d/` | El más rápido de probar: chat + avatar con sus 16 expresiones |
-| 3D | `/src/worlds/3d/` | Escena Three.js con el modelo `mIA_WEB.glb` y sus 24 animaciones |
-| Holograma | `/src/worlds/hologram/` | Proyección para pantalla o tótem: shader de borde luminoso y bandas |
+| Portada | `/` | Elegir mundo |
+| Universo 2D | `/mia-2d.html` | **Idéntico al anterior** (`src/worlds/2D/`) |
+| Mundo 3D | `/mia-3d.html` | **Idéntico al anterior** (`src/main.js`, `src/style.css`) |
+| Holograma | `/src/worlds/hologram/` | Nuevo, sobre `src/core/` |
 
-## Estructura
-
-```
-frontend/
-  index.html                 portada: elegir mundo
-  src/core/client.js         sesión, streaming SSE y voz (sin UI)
-  src/core/avatar.js         estado → imagen/etiqueta (2D y holograma)
-  src/core/animations.js     estado → animación del modelo (3D y holograma)
-  src/core/scene.js          escena Three.js reutilizable
-  src/core/present.js        tablas, paneles, fichas y descargas (los tres mundos)
-  src/worlds/{2d,3d,hologram}/
-  public/assets/avatar/      las 16 expresiones
-  public/models/mIA_WEB.glb  modelo 3D con animaciones
-```
+El 2D y el 3D son una copia exacta del frontend anterior. Solo cambia un enlace: el botón
+«3D» del universo 2D apuntaba a `/`, que ahora es la portada, y pasa a `/mia-3d.html`.
+Llaman como antes a `127.0.0.1:5001` y `:5002`: mIA nueva atiende ambos puertos con sus
+alias de compatibilidad. Los recursos `/mia-assets/*` (avatar y logo), que antes servía
+el backend Flask, están ahora en `public/mia-assets/`.
 
 ## Arrancar en local
 

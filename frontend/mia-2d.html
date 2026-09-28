@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <title>mIA · Universo 2D</title>
+  <link rel="icon" type="image/png" href="/brand/mia-favicon.png">
+  <link rel="stylesheet" href="/src/worlds/2D/mia-2d.css?v=2D-V4.2-ui-tuning">
+</head>
+<body class="mia-universe-2d">
+  <div class="universe-bg" aria-hidden="true">
+    <div class="universe-horizon"></div>
+    <div class="universe-line line-a"></div>
+    <div class="universe-line line-b"></div>
+    <div class="universe-orb orb-a"></div>
+    <div class="universe-orb orb-b"></div>
+  </div>
+
+  <header class="universe-topbar">
+    <a class="universe-brand" href="/mia-2d.html" aria-label="mIA · Sunset Beach Club">
+      <span class="universe-brand-copy">
+        <strong>mIA</strong>
+        <small>Asistente inteligente corporativa</small>
+      </span>
+      <span class="universe-brand-divider" aria-hidden="true"></span>
+      <img class="sunset-brand-logo" src="/mia-assets/sunset_beach_club_logo.gif" alt="Sunset Beach Club">
+    </a>
+
+    <div class="universe-top-actions">
+      <div class="universe-connection" title="Estado de conexión">
+        <span class="online-dot"></span>
+        <span id="backendStatus">Conectando…</span>
+      </div>
+
+      <div class="universe-world-switch" role="group" aria-label="Cambiar entre los mundos de mIA">
+        <button class="universe-world active" type="button" aria-pressed="true">
+          <span class="world-glyph">2D</span><span>Focus</span>
+        </button>
+        <a id="world3dLink" class="universe-world" href="/mia-3d.html" aria-label="Entrar en el mundo 3D de mIA">
+          <span class="world-glyph">3D</span><span>Immersive</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="universe-stage">
+    <section class="universe-presence" aria-label="Presencia de mIA">
+      <div class="presence-copy">
+        <div id="greetingEyebrow" class="universe-eyebrow">BUENAS TARDES</div>
+        <h1 id="greetingTitle">¿Qué quieres descubrir?</h1>
+        <p>Pregunta. mIA busca, interpreta y convierte los datos en algo que puedas usar.</p>
+      </div>
+
+      <div id="avatarStage" class="universe-avatar" data-motion="calm">
+        <div class="avatar-field field-a"></div>
+        <div class="avatar-field field-b"></div>
+        <div class="avatar-floor"></div>
+        <div class="avatar-scanline"></div>
+        <img id="avatarA" class="avatar-img active" src="/mia-assets/avatar/reposo.png" alt="mIA">
+        <img id="avatarB" class="avatar-img" src="/mia-assets/avatar/reposo.png" alt="mIA">
+        <div class="avatar-fallback" aria-hidden="true">mIA</div>
+      </div>
+
+      <div class="presence-state">
+        <span class="state-signal"><i></i><i></i><i></i></span>
+        <div>
+          <strong id="statePill">Estoy aquí</strong>
+          <span id="stateDetail">Lista para ayudarte.</span>
+        </div>
+      </div>
+
+      <div class="presence-voice ui-hidden" aria-hidden="true">
+        <span class="voice-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <div><strong>Voz mIA</strong><small id="voiceStatus">ElevenLabs · preparada</small></div>
+        <select id="voiceSelect" class="voice-select-hidden" aria-hidden="true"><option>mIA</option></select>
+        <button id="soundToggle" class="voice-toggle" type="button" title="Activar o desactivar voz" aria-label="Activar o desactivar voz">🔊</button>
+      </div>
+    </section>
+
+    <section class="universe-workspace" aria-label="Conversación y resultados">
+      <div class="workspace-rail" aria-hidden="true"><span></span><i></i></div>
+
+      <div id="conversation" class="conversation universe-conversation">
+        <div class="msg-row mia welcome-row">
+          <img class="mini-avatar" src="/mia-assets/avatar/sonriendo.png" alt="mIA">
+          <div class="msg mia welcome">
+            <div class="who">mIA</div>
+            <strong id="welcomeGreeting">Buenas tardes. Soy mIA.</strong>
+            <p>Podemos conversar o abrir directamente un espacio de trabajo.</p>
+            <div class="welcome-actions">
+              <button class="suggestion-card" data-prompt="¿Quién está de vacaciones hoy?" type="button">
+                <span class="suggestion-index">01</span><div><strong>Vacaciones de hoy</strong><small>Personas · periodos · detalle</small></div><b>↗</b>
+              </button>
+              <button class="suggestion-card" data-prompt="Analízame el departamento de Restaurante" type="button">
+                <span class="suggestion-index">02</span><div><strong>Analizar Restaurante</strong><small>KPIs · contexto · lectura</small></div><b>↗</b>
+              </button>
+              <button class="suggestion-card" data-prompt="Muéstrame la ficha completa de un empleado" type="button">
+                <span class="suggestion-index">03</span><div><strong>Employee360</strong><small>Persona · actividad · documentos</small></div><b>↗</b>
+              </button>
+              <button class="suggestion-card" data-prompt="Resúmeme mis correos sin leer" type="button">
+                <span class="suggestion-index">04</span><div><strong>Correo</strong><small>Prioridad · acciones · conversaciones</small></div><b>↗</b>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <div class="universe-composer-wrap composer-wrap-premium">
+    <div class="universe-composer">
+      <button id="mic" class="composer-mic" type="button" title="Hablar con mIA" aria-label="Hablar con mIA"><span class="mic-core"></span></button>
+      <div class="composer-input-shell">
+        <input id="input" autocomplete="off" spellcheck="true" placeholder="Pregunta a mIA…">
+        <span class="composer-context">Contexto continuo</span>
+      </div>
+      <button id="send" class="composer-send" type="button" title="Enviar" aria-label="Enviar"><span>↑</span></button>
+    </div>
+    <div class="universe-composer-meta"><span id="sessionBadge">Sesión contextual activa</span><span>2D Focus · misma mIA, mismo contexto</span></div>
+  </div>
+
+  <div id="mailModalLayer" class="mail-modal-layer" aria-hidden="true"></div>
+  <div id="toastLayer" class="toast-layer" aria-live="polite"></div>
+  <script src="/src/worlds/2D/mia-2d.js?v=2D-V4.2-ui-tuning"></script>
+</body>
+</html>
