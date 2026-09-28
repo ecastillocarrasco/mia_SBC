@@ -214,9 +214,7 @@ CASES = [
     # ---- fase 4b
     Case(
         "cv_varios_requisitos_en_metadatos_y_cv",
-        [
-            "Dame dos currículums para el departamento de cocina que sepan inglés y tengan conocimientos de cocina japonesa"
-        ],
+        ["Dame dos currículums de cocina que sepan inglés y tengan conocimientos de cocina japonesa"],
         must=[r"(?i)japon"],
         must_not=[r"(?i)no\s+(puedo|tengo\s+acceso)"],
     ),
