@@ -173,7 +173,30 @@ async def test_reincorporations_list(registry: ToolRegistry) -> None:
     assert result.summary["personas_con_mas_de_un_motivo"] == []
     assert result.summary["con_reincorporacion_publicada"] == 1
     assert result.summary["reincorporaciones"][0]["persona"] == "Ana Ruiz Sanz"
+    assert result.summary["reincorporaciones"][0]["tras"] == "tras vacaciones"  # REI-001: siempre con su motivo
     assert result.summary["ausencia_termina_pero_sin_turno_publicado"] == 1  # Eva
+
+
+async def test_reincorporations_include_the_four_reasons(tmp_path: Any) -> None:
+    """REI-001: tras baja, permiso, vacaciones o asuntos propios, y cada una dice tras cuál vuelve."""
+    from datetime import timedelta  # noqa: PLC0415
+
+    from tests.dbutil import fresh_database  # noqa: PLC0415
+    from tests.hr_seed import TODAY, _emp, _shift  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "rei.db")
+    rows: list[Any] = []
+    reasons = {"Baja/IT": "pk-1", "Permiso": "pk-2", "Vacaciones": "pk-3", "Asuntos propios": "pk-4"}
+    for n, (kind, key) in enumerate(reasons.items(), 1):
+        rows.append(_emp(n, f"Persona {n}", "Pisos", person_key=key))
+        rows.append(_shift(1000 + n, key, f"Persona {n}", "Pisos", TODAY + timedelta(days=1), kind, kind))
+        rows.append(_shift(2000 + n, key, f"Persona {n}", "Pisos", TODAY + timedelta(days=2), "Trabajo", "8:00-16:00"))
+    async with db.session() as s:
+        s.add_all(rows)
+    result = await call(build_registry(db), "reincorporaciones")
+    await db.dispose()
+    assert result.summary["por_motivo"] == {k: 1 for k in reasons}
+    assert {r["tras"] for r in result.summary["reincorporaciones"]} == {f"tras {k.lower()}" for k in reasons}
 
 
 async def test_absences_are_merged_into_periods(registry: ToolRegistry) -> None:

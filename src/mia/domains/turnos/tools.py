@@ -504,12 +504,8 @@ class ReincorporacionesParams(Periodo, CohortParams):
     )
     tipos: list[str] | None = Field(
         default=None,
-        description="Por defecto Baja/IT y Vacaciones (como el sistema anterior); Permiso o Asuntos propios solo si "
-        "se piden expresamente",
+        description="Limitar a uno o varios motivos: Baja/IT, Vacaciones, Permiso, Asuntos propios. Por defecto, todos",
     )
-
-
-DEFAULT_RETURN_KINDS = (ShiftKind.BAJA, ShiftKind.VACACIONES)
 
 
 def reincorporaciones(deps: Deps) -> Tool:
@@ -519,7 +515,7 @@ def reincorporaciones(deps: Deps) -> Tool:
         kinds = (
             tuple(k for k in ABSENCE_KINDS if any(normalize_key(t) in normalize_key(k) for t in p.tipos))
             if p.tipos
-            else DEFAULT_RETURN_KINDS
+            else ABSENCE_KINDS  # REI-001: la reincorporación es tras cualquiera de los cuatro motivos
         )
         async with deps.db.session() as db:
             dept_key = None
@@ -548,6 +544,7 @@ def reincorporaciones(deps: Deps) -> Tool:
                 "persona": x.name,
                 "departamento": x.department,
                 "motivo": x.kind,
+                "tras": f"tras {x.kind.lower()}",
                 "ausente_desde": x.start.isoformat(),
                 "ausente_hasta": x.end.isoformat(),
                 "vuelve": x.return_shift.day.isoformat() if x.return_shift else None,
@@ -576,7 +573,7 @@ def reincorporaciones(deps: Deps) -> Tool:
         return ToolResult(
             ToolStatus.OK,
             summary,
-            table("Reincorporaciones", ["Persona", "Departamento", "Motivo", "Vuelve", "Turno"], rows),
+            table("Reincorporaciones", ["Persona", "Departamento", "Vuelve tras", "Vuelve", "Turno"], rows),
             {
                 "foco_periodo": {"desde": lo.isoformat(), "hasta": hi.isoformat()},
                 **population_state(f"reincorporaciones {lo.isoformat()}–{hi.isoformat()}", people),
@@ -586,7 +583,7 @@ def reincorporaciones(deps: Deps) -> Tool:
     return Tool(
         "reincorporaciones",
         "Lista de quién se reincorpora (con turno de trabajo publicado) en un periodo, por defecto los "
-        "próximos 35 días, tras baja, vacaciones o permisos.",
+        "próximos 35 días, tras baja, permiso, vacaciones o asuntos propios, indicando tras cuál vuelve cada una.",
         ReincorporacionesParams,
         handler,
         permission=Permission.TURNOS_LEER,

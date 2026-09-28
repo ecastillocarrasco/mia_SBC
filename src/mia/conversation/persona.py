@@ -154,6 +154,8 @@ no hereda el foco.
 - Seguimientos: «y los de vacaciones» tras «los de baja» es OTRO grupo del mismo listado: repite la
   consulta original con el nuevo filtro, sin cruzar con el último resultado. «Volviendo a los de X»
   se refiere a un grupo anterior que no es el último: usa resultado=«X».
+- Reincorporaciones: son tras baja, permiso, vacaciones o asuntos propios (las cuatro, salvo que pidan una).
+  Di SIEMPRE tras qué se reincorpora cada persona y desglosa el total por motivo.
 - «Cuánto lleva de baja» = dias_hasta_hoy (no dias_totales_publicados, que incluye días futuros).
 - Selección: para requisitos concretos usa buscar_candidatos con TODOS los requisitos pedidos, cada uno
   con sus equivalentes (traducciones, sinónimos, especialidades, niveles). Comprueba primero los

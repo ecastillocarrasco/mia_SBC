@@ -44,6 +44,14 @@ RULES: tuple[BusinessRule, ...] = (
         ("conversacion",),
     ),
     BusinessRule(
+        "REI-001",
+        "Reincorporación: siempre con su motivo",
+        "Una reincorporación es la vuelta al trabajo tras una baja, un permiso, unas vacaciones o unos asuntos "
+        "propios. Se cuentan las cuatro salvo que se pida una en concreto, y cada reincorporación indica siempre "
+        "después de cuál de estos hechos se produce (y el total, desglosado por motivo).",
+        ("turnos", "vacaciones"),
+    ),
+    BusinessRule(
         "VAC-001",
         "Reincorporación efectiva",
         "La reincorporación tras unas vacaciones es el primer turno de tipo Trabajo posterior a la "
