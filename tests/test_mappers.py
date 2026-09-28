@@ -143,3 +143,25 @@ def test_department_managers_accept_all_shapes() -> None:
     assert people_field({"results": [person]}) == expected
     assert people_field(person) == expected
     assert people_field(None) == []
+
+
+def test_candidate_keeps_every_custom_column_as_metadata() -> None:
+    """Las columnas propias de CurriculosVitae que no tienen campo dedicado se guardan para buscar en ellas."""
+    from mia.sources.mappers.docs import candidate, column_label  # noqa: PLC0415
+
+    assert column_label("Puesto_x0020_solicitado") == "Puesto solicitado"
+    row = candidate(
+        {
+            "ID": 5,
+            "FirstName": "Kenji",
+            "Title": "Sato",
+            "Idiomas": "Inglés",
+            "Puesto_x0020_solicitado": "Sushiman",
+            "Carnet": True,
+            "Especialidades": {"results": ["Sushi", "Ramen"]},
+            "Modified": "2026-01-01T00:00:00Z",
+            "AuthorId": 7,
+        },
+        CTX,
+    )[0]
+    assert row["extra"] == {"Puesto solicitado": "Sushiman", "Carnet": "Sí", "Especialidades": "Sushi, Ramen"}

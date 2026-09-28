@@ -154,7 +154,7 @@ async def call(
 
 async def test_cv_search_returns_evidence_not_a_ranking(env: Any) -> None:
     registry, _, _ = env
-    result = await call(registry, "buscar_candidatos", consulta="recepcionista con alemán fluido")
+    result = await call(registry, "candidatos_parecidos", consulta="recepcionista con alemán fluido")
     assert result.status is ToolStatus.OK
     first = result.summary["coincidencias"][0]
     assert first["nombre"] == "Lucía Martín" and "alemán" in first["evidencia"]
@@ -347,8 +347,72 @@ async def test_filter_candidates_with_and_or_not_and_unique_people(env: Any) -> 
                 ),
             ]
         )
-    both = await call(registry, "filtrar_candidatos", alguno=["marriott", "hoteles"])
-    assert both.summary["candidaturas"] == 2 and both.summary["personas_unicas"] == 1
-    cooks_without_german = await call(registry, "filtrar_candidatos", todos=["cocina"], excluir=["alemán"])
-    assert cooks_without_german.summary["candidaturas"] == 1
-    assert cooks_without_german.summary["muestra"][0]["nombre"] == "Pablo Ruiz"
+    both = await call(registry, "buscar_candidatos", requisitos=[{"termino": "marriott", "equivalentes": ["hoteles"]}])
+    assert both.summary["cumplen_todos"] == 2 and both.summary["personas_unicas"] == 1
+
+
+async def test_requirements_check_metadata_first_then_the_cv(env: Any) -> None:
+    """Caso real: «cocina, inglés y cocina japonesa» solo encontraba el inglés y no miraba los CV."""
+    registry, db, _ = env
+    async with db.session() as s:
+        s.add_all(
+            [
+                Candidate(
+                    sp_id=9001,
+                    name="Kenji Sato",
+                    name_key="kenji sato",
+                    department="Cocina",
+                    department_key="cocina",
+                    status="Nuevo",
+                    languages="Inglés C1",
+                    extra={"Especialidad": "Sushi y cocina nikkei"},
+                ),
+                CvText(document_id=9001, candidate_id=9001, status="ok", text="Cocinero en restaurante japonés"),
+                Candidate(
+                    sp_id=9002,
+                    name="Marta Gil",
+                    name_key="marta gil",
+                    department="Cocina",
+                    department_key="cocina",
+                    status="Nuevo",
+                ),
+                CvText(
+                    document_id=9002,
+                    candidate_id=9002,
+                    status="ok",
+                    text="Chef de partida. Speaks fluent English. Formación en washoku en Kioto.",
+                ),
+                Candidate(
+                    sp_id=9003,
+                    name="Luis Paz",
+                    name_key="luis paz",
+                    department="Cocina",
+                    department_key="cocina",
+                    status="Nuevo",
+                    languages="Inglés B2",
+                ),
+                CvText(document_id=9003, candidate_id=9003, status="ok", text="Cocina mediterránea y arroces"),
+            ]
+        )
+    result = await call(
+        registry,
+        "buscar_candidatos",
+        departamento="Cocina",
+        mostrar=2,
+        requisitos=[
+            {"termino": "inglés"},
+            {"termino": "cocina japonesa", "equivalentes": ["japonés", "japanese", "sushi", "washoku"]},
+        ],
+    )
+    s = result.summary
+    assert s["cumplen_todos"] == 2  # Luis tiene inglés pero no cocina japonesa: no cumple
+    first, second = s["muestra"]
+    assert first["nombre"] == "Kenji Sato"  # todo en metadatos: primero
+    assert first["requisitos"]["inglés"]["donde"] == "metadatos"
+    assert first["requisitos"]["cocina japonesa"] == {
+        "donde": "metadatos",
+        "evidencia": "Especialidad: Sushi y cocina nikkei",
+    }
+    assert second["nombre"] == "Marta Gil" and second["requisitos"]["cocina japonesa"]["donde"] == "cv"
+    assert "washoku" in second["requisitos"]["cocina japonesa"]["evidencia"]
+    assert s["donde_se_cumple_cada_requisito"]["inglés"] == {"metadatos": 2, "cv": 1}

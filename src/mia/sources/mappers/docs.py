@@ -27,6 +27,61 @@ def _is_folder(item: dict[str, Any]) -> bool:
 
 
 # ------------------------------------------------------------------ selección
+CANDIDATE_KNOWN = {
+    "ID",
+    "Id",
+    "FirstName",
+    "Title",
+    "EMail",
+    "Telefono",
+    "DepartamentoCV",
+    "ExpPrevia",
+    "Idiomas",
+    "EstadoCV",
+    "ComentariosCV",
+    "Fecha",
+    "Created",
+    "Modified",
+    "AuthorId",
+    "EditorId",
+    "GUID",
+    "ContentTypeId",
+    "FileSystemObjectType",
+    "ServerRedirectedEmbedUri",
+    "ServerRedirectedEmbedUrl",
+    "ComplianceAssetId",
+    "OData__UIVersionString",
+    "Attachments",
+}
+_SP_ESCAPE = re.compile(r"_x([0-9a-fA-F]{4})_")
+
+
+def column_label(internal: str) -> str:
+    """«Puesto_x0020_solicitado» → «Puesto solicitado» (codificación de nombres internos de SharePoint)."""
+    return _SP_ESCAPE.sub(lambda m: chr(int(m.group(1), 16)), internal).replace("OData__", "").strip()
+
+
+def _metadata_value(value: Any) -> str | None:
+    if isinstance(value, dict) and "results" in value:
+        value = value["results"]
+    if isinstance(value, list):
+        return ", ".join(str(v) for v in value if v not in (None, "")) or None
+    if isinstance(value, bool):
+        return "Sí" if value else "No"
+    return text(value)
+
+
+def candidate_extra(item: dict[str, Any]) -> dict[str, str]:
+    """Todas las columnas propias de la candidatura que no tienen campo dedicado (puesto, formación…)."""
+    extra = {}
+    for key, value in item.items():
+        if key in CANDIDATE_KNOWN or key.startswith(("odata", "__")) or key.endswith("Id"):
+            continue
+        if (shown := _metadata_value(value)) is not None:
+            extra[column_label(key)] = shown[:2000]
+    return extra
+
+
 def candidate(item: dict[str, Any], ctx: MapContext) -> list[Row]:
     name = " ".join(filter(None, [text(item.get("FirstName")), text(item.get("Title"))])) or f"Candidatura {item['ID']}"
     department = text(item.get("DepartamentoCV"))
@@ -43,6 +98,7 @@ def candidate(item: dict[str, Any], ctx: MapContext) -> list[Row]:
             "languages": text(item.get("Idiomas")),
             "status": text(item.get("EstadoCV")),
             "comments": text(item.get("ComentariosCV")),
+            "extra": candidate_extra(item),
             "applied_on": sp_local_date(item.get("Fecha"), ctx.tz),
             "created_at": sp_datetime(item.get("Created")),
         }

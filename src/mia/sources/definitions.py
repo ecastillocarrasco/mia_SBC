@@ -53,6 +53,8 @@ class SourceDefinition:
     expand: str | None = None
     sensitive_fields: tuple[str, ...] = ()
     """Identificadores personales: se seudonimizan antes de guardar nada."""
+    include_custom_fields: bool = False
+    """Añadir al $select todas las columnas propias de la lista (metadatos que no conocemos de antemano)."""
     keep_raw: bool = True
     """Guardar también la copia original de cada elemento (source_items). Las listas muy grandes que se
     reemplazan enteras (calendarios) no la necesitan: así ocupan la mitad."""
@@ -150,6 +152,7 @@ CURRICULUMS = SourceDefinition(
     select="ID,FirstName,Title,EMail,Telefono,DepartamentoCV,ExpPrevia,Idiomas,EstadoCV,ComentariosCV,Fecha,Created",
     model=Candidate,
     mapper=docs.candidate,
+    include_custom_fields=True,
     owner_column="sp_id",
     domain="curriculums",
 )

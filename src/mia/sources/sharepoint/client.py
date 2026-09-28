@@ -195,6 +195,25 @@ class SharePointClient:
         payload = await self._request("GET", f"{self._list_url(title)}/fields", params={"$select": "InternalName"})
         return {str(f.get("InternalName")) for f in payload.get("value", []) if f.get("InternalName")}
 
+    async def custom_fields(self, title: str) -> dict[str, str]:
+        """Columnas creadas por la organización (no de sistema) que contienen datos buscables:
+        {InternalName: Title}. Sirve para sincronizar metadatos que no conocemos de antemano."""
+        payload = await self._request(
+            "GET",
+            f"{self._list_url(title)}/fields",
+            params={"$select": "InternalName,Title,TypeAsString,Hidden,FromBaseType,ReadOnlyField"},
+        )
+        searchable = {"Text", "Note", "Choice", "MultiChoice", "Number", "Boolean", "DateTime", "Currency"}
+        return {
+            str(f["InternalName"]): str(f.get("Title") or f["InternalName"])
+            for f in payload.get("value", [])
+            if f.get("InternalName")
+            and not f.get("Hidden")
+            and not f.get("FromBaseType")
+            and not f.get("ReadOnlyField")
+            and f.get("TypeAsString") in searchable
+        }
+
     async def list_exists(self, title: str) -> bool:
         """Para descubrir listas dinámicas (p. ej. Calendario<Departamento>_AAAA): no todas existen."""
         try:

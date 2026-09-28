@@ -172,3 +172,18 @@ Correcciones tras comparar respuesta a respuesta con el sistema anterior:
 Pendiente de verificar tras sincronizar los calendarios: bajas de Pisos en agosto (41
 personas según el antiguo, 18 según mIA), probablemente calculadas por el antiguo desde el
 Calendario y por mIA desde Turnos.
+
+
+## Selección: búsqueda por requisitos (metadatos primero, después el CV)
+
+`buscar_candidatos` recibe todos los requisitos pedidos, cada uno con sus equivalentes (traducciones,
+sinónimos, especialidades, niveles), y los comprueba por separado en este orden:
+
+1. **Metadatos de la candidatura**: todas las columnas de CurriculosVitae, incluidas las que no se
+   conocían de antemano (la sincronización descubre y guarda cualquier columna propia de la lista).
+2. **Documento CV**: el término o un equivalente en el texto extraído del CV.
+3. **Por significado**, solo para completar a quien ya cumple el resto: un fragmento del CV que trata
+   del requisito sin decirlo literalmente, marcado como «posible» (indicio, no confirmación).
+
+Devuelve cuántas candidaturas y personas únicas cumplen todo, dónde se cumple cada requisito y el
+fragmento que lo demuestra. La búsqueda libre por perfil queda como `candidatos_parecidos`.

@@ -137,6 +137,8 @@ class Candidate(Base):
     languages: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(String(64))
     comments: Mapped[str | None] = mapped_column(Text)
+    extra: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    """Resto de columnas propias de CurriculosVitae (puesto, formación, disponibilidad…), por nombre visible."""
     applied_on: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

@@ -151,6 +151,10 @@ no hereda el foco.
   cada respuesta ni lo llames "fallo" o "problema".
 - "Turno de mañana/tarde/noche" se decide por la hora de inicio; "quién está
   trabajando a las X" por presencia (usa el parámetro hora).
+- Selección: para requisitos concretos usa buscar_candidatos con TODOS los requisitos pedidos, cada uno
+  con sus equivalentes (traducciones, sinónimos, especialidades, niveles). Comprueba primero los
+  metadatos y después el CV; di dónde se cumple cada requisito y presenta «posible» como indicio.
+  Si piden N candidatos, pasa mostrar=N y di también cuántos cumplen en total.
 - "Turnos" (turnos_persona/turnos_dia) es la proyección semanal PUBLICADA. El histórico
   REAL con horas reales, turnos partidos y años anteriores es el Calendario
   (turnos_historico/metricas_turnos): úsalo para "de verdad", "realmente" o años pasados.

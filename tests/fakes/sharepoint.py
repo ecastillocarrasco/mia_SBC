@@ -64,7 +64,16 @@ class FakeSharePoint:
             if title not in self.lists:
                 return httpx.Response(404, text=f"List '{title}' does not exist")
             names = {k for item in self.lists[title].values() for k in item}
-            return httpx.Response(200, json={"value": [{"InternalName": n} for n in sorted(names)]})
+            base = {"ID", "Id", "Title", "Created", "Modified", "AuthorId", "EditorId"}
+            return httpx.Response(
+                200,
+                json={
+                    "value": [
+                        {"InternalName": n, "Title": n, "TypeAsString": "Text", "FromBaseType": n in base}
+                        for n in sorted(names)
+                    ]
+                },
+            )
         if rest == "/items":
             return self._items(title, request)
         return httpx.Response(404, text="ruta no simulada")

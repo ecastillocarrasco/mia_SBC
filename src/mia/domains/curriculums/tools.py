@@ -8,7 +8,7 @@ no de idoneidad para el puesto.
 from __future__ import annotations
 
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import date
 from typing import Any
 
@@ -19,6 +19,13 @@ from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.data import Candidate, CvDocument, CvText
 from mia.domains.common import MAX_ROWS_FOR_MODEL, Deps, fmt_date, table
+from mia.domains.curriculums.requirements import (
+    SEMANTIC_THRESHOLD,
+    Evidence,
+    Match,
+    check_lexical,
+    terms_for,
+)
 from mia.domains.curriculums.search import CvSearchIndex
 from mia.text import normalize_key
 
@@ -37,17 +44,17 @@ def _candidate_view(c: Candidate) -> dict[str, Any]:
 
 
 # ------------------------------------------------------------------ búsqueda
-class BuscarParams(BaseModel):
-    consulta: str = Field(description="Qué se busca en los CVs: experiencia, puesto, idiomas, formación…")
+class ParecidosParams(BaseModel):
+    consulta: str = Field(description="Perfil descrito en general: «alguien con experiencia en hoteles de lujo»")
     departamento: str | None = Field(default=None, description="Departamento de la candidatura (opcional)")
     estado: str | None = Field(default=None, description="Estado de la candidatura (opcional)")
     limite: int = Field(default=10, ge=1, le=30)
 
 
-def buscar(deps: Deps) -> Tool:
+def parecidos(deps: Deps) -> Tool:
     index: CvSearchIndex = deps.services.setdefault("cv_index", CvSearchIndex())
 
-    async def handler(p: BuscarParams, ctx: ToolContext) -> ToolResult:
+    async def handler(p: ParecidosParams, ctx: ToolContext) -> ToolResult:
         if deps.llm is None:
             return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, "La búsqueda de CVs no está configurada")
         model = deps.settings.curriculums.embedding_model if deps.settings else "text-embedding-3-small"
@@ -83,9 +90,10 @@ def buscar(deps: Deps) -> Tool:
         )
 
     return Tool(
-        "buscar_candidatos",
-        "Busca en el texto de los CVs (búsqueda semántica) y devuelve candidaturas con su evidencia.",
-        BuscarParams,
+        "candidatos_parecidos",
+        "Candidaturas cuyo CV se parece a un perfil descrito en general (búsqueda por significado). Para "
+        "requisitos concretos («inglés», «cocina japonesa»…) usa buscar_candidatos.",
+        ParecidosParams,
         handler,
         permission=Permission.CURRICULUMS_LEER,
         audit_resource="curriculums",
@@ -168,6 +176,7 @@ def ficha_candidato(deps: Deps) -> Tool:
             **_candidate_view(candidate),
             "experiencia_declarada": candidate.experience,
             "comentarios": candidate.comments,
+            "otros_datos_de_la_candidatura": candidate.extra or {},
             "cv": ({"estado": cv.status, "extracto": (cv.text or "")[:2500]} if cv else {"estado": "sin CV indexado"}),
             "documento": f"/api/documents/cv/{doc_id}" if doc_id else None,
             "regla": RULE,
@@ -197,20 +206,26 @@ def _matches(haystack: str, term: str) -> bool:
     return re.search(rf"(?<![a-z0-9]){re.escape(term)}", haystack) is not None
 
 
-class FiltrarParams(BaseModel):
-    todos: list[str] | None = Field(default=None, description="Términos que deben aparecer TODOS (y)")
-    alguno: list[str] | None = Field(default=None, description="Basta con que aparezca ALGUNO (o)")
-    excluir: list[str] | None = Field(default=None, description="Términos que NO deben aparecer («sin inglés»)")
-    departamento: str | None = Field(default=None, description="Departamento de la candidatura")
-    estado: str | None = None
-    mostrar: int = Field(default=10, ge=1, le=40, description="Cuántas candidaturas listar")
+class Requisito(BaseModel):
+    termino: str = Field(description="Requisito tal como lo pide el usuario: «inglés», «cocina japonesa», «carné B»")
+    equivalentes: list[str] = Field(
+        default_factory=list,
+        description="Formas en que puede aparecer escrito en un CV: sinónimos, traducciones, especialidades, "
+        "niveles (p. ej. cocina japonesa → japonesa, japanese, sushi, washoku, itamae, ramen). Añádelos siempre.",
+    )
 
 
-def filtrar(deps: Deps) -> Tool:
-    async def handler(p: FiltrarParams, ctx: ToolContext) -> ToolResult:
-        required, anyof, excluded = _terms(p.todos), _terms(p.alguno), _terms(p.excluir)
-        if not (required or anyof or excluded):
-            return ToolResult(ToolStatus.INVALID_ARGUMENTS, "Indica al menos un término de búsqueda.")
+class BuscarParams(BaseModel):
+    requisitos: list[Requisito] = Field(min_length=1, description="TODOS los requisitos pedidos, uno por elemento")
+    departamento: str | None = Field(default=None, description="Departamento de la candidatura (filtro de metadatos)")
+    estado: str | None = Field(default=None, description="Estado de la candidatura (opcional)")
+    mostrar: int = Field(default=10, ge=1, le=40, description="Cuántas candidaturas enseñar («dame dos» → 2)")
+
+
+def buscar(deps: Deps) -> Tool:
+    index: CvSearchIndex = deps.services.setdefault("cv_index", CvSearchIndex())
+
+    async def handler(p: BuscarParams, ctx: ToolContext) -> ToolResult:
         async with deps.db.session() as db:
             stmt = select(Candidate)
             if p.departamento:
@@ -218,57 +233,109 @@ def filtrar(deps: Deps) -> Tool:
             if p.estado:
                 stmt = stmt.where(Candidate.status.ilike(f"%{p.estado}%"))
             candidates = list((await db.scalars(stmt)).all())
-            texts = {
-                t.candidate_id: t.text or ""
-                for t in (await db.scalars(select(CvText).where(CvText.status == "ok"))).all()
-                if t.candidate_id is not None
-            }
+            cv_texts: dict[int, str] = defaultdict(str)
+            for t in (await db.scalars(select(CvText).where(CvText.status == "ok"))).all():
+                if t.candidate_id is not None and t.text:
+                    cv_texts[t.candidate_id] += "\n" + t.text
+            matches = [
+                Match(
+                    c,
+                    [
+                        check_lexical(c, cv_texts.get(c.sp_id, ""), r.termino, terms_for(r.termino, r.equivalentes))
+                        for r in p.requisitos
+                    ],
+                )
+                for c in candidates
+            ]
+            await _semantic_pass(deps, index, db, p.requisitos, matches)
             fresh = await deps.freshness(db, "curriculums", "cv_docs")
-        matched: list[tuple[Candidate, str]] = []
-        for c in candidates:
-            meta = normalize_key(" ".join(filter(None, [c.department, c.experience, c.languages, c.comments])))
-            cv = normalize_key(texts.get(c.sp_id, ""))
-            full = f"{meta} {cv}"
-            if not all(_matches(full, t) for t in required):
-                continue
-            if anyof and not any(_matches(full, t) for t in anyof):
-                continue
-            if any(_matches(full, t) for t in excluded):
-                continue
-            wanted = required + anyof
-            in_meta = any(_matches(meta, t) for t in wanted)
-            in_cv = any(_matches(cv, t) for t in wanted)
-            matched.append((c, "ambos" if in_meta and in_cv else "metadatos" if in_meta else "cv" if in_cv else "—"))
-        matched.sort(key=lambda m: m[0].applied_on or date.min, reverse=True)
-        people = {person_identity(c) for c, _ in matched}
-        summary: dict[str, Any] = {
-            "candidaturas": len(matched),
-            "personas_unicas": len(people),
-            "con_cv_indexado": sum(1 for c, _ in matched if c.sp_id in texts),
-            "coincidencia": dict(Counter(origin for _, origin in matched)),
-            "muestra": [{**_candidate_view(c), "coincide_en": origin} for c, origin in matched[: p.mostrar]],
-            "regla": RULE + " Una fila es una candidatura: la misma persona puede tener varias.",
-            **fresh,
-        }
-        rows = [[c.name, c.department, c.status, fmt_date(c.applied_on), origin] for c, origin in matched]
-        return ToolResult(
-            ToolStatus.OK if matched else ToolStatus.NOT_FOUND,
-            summary,
-            table("Candidaturas filtradas", ["Candidatura", "Departamento", "Estado", "Fecha", "Coincide en"], rows),
-        )
+        return _result(p, matches, candidates, cv_texts, fresh)
 
     return Tool(
-        "filtrar_candidatos",
-        "Filtra candidaturas por términos exactos combinados (todos / alguno / excluir) en los datos de la "
-        "candidatura y en el texto del CV, con recuento de candidaturas y personas únicas. Úsalo para "
-        "«cuántos», «que cumplan», «con X e Y», «X o Y», «sin X»; buscar_candidatos es para parecido semántico.",
-        FiltrarParams,
+        "buscar_candidatos",
+        "Busca candidaturas que cumplan uno o varios requisitos (idiomas, experiencia, especialidad, formación…). "
+        "Comprueba cada requisito primero en los METADATOS de la candidatura (columnas de SharePoint) y, si no "
+        "está ahí, en el DOCUMENTO CV; dice dónde se cumple cada uno, con el fragmento que lo demuestra, y cuenta "
+        "candidaturas y personas únicas. Pasa CADA requisito pedido y sus equivalentes. Para un perfil descrito "
+        "en general, sin requisitos concretos, usa candidatos_parecidos.",
+        BuscarParams,
         handler,
         permission=Permission.CURRICULUMS_LEER,
         audit_resource="curriculums",
     )
 
 
+async def _semantic_pass(
+    deps: Deps, index: CvSearchIndex, db: Any, requisitos: list[Requisito], matches: list[Match]
+) -> None:
+    """Para los requisitos que no aparecen literalmente, busca un fragmento de CV que trate de ello."""
+    if deps.llm is None:
+        return
+    model = deps.settings.curriculums.embedding_model if deps.settings else "text-embedding-3-small"
+    for i, r in enumerate(requisitos):
+        pending = {m.candidate.sp_id: m for m in matches if m.evidence[i].where == "no"}
+        # Solo quienes ya cumplen el resto: el significado sirve para completar, no para inflar resultados.
+        pending = {k: m for k, m in pending.items() if all(e.where != "no" for j, e in enumerate(m.evidence) if j != i)}
+        if not pending:
+            continue
+        vector = (await deps.llm.embed([" ".join([r.termino, *r.equivalentes])], model))[0]
+        for candidate_id, (score, text) in (await index.best_per_candidate(db, vector, set(pending))).items():
+            if score >= SEMANTIC_THRESHOLD:
+                pending[candidate_id].evidence[i] = Evidence(r.termino, "posible", " ".join(text.split())[:220])
+
+
+def _result(
+    p: BuscarParams, matches: list[Match], candidates: list[Candidate], cv_texts: dict[int, str], fresh: dict[str, Any]
+) -> ToolResult:
+    full = [m for m in matches if m.meets_all]
+    possible = [m for m in matches if m.meets_with_possible and not m.meets_all]
+    full.sort(
+        key=lambda m: (
+            -sum(e.where == "metadatos" for e in m.evidence),
+            -(m.candidate.applied_on or date.min).toordinal(),
+        )
+    )
+    shown = (full + possible)[: p.mostrar]
+    per_requirement = {
+        r.termino: dict(Counter(m.evidence[i].where for m in matches if m.evidence[i].where != "no"))
+        for i, r in enumerate(p.requisitos)
+    }
+    summary: dict[str, Any] = {
+        "cumplen_todos": len(full),
+        "personas_unicas": len({person_identity(m.candidate) for m in full}),
+        "con_indicios_en_el_cv": len(possible),
+        "donde_se_cumple_cada_requisito": per_requirement,
+        "candidaturas_revisadas": len(candidates),
+        "con_texto_de_cv_disponible": sum(1 for c in candidates if c.sp_id in cv_texts),
+        "muestra": [
+            {
+                **_candidate_view(m.candidate),
+                "requisitos": {e.requirement: {"donde": e.where, "evidencia": e.detail} for e in m.evidence},
+            }
+            for m in shown
+        ],
+        "regla": RULE + " «posible» = el CV trata de ello pero no lo dice literalmente: preséntalo como indicio.",
+        **fresh,
+    }
+    mark = {"metadatos": "✓ metadatos", "cv": "✓ CV", "posible": "≈ posible", "no": "—"}
+    columns = ["Candidatura", "Departamento", "Estado", "Fecha", *[r.termino for r in p.requisitos]]
+    rows = [
+        [
+            m.candidate.name,
+            m.candidate.department,
+            m.candidate.status,
+            fmt_date(m.candidate.applied_on),
+            *[f"{mark[e.where]} · {e.detail[:90]}" if e.detail else mark[e.where] for e in m.evidence],
+        ]
+        for m in full + possible
+    ]
+    return ToolResult(
+        ToolStatus.OK if full or possible else ToolStatus.NOT_FOUND,
+        summary,
+        table("Candidaturas por requisitos", columns, rows),
+    )
+
+
 def register(registry: ToolRegistry, deps: Deps) -> None:
-    for factory in (buscar, filtrar, candidaturas, ficha_candidato):
+    for factory in (buscar, parecidos, candidaturas, ficha_candidato):
         registry.register(factory(deps))

@@ -77,13 +77,20 @@ class SyncRunner:
         self._pseudonymize = pseudonymize
         self._tz = ZoneInfo(timezone)
         self._full_sync_hour = full_sync_hour
-        self._fields: dict[str, set[str]] = {}
+        self._fields: dict[str | tuple[str, str], set[str]] = {}
 
     # ------------------------------------------------------------ API
     async def run_all(self, sources: list[SourceDefinition], mode: SyncMode = SyncMode.AUTO) -> list[SyncReport]:
         return [await self.run(source, mode) for source in sources]
 
     async def _with_optional_fields(self, source: SourceDefinition) -> SourceDefinition:
+        if source.include_custom_fields:
+            if ("custom", source.list_title) not in self._fields:
+                self._fields[("custom", source.list_title)] = set(await self._client.custom_fields(source.list_title))
+            known = set(source.select.split(","))
+            extra = sorted(f for f in self._fields[("custom", source.list_title)] if f not in known)
+            if extra:
+                source = replace(source, select=",".join([source.select, *extra]))
         if not source.optional_fields:
             return source
         if source.list_title not in self._fields:  # una consulta por lista y proceso

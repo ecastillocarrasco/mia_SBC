@@ -71,3 +71,20 @@ class CvSearchIndex:
                 if len(best) >= limit:
                     break
         return [Hit(c, round(s, 3), self._texts[i][:400]) for c, (s, i) in best.items()]
+
+    async def best_per_candidate(
+        self, db: AsyncSession, query_vector: list[float], candidates: set[int]
+    ) -> dict[int, tuple[float, str]]:
+        """Para cada candidato, su fragmento de CV más parecido a la consulta: {id: (similitud, texto)}."""
+        await self._ensure(db)
+        if not self._candidates or not candidates:
+            return {}
+        query = np.frombuffer(pack(query_vector), dtype=np.float32)
+        if query.shape[0] != self._matrix.shape[1]:
+            return {}
+        scores = self._matrix @ query
+        best: dict[int, tuple[float, str]] = {}
+        for row, candidate in enumerate(self._candidates):
+            if candidate in candidates and (candidate not in best or scores[row] > best[candidate][0]):
+                best[candidate] = (float(scores[row]), self._texts[row])
+        return best

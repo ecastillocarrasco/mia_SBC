@@ -213,6 +213,14 @@ CASES = [
     ),
     # ---- fase 4b
     Case(
+        "cv_varios_requisitos_en_metadatos_y_cv",
+        [
+            "Dame dos currículums para el departamento de cocina que sepan inglés y tengan conocimientos de cocina japonesa"
+        ],
+        must=[r"(?i)japon"],
+        must_not=[r"(?i)no\s+(puedo|tengo\s+acceso)"],
+    ),
+    Case(
         "consulta_general_literatura",
         ["¿Quién escribió Cien años de soledad?"],
         must=[r"(?i)garc[ií]a\s+m[aá]rquez"],

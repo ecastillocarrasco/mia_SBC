@@ -188,3 +188,23 @@ async def test_optional_field_is_requested_only_if_it_exists(
     async with db.session() as s:
         ana = await s.get(Employee, 1)
     assert ana is not None and ana.nationality == "Italia"
+
+
+async def test_unknown_custom_columns_of_curriculums_are_synced(tmp_path: Path) -> None:
+    """Metadatos que no conocemos de antemano (p. ej. «Especialidad») llegan a la búsqueda."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from mia.data import Candidate  # noqa: PLC0415
+    from mia.sources.definitions import CURRICULUMS  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "cv_extra.db")
+    fake = FakeSharePoint(page_size=10)
+    fake.put("CurriculosVitae", {"ID": 1, "FirstName": "Kenji", "Title": "Sato", "Especialidad": "Sushi"})
+    client = SharePointClient(site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport())
+    report = await SyncRunner(db=db, client=client, pseudonymize=Pseudonymizer("k")).run(CURRICULUMS)
+    await client.aclose()
+    async with db.session() as s:
+        row = (await s.scalars(select(Candidate))).one()
+    await db.dispose()
+    assert report.status == "ok" and row.extra == {"Especialidad": "Sushi"}
+    assert "Especialidad" in str(fake.requests[-1].url.params.get("$select"))
