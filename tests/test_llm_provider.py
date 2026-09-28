@@ -148,4 +148,7 @@ async def test_web_search_is_dropped_if_the_provider_rejects_it() -> None:
     second = [e async for e in provider.stream(LLMRequest(system="s", messages=[]))]
     await provider.aclose()
     assert first == second == [TextDelta("hola")]
-    assert len(bodies) == 3  # rechazo + reintento sin búsqueda + segunda petición ya sin ella
+    assert len(bodies) == 3  # rechazo + reintento con el nombre alternativo + segunda petición con él
+    assert bodies[1]["tools"] == [{"type": "web_search_preview"}] and bodies[2]["tools"] == [
+        {"type": "web_search_preview"}
+    ]

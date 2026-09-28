@@ -3,6 +3,7 @@ TipoTurnos (catálogo), TurnosPlantillas (reglas de generación) y ComentariosTu
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -49,6 +50,9 @@ def calendar_shift(department: str, year: int) -> Any:
             return []
         description = text(item.get("DescripcionTurno"))
         hours = number(item.get("HorasTotalesTurno"))
+        if hours is None and end is not None and normalize_key(description) not in OFF_WORDS:
+            span = (end - start).total_seconds() / 3600
+            hours = round(span, 2) if 0 < span <= 16 else None  # eventos de día completo no son horas
         return [
             {
                 "sp_id": int(item["ID"]),
@@ -82,19 +86,26 @@ def calendar_shift(department: str, year: int) -> Any:
     return mapper
 
 
+def hhmm(value: Any) -> str | None:
+    """«07:00» o «7:00» → «07:00»; basura como «0:undefined» → None (fallo real en TipoTurnos)."""
+    raw = text(value)
+    match = re.fullmatch(r"(\d{1,2}):(\d{2})", raw or "")
+    return f"{int(match.group(1)):02d}:{match.group(2)}" if match else None
+
+
 def shift_type(item: dict[str, Any], ctx: MapContext) -> list[Row]:
     department = text(item.get("DepartamentoTurno"))
     return [
         {
             "sp_id": int(item["ID"]),
-            "code": text(item.get("Title")) or f"Tipo {item['ID']}",
+            "code": (text(item.get("Title")) or f"Tipo {item['ID']}")[:64],
             "department": department,
             "department_key": normalize_key(department) or None,
             "description": text(item.get("DescripcionTurno")),
-            "start1": text(item.get("HorarioInicio")),
-            "end1": text(item.get("HorarioFin")),
-            "start2": text(item.get("HorarioInicio2")),
-            "end2": text(item.get("HorarioFin2")),
+            "start1": hhmm(item.get("HorarioInicio")),
+            "end1": hhmm(item.get("HorarioFin")),
+            "start2": hhmm(item.get("HorarioInicio2")),
+            "end2": hhmm(item.get("HorarioFin2")),
             "hours_total": number(item.get("HorasTotalesTurno")),
             "hours_night": number(item.get("HorasNocturnas")),
             "split_shift": boolean(item.get("TurnoPartido")),

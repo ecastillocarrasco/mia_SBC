@@ -332,11 +332,21 @@ async def test_discarded_draft_cannot_be_sent(env: Any) -> None:
 async def test_filter_candidates_with_and_or_not_and_unique_people(env: Any) -> None:
     registry, db, _ = env
     async with db.session() as s:
-        s.add_all([
-            Candidate(sp_id=8318, name="Lucía Martín", name_key="lucia martin", department="Recepción",
-                      department_key="recepcion", status="Nuevo"),  # segunda candidatura de la misma persona
-            CvText(document_id=8318, candidate_id=8318, status="ok", text="Recepcionista con alemán, antes en Marriott"),
-        ])
+        s.add_all(
+            [
+                Candidate(
+                    sp_id=8318,
+                    name="Lucía Martín",
+                    name_key="lucia martin",
+                    department="Recepción",
+                    department_key="recepcion",
+                    status="Nuevo",
+                ),  # segunda candidatura de la misma persona
+                CvText(
+                    document_id=8318, candidate_id=8318, status="ok", text="Recepcionista con alemán, antes en Marriott"
+                ),
+            ]
+        )
     both = await call(registry, "filtrar_candidatos", alguno=["marriott", "hoteles"])
     assert both.summary["candidaturas"] == 2 and both.summary["personas_unicas"] == 1
     cooks_without_german = await call(registry, "filtrar_candidatos", todos=["cocina"], excluir=["alemán"])

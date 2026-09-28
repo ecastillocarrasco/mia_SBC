@@ -213,6 +213,18 @@ CASES = [
     ),
     # ---- fase 4b
     Case(
+        "consulta_general_literatura",
+        ["¿Quién escribió Cien años de soledad?"],
+        must=[r"(?i)garc[ií]a\s+m[aá]rquez"],
+        must_not=[r"(?i)no\s+(puedo|tengo\s+acceso)|solo\s+puedo\s+ayudarte"],
+    ),
+    Case(
+        "consulta_general_traduccion",
+        ["¿Cómo se dice «buenos días» en inglés?"],
+        must=[r"(?i)good\s+morning"],
+        must_not=[r"(?i)no\s+(puedo|tengo\s+acceso)|solo\s+puedo\s+ayudarte"],
+    ),
+    Case(
         "consulta_general_fuera_de_sbc",
         ["¿Cuál es la capital de Australia?"],
         must=[r"(?i)canberra"],

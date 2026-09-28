@@ -340,10 +340,20 @@ CALENDAR_DEPARTMENTS = (
 CALENDAR_BASE_YEAR = 2023
 """La lista sin sufijo de año representa 2023; desde 2024 el nombre lleva «_AAAA»."""
 
-CALENDAR_SELECT = (
-    "ID,Title,Created,Modified,DepartamentoTurno,EmpleadoTurno,StartDate,EndDate,DescripcionTurno,"
-    "ComentariosTurno,Comments,HorasTotalesTurno,HorasNocturnas,TurnoPartido,SemanaTurno,UltimaPublicacion,"
-    "ContPublicacion,InformeTurnoEnviado"
+CALENDAR_SELECT = "ID,Title,Created,Modified,EmpleadoTurno,StartDate,EndDate,DescripcionTurno"
+"""Columnas que tienen todos los calendarios. El resto varía por lista y año (fallo real: 2023 no tiene
+UltimaPublicacion, 2024 no tiene ContPublicacion, RRHH/Dirección 2023 no tienen horas…)."""
+CALENDAR_OPTIONAL = (
+    "DepartamentoTurno",
+    "ComentariosTurno",
+    "Comments",
+    "HorasTotalesTurno",
+    "HorasNocturnas",
+    "TurnoPartido",
+    "SemanaTurno",
+    "UltimaPublicacion",
+    "ContPublicacion",
+    "InformeTurnoEnviado",
 )
 
 
@@ -356,6 +366,7 @@ def calendar_source(department: str, year: int) -> SourceDefinition:
         key=f"calendario_{normalize_key(department)}_{year}",
         list_title=calendar_title(department, year),
         select=CALENDAR_SELECT,
+        optional_fields=CALENDAR_OPTIONAL,
         model=CalendarShift,
         mapper=calendars.calendar_shift(department, year),
         owner_column="sp_id",

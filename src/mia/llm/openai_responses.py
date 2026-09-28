@@ -49,7 +49,7 @@ def _input_items(messages: list[Message]) -> list[dict[str, Any]]:
     return items
 
 
-def build_payload(model: str, request: LLMRequest, *, web_search: bool = False) -> dict[str, Any]:
+def build_payload(model: str, request: LLMRequest, *, web_search: bool | str = False) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": model,
         "instructions": request.system,
@@ -70,7 +70,7 @@ def build_payload(model: str, request: LLMRequest, *, web_search: bool = False) 
             for tool in request.tools
         ]
     if web_search:
-        payload.setdefault("tools", []).append({"type": "web_search"})
+        payload.setdefault("tools", []).append({"type": web_search if isinstance(web_search, str) else "web_search"})
     if request.response_schema is not None:
         payload["text"] = {
             "format": {
@@ -105,7 +105,10 @@ class OpenAIResponsesProvider:
         transport: httpx.AsyncBaseTransport | None = None,
         web_search: bool = False,
     ) -> None:
-        self._web_search = web_search
+        # Nombre de la herramienta de búsqueda que se prueba; si el proveedor la rechaza se prueba la
+        # siguiente («web_search_preview» en modelos/despliegues más antiguos) y, si ninguna, se desactiva.
+        self._web_search_options = ["web_search", "web_search_preview"] if web_search else []
+        self._web_search: str | bool = self._web_search_options[0] if web_search else False
         headers = {"api-key": api_key} if azure else {"Authorization": f"Bearer {api_key}"}
         self._model = model
         self._client = httpx.AsyncClient(
@@ -173,10 +176,12 @@ class OpenAIResponsesProvider:
                     if response.status_code >= 400:
                         body = (await response.aread()).decode("utf-8", "replace")[:500]
                         if response.status_code == 400 and self._web_search and "web_search" in body:
-                            # El proveedor/despliegue no admite búsqueda web: seguir sin ella.
-                            log.warning("llm.web_search_disabled", reason=body[:200])
-                            self._web_search = False
-                            payload = build_payload(self._model, request)
+                            self._web_search_options = self._web_search_options[1:]
+                            self._web_search = self._web_search_options[0] if self._web_search_options else False
+                            log.warning(
+                                "llm.web_search_changed", now=self._web_search or "desactivada", reason=body[:200]
+                            )
+                            payload = build_payload(self._model, request, web_search=self._web_search)
                             continue
                         raise LLMError(f"HTTP {response.status_code}: {body}")
                     async for event in self._parse_sse(response):

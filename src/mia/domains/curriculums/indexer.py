@@ -207,6 +207,8 @@ class CvIndexer:
             if status == "unsupported" and media:
                 text = clean_text(await self._llm.read_image(content, media, OCR_INSTRUCTION))
                 status, detail = ("ok" if len(text) >= 40 else "empty"), "ocr: imagen"
+            elif status == "unsupported":
+                detail = "ocr: formato no soportado (p. ej. .doc antiguo)"
             elif status == "empty" and content[:4] == b"%PDF":
                 # PDF escaneado (sin capa de texto): se renderizan las primeras páginas y se leen.
                 pages = await asyncio.to_thread(render_pdf_pages, content, OCR_MAX_PAGES)

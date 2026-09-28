@@ -156,7 +156,12 @@ async def test_person_absence_history_defaults_to_the_year(registry: ToolRegistr
     result = await call(registry, "ausencias", empleado_id=4, tipos=["Baja/IT"])
     assert result.summary["desde"] == "2026-01-01"
     # Días acumulados hasta hoy (1: hoy); el periodo completo publicado dura 2.
-    assert result.summary["resumen_por_tipo"]["Baja/IT"] == {"personas": 1, "periodos": 1, "dias": 1, "duracion_media_dias": 1.0}
+    assert result.summary["resumen_por_tipo"]["Baja/IT"] == {
+        "personas": 1,
+        "periodos": 1,
+        "dias": 1,
+        "duracion_media_dias": 1.0,
+    }
     assert result.summary["periodos"][0]["dias_totales_publicados"] == 2
     assert result.state_updates["foco_persona"]["empleado_id"] == 4
 

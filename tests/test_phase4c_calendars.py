@@ -397,3 +397,45 @@ async def test_availability_crosses_calendar_vacations_and_ett(tmp_path: Path) -
     s = result.summary
     assert (s["trabajan"], s["baja_it"], s["sin_planificar"], s["ett_con_boletin"]) == (1, 1, 1, 1)
     assert s["alertas"][0]["persona"] == "Ana Ruiz"  # planificada con vacaciones aceptadas: se señala
+
+
+async def test_calendar_without_optional_columns_still_syncs(tmp_path: Path) -> None:
+    """Fallo real: CalendarioPisos (2023) no tiene UltimaPublicacion ni horas; antes daba HTTP 400."""
+    db = await fresh_database(tmp_path, "cal23.db")
+    fake = FakeSharePoint(page_size=10)
+    fake.put(
+        "CalendarioPisos",
+        {
+            "ID": 7,
+            "Title": "t",
+            "EmpleadoTurno": "Mercedes Moreno Romero",
+            "StartDate": "2023-12-31T08:00:00Z",
+            "EndDate": "2023-12-31T16:00:00Z",
+            "DescripcionTurno": "FD",
+        },
+    )
+    client = SharePointClient(site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport())
+    report = await SyncRunner(db=db, client=client, pseudonymize=Pseudonymizer("k")).run(calendar_source("Pisos", 2023))
+    await client.aclose()
+    async with db.session() as s:
+        row = (await s.execute(_select())).scalars().one()
+    await db.dispose()
+    select_used = str(fake.requests[-1].url.params.get("$select"))
+    assert report.status == "ok" and "UltimaPublicacion" not in select_used
+    assert row.hours_total == 8.0 and row.kind == "work"  # horas calculadas del propio evento
+
+
+def test_shift_type_ignores_malformed_hours() -> None:
+    """Fallo real: «0:undefined» en HorarioInicio2 no cabía en la columna."""
+    row = calendars.shift_type(
+        {
+            "ID": 996,
+            "Title": "20:00 - 04:00 / 0:undefined - 0:undefined",
+            "HorarioInicio": "20:00",
+            "HorarioFin": "04:00",
+            "HorarioInicio2": "0:undefined",
+            "HorarioFin2": "0:undefined",
+        },
+        CTX,
+    )[0]
+    assert (row["start1"], row["start2"], row["end2"]) == ("20:00", None, None)
