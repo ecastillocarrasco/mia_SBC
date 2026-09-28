@@ -44,12 +44,19 @@ def figures(text: str) -> set[str]:
     }
 
 
+def asks_back(text: str) -> bool:
+    """Pide una aclaración en vez de responder (sin cifras y terminando en pregunta)."""
+    return not figures(text) and text.strip().endswith("?")
+
+
 def classify(old: str, new: str) -> str:
     old_cannot, new_cannot = bool(CANNOT.search(old)), bool(CANNOT.search(new))
     if not old_cannot and new_cannot:
         return "solo_antiguo"
     if old_cannot and not new_cannot:
         return "solo_nuevo"
+    if asks_back(old) != asks_back(new):
+        return "antiguo_pide_aclaracion" if asks_back(old) else "nuevo_pide_aclaracion"
     a, b = figures(old), figures(new)
     if not a and not b:
         return "sin_cifras"
@@ -101,6 +108,19 @@ def main() -> int:
         print("Falta el corpus: ejecuta antes tools/extract_parity_corpus.py", file=sys.stderr)
         return 2
     legacy, new = Legacy(args.legacy_url, args.legacy_path), New(args.new_url)
+    # Comprobación previa: si el antiguo no lee SharePoint, la comparación no vale nada.
+    probe = legacy.ask("¿Cuántos empleados activos hay?")
+    legacy.reset()
+    if not figures(probe) or re.search(r"(?i)\b0\s+(empleados|personas)|no\s+encuentro", probe):
+        print("El sistema ANTERIOR no está devolviendo datos de la plantilla:", file=sys.stderr)
+        print(f"  «{probe[:300]}»", file=sys.stderr)
+        print(
+            "Revisa su .env (MIA_CLIENT_ID, MIA_CERT_PFX_PATH, MIA_CERT_PFX_PASSWORD, MIA_TENANT_ID) y la consola de",
+            "su backend. Comparación cancelada.",
+            file=sys.stderr,
+        )
+        return 3
+    print(f"Sistema anterior leyendo datos: «{probe[:120]}»")
     results: list[dict[str, Any]] = []
     conversations = [json.loads(line) for line in source.read_text(encoding="utf-8").splitlines() if line.strip()]
     if args.domain:
