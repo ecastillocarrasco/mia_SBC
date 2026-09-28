@@ -55,7 +55,7 @@ class LegacyVoiceRequest(BaseModel):
 
 
 def legacy_payload(result: TurnResult) -> dict[str, Any]:
-    data, actions = legacy_view(result.presentations)
+    data, actions = legacy_view(result.presentations, result.summaries)
     return {
         "status": "ok" if result.status == "ok" else "error",
         "answer": result.answer,

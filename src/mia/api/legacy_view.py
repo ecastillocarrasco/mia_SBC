@@ -187,12 +187,63 @@ def employee360_view(card: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def legacy_view(presentations: list[dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """(data, actions) en el formato del 2D a partir de TODAS las presentaciones del turno."""
+# Claves del resumen de las herramientas que no aportan a la pantalla (van en la tabla o son internas).
+SKIP_SUMMARY = {"al_dia", "regla", "desde", "hasta", "empleado_id", "candidato_id", "estado", "anio", "fecha"}
+NOTE_KEYS = {"nota", "criterio", "mensaje", "nota_bajas", "persona_destacada"}
+
+
+def _is_scalar(v: Any) -> bool:
+    return v is not None and v != "" and not isinstance(v, dict | list)
+
+
+def summary_view(summaries: list[dict[str, Any]]) -> dict[str, list[Any]]:
+    """Del resumen de cada herramienta: tarjetas (cifras), comparativa (desgloses por tipo o por
+    departamento), lectura contextual (desgloses simples y notas) y observaciones (avisos)."""
+    cards: list[dict[str, Any]] = []
+    comparison: list[dict[str, Any]] = []
+    insights: list[str] = []
+    quality: list[str] = []
+    for item in summaries:
+        for key, value in (item.get("summary") or {}).items():
+            if key in SKIP_SUMMARY or key.startswith("_"):
+                continue
+            if key == "aviso" and isinstance(value, str):
+                quality.append(value)
+            elif key in NOTE_KEYS:
+                insights.append(f"{_label(key)}: {_flat(value)}" if not isinstance(value, str) else value)
+            elif key == "alertas_calidad" and isinstance(value, list):
+                quality += [str(_flat(a)) for a in value]
+            elif _is_scalar(value) and isinstance(value, int | float) and not isinstance(value, bool):
+                cards.append({"label": _label(key), "value": value})
+            elif isinstance(value, dict) and value and all(isinstance(v, dict) for v in value.values()):
+                # {tipo: {personas, periodos, dias}} → comparativa: una fila por métrica, una columna por tipo.
+                metrics = list(dict.fromkeys(m for v in value.values() for m in v))
+                comparison += [
+                    {"metrica": f"{_label(key)} · {_label(m)}", **{str(col): v.get(m) for col, v in value.items()}}
+                    for m in metrics
+                    if all(_is_scalar(v.get(m)) or v.get(m) is None for v in value.values())
+                ]
+            elif isinstance(value, dict) and value and all(_is_scalar(v) for v in value.values()):
+                shown = list(value.items())[:12]
+                rest = "" if len(value) <= 12 else f" … y {len(value) - 12} más"
+                insights.append(f"{_label(key)}: " + " · ".join(f"{k} {_flat(v)}" for k, v in shown) + rest)
+    return {
+        "cards": cards,
+        "comparacion": comparison,
+        "insights": list(dict.fromkeys(insights)),
+        "alertas_calidad": list(dict.fromkeys(quality)),
+    }
+
+
+def legacy_view(
+    presentations: list[dict[str, Any]], summaries: list[dict[str, Any]] | None = None
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """(data, actions) en el formato del 2D a partir de TODAS las presentaciones y resúmenes del turno."""
     data: dict[str, Any] = {}
     actions: list[dict[str, Any]] = []
     cards: list[dict[str, Any]] = []
     tables: list[dict[str, Any]] = []
+    extra = summary_view(summaries or [])
     for p in presentations:
         kind = p.get("type")
         if kind == "employee_360":
@@ -220,6 +271,18 @@ def legacy_view(presentations: list[dict[str, Any]]) -> tuple[dict[str, Any], li
         tables.sort(key=lambda t: (t["total"], len(t["columns"])), reverse=True)
         data["table"] = tables[0]
         cards += [{"label": t["title"], "value": t["total"], "unit": "registros"} for t in tables[1:]]
-    if cards:
-        data["cards"] = cards[: MAX_CARDS * 2]
+    _merge_extra(data, cards, extra)
     return data, actions
+
+
+def _merge_extra(data: dict[str, Any], cards: list[dict[str, Any]], extra: dict[str, list[Any]]) -> None:
+    if "presentation" not in data:  # la ficha 360 ya lleva sus propios indicadores
+        cards = cards + extra["cards"]
+        for key in ("comparacion", "insights"):
+            if extra[key]:
+                data[key] = extra[key]
+    if extra["alertas_calidad"]:
+        data["alertas_calidad"] = extra["alertas_calidad"]
+    unique = list({c["label"]: c for c in reversed(cards)}.values())[::-1]
+    if unique:
+        data["cards"] = unique[: MAX_CARDS * 2]

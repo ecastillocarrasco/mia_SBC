@@ -64,3 +64,22 @@ async def test_real_employee360_uses_the_2d_schema(registry: ToolRegistry) -> No
     assert ids[:4] == ["hoy", "week", "next", "employment"] and "historico" in ids
     assert all({"FechaISO", "Turno"} <= set(d) for d in p["sections"][1]["items"])
     assert p["hero"]["title"] == "Ana Ruiz Sanz" and p["kpis"]
+
+
+def test_tool_summaries_reach_the_screen() -> None:
+    """Antes el resumen de cada herramienta (totales, desgloses, avisos) solo lo veía el modelo."""
+    summary = {
+        "personas_distintas": 42,
+        "resumen_por_tipo": {"Baja/IT": {"personas": 17, "dias": 900}, "Vacaciones": {"personas": 27, "dias": 400}},
+        "por_motivo": {"Vacaciones": 27, "Baja/IT": 17},
+        "nota": "Una persona puede tener varias solicitudes.",
+        "aviso": "Última sincronización hace 45 minutos: pueden faltar cambios recientes.",
+        "regla": "interna",
+    }
+    data, _ = legacy_view([TABLE], [{"tool": "x", "summary": summary}])
+    assert {"label": "Personas distintas", "value": 42} in data["cards"]
+    assert {"metrica": "Resumen por tipo · Personas", "Baja/IT": 17, "Vacaciones": 27} in data["comparacion"]
+    assert any(i.startswith("Por motivo: Vacaciones 27") for i in data["insights"])
+    assert "Una persona puede tener varias solicitudes." in data["insights"]
+    assert data["alertas_calidad"] == ["Última sincronización hace 45 minutos: pueden faltar cambios recientes."]
+    assert not any("interna" in str(v) for v in data.values())

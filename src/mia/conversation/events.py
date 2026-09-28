@@ -14,6 +14,8 @@ class TurnResult(BaseModel):
     speech: str
     avatar_state: str
     presentations: list[dict[str, Any]] = Field(default_factory=list)
+    summaries: list[dict[str, Any]] = Field(default_factory=list)
+    """Resumen de cada herramienta (totales, desgloses, avisos): lo mismo que ve el modelo, para la pantalla."""
     tools: list[dict[str, Any]] = Field(default_factory=list)
     elapsed_ms: int = 0
     usage: dict[str, int] = Field(default_factory=dict)

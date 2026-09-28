@@ -198,6 +198,11 @@ class ConversationEngine:
             speech=final.speech,
             avatar_state=final.avatar_state,
             presentations=[e.result.presentation for e in turn.executions if e.result.presentation],
+            summaries=[
+                {"tool": e.call.name, "summary": e.result.summary}
+                for e in turn.executions
+                if e.result.status.value == "ok" and isinstance(e.result.summary, dict)
+            ],
             tools=[
                 {"name": e.call.name, "status": e.result.status.value, "elapsed_ms": e.elapsed_ms}
                 for e in turn.executions
