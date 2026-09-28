@@ -207,11 +207,16 @@ def comparar(deps: Deps) -> Tool:
             "trabajando",
             "horas_programadas",
             "descansan",
+            "sin_turno_publicado",
             "saldo_medio_vacaciones",
             "saldos_negativos",
             "solicitudes_pendientes",
         ]
         rows = [[m, *(results[d].get(m) for d in results)] for m in metrics]
+        kinds = sorted({k for r in results.values() for k in r.get("ausentes_por_tipo", {})})
+        rows += [
+            [f"ausentes: {k}", *(results[d].get("ausentes_por_tipo", {}).get(k, 0) for d in results)] for k in kinds
+        ]
         return ToolResult(
             ToolStatus.OK,
             {"fecha": day.isoformat(), "comparativa": results},

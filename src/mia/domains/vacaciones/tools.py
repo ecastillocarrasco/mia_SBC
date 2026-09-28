@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date, timedelta
+from itertools import pairwise
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -53,6 +55,20 @@ class VacacionesParams(_OptionalPerson, Periodo, CohortParams):
         default="aceptadas", description="Por defecto solo las aceptadas"
     )
     tipo: Literal["vacaciones", "asuntos propios", "todos"] = "todos"
+
+
+def _people_and_overlaps(rows: list[Vacation], today: date) -> tuple[int, int]:
+    """Personas distintas y solicitudes que se solapan con otra de la misma persona."""
+    by_person: dict[str, list[Vacation]] = defaultdict(list)
+    for v in rows:
+        by_person[v.employee_email or normalize_key(v.employee_name)].append(v)
+    overlapping = 0
+    for vs in by_person.values():
+        ordered = sorted(vs, key=lambda x: x.start_date or today)
+        overlapping += sum(
+            1 for a, b in pairwise(ordered) if a.end_date and b.start_date and b.start_date <= a.end_date
+        )
+    return len(by_person), overlapping
 
 
 def solicitudes(deps: Deps) -> Tool:
@@ -111,9 +127,17 @@ def solicitudes(deps: Deps) -> Tool:
             }
             for v in rows
         ]
-        summary: dict[str, Any] = {"total": len(items), "estado": p.estado, **fresh}
+        persons, overlapping = _people_and_overlaps(rows, today)
+        summary: dict[str, Any] = {
+            "personas_distintas": persons,
+            "solicitudes": len(items),
+            "solicitudes_solapadas": overlapping,
+            "estado": p.estado,
+            "nota": "Cuenta personas con «personas_distintas»; una persona puede tener varias solicitudes.",
+            **fresh,
+        }
         if len(items) <= MAX_ROWS_FOR_MODEL:
-            summary["solicitudes"] = items
+            summary["detalle"] = items
         return ToolResult(
             ToolStatus.OK,
             summary,
@@ -140,6 +164,10 @@ def solicitudes(deps: Deps) -> Tool:
 class SaldoParams(_OptionalPerson, CohortParams):
     departamento: str | None = Field(default=None, description="Departamento (opcional)")
     solo_negativos: bool = Field(default=False, description="Solo saldos por debajo de cero")
+    solo_disponibles: bool = Field(default=False, description="Solo quien tiene saldo disponible (mayor que cero)")
+    ordenar: Literal["menor", "mayor"] = Field(default="menor", description="«mayor» para quién tiene más días")
+    limite: int | None = Field(default=None, ge=1, le=200, description="Quedarse con los N primeros tras ordenar")
+    incluir_inactivos: bool = Field(default=False, description="Por defecto solo plantilla activa (POB-001)")
     anio: int | None = Field(default=None, description="Año del saldo (por defecto el actual)")
 
 
@@ -160,11 +188,22 @@ def saldos(deps: Deps) -> Tool:
                 stmt = stmt.where(VacationBalance.department.ilike(f"%{p.departamento}%"))
             if p.solo_negativos:
                 stmt = stmt.where(VacationBalance.current_balance < 0)
+            if p.solo_disponibles:
+                stmt = stmt.where(VacationBalance.current_balance > 0)
+            if who is None and not p.incluir_inactivos:
+                # POB-001, como el sistema anterior: el saldo de quien ya no está en plantilla no cuenta.
+                active = select(Employee.email).where(Employee.active.is_(True), Employee.email.is_not(None))
+                stmt = stmt.where(VacationBalance.employee_email.in_(active))
             if p.sobre_resultado_anterior:
                 if (previous := previous_population(ctx)) is None:
                     return no_population()
                 stmt = stmt.where(VacationBalance.employee_email.in_(previous["emails"]))
-            rows = list((await db.scalars(stmt.order_by(VacationBalance.current_balance))).all())
+            order = VacationBalance.current_balance.desc() if p.ordenar == "mayor" else VacationBalance.current_balance
+            rows = list((await db.scalars(stmt.order_by(order, VacationBalance.employee_name))).all())
+            if p.limite:
+                top_value = rows[p.limite - 1].current_balance if len(rows) >= p.limite else None
+                # Empates en el corte: se incluyen todos los que tienen el mismo saldo (como el sistema anterior).
+                rows = [r for i, r in enumerate(rows) if i < p.limite or r.current_balance == top_value]
             people = await employees_for(db, emails={b.employee_email for b in rows if b.employee_email})
             state.update(population_state(f"saldos {year}", people))
             fresh = await deps.freshness(db, f"saldo_vacaciones_{year}")
@@ -279,7 +318,7 @@ def reincorporacion(deps: Deps) -> Tool:
         if back is not None:
             summary["reincorporacion"] = {
                 "fecha": back.day.isoformat(),
-                "dia": DAY_NAMES.get(back.weekday),
+                "dia": DAY_NAMES.get(back.weekday or ""),
                 "turno": back.raw_value,
             }
         else:

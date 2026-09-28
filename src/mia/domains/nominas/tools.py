@@ -7,6 +7,7 @@ informa de existencia, periodo y lectura; para importes hay que abrir la nómina
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from datetime import date
 from typing import Any
 
@@ -33,6 +34,7 @@ from mia.domains.common import (
 )
 from mia.domains.content import MAX_BYTES, content_unavailable, pdf_lines
 from mia.domains.nominas.parser import parse_payslip
+from mia.text import normalize_key
 
 RULE = "Metadatos (existencia, periodo, lectura). Para importes: nomina_importes o evolucion_nominas (NOM-002)."
 
@@ -47,20 +49,36 @@ def _belongs(e: Employee) -> Any:
     return or_(*conditions) if conditions else Payslip.sp_id < 0
 
 
+def document_kind(slip: Payslip) -> str:
+    """Tipo de documento de la biblioteca Nominas, como lo contaba el sistema anterior."""
+    key = normalize_key(f"{slip.file_name or ''} {slip.label or ''}")
+    if "certificado" in key or "retenc" in key:
+        return "certificado de retenciones"
+    if "bolsa" in key:
+        return "bolsa de vacaciones"
+    if slip.special or "extra" in key:
+        return "paga extra"
+    if slip.month:
+        return "nómina mensual"
+    return "otro documento"
+
+
 class NominasPersonaParams(PersonaParams):
-    anio: int | None = Field(default=None, description="Año (por defecto, el actual)")
+    anio: int | None = Field(default=None, description="Año concreto; sin año, TODO el histórico disponible")
     solo_no_leidas: bool = False
 
 
 def nominas_persona(deps: Deps) -> Tool:
     async def handler(p: NominasPersonaParams, ctx: ToolContext) -> ToolResult:
-        year = p.anio or ctx.now.year
+        year = p.anio
         async with deps.db.session() as db:
             match = await resolve_person(db, p)
             if match.employee is None:
                 return person_problem(match, p.nombre)
             e = match.employee
-            stmt = select(Payslip).where(_belongs(e), Payslip.year == year)
+            stmt = select(Payslip).where(_belongs(e))
+            if year:
+                stmt = stmt.where(Payslip.year == year)
             if p.solo_no_leidas:
                 stmt = stmt.where(Payslip.read.is_(False))
             rows = list((await db.scalars(stmt.order_by(Payslip.period, Payslip.sp_id))).all())
@@ -75,24 +93,32 @@ def nominas_persona(deps: Deps) -> Tool:
             }
             for r in rows
         ]
-        months = {r.month for r in rows if r.month and not r.special}
-        last_month = ctx.now.month - 1 if year == ctx.now.year else 12
+        check_year = year or ctx.now.year
+        months = {r.month for r in rows if r.month and not r.special and r.year == check_year}
+        last_month = ctx.now.month - 1 if check_year == ctx.now.year else 12
         missing = [m for m in range(1, max(0, last_month) + 1) if m not in months]
+        latest = max((r.period for r in rows if r.period), default=None)
         summary: dict[str, Any] = {
             "persona": e.name,
-            "anio": year,
-            "total": len(items),
-            "nominas": items,
-            "meses_sin_nomina_hasta_el_mes_pasado": missing,
+            "anio": year or "todos",
+            "total_documentos": len(items),
+            "por_tipo": dict(Counter(document_kind(r) for r in rows).most_common()),
+            "por_anio": dict(sorted(Counter(r.year or 0 for r in rows).items(), reverse=True)),
+            "mas_reciente": latest,
+            f"meses_sin_nomina_{check_year}_hasta_el_mes_pasado": missing,
             "no_leidas": sum(1 for r in rows if r.read is False),
             "regla": RULE,
             **fresh,
         }
+        if len(items) <= 40:
+            summary["nominas"] = items
+        else:
+            summary["ultimas"] = items[-24:]
         return ToolResult(
             ToolStatus.OK,
             summary,
             table(
-                f"Nóminas {year} · {e.name}",
+                f"Nóminas {year or 'histórico'} · {e.name}",
                 ["Periodo", "Concepto", "Especial", "Leída", "Enlace"],
                 [
                     [i["periodo"], i["concepto"], "Sí" if i["paga_especial"] else "", i["leida"], i["enlace"]]
@@ -104,7 +130,8 @@ def nominas_persona(deps: Deps) -> Tool:
 
     return Tool(
         "nominas_persona",
-        "Nóminas de una persona en un año: periodos, pagas especiales, si están leídas y meses que faltan. "
+        "Documentos de nómina de una persona (por defecto, todo el histórico): recuento por tipo (mensuales, "
+        "pagas extra, certificados de retenciones, bolsas de vacaciones) y año, lectura y meses que faltan. "
         "No da importes.",
         NominasPersonaParams,
         handler,
@@ -292,7 +319,7 @@ def evolucion_nominas(deps: Deps) -> Tool:
             ToolStatus.OK,
             summary,
             table(
-                f"Nóminas {year} · {e.name}",
+                f"Nóminas {year or 'histórico'} · {e.name}",
                 ["Periodo", "Concepto", "Especial", "Devengado", "Deducciones", "Líquido", "IRPF %"],
                 rows,
             ),

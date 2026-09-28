@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import date, timedelta
 from typing import Any, Literal
 
@@ -323,6 +323,25 @@ def ficha(deps: Deps) -> Tool:
 
 
 # ------------------------------------------------------------------ plantilla
+def age_stats(people: list[Employee], today: date) -> dict[str, Any]:
+    """Edad media global y por departamento, sobre quien tiene fecha de nacimiento (como el sistema anterior)."""
+    ages = [(e, a) for e in people if (a := age(e.birth_date, today)) is not None]
+    if not ages:
+        return {}
+    by_dept: dict[str, list[int]] = defaultdict(list)
+    for e, a in ages:
+        by_dept[e.department or "Sin dato"].append(a)
+    return {
+        "edad_media": round(sum(a for _, a in ages) / len(ages), 1),
+        "edad_calculada_sobre": len(ages),
+        "sin_fecha_de_nacimiento": len(people) - len(ages),
+        "edad_media_por_departamento": {
+            d: {"edad_media": round(sum(v) / len(v), 1), "personas": len(v)}
+            for d, v in sorted(by_dept.items(), key=lambda kv: -sum(kv[1]) / len(kv[1]))
+        },
+    }
+
+
 class PlantillaParams(CohortParams):
     departamento: str | None = Field(default=None, description="Departamento (opcional)")
     puesto: str | None = Field(default=None, description="Puesto o parte del nombre del puesto (opcional)")
@@ -335,6 +354,11 @@ class PlantillaParams(CohortParams):
 def plantilla(deps: Deps) -> Tool:
     async def handler(p: PlantillaParams, ctx: ToolContext) -> ToolResult:
         async with deps.db.session() as db:
+            if p.puesto and not p.departamento:
+                # Fallo real: «empleados de Pisos» llegó como puesto=pisos (112) en vez de departamento (136).
+                as_department = await resolve_department(db, p.puesto)
+                if as_department.status is ToolStatus.OK and as_department.key == normalize_key(p.puesto):
+                    p.departamento, p.puesto = p.puesto, None
             dept = await resolve_department(db, p.departamento)
             if dept.status is not ToolStatus.OK:
                 return department_problem(dept, p.departamento)
@@ -364,6 +388,7 @@ def plantilla(deps: Deps) -> Tool:
             field = {"departamento": "department", "puesto": "position", "nacionalidad": "nationality"}[p.agrupar_por]
             counts = Counter(getattr(e, field) or "Sin dato" for e in people)
             summary["por_" + p.agrupar_por] = dict(counts.most_common())
+        summary.update(age_stats(people, ctx.now.date()))
         if len(people) <= MAX_ROWS_FOR_MODEL:
             summary["personas"] = [person_summary(e) for e in people]
         state: dict[str, Any] = {"foco_departamento": dept.name} if dept.name else {}
@@ -378,8 +403,8 @@ def plantilla(deps: Deps) -> Tool:
 
     return Tool(
         "plantilla",
-        "Cuenta y lista la plantilla por departamento o puesto. Por defecto solo activos; usa "
-        "estado='inactivos' o 'todos' solo si el usuario lo pide.",
+        "Cuenta y lista la plantilla por departamento o puesto, con edad media (global y por departamento). "
+        "Por defecto solo activos; usa estado='inactivos' o 'todos' solo si el usuario lo pide.",
         PlantillaParams,
         handler,
         permission=Permission.EMPLEADOS_LEER,

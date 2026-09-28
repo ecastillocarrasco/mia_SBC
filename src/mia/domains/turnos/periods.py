@@ -26,6 +26,19 @@ LOOKBACK = timedelta(days=400)
 LOOKAHEAD = timedelta(days=120)
 
 
+@dataclass(frozen=True, slots=True)
+class DayRow:
+    """Día de turno reducido a lo que necesita el cálculo de periodos."""
+
+    person_key: str | None
+    day: date
+    kind: str
+    employee_name: str | None
+    department: str | None
+    raw_value: str | None
+    weekday: str | None
+
+
 @dataclass(slots=True)
 class AbsencePeriod:
     person_key: str
@@ -34,7 +47,7 @@ class AbsencePeriod:
     kind: str
     start: date
     end: date
-    return_shift: ShiftDay | None = None
+    return_shift: DayRow | ShiftDay | None = None
     starts_before_data: bool = False
 
     @property
@@ -48,7 +61,9 @@ class AbsencePeriod:
         return max(0, (min(self.end, hi) - max(self.start, lo)).days + 1)
 
 
-def build_periods(days: list[ShiftDay], kinds: tuple[str, ...], lower_bound: date) -> list[AbsencePeriod]:
+def build_periods(
+    days: list[DayRow] | list[ShiftDay], kinds: tuple[str, ...], lower_bound: date
+) -> list[AbsencePeriod]:
     """Agrupa los días de una persona (ordenados) en periodos de ausencia."""
     periods: list[AbsencePeriod] = []
     current: AbsencePeriod | None = None
@@ -100,14 +115,24 @@ async def absence_periods(
     if not person_keys:
         return []
     start, end = lo - LOOKBACK, hi + LOOKAHEAD
-    rows = (
-        await db.scalars(
-            select(ShiftDay)
-            .where(ShiftDay.person_key.in_(person_keys), ShiftDay.day.between(start, end))
-            .order_by(ShiftDay.person_key, ShiftDay.day)
+    # Solo las columnas y los tipos de día que usa el cálculo (ausencias y Trabajo): con cientos de
+    # personas y más de un año de turnos, cargar filas completas agotaba el tiempo (fallo real).
+    wanted_kinds = (*kinds, ShiftKind.TRABAJO)
+    result = await db.execute(
+        select(
+            ShiftDay.person_key,
+            ShiftDay.day,
+            ShiftDay.kind,
+            ShiftDay.employee_name,
+            ShiftDay.department,
+            ShiftDay.raw_value,
+            ShiftDay.weekday,
         )
-    ).all()
-    by_person: dict[str, list[ShiftDay]] = defaultdict(list)
+        .where(ShiftDay.person_key.in_(person_keys), ShiftDay.day.between(start, end), ShiftDay.kind.in_(wanted_kinds))
+        .order_by(ShiftDay.person_key, ShiftDay.day)
+    )
+    rows = [DayRow(*r) for r in result.all()]
+    by_person: dict[str, list[DayRow]] = defaultdict(list)
     for row in rows:
         by_person[str(row.person_key)].append(row)
     periods = [p for days in by_person.values() for p in build_periods(days, kinds, start)]

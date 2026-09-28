@@ -7,6 +7,7 @@ no de idoneidad para el puesto.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from datetime import date
 from typing import Any
@@ -65,7 +66,15 @@ def buscar(deps: Deps) -> Tool:
                 ToolStatus.NOT_FOUND,
                 {"mensaje": "Ningún CV indexado encaja con la búsqueda y los filtros.", **fresh},
             )
-        results = [{**_candidate_view(candidates[h.candidate_id]), "evidencia": h.evidence} for h in hits]
+        seen: set[str] = set()
+        results = []
+        for h in hits:  # una persona con varias candidaturas aparece una vez (fallo real: «dos CV» del mismo)
+            c = candidates[h.candidate_id]
+            key = person_identity(c)
+            if key in seen:
+                continue
+            seen.add(key)
+            results.append({**_candidate_view(c), "evidencia": h.evidence})
         rows = [[r["nombre"], r["departamento"], r["estado"], r["fecha"], r["evidencia"][:160]] for r in results]
         return ToolResult(
             ToolStatus.OK,
@@ -175,6 +184,91 @@ def ficha_candidato(deps: Deps) -> Tool:
     )
 
 
+def person_identity(c: Candidate) -> str:
+    """Una fila de CurriculosVitae es una candidatura; la persona se identifica por email o, si no, por nombre."""
+    return (c.email or "").lower() or c.name_key
+
+
+def _terms(values: list[str] | None) -> list[str]:
+    return [normalize_key(v) for v in values or [] if normalize_key(v)]
+
+
+def _matches(haystack: str, term: str) -> bool:
+    return re.search(rf"(?<![a-z0-9]){re.escape(term)}", haystack) is not None
+
+
+class FiltrarParams(BaseModel):
+    todos: list[str] | None = Field(default=None, description="Términos que deben aparecer TODOS (y)")
+    alguno: list[str] | None = Field(default=None, description="Basta con que aparezca ALGUNO (o)")
+    excluir: list[str] | None = Field(default=None, description="Términos que NO deben aparecer («sin inglés»)")
+    departamento: str | None = Field(default=None, description="Departamento de la candidatura")
+    estado: str | None = None
+    mostrar: int = Field(default=10, ge=1, le=40, description="Cuántas candidaturas listar")
+
+
+def filtrar(deps: Deps) -> Tool:
+    async def handler(p: FiltrarParams, ctx: ToolContext) -> ToolResult:
+        required, anyof, excluded = _terms(p.todos), _terms(p.alguno), _terms(p.excluir)
+        if not (required or anyof or excluded):
+            return ToolResult(ToolStatus.INVALID_ARGUMENTS, "Indica al menos un término de búsqueda.")
+        async with deps.db.session() as db:
+            stmt = select(Candidate)
+            if p.departamento:
+                stmt = stmt.where(Candidate.department_key.like(f"%{normalize_key(p.departamento)}%"))
+            if p.estado:
+                stmt = stmt.where(Candidate.status.ilike(f"%{p.estado}%"))
+            candidates = list((await db.scalars(stmt)).all())
+            texts = {
+                t.candidate_id: t.text or ""
+                for t in (await db.scalars(select(CvText).where(CvText.status == "ok"))).all()
+                if t.candidate_id is not None
+            }
+            fresh = await deps.freshness(db, "curriculums", "cv_docs")
+        matched: list[tuple[Candidate, str]] = []
+        for c in candidates:
+            meta = normalize_key(" ".join(filter(None, [c.department, c.experience, c.languages, c.comments])))
+            cv = normalize_key(texts.get(c.sp_id, ""))
+            full = f"{meta} {cv}"
+            if not all(_matches(full, t) for t in required):
+                continue
+            if anyof and not any(_matches(full, t) for t in anyof):
+                continue
+            if any(_matches(full, t) for t in excluded):
+                continue
+            wanted = required + anyof
+            in_meta = any(_matches(meta, t) for t in wanted)
+            in_cv = any(_matches(cv, t) for t in wanted)
+            matched.append((c, "ambos" if in_meta and in_cv else "metadatos" if in_meta else "cv" if in_cv else "—"))
+        matched.sort(key=lambda m: m[0].applied_on or date.min, reverse=True)
+        people = {person_identity(c) for c, _ in matched}
+        summary: dict[str, Any] = {
+            "candidaturas": len(matched),
+            "personas_unicas": len(people),
+            "con_cv_indexado": sum(1 for c, _ in matched if c.sp_id in texts),
+            "coincidencia": dict(Counter(origin for _, origin in matched)),
+            "muestra": [{**_candidate_view(c), "coincide_en": origin} for c, origin in matched[: p.mostrar]],
+            "regla": RULE + " Una fila es una candidatura: la misma persona puede tener varias.",
+            **fresh,
+        }
+        rows = [[c.name, c.department, c.status, fmt_date(c.applied_on), origin] for c, origin in matched]
+        return ToolResult(
+            ToolStatus.OK if matched else ToolStatus.NOT_FOUND,
+            summary,
+            table("Candidaturas filtradas", ["Candidatura", "Departamento", "Estado", "Fecha", "Coincide en"], rows),
+        )
+
+    return Tool(
+        "filtrar_candidatos",
+        "Filtra candidaturas por términos exactos combinados (todos / alguno / excluir) en los datos de la "
+        "candidatura y en el texto del CV, con recuento de candidaturas y personas únicas. Úsalo para "
+        "«cuántos», «que cumplan», «con X e Y», «X o Y», «sin X»; buscar_candidatos es para parecido semántico.",
+        FiltrarParams,
+        handler,
+        permission=Permission.CURRICULUMS_LEER,
+        audit_resource="curriculums",
+    )
+
+
 def register(registry: ToolRegistry, deps: Deps) -> None:
-    for factory in (buscar, candidaturas, ficha_candidato):
+    for factory in (buscar, filtrar, candidaturas, ficha_candidato):
         registry.register(factory(deps))

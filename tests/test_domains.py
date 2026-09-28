@@ -156,7 +156,7 @@ async def test_person_absence_history_defaults_to_the_year(registry: ToolRegistr
     result = await call(registry, "ausencias", empleado_id=4, tipos=["Baja/IT"])
     assert result.summary["desde"] == "2026-01-01"
     # Días acumulados hasta hoy (1: hoy); el periodo completo publicado dura 2.
-    assert result.summary["resumen_por_tipo"]["Baja/IT"] == {"personas": 1, "periodos": 1, "dias": 1}
+    assert result.summary["resumen_por_tipo"]["Baja/IT"] == {"personas": 1, "periodos": 1, "dias": 1, "duracion_media_dias": 1.0}
     assert result.summary["periodos"][0]["dias_totales_publicados"] == 2
     assert result.state_updates["foco_persona"]["empleado_id"] == 4
 
@@ -181,11 +181,11 @@ async def test_absences_are_merged_into_periods(registry: ToolRegistry) -> None:
 # ------------------------------------------------------------------ vacaciones
 async def test_vacations_default_to_accepted(registry: ToolRegistry) -> None:
     result = await call(registry, "vacaciones", empleado_id=1, desde="2026-08-01", hasta="2026-09-30")
-    assert result.summary["total"] == 1
+    assert result.summary["solicitudes"] == 1 and result.summary["personas_distintas"] == 1
     pending = await call(
         registry, "vacaciones", empleado_id=1, estado="pendientes", desde="2026-08-01", hasta="2026-09-30"
     )
-    assert pending.summary["solicitudes"][0]["desde"] == "14/09/2026"
+    assert pending.summary["detalle"][0]["desde"] == "14/09/2026"
 
 
 async def test_negative_balances_are_reported_as_negative(registry: ToolRegistry) -> None:
@@ -279,3 +279,21 @@ async def test_cohort_crosses_previous_result(registry: ToolRegistry) -> None:
 async def test_cohort_without_previous_result(registry: ToolRegistry) -> None:
     result = await call(registry, "saldo_vacaciones", sobre_resultado_anterior=True)
     assert result.status is ToolStatus.NOT_FOUND
+
+
+async def test_headcount_includes_average_age(registry: ToolRegistry) -> None:
+    result = await call(registry, "plantilla")
+    assert result.summary["edad_media"] > 0
+    assert set(result.summary["edad_media_por_departamento"]) <= {"Pisos", "Cocina", "Spa"}
+
+
+async def test_department_passed_as_position_is_treated_as_department(registry: ToolRegistry) -> None:
+    """Fallo real del modo sombra: «empleados de Pisos» llegó como puesto=pisos."""
+    as_position = await call(registry, "plantilla", puesto="Pisos")
+    as_department = await call(registry, "plantilla", departamento="Pisos")
+    assert as_position.summary["total"] == as_department.summary["total"]
+
+
+async def test_balances_exclude_inactive_and_sort_by_most_days(registry: ToolRegistry) -> None:
+    result = await call(registry, "saldo_vacaciones", ordenar="mayor", limite=1)
+    assert result.summary["saldos"][0]["saldo_actual"] == max(s["saldo_actual"] for s in result.summary["saldos"])

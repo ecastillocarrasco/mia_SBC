@@ -164,7 +164,9 @@ async def test_cv_search_returns_evidence_not_a_ranking(env: Any) -> None:
 async def test_payslips_list_missing_months_and_never_amounts(env: Any) -> None:
     registry, _, _ = env
     result = await call(registry, "nominas_persona", empleado_id=1)
-    assert result.summary["meses_sin_nomina_hasta_el_mes_pasado"] == [4]
+    assert result.summary["meses_sin_nomina_2026_hasta_el_mes_pasado"] == [4]
+    assert result.summary["por_tipo"] == {"nómina mensual": 7, "paga extra": 1}
+    assert result.summary["mas_reciente"] == "2026-08"
     assert result.summary["no_leidas"] == 1
     assert any(n["paga_especial"] for n in result.summary["nominas"])
     assert "importe" not in json.dumps(result.summary).lower().replace("importes", "")
@@ -325,3 +327,18 @@ async def test_discarded_draft_cannot_be_sent(env: Any) -> None:
     result = await call(registry, "enviar_borrador", state, borrador="b1", message="sí", request_id="t2")
     await graph.aclose()
     assert result.status is ToolStatus.NOT_FOUND and fake.sent == []
+
+
+async def test_filter_candidates_with_and_or_not_and_unique_people(env: Any) -> None:
+    registry, db, _ = env
+    async with db.session() as s:
+        s.add_all([
+            Candidate(sp_id=8318, name="Lucía Martín", name_key="lucia martin", department="Recepción",
+                      department_key="recepcion", status="Nuevo"),  # segunda candidatura de la misma persona
+            CvText(document_id=8318, candidate_id=8318, status="ok", text="Recepcionista con alemán, antes en Marriott"),
+        ])
+    both = await call(registry, "filtrar_candidatos", alguno=["marriott", "hoteles"])
+    assert both.summary["candidaturas"] == 2 and both.summary["personas_unicas"] == 1
+    cooks_without_german = await call(registry, "filtrar_candidatos", todos=["cocina"], excluir=["alemán"])
+    assert cooks_without_german.summary["candidaturas"] == 1
+    assert cooks_without_german.summary["muestra"][0]["nombre"] == "Pablo Ruiz"

@@ -23,6 +23,7 @@ def _emp(sp_id: int, name: str, dept: str, active: bool = True, **kw: object) ->
         position=kw.get("position", "Camarera de pisos"),  # type: ignore[arg-type]
         email=kw.get("email"),
         person_key=kw.get("person_key"),  # type: ignore[arg-type]
+        birth_date=date(1980 + sp_id, 1, 15),
     )
 
 

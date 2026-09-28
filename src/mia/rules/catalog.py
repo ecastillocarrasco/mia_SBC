@@ -88,8 +88,8 @@ RULES: tuple[BusinessRule, ...] = (
     BusinessRule(
         "TUR-001",
         "Franjas por hora de inicio",
-        "Turno de mañana = empieza entre 05:00 y 11:59; de tarde = entre 12:00 y 17:59; de noche = "
-        "desde las 18:00 hasta las 04:59. Un 07:00-15:00 es de mañana aunque termine por la tarde.",
+        "Turno de mañana = empieza entre 06:00 y 13:59; de tarde = entre 14:00 y 21:59; de noche = desde las "
+        "22:00 hasta las 05:59 (criterio del ejecutor v12 del sistema anterior). Solo cuentan turnos de Trabajo.",
         ("turnos",),
     ),
     BusinessRule(

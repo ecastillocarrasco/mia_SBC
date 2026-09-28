@@ -149,3 +149,26 @@ respuesta (coinciden, difieren, solo responde el antiguo, solo responde el nuevo
 
 Quedan fuera a propósito: las rutas de diagnóstico interno (`/api/sharepoint/*`, `qa/*`,
 `roadmap/*`, `cache/*`, `modelo-datos/*`), que exponían listas sin autenticación.
+
+## Resultados del modo sombra (60 conversaciones reales)
+
+Correcciones tras comparar respuesta a respuesta con el sistema anterior:
+
+| Diferencia detectada | Causa | Corrección |
+|---|---|---|
+| Turnos de mañana/tarde/noche: 101/36/1 frente a 91/42/5 | Se portó la franja del v10; los usuarios usaban la del v12 | Franjas v12: 06–14, 14–22, 22–06 (TUR-001) |
+| «¿Quién trabaja mañana?» respondido como turno de mañana de hoy | Ambigüedad resuelta solo en el prompt | Resuelto en código: día siguiente |
+| Reincorporaciones 55 frente a 49 | Ventana de 14 días | 35 días, como el antiguo |
+| Saldo negativo: 5 personas frente a 4 | Se incluían inactivos | Solo activos por defecto (POB-001); orden por «más días» con empates |
+| Vacaciones en agosto: «152 personas» | Se contaban solicitudes como personas | Personas distintas, solicitudes y solapes por separado |
+| Edad media de la plantilla y por departamento | No existía | En `plantilla` |
+| «Empleados de Pisos»: 112 frente a 136 | Filtrado por puesto en vez de departamento | Corrección automática |
+| CVs: sin recuentos de candidaturas/personas | Solo búsqueda semántica top-10 | `filtrar_candidatos` (todos/alguno/excluir), sin duplicar personas |
+| Nóminas: 10 frente a 103 documentos | Solo el año en curso | Histórico completo con recuento por tipo y año |
+| Comunicaciones ETT sin contenido | Solo listado | Filtro por empresa y lectura de las más recientes |
+| Duración media de bajas | Calculada por el modelo | Misma fórmula que el antiguo (días acumulados / periodos) |
+| Dos consultas agotaban el tiempo | Cálculo de periodos cargando filas completas | Solo columnas y tipos de día necesarios |
+
+Pendiente de verificar tras sincronizar los calendarios: bajas de Pisos en agosto (41
+personas según el antiguo, 18 según mIA), probablemente calculadas por el antiguo desde el
+Calendario y por mIA desde Turnos.

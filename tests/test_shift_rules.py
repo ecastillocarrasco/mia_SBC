@@ -28,15 +28,15 @@ def shift(start: str | None, end: str | None, kind: str = "Trabajo", day: date =
 @pytest.mark.parametrize(
     ("start", "band"),
     [
-        ("05:00", "mañana"),
+        ("06:00", "mañana"),
         ("07:00", "mañana"),
-        ("11:59", "mañana"),
-        ("12:00", "tarde"),
+        ("13:59", "mañana"),
+        ("14:00", "tarde"),
         ("16:00", "tarde"),
-        ("18:00", "noche"),
+        ("21:59", "tarde"),
         ("22:00", "noche"),
         ("00:00", "noche"),
-        ("04:59", "noche"),
+        ("05:59", "noche"),
     ],
 )
 def test_band_by_start_time(start: str, band: str) -> None:

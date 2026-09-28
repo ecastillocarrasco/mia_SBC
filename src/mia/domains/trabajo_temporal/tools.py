@@ -12,6 +12,7 @@ from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.data import TtCommunication, TtCompany, TtRate, TtTimesheet, TtWorker
 from mia.domains.common import MAX_ROWS_FOR_MODEL, Deps, Periodo, fmt_date, table
+from mia.domains.content import MAX_BYTES, content_unavailable, document_text
 from mia.text import normalize_key
 
 
@@ -287,7 +288,10 @@ def anomalias(deps: Deps) -> Tool:
 
 
 class ComunicacionesParams(BaseModel):
-    buscar: str | None = None
+    buscar: str | None = Field(default=None, description="Texto a buscar en el nombre (p. ej. la empresa: RANDSTAD)")
+    leer_ultimas: int = Field(
+        default=0, ge=0, le=8, description="Leer el contenido de las N más recientes para resumirlas"
+    )
 
 
 def comunicaciones(deps: Deps) -> Tool:
@@ -296,26 +300,38 @@ def comunicaciones(deps: Deps) -> Tool:
             rows = list((await db.scalars(select(TtCommunication).order_by(TtCommunication.created_at.desc()))).all())
         if p.buscar:
             rows = [r for r in rows if normalize_key(p.buscar) in normalize_key(f"{r.title} {r.file_name}")]
-        items = [
-            {
-                "documento": r.file_name or r.title,
-                "fecha": fmt_date(r.created_at.date()) if r.created_at else None,
-            }
+        items: list[dict[str, Any]] = [
+            {"documento": r.file_name or r.title, "fecha": fmt_date(r.created_at.date()) if r.created_at else None}
             for r in rows
         ]
+        contents: list[dict[str, Any]] = []
+        if p.leer_ultimas and rows:
+            if problem := content_unavailable(deps):
+                return problem
+            for r in rows[: p.leer_ultimas]:
+                try:
+                    raw = await deps.sharepoint.download_item_file("ComunicacionesBoletinesTT", r.sp_id, MAX_BYTES)
+                    text = document_text(raw) or ""
+                except Exception as exc:  # un documento ilegible no impide leer los demás
+                    text = f"(no se ha podido leer: {type(exc).__name__})"
+                contents.append({"documento": r.file_name or r.title, "texto": text[:1500]})
+        summary: dict[str, Any] = {
+            "total": len(items),
+            "comunicaciones": items[:40],
+            "nota": "Documentos de comunicación con ETT; no equivalen 1:1 a boletines.",
+        }
+        if contents:
+            summary["contenido_de_las_ultimas"] = contents
         return ToolResult(
             ToolStatus.OK,
-            {
-                "total": len(items),
-                "comunicaciones": items[:40],
-                "nota": "Documentos de comunicación con ETT; no equivalen 1:1 a boletines.",
-            },
+            summary,
             table("Comunicaciones ETT", ["Documento", "Fecha"], [list(i.values()) for i in items]),
         )
 
     return Tool(
         "comunicaciones_tt",
-        "Documentos de comunicación con las empresas de trabajo temporal.",
+        "Comunicaciones con las ETT (filtrables por empresa con «buscar») y, con leer_ultimas, el contenido de "
+        "las más recientes para resumirlas.",
         ComunicacionesParams,
         handler,
         permission=Permission.TRABAJO_TEMPORAL_LEER,

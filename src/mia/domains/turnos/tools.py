@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Literal
 
 from pydantic import Field
@@ -44,13 +45,29 @@ DAY_NAMES = {
     "D": "domingo",
 }
 
-# TUR-001: franjas por hora de INICIO del turno (misma definición que el sistema anterior).
+# TUR-001: franjas por hora de INICIO del turno. Misma definición que el ejecutor v12 del sistema
+# anterior (el que usaban de verdad): mañana 06:00-13:59, tarde 14:00-21:59, noche 22:00-05:59.
 FRANJAS: dict[str, tuple[int, int]] = {
-    "mañana": (5 * 60, 12 * 60),
-    "tarde": (12 * 60, 18 * 60),
-    "noche": (18 * 60, 5 * 60),
+    "mañana": (6 * 60, 14 * 60),
+    "tarde": (14 * 60, 22 * 60),
+    "noche": (22 * 60, 6 * 60),
 }
 Franja = Literal["mañana", "tarde", "noche"]
+
+
+_TOMORROW = re.compile(r"\btrabaj\w*\s+(?:el\s+d[ií]a\s+de\s+)?ma[nñ]ana\b", re.IGNORECASE)
+_MORNING = re.compile(
+    r"turno\s+de\s+ma[nñ]ana|por\s+la\s+ma[nñ]ana|de\s+ma[nñ]ana\s+(?:de\s+)?(?:hoy|el)", re.IGNORECASE
+)
+
+
+def tomorrow_not_morning(message: str, franja: str | None, fecha: date | None, today: date) -> bool:
+    return (
+        franja == "mañana"
+        and fecha in (None, today)
+        and bool(_TOMORROW.search(message or ""))
+        and not _MORNING.search(message or "")
+    )
 
 
 def _minutes(hhmm: str | None) -> int | None:
@@ -184,7 +201,7 @@ class TurnosDiaParams(CohortParams):
     departamento: str | None = Field(default=None, description="Departamento (opcional; sin él, toda la plantilla)")
     franja: Franja | None = Field(
         default=None,
-        description="Turno de mañana (empieza 05:00-11:59), tarde (12:00-17:59) o noche (18:00-04:59)",
+        description="Turno de mañana (empieza 06:00-13:59), tarde (14:00-21:59) o noche (22:00-05:59)",
     )
     empieza_a: str | None = Field(default=None, description="HH:MM: quién entra exactamente a esa hora")
     hora: str | None = Field(
@@ -196,6 +213,11 @@ class TurnosDiaParams(CohortParams):
 def turnos_dia(deps: Deps) -> Tool:
     async def handler(p: TurnosDiaParams, ctx: ToolContext) -> ToolResult:
         day = p.fecha or ctx.now.date()
+        note = None
+        if tomorrow_not_morning(ctx.user_message, p.franja, p.fecha, ctx.now.date()):
+            # «¿Quién trabaja mañana?» es el día siguiente, no el turno de mañana (fallo real repetido).
+            day, p.franja = ctx.now.date() + timedelta(days=1), None
+            note = "Interpretado como el día de mañana (no como el turno de mañana)."
         async with deps.db.session() as db:
             status, dept_key, options = await resolve_shift_department(db, p.departamento)
             if status is not ToolStatus.OK:
@@ -237,6 +259,7 @@ def turnos_dia(deps: Deps) -> Tool:
             "fecha": day.isoformat(),
             "departamento": shifts[0].department if dept_key else "toda la plantilla",
             "criterio": ", ".join(criteria) or "todos los turnos del día",
+            **({"nota": note} if note else {}),
             "total_seleccionado": len(selected),
             "horas_seleccionadas": round(sum(s.hours or 0 for s in selected), 1),
             "seleccion_por_departamento": dict(Counter(s.department or "Sin dato" for s in selected).most_common()),
@@ -320,7 +343,7 @@ def _absence_summary(
     periods: list[AbsencePeriod], today: date, lo: date, hi: date
 ) -> tuple[dict[str, Any], list[list[Any]]]:
     views = [_period_view(x, today, lo, hi) for x in periods]
-    by_kind: dict[str, dict[str, int]] = defaultdict(lambda: {"personas": 0, "periodos": 0, "dias": 0})
+    by_kind: dict[str, dict[str, float]] = defaultdict(lambda: {"personas": 0, "periodos": 0, "dias": 0})
     seen: dict[str, set[str]] = defaultdict(set)
     for x in periods:
         by_kind[x.kind]["periodos"] += 1
@@ -328,6 +351,12 @@ def _absence_summary(
         seen[x.kind].add(x.person_key)
     for kind, keys in seen.items():
         by_kind[kind]["personas"] = len(keys)
+    for stats in by_kind.values():
+        # Misma fórmula que el sistema anterior: días acumulados en el periodo / número de periodos.
+        stats["duracion_media_dias"] = round(stats["dias"] / stats["periodos"], 2) if stats["periodos"] else 0
+    dept_kind: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+    for x in periods:
+        dept_kind[x.department or "Sin dato"][x.kind].add(x.person_key)
     dept_people: dict[str, set[str]] = defaultdict(set)
     for x in periods:
         dept_people[x.department or "Sin dato"].add(x.person_key)
@@ -336,6 +365,9 @@ def _absence_summary(
         "hasta": hi.isoformat(),
         "resumen_por_tipo": dict(by_kind),
         "personas_por_departamento": dict(sorted(((d, len(k)) for d, k in dept_people.items()), key=lambda kv: -kv[1])),
+        "personas_por_departamento_y_tipo": {
+            d: {k: len(v) for k, v in kinds.items()} for d, kinds in sorted(dept_kind.items())
+        },
         "regla": (
             "AUS-001: 'desde' es el inicio real del periodo. 'dias_hasta_hoy' = cuánto lleva; "
             "'dias_totales_publicados' incluye días futuros ya publicados."
@@ -462,7 +494,7 @@ class ReincorporacionesParams(Periodo, CohortParams):
 def reincorporaciones(deps: Deps) -> Tool:
     async def handler(p: ReincorporacionesParams, ctx: ToolContext) -> ToolResult:
         today = ctx.now.date()
-        lo, hi = p.resolve(today, default_days=14)
+        lo, hi = p.resolve(today, default_days=35)  # como el sistema anterior: próximos 35 días
         kinds = tuple(
             k for k in ABSENCE_KINDS if not p.tipos or any(normalize_key(t) in normalize_key(k) for t in p.tipos)
         )
@@ -507,6 +539,10 @@ def reincorporaciones(deps: Deps) -> Tool:
             "personas_distintas": len({x.person_key for x in published}),
             "por_motivo": dict(Counter(x.kind for x in published)),
             "personas_con_mas_de_un_motivo": _multi_kind(published),
+            "por_departamento_y_motivo": {
+                d: dict(Counter(x.kind for x in published if (x.department or "Sin dato") == d))
+                for d in sorted({x.department or "Sin dato" for x in published})
+            },
             "ausencia_termina_pero_sin_turno_publicado": len(pending),
             "regla": "VAC-001: reincorporación = primer turno de trabajo publicado tras la ausencia.",
             **fresh,
@@ -527,7 +563,7 @@ def reincorporaciones(deps: Deps) -> Tool:
     return Tool(
         "reincorporaciones",
         "Lista de quién se reincorpora (con turno de trabajo publicado) en un periodo, por defecto los "
-        "próximos 14 días, tras baja, vacaciones o permisos.",
+        "próximos 35 días, tras baja, vacaciones o permisos.",
         ReincorporacionesParams,
         handler,
         permission=Permission.TURNOS_LEER,
