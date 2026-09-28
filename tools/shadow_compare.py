@@ -3,9 +3,9 @@
 El sistema anterior no guardó el texto de sus respuestas, así que la única forma de probar
 la paridad es preguntar a la vez al antiguo y al nuevo. Requiere los dos arrancados:
 
-    # sistema anterior (en su carpeta, en otro puerto; p. ej. 5101)
-    # sistema nuevo:  python -m mia
-    python tools/shadow_compare.py --legacy-url http://127.0.0.1:5101 --limit 60
+    # sistema anterior, como siempre: python mia_backend.py (5001) + su gateway (5002)
+    # sistema nuevo en otros puertos:  $env:MIA_PORT=5201; $env:MIA_COMPAT_PORT=""; python -m mia
+    python tools/shadow_compare.py --limit 60
 
 Clasifica cada pregunta:
   coinciden     ambos responden y dan las mismas cifras
@@ -57,15 +57,16 @@ def classify(old: str, new: str) -> str:
 
 
 class Legacy:
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, path: str) -> None:
         self.http = httpx.Client(base_url=url, timeout=120)
+        self.path = path
         self.context: dict[str, Any] = {}
 
     def reset(self) -> None:
         self.context = {}
 
     def ask(self, question: str) -> str:
-        body = self.http.post("/api/mia/chat", json={"message": question, "context": self.context}).json()
+        body = self.http.post(self.path, json={"message": question, "context": self.context}).json()
         if isinstance(body.get("context"), dict):
             self.context = body["context"]
         return str(body.get("answer") or body.get("response") or body.get("message") or "")
@@ -87,8 +88,11 @@ class New:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--legacy-url", required=True)
-    parser.add_argument("--new-url", default="http://127.0.0.1:5001")
+    parser.add_argument("--legacy-url", default="http://127.0.0.1:5002", help="gateway del sistema anterior")
+    parser.add_argument(
+        "--legacy-path", default="/api/mia/v4/chat", help="ruta de chat del antiguo (la que usaba el frontend)"
+    )
+    parser.add_argument("--new-url", default="http://127.0.0.1:5201")
     parser.add_argument("--limit", type=int, default=60, help="conversaciones a reproducir")
     parser.add_argument("--domain", help="solo un dominio (turnos, vacaciones, nominas…)")
     args = parser.parse_args()
@@ -96,7 +100,7 @@ def main() -> int:
     if not source.exists():
         print("Falta el corpus: ejecuta antes tools/extract_parity_corpus.py", file=sys.stderr)
         return 2
-    legacy, new = Legacy(args.legacy_url), New(args.new_url)
+    legacy, new = Legacy(args.legacy_url, args.legacy_path), New(args.new_url)
     results: list[dict[str, Any]] = []
     conversations = [json.loads(line) for line in source.read_text(encoding="utf-8").splitlines() if line.strip()]
     if args.domain:

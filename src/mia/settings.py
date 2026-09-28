@@ -12,7 +12,7 @@ from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import BaseModel, Field, SecretStr, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -182,6 +182,13 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 5001
     compat_port: int | None = None
+
+    @field_validator("compat_port", mode="before")
+    @classmethod
+    def _empty_compat_port(cls, value: object) -> object:
+        """``MIA_COMPAT_PORT=`` (vacío) desactiva el segundo puerto, p. ej. para convivir con el sistema anterior."""
+        return None if isinstance(value, str) and not value.strip() else value
+
     """Puerto adicional (5002) para el frontend actual en local, que espera el gateway ahí."""
     timezone: str = "Europe/Madrid"
     database_url: str = "postgresql+asyncpg://mia:mia@localhost:5432/mia"
