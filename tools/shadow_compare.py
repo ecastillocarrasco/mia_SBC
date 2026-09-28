@@ -94,7 +94,7 @@ class New:
         return str(body.get("answer") or "")
 
 
-def main() -> int:
+def main() -> int:  # noqa: PLR0915  (guion secuencial de la comparación)
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--legacy-url", default="http://127.0.0.1:5002", help="gateway del sistema anterior")
     parser.add_argument(
