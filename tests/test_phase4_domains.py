@@ -416,3 +416,75 @@ async def test_requirements_check_metadata_first_then_the_cv(env: Any) -> None:
     assert second["nombre"] == "Marta Gil" and second["requisitos"]["cocina japonesa"]["donde"] == "cv"
     assert "washoku" in second["requisitos"]["cocina japonesa"]["evidencia"]
     assert s["donde_se_cumple_cada_requisito"]["inglés"] == {"metadatos": 2, "cv": 1}
+
+
+async def test_candidate_with_several_applications_is_not_ambiguous(env: Any) -> None:
+    """Fallo real: «resúmeme el CV de Gisella Terzolo» respondía que no había resultados."""
+    registry, db, _ = env
+    async with db.session() as s:
+        s.add_all(
+            [
+                Candidate(
+                    sp_id=7001,
+                    name="Gisella  Terzolo",
+                    name_key="gisella terzolo",
+                    email="g@x.test",
+                    applied_on=date(2026, 3, 1),
+                ),
+                Candidate(
+                    sp_id=7002,
+                    name="Gisella Terzolo",
+                    name_key="gisella terzolo",
+                    email="g@x.test",
+                    applied_on=date(2026, 9, 22),
+                ),
+            ]
+        )
+    result = await call(registry, "ficha_candidato", nombre="Gisella Terzolo")
+    assert result.status.value == "ok"
+    assert result.summary["candidato_id"] == 7002 and result.summary["otras_candidaturas_de_la_misma_persona"] == 1
+
+
+async def test_requirements_with_exclusion(env: Any) -> None:
+    """«Cocina pero sin inglés»: fuera quien lo tiene en metadatos o en el CV, contando aparte el caso del CV."""
+    registry, db, _ = env
+    async with db.session() as s:
+        s.add_all(
+            [
+                Candidate(
+                    sp_id=9101,
+                    name="Uno",
+                    name_key="uno",
+                    department="Cocina",
+                    department_key="cocina",
+                    experience="Cocinero",
+                    languages="Inglés B2",
+                ),
+                Candidate(
+                    sp_id=9102,
+                    name="Dos",
+                    name_key="dos",
+                    department="Cocina",
+                    department_key="cocina",
+                    experience="Cocinero",
+                ),
+                CvText(document_id=9102, candidate_id=9102, status="ok", text="Speaks English fluently"),
+                Candidate(
+                    sp_id=9103,
+                    name="Tres",
+                    name_key="tres",
+                    department="Cocina",
+                    department_key="cocina",
+                    experience="Ayudante de cocina",
+                ),
+            ]
+        )
+    result = await call(
+        registry,
+        "buscar_candidatos",
+        departamento="Cocina",
+        requisitos=[{"termino": "cocina"}],
+        excluir=[{"termino": "inglés"}],
+    )
+    assert [m["nombre"] for m in result.summary["muestra"]] == ["Tres"]
+    assert result.summary["excluidas_solo_por_el_texto_del_cv"] == 1

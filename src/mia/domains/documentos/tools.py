@@ -111,8 +111,8 @@ def documentos_faltantes(deps: Deps) -> Tool:
             stmt = select(Employee).where(Employee.active.is_(True))
             if dept.key:
                 stmt = stmt.where(Employee.department_key == dept.key)
-            if p.sobre_resultado_anterior:
-                if (previous := previous_population(ctx)) is None:
+            if p.sobre_resultado_anterior or p.resultado:
+                if (previous := previous_population(ctx, p.resultado)) is None:
                     return no_population()
                 stmt = stmt.where(Employee.sp_id.in_(previous["empleado_ids"]))
             employees = list((await db.scalars(stmt.order_by(Employee.name))).all())

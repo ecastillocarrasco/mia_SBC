@@ -367,8 +367,8 @@ def plantilla(deps: Deps) -> Tool:
                 stmt = stmt.where(Employee.department_key == dept.key)
             if p.estado != "todos":
                 stmt = stmt.where(Employee.active.is_(p.estado == "activos"))
-            if p.sobre_resultado_anterior:
-                previous = previous_population(ctx)
+            if p.sobre_resultado_anterior or p.resultado:
+                previous = previous_population(ctx, p.resultado)
                 if previous is None:
                     return no_population()
                 stmt = stmt.where(Employee.sp_id.in_(previous["empleado_ids"]))

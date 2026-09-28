@@ -165,7 +165,15 @@ def ficha_candidato(deps: Deps) -> Tool:
                 stmt = select(Candidate)
                 for token in tokens:
                     stmt = stmt.where(Candidate.name_key.like(f"%{token}%"))
-                matches = list((await db.scalars(stmt.limit(11))).all()) if tokens else []
+                matches = list((await db.scalars(stmt.limit(40))).all()) if tokens else []
+            same_person = len({person_identity(c) for c in matches}) == 1
+            if len(matches) > 1 and same_person:
+                # Varias candidaturas de la MISMA persona (fallo real: «Gisella Terzolo» salía como ambigua).
+                matches.sort(key=lambda c: c.applied_on or date.min, reverse=True)
+                others = len(matches) - 1
+                matches = matches[:1]
+            else:
+                others = 0
             if len(matches) != 1:
                 status = ToolStatus.AMBIGUOUS if matches else ToolStatus.NOT_FOUND
                 return ToolResult(status, {"candidatos": [_candidate_view(c) for c in matches[:10]]})
@@ -174,6 +182,7 @@ def ficha_candidato(deps: Deps) -> Tool:
             doc_id = await db.scalar(select(CvDocument.sp_id).where(CvDocument.candidate_id == candidate.sp_id))
         view = {
             **_candidate_view(candidate),
+            **({"otras_candidaturas_de_la_misma_persona": others} if others else {}),
             "experiencia_declarada": candidate.experience,
             "comentarios": candidate.comments,
             "otros_datos_de_la_candidatura": candidate.extra or {},
@@ -217,6 +226,9 @@ class Requisito(BaseModel):
 
 class BuscarParams(BaseModel):
     requisitos: list[Requisito] = Field(min_length=1, description="TODOS los requisitos pedidos, uno por elemento")
+    excluir: list[Requisito] = Field(
+        default_factory=list, description="Lo que NO deben tener («sin inglés» → excluir inglés), con equivalentes"
+    )
     departamento: str | None = Field(default=None, description="Departamento de la candidatura (filtro de metadatos)")
     estado: str | None = Field(default=None, description="Estado de la candidatura (opcional)")
     mostrar: int = Field(default=10, ge=1, le=40, description="Cuántas candidaturas enseñar («dame dos» → 2)")
@@ -237,6 +249,7 @@ def buscar(deps: Deps) -> Tool:
             for t in (await db.scalars(select(CvText).where(CvText.status == "ok"))).all():
                 if t.candidate_id is not None and t.text:
                     cv_texts[t.candidate_id] += "\n" + t.text
+            candidates, excluded_by_cv = _apply_exclusions(p.excluir, candidates, cv_texts)
             matches = [
                 Match(
                     c,
@@ -249,7 +262,14 @@ def buscar(deps: Deps) -> Tool:
             ]
             await _semantic_pass(deps, index, db, p.requisitos, matches)
             fresh = await deps.freshness(db, "curriculums", "cv_docs")
-        return _result(p, matches, candidates, cv_texts, fresh)
+        result = _result(p, matches, candidates, cv_texts, fresh)
+        if p.excluir and isinstance(result.summary, dict):
+            result.summary["excluidas_solo_por_el_texto_del_cv"] = excluded_by_cv
+            result.summary["nota_exclusion"] = (
+                "Se excluye a quien lo tiene en los metadatos o en su CV; «excluidas_solo_por_el_texto_del_cv» "
+                "son las que no lo declaran en ninguna columna pero sí aparece en el CV."
+            )
+        return result
 
     return Tool(
         "buscar_candidatos",
@@ -263,6 +283,25 @@ def buscar(deps: Deps) -> Tool:
         permission=Permission.CURRICULUMS_LEER,
         audit_resource="curriculums",
     )
+
+
+def _apply_exclusions(
+    excluir: list[Requisito], candidates: list[Candidate], cv_texts: dict[int, str]
+) -> tuple[list[Candidate], int]:
+    """Quita a quien tiene lo excluido en metadatos o CV; cuenta aparte a quien solo lo tiene en el CV."""
+    if not excluir:
+        return candidates, 0
+    kept, by_cv_only = [], 0
+    for c in candidates:
+        hits = [
+            check_lexical(c, cv_texts.get(c.sp_id, ""), x.termino, terms_for(x.termino, x.equivalentes))
+            for x in excluir
+        ]
+        if any(h.where != "no" for h in hits):
+            by_cv_only += all(h.where in {"cv", "no"} for h in hits)
+            continue
+        kept.append(c)
+    return kept, by_cv_only
 
 
 async def _semantic_pass(

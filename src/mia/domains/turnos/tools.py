@@ -62,12 +62,16 @@ _MORNING = re.compile(
 
 
 def tomorrow_not_morning(message: str, franja: str | None, fecha: date | None, today: date) -> bool:
+    """«¿Quién trabaja mañana?» = el día siguiente (con franja «mañana» o sin franja y sin fecha)."""
     return (
-        franja == "mañana"
+        franja in ("mañana", None)
         and fecha in (None, today)
         and bool(_TOMORROW.search(message or ""))
         and not _MORNING.search(message or "")
     )
+
+
+_WORKING = re.compile(r"\btrabaj|\bqui[eé]n(?:es)?\s+(?:est[aá]n?|hay)\s+(?:de\s+)?turno", re.IGNORECASE)
 
 
 def _minutes(hhmm: str | None) -> int | None:
@@ -211,7 +215,7 @@ class TurnosDiaParams(CohortParams):
 
 
 def turnos_dia(deps: Deps) -> Tool:
-    async def handler(p: TurnosDiaParams, ctx: ToolContext) -> ToolResult:
+    async def handler(p: TurnosDiaParams, ctx: ToolContext) -> ToolResult:  # noqa: PLR0912  (un filtro por criterio de la pregunta)
         day = p.fecha or ctx.now.date()
         note = None
         if tomorrow_not_morning(ctx.user_message, p.franja, p.fecha, ctx.now.date()):
@@ -235,8 +239,8 @@ def turnos_dia(deps: Deps) -> Tool:
             )
         selected = shifts
         criteria = []
-        if p.sobre_resultado_anterior:
-            if (previous := previous_population(ctx)) is None:
+        if p.sobre_resultado_anterior or p.resultado:
+            if (previous := previous_population(ctx, p.resultado)) is None:
                 return no_population()
             keys = set(previous["person_keys"])
             selected = [s for s in selected if s.person_key in keys]
@@ -255,12 +259,17 @@ def turnos_dia(deps: Deps) -> Tool:
             selected = [s for s in selected if s.kind == ShiftKind.TRABAJO and works_at(s, minute)]
             criteria.append(f"trabajando a las {p.hora}")
         working = [s for s in shifts if s.kind == ShiftKind.TRABAJO]
+        if not criteria and _WORKING.search(ctx.user_message or ""):
+            # «¿Quién trabaja…?» son los turnos de Trabajo, no todos los del día (fallo real: 280 en vez de 128).
+            selected = [s for s in selected if s.kind == ShiftKind.TRABAJO]
+            criteria.append("trabajando")
         summary: dict[str, Any] = {
             "fecha": day.isoformat(),
             "departamento": shifts[0].department if dept_key else "toda la plantilla",
             "criterio": ", ".join(criteria) or "todos los turnos del día",
             **({"nota": note} if note else {}),
             "total_seleccionado": len(selected),
+            "personas_trabajando_ese_dia": len(working),
             "horas_seleccionadas": round(sum(s.hours or 0 for s in selected), 1),
             "seleccion_por_departamento": dict(Counter(s.department or "Sin dato" for s in selected).most_common()),
             "contexto_del_dia": {
@@ -343,17 +352,22 @@ def _absence_summary(
     periods: list[AbsencePeriod], today: date, lo: date, hi: date
 ) -> tuple[dict[str, Any], list[list[Any]]]:
     views = [_period_view(x, today, lo, hi) for x in periods]
-    by_kind: dict[str, dict[str, float]] = defaultdict(lambda: {"personas": 0, "periodos": 0, "dias": 0})
+    by_kind: dict[str, dict[str, float]] = defaultdict(
+        lambda: {"personas": 0, "periodos": 0, "dias": 0, "_dias_completos": 0}
+    )
     seen: dict[str, set[str]] = defaultdict(set)
     for x in periods:
         by_kind[x.kind]["periodos"] += 1
         by_kind[x.kind]["dias"] += x.days_within(lo, hi)
+        by_kind[x.kind]["_dias_completos"] += x.days
         seen[x.kind].add(x.person_key)
     for kind, keys in seen.items():
         by_kind[kind]["personas"] = len(keys)
     for stats in by_kind.values():
-        # Misma fórmula que el sistema anterior: días acumulados en el periodo / número de periodos.
-        stats["duracion_media_dias"] = round(stats["dias"] / stats["periodos"], 2) if stats["periodos"] else 0
+        # Duración media = duración COMPLETA de cada periodo / número de periodos. Con los días dentro de la
+        # ventana, preguntar por «hoy» daba 1 día de media (fallo real del modo sombra).
+        full = stats.pop("_dias_completos", 0)
+        stats["duracion_media_dias"] = round(full / stats["periodos"], 2) if stats["periodos"] else 0
     dept_kind: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     for x in periods:
         dept_kind[x.department or "Sin dato"][x.kind].add(x.person_key)
@@ -430,8 +444,8 @@ def ausencias(deps: Deps) -> Tool:
                 status, dept_key, options = await resolve_shift_department(db, p.departamento)
                 if status is not ToolStatus.OK:
                     return department_not_found(status, p.departamento, options)
-            if p.sobre_resultado_anterior and person_keys is None:
-                if (previous := previous_population(ctx)) is None:
+            if p.sobre_resultado_anterior or (p.resultado and person_keys is None):
+                if (previous := previous_population(ctx, p.resultado)) is None:
                     return no_population()
                 person_keys = list(previous["person_keys"])
             periods = await absence_periods(
@@ -488,15 +502,24 @@ class ReincorporacionesParams(Periodo, CohortParams):
     empleado_ids: list[int] | None = Field(
         default=None, description="Limitar a estas personas (ids del foco o de una búsqueda)"
     )
-    tipos: list[str] | None = Field(default=None, description="Baja/IT, Vacaciones, Permiso, Asuntos propios")
+    tipos: list[str] | None = Field(
+        default=None,
+        description="Por defecto Baja/IT y Vacaciones (como el sistema anterior); Permiso o Asuntos propios solo si "
+        "se piden expresamente",
+    )
+
+
+DEFAULT_RETURN_KINDS = (ShiftKind.BAJA, ShiftKind.VACACIONES)
 
 
 def reincorporaciones(deps: Deps) -> Tool:
     async def handler(p: ReincorporacionesParams, ctx: ToolContext) -> ToolResult:
         today = ctx.now.date()
         lo, hi = p.resolve(today, default_days=35)  # como el sistema anterior: próximos 35 días
-        kinds = tuple(
-            k for k in ABSENCE_KINDS if not p.tipos or any(normalize_key(t) in normalize_key(k) for t in p.tipos)
+        kinds = (
+            tuple(k for k in ABSENCE_KINDS if any(normalize_key(t) in normalize_key(k) for t in p.tipos))
+            if p.tipos
+            else DEFAULT_RETURN_KINDS
         )
         async with deps.db.session() as db:
             dept_key = None
@@ -508,8 +531,8 @@ def reincorporaciones(deps: Deps) -> Tool:
             if p.empleado_ids:
                 keys = await db.scalars(select(Employee.person_key).where(Employee.sp_id.in_(p.empleado_ids)))
                 person_keys = [k for k in keys.all() if k]
-            elif p.sobre_resultado_anterior:
-                if (previous := previous_population(ctx)) is None:
+            elif p.sobre_resultado_anterior or p.resultado:
+                if (previous := previous_population(ctx, p.resultado)) is None:
                     return no_population()
                 person_keys = list(previous["person_keys"])
             periods = await absence_periods(

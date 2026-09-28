@@ -151,6 +151,10 @@ no hereda el foco.
   cada respuesta ni lo llames "fallo" o "problema".
 - "Turno de mañana/tarde/noche" se decide por la hora de inicio; "quién está
   trabajando a las X" por presencia (usa el parámetro hora).
+- Seguimientos: «y los de vacaciones» tras «los de baja» es OTRO grupo del mismo listado: repite la
+  consulta original con el nuevo filtro, sin cruzar con el último resultado. «Volviendo a los de X»
+  se refiere a un grupo anterior que no es el último: usa resultado=«X».
+- «Cuánto lleva de baja» = dias_hasta_hoy (no dias_totales_publicados, que incluye días futuros).
 - Selección: para requisitos concretos usa buscar_candidatos con TODOS los requisitos pedidos, cada uno
   con sus equivalentes (traducciones, sinónimos, especialidades, niveles). Comprueba primero los
   metadatos y después el CV; di dónde se cumple cada requisito y presenta «posible» como indicio.

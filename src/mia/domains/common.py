@@ -99,6 +99,19 @@ async def find_people(db: AsyncSession, query: str, *, include_inactive: bool = 
     return list((await db.scalars(stmt.order_by(Employee.active.desc(), Employee.name))).all())
 
 
+async def _without_one_word(db: AsyncSession, query: str) -> PersonMatch | None:
+    """Una palabra de más o mal escrita («testaltaturno test2» para «testAltaTurno»): se prueba sin cada una."""
+    tokens = normalize_key(query).split()
+    if len(tokens) < 2:
+        return None
+    loose = {
+        e.sp_id: e for i in range(len(tokens)) for e in await find_people(db, " ".join(tokens[:i] + tokens[i + 1 :]))
+    }
+    if len(loose) == 1:
+        return PersonMatch(ToolStatus.OK, next(iter(loose.values())))
+    return PersonMatch(ToolStatus.AMBIGUOUS, candidates=tuple(list(loose.values())[:10])) if loose else None
+
+
 async def resolve_person(db: AsyncSession, params: PersonaParams) -> PersonMatch:
     if params.empleado_id is not None:
         employee = await db.get(Employee, params.empleado_id)
@@ -114,6 +127,8 @@ async def resolve_person(db: AsyncSession, params: PersonaParams) -> PersonMatch
         if len(exact) == 1:
             return PersonMatch(ToolStatus.OK, exact[0])
         return PersonMatch(ToolStatus.AMBIGUOUS, candidates=tuple(pool[:10]))
+    if loose := await _without_one_word(db, query):
+        return loose
     names = (await db.scalars(select(Employee.name))).all()
     by_key = {normalize_key(n): n for n in names}
     close = difflib.get_close_matches(normalize_key(query), list(by_key), n=3, cutoff=0.75)
@@ -238,6 +253,11 @@ class CohortParams(BaseModel):
         default=False,
         description="true si el usuario se refiere al resultado anterior («de esos», «de ellas»)",
     )
+    resultado: str | None = Field(
+        default=None,
+        description="Con «volviendo a…» o si se refiere a un grupo que NO es el último: parte de la etiqueta de "
+        "ese resultado anterior (p. ej. «baja», «reincorporaciones»). Implica sobre_resultado_anterior.",
+    )
 
 
 def population_state(label: str, employees: list[Employee]) -> dict[str, Any]:
@@ -254,7 +274,13 @@ def population_state(label: str, employees: list[Employee]) -> dict[str, Any]:
     }
 
 
-def previous_population(ctx: Any) -> dict[str, Any] | None:
+def previous_population(ctx: Any, label: str | None = None) -> dict[str, Any] | None:
+    """El último resultado con personas o, si se indica una etiqueta, el más reciente que la contiene."""
+    if label:
+        wanted = normalize_key(label)
+        for population in reversed(ctx.session_state.get("historial_poblaciones") or []):
+            if isinstance(population, dict) and wanted in normalize_key(population.get("etiqueta")):
+                return population
     value = ctx.session_state.get(POPULATION)
     return value if isinstance(value, dict) else None
 

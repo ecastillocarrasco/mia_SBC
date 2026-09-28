@@ -75,3 +75,16 @@ def test_a_work_day_closes_the_absence() -> None:
 def test_long_gap_without_shifts_splits() -> None:
     days = _days(["Baja/IT"] + [""] * 6 + ["Baja/IT"])
     assert len(build_periods(days, ABSENCE_KINDS, date(2025, 1, 1))) == 2
+
+
+def test_who_works_tomorrow_without_band_is_the_next_day() -> None:
+    """Fallo real del modo sombra: «¿quién trabaja mañana?» sin franja respondía con hoy."""
+    from datetime import date  # noqa: PLC0415
+
+    from mia.domains.turnos.tools import tomorrow_not_morning  # noqa: PLC0415
+
+    today = date(2026, 9, 28)
+    assert tomorrow_not_morning("quien trabaja manana", None, None, today)
+    assert tomorrow_not_morning("¿Quién trabaja mañana?", "mañana", None, today)
+    assert not tomorrow_not_morning("¿Quién tiene turno de mañana?", "mañana", None, today)
+    assert not tomorrow_not_morning("¿Quién trabaja hoy?", None, None, today)

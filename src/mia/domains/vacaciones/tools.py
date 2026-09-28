@@ -102,8 +102,8 @@ def solicitudes(deps: Deps) -> Tool:
                 state["foco_periodo"] = {"desde": start.isoformat(), "hasta": end.isoformat()}
             else:
                 stmt = stmt.where(Vacation.end_date >= today)  # de una persona: en curso y próximas
-            if p.sobre_resultado_anterior:
-                if (previous := previous_population(ctx)) is None:
+            if p.sobre_resultado_anterior or p.resultado:
+                if (previous := previous_population(ctx, p.resultado)) is None:
                     return no_population()
                 stmt = stmt.where(Vacation.employee_email.in_(previous["emails"]))
             rows = list((await db.scalars(stmt.order_by(Vacation.start_date))).all())
@@ -194,8 +194,8 @@ def saldos(deps: Deps) -> Tool:
                 # POB-001, como el sistema anterior: el saldo de quien ya no está en plantilla no cuenta.
                 active = select(Employee.email).where(Employee.active.is_(True), Employee.email.is_not(None))
                 stmt = stmt.where(VacationBalance.employee_email.in_(active))
-            if p.sobre_resultado_anterior:
-                if (previous := previous_population(ctx)) is None:
+            if p.sobre_resultado_anterior or p.resultado:
+                if (previous := previous_population(ctx, p.resultado)) is None:
                     return no_population()
                 stmt = stmt.where(VacationBalance.employee_email.in_(previous["emails"]))
             order = VacationBalance.current_balance.desc() if p.ordenar == "mayor" else VacationBalance.current_balance
