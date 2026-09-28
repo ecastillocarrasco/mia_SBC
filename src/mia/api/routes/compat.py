@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from mia import __version__
 from mia.api.deps import ServicesDep, UserDep
+from mia.api.legacy_view import legacy_view
 from mia.api.routes.chat import prime
 from mia.api.routes.reports import MEDIA
 from mia.api.routes.voice import stream_speech
@@ -54,16 +55,16 @@ class LegacyVoiceRequest(BaseModel):
 
 
 def legacy_payload(result: TurnResult) -> dict[str, Any]:
-    primary = result.presentations[0] if result.presentations else {}
+    data, actions = legacy_view(result.presentations)
     return {
         "status": "ok" if result.status == "ok" else "error",
         "answer": result.answer,
         "speech": result.speech,
         "avatar_state": result.avatar_state,
         "avatar": {"state": result.avatar_state},
-        "data": dict(primary),
-        "visualizations": result.presentations,
-        "actions": [],
+        "data": data,
+        "actions": actions,
+        "presentations": result.presentations,
         "context": {"session_id": result.session_id},
         "meta": {"elapsed_ms": result.elapsed_ms, "engine": "mia", "version": __version__},
     }
