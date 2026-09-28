@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>mIA · Holograma</title>
+  <link rel="icon" href="/favicon.svg" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <a class="back-link" href="/index.html">← mIA</a>
+  <div id="canvas-root" class="projection"></div>
+  <div class="scanlines" aria-hidden="true"></div>
+
+  <div class="hud">
+    <p id="caption" class="caption" aria-live="polite">Cargando la proyección…</p>
+    <div id="result" class="result"></div>
+    <form id="composer" class="composer">
+      <input id="input" type="text" placeholder="Habla con mIA…" autocomplete="off" />
+      <button type="submit" id="send">↵</button>
+    </form>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

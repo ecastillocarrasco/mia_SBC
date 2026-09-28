@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>mIA · Mundo 3D</title>
+  <link rel="icon" href="/favicon.svg" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <a class="back-link" href="/index.html">← mIA</a>
+  <div id="canvas-root"></div>
+
+  <aside id="panel" class="panel">
+    <header>
+      <span class="status"><span class="dot"></span> <span id="statusLabel">Cargando el modelo…</span></span>
+      <button id="voiceToggle" class="icon-toggle" type="button" title="Silenciar/activar la voz">🔊</button>
+    </header>
+    <div id="conversation" class="conversation" aria-live="polite"></div>
+    <form id="composer" class="composer">
+      <input id="input" type="text" placeholder="Pregúntale algo a mIA…" autocomplete="off" />
+      <button type="submit" id="send">Enviar</button>
+    </form>
+  </aside>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

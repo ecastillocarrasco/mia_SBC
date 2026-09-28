@@ -1,0 +1,18 @@
+{
+  "name": "mia-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Frontend de mIA: mundo 2D, mundo 3D y estructura de holograma, sobre un núcleo de sesión y voz compartido.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
+  }
+}

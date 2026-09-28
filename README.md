@@ -12,6 +12,8 @@ y [docs/migracion.md](docs/migracion.md).
 
 **Fase 4c · planificación de turnos v12 (calendarios)** — paridad completa. Ver [docs/cobertura.md](docs/cobertura.md).
 
+**Frontend** — mundos 2D, 3D y holograma en `frontend/` (ver [frontend/README.md](frontend/README.md)).
+
 | Fase | Contenido | Estado |
 |---|---|---|
 | 1 | Estructura, API, motor conversacional, personaje, voz, identidad preparada, base de datos, observabilidad, batería de paridad, infraestructura Azure | ✅ |
