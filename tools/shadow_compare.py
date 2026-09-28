@@ -154,13 +154,23 @@ def main() -> int:
         "",
         *[
             f"- **{k}**: {counts.get(k, 0)}"
-            for k in ("coinciden", "difieren", "solo_antiguo", "solo_nuevo", "sin_cifras", "error")
+            for k in (
+                "coinciden",
+                "difieren",
+                "solo_antiguo",
+                "solo_nuevo",
+                "antiguo_pide_aclaracion",
+                "nuevo_pide_aclaracion",
+                "sin_cifras",
+                "error",
+            )
         ],
         "",
     ]
     for kind, title in (
         ("solo_antiguo", "El antiguo responde y el nuevo no (posibles huecos)"),
         ("difieren", "Cifras distintas (revisar cuál es la correcta)"),
+        ("nuevo_pide_aclaracion", "mIA pide aclaración donde el antiguo respondía"),
         ("error", "Errores"),
     ):
         rows = [r for r in results if r["kind"] == kind]
