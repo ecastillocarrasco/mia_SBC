@@ -266,6 +266,17 @@ def run(url: str) -> int:
     truths = asyncio.run(_truths())
     failures = 0
     with httpx.Client(base_url=url, timeout=60) as client:
+        try:
+            probe = client.get("/api/version")
+            is_mia = probe.status_code == 200 and probe.json().get("runtime") == "mia"
+        except (httpx.HTTPError, ValueError):
+            is_mia = False
+        if not is_mia:
+            print(f"En {url} no responde mIA nueva (¿sigue arrancado el sistema anterior, o mIA está en otro puerto?).")
+            print(
+                "Arranca mIA con «python -m mia» o indica su dirección: python tools/eval_conversation.py --url http://127.0.0.1:5201"
+            )
+            return 2
         for case in CASES:
             session_id = None
             body: dict[str, object] = {}
