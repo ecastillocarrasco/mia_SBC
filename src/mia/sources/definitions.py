@@ -53,6 +53,9 @@ class SourceDefinition:
     expand: str | None = None
     sensitive_fields: tuple[str, ...] = ()
     """Identificadores personales: se seudonimizan antes de guardar nada."""
+    keep_raw: bool = True
+    """Guardar también la copia original de cada elemento (source_items). Las listas muy grandes que se
+    reemplazan enteras (calendarios) no la necesitan: así ocupan la mitad."""
     optional_fields: tuple[str, ...] = ()
     """Columnas que pueden no existir todavía en la lista (se piden solo si existen)."""
     identity_folders: bool = False
@@ -367,6 +370,7 @@ def calendar_source(department: str, year: int) -> SourceDefinition:
         list_title=calendar_title(department, year),
         select=CALENDAR_SELECT,
         optional_fields=CALENDAR_OPTIONAL,
+        keep_raw=False,
         model=CalendarShift,
         mapper=calendars.calendar_shift(department, year),
         owner_column="sp_id",

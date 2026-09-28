@@ -439,3 +439,31 @@ def test_shift_type_ignores_malformed_hours() -> None:
         CTX,
     )[0]
     assert (row["start1"], row["start2"], row["end2"]) == ("20:00", None, None)
+
+
+async def test_calendars_do_not_keep_a_raw_copy(tmp_path: Path) -> None:
+    """Fallo real: la primera carga de calendarios llenó el disco; su copia original no hace falta."""
+    from sqlalchemy import func, select  # noqa: PLC0415
+
+    from mia.data import SourceItem  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "raw.db")
+    fake = FakeSharePoint(page_size=10)
+    fake.put(
+        "CalendarioPisos_2026",
+        {
+            "ID": 1,
+            "EmpleadoTurno": "Ana",
+            "StartDate": "2026-08-03T07:00:00Z",
+            "EndDate": "2026-08-03T15:00:00Z",
+            "DescripcionTurno": "M",
+        },
+    )
+    client = SharePointClient(site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport())
+    report = await SyncRunner(db=db, client=client, pseudonymize=Pseudonymizer("k")).run(calendar_source("Pisos", 2026))
+    await client.aclose()
+    async with db.session() as s:
+        raw = await s.scalar(select(func.count()).select_from(SourceItem))
+        rows = await s.scalar(select(func.count()).select_from(CalendarShift))
+    await db.dispose()
+    assert report.status == "ok" and (raw, rows) == (0, 1)

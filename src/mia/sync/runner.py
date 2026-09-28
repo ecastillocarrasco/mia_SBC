@@ -153,8 +153,11 @@ class SyncRunner:
                     items[int(item["ID"])] = self._sanitize(source, item)
         report.fetched = len(items)
         async with self._db.session() as db:
-            await self._upsert_raw(db, source, list(items.items()))
-            report.deleted = await self._mark_missing_deleted(db, source, set(items))
+            if source.keep_raw:
+                await self._upsert_raw(db, source, list(items.items()))
+                report.deleted = await self._mark_missing_deleted(db, source, set(items))
+            else:
+                await db.execute(delete(SourceItem).where(SourceItem.source == source.key))  # libera espacio
             await db.execute(delete(source.model).where(*self._scope(source)))
             report.rows = await self._insert_canonical(db, source, list(items.values()), report)
             await self._set_token(db, source, token, full=True)
@@ -170,13 +173,14 @@ class SyncRunner:
         touched = sorted(set(items) | set(deleted))
         report.fetched, report.deleted = len(items), len(deleted)
         async with self._db.session() as db:
-            await self._upsert_raw(db, source, list(items.items()))
-            for chunk in _chunks(deleted, 500):
-                await db.execute(
-                    update(SourceItem)
-                    .where(SourceItem.source == source.key, SourceItem.item_id.in_(chunk))
-                    .values(deleted=True, synced_at=datetime.now(UTC))
-                )
+            if source.keep_raw:
+                await self._upsert_raw(db, source, list(items.items()))
+                for chunk in _chunks(deleted, 500):
+                    await db.execute(
+                        update(SourceItem)
+                        .where(SourceItem.source == source.key, SourceItem.item_id.in_(chunk))
+                        .values(deleted=True, synced_at=datetime.now(UTC))
+                    )
             owner = getattr(source.model, source.owner_column)
             for chunk in _chunks(touched, 500):
                 await db.execute(delete(source.model).where(*self._scope(source), owner.in_(chunk)))
@@ -289,12 +293,12 @@ class SyncRunner:
                 state.status = "error"
                 state.last_error = report.error
                 state.last_error_at = now
-            state.item_count = int(
-                await db.scalar(
-                    select(func.count())
-                    .select_from(SourceItem)
-                    .where(SourceItem.source == source.key, SourceItem.deleted.is_(False))
-                )
-                or 0
+            count_query = (
+                select(func.count())
+                .select_from(SourceItem)
+                .where(SourceItem.source == source.key, SourceItem.deleted.is_(False))
+                if source.keep_raw
+                else select(func.count()).select_from(source.model).where(*self._scope(source))
             )
+            state.item_count = int(await db.scalar(count_query) or 0)
             db.add(state)
