@@ -311,3 +311,89 @@ async def test_publication_audit_flags_the_calendar_only_person(env: ToolRegistr
     result = await call(env, "auditoria_publicacion_turnos", departamento="Pisos", fecha="2026-08-03")
     assert result.summary["discrepancias"] == 1
     assert "Eva" in result.summary["detalle"][0]["persona"]
+
+
+async def test_availability_crosses_calendar_vacations_and_ett(tmp_path: Path) -> None:
+    from mia.data import Employee, TtTimesheet, TtWorker, Vacation  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "disp.db")
+    async with db.session() as s:
+        s.add_all(
+            [
+                Employee(
+                    sp_id=1,
+                    name="Ana Ruiz",
+                    name_key="ana ruiz",
+                    active=True,
+                    department="Pisos",
+                    department_key="pisos",
+                    email="ana@x",
+                ),
+                Employee(
+                    sp_id=2,
+                    name="Eva Marín",
+                    name_key="eva marin",
+                    active=True,
+                    department="Pisos",
+                    department_key="pisos",
+                    email="eva@x",
+                ),
+                Employee(
+                    sp_id=3,
+                    name="Luz Gil",
+                    name_key="luz gil",
+                    active=True,
+                    department="Pisos",
+                    department_key="pisos",
+                    email="luz@x",
+                ),
+                CalendarShift(
+                    sp_id=1,
+                    department="Pisos",
+                    year=2026,
+                    department_key="pisos",
+                    employee_name="Ana Ruiz",
+                    employee_name_key="ana ruiz",
+                    day=date(2026, 8, 3),
+                    hours_total=8,
+                    kind="work",
+                    split_shift=False,
+                    description="Mañana",
+                ),
+                CalendarShift(
+                    sp_id=2,
+                    department="Pisos",
+                    year=2026,
+                    department_key="pisos",
+                    employee_name="Eva Marín",
+                    employee_name_key="eva marin",
+                    day=date(2026, 8, 3),
+                    hours_total=0,
+                    kind="special",
+                    split_shift=False,
+                    description="BAJA IT",
+                ),
+                Vacation(
+                    sp_id=1,
+                    employee_email="ana@x",
+                    start_date=date(2026, 8, 1),
+                    end_date=date(2026, 8, 9),
+                    status="Aceptada",
+                ),
+                TtWorker(sp_id=1, name="Leo T", name_key="leo t", visible=True),
+                TtTimesheet(
+                    sp_id=1,
+                    day=date(2026, 8, 3),
+                    worker_name="Leo T",
+                    department="Pisos",
+                    department_key="pisos",
+                    hours_total=8,
+                ),
+            ]
+        )
+    registry = build_registry(db)
+    result = await call(registry, "disponibilidad_dia", departamento="Pisos", fecha="2026-08-03")
+    await db.dispose()
+    s = result.summary
+    assert (s["trabajan"], s["baja_it"], s["sin_planificar"], s["ett_con_boletin"]) == (1, 1, 1, 1)
+    assert s["alertas"][0]["persona"] == "Ana Ruiz"  # planificada con vacaciones aceptadas: se señala

@@ -1,4 +1,5 @@
 import { MiaClient } from "../../core/client.js";
+import { bindMicButton } from "../../core/dictation.js";
 import { renderPresentation } from "../../core/present.js";
 import { MiaScene } from "../../core/scene.js";
 
@@ -83,3 +84,13 @@ scene
     console.error(error);
     statusLabel.textContent = "No se ha podido cargar el modelo 3D";
   });
+
+bindMicButton(document.getElementById("mic"), {
+  onInterim: (text) => {
+    input.value = text;
+  },
+  onFinal: (text) => {
+    input.value = "";
+    submit(text);
+  },
+});

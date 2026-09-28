@@ -15,6 +15,19 @@ export const AVATAR_STATES = [
 
 const SESSION_KEY = "mia.session_id";
 
+function speakWithBrowser(text, lang = "es-ES") {
+  return new Promise((resolve) => {
+    if (!("speechSynthesis" in window)) return resolve();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang;
+    const voice = window.speechSynthesis.getVoices().find((v) => v.lang?.startsWith("es"));
+    if (voice) utterance.voice = voice;
+    utterance.addEventListener("end", resolve, { once: true });
+    utterance.addEventListener("error", resolve, { once: true });
+    window.speechSynthesis.speak(utterance);
+  });
+}
+
 function parseSseBlock(block) {
   let type = "message";
   let data = null;
@@ -108,7 +121,10 @@ export class MiaClient extends EventTarget {
         audio.play().catch(resolve);
       });
     } catch (error) {
-      console.warn("[mIA] voz no disponible:", error);
+      // Igual que antes: si ElevenLabs no responde, habla la voz del navegador.
+      console.warn("[mIA] voz no disponible, uso la del navegador:", error);
+      onStart?.();
+      await speakWithBrowser(text);
     } finally {
       if (this._voiceAudio) URL.revokeObjectURL(this._voiceAudio.src);
       this._voiceAudio = null;
@@ -116,6 +132,7 @@ export class MiaClient extends EventTarget {
   }
 
   stopSpeaking() {
+    window.speechSynthesis?.cancel();
     if (this._voiceAudio) {
       try {
         this._voiceAudio.pause();

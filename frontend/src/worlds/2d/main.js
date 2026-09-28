@@ -1,4 +1,5 @@
 import { MiaClient } from "../../core/client.js";
+import { bindMicButton } from "../../core/dictation.js";
 import { avatarLabel, avatarSrc } from "../../core/avatar.js";
 import { renderPresentation } from "../../core/present.js";
 
@@ -88,3 +89,13 @@ composer.addEventListener("submit", (event) => {
 statusLabel.textContent = "Lista";
 setAvatar("saludando");
 addBubble("mia", "Hola, soy mIA. ¿En qué puedo ayudarte?");
+
+bindMicButton(document.getElementById("mic"), {
+  onInterim: (text) => {
+    input.value = text;
+  },
+  onFinal: (text) => {
+    input.value = "";
+    submit(text);
+  },
+});

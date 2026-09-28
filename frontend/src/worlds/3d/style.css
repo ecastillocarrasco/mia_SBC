@@ -28,3 +28,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; font-family: "Segoe UI",
   font-weight: 700; cursor: pointer; }
 .composer button:disabled { opacity: 0.5; }
 @media (max-width: 720px) { .panel { top: auto; left: 10px; right: 10px; bottom: 10px; height: 46vh; width: auto; } }
+.mic { border: 1px solid var(--line); background: transparent; color: inherit; border-radius: 12px; width: 42px;
+  cursor: pointer; font-size: 16px; }
+.mic.listening { border-color: #ef8b6f; box-shadow: 0 0 0 3px rgba(239, 139, 111, 0.25); animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(239, 139, 111, 0.08); } }

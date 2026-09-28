@@ -393,6 +393,119 @@ def auditoria_publicacion(deps: Deps) -> Tool:
     )
 
 
+# ------------------------------------------------------------------ disponibilidad cruzada (2D3B10)
+class DisponibilidadParams(BaseModel):
+    departamento: str
+    fecha: date | None = None
+
+
+def disponibilidad_dia(deps: Deps) -> Tool:
+    """Plantilla activa + Calendario + vacaciones aceptadas + ETT del día, como el sistema anterior.
+
+    Plantilla y ETT son poblaciones separadas y los conflictos no se corrigen: se señalan.
+    """
+
+    async def handler(p: DisponibilidadParams, ctx: ToolContext) -> ToolResult:
+        from mia.data import Employee, TtTimesheet, TtWorker, Vacation  # noqa: PLC0415
+
+        status, department = match_department(p.departamento)
+        if status is not ToolStatus.OK or department is None:
+            return ToolResult(
+                status,
+                {"mensaje": f"No existe el departamento «{p.departamento}».", "departamentos": department_options()},
+            )
+        day = p.fecha or ctx.now.date()
+        key = normalize_key(department)
+        async with deps.db.session() as db:
+            staff = list(
+                (
+                    await db.scalars(select(Employee).where(Employee.active.is_(True), Employee.department_key == key))
+                ).all()
+            )
+            planned = list(
+                (
+                    await db.scalars(
+                        select(CalendarShift).where(CalendarShift.department == department, CalendarShift.day == day)
+                    )
+                ).all()
+            )
+            vacations = list(
+                (await db.scalars(select(Vacation).where(Vacation.start_date <= day, Vacation.end_date >= day))).all()
+            )
+            ett_rows = list(
+                (
+                    await db.scalars(
+                        select(TtTimesheet).where(TtTimesheet.day == day, TtTimesheet.department_key.like(f"%{key}%"))
+                    )
+                ).all()
+            )
+            ett_visible = {
+                normalize_key(w.name)
+                for w in (await db.scalars(select(TtWorker).where(TtWorker.visible.is_(True)))).all()
+            }
+        on_vacation = {v.employee_email for v in vacations if normalize_key(v.status) == "aceptada"}
+        plan_by_name = {r.employee_name_key: r for r in planned if r.employee_name_key}
+        working: list[str] = []
+        off: list[str] = []
+        sick: list[str] = []
+        unplanned: list[str] = []
+        alerts: list[dict[str, str]] = []
+        for e in staff:
+            entry = plan_by_name.get(normalize_key(e.name))
+            vacation = e.email in on_vacation
+            if entry is None:
+                (off if vacation else unplanned).append(e.name)
+                continue
+            if "baja" in normalize_key(entry.description):
+                sick.append(e.name)
+            elif entry.kind in WORKING_KINDS:
+                working.append(e.name)
+                if vacation:
+                    alerts.append({"persona": e.name, "alerta": "planificada para trabajar con vacaciones aceptadas"})
+            else:
+                off.append(e.name)
+        ett = sorted({r.worker_name for r in ett_rows if r.worker_name})
+        summary = {
+            "departamento": department,
+            "fecha": day.isoformat(),
+            "plantilla_activa": len(staff),
+            "trabajan": len(working),
+            "libran_o_vacaciones": len(off),
+            "baja_it": len(sick),
+            "sin_planificar": len(unplanned),
+            "ett_con_boletin": len(ett),
+            "ett_no_visibles": [n for n in ett if normalize_key(n) not in ett_visible],
+            "alertas": alerts,
+            "detalle": {"trabajan": working, "baja_it": sick, "sin_planificar": unplanned, "ett": ett},
+            "regla": "Plantilla y ETT son poblaciones separadas; los conflictos se señalan, no se corrigen.",
+        }
+        return ToolResult(
+            ToolStatus.OK,
+            summary,
+            table(
+                f"Disponibilidad · {department} · {fmt_date(day)}",
+                ["Situación", "Personas"],
+                [
+                    ["Trabajan", len(working)],
+                    ["Libran o vacaciones", len(off)],
+                    ["Baja/IT", len(sick)],
+                    ["Sin planificar", len(unplanned)],
+                    ["ETT con boletín", len(ett)],
+                ],
+            ),
+        )
+
+    return Tool(
+        "disponibilidad_dia",
+        "Disponibilidad real de un departamento un día: quién trabaja, libra, está de "
+        "baja o sin planificar según el Calendario, cruzado con vacaciones aceptadas y con el personal ETT.",
+        DisponibilidadParams,
+        handler,
+        permission=Permission.TURNOS_LEER,
+        audit_resource="turnos",
+    )
+
+
 def register(registry: ToolRegistry, deps: Deps) -> None:
     for factory in (
         turnos_historico,
@@ -401,5 +514,6 @@ def register(registry: ToolRegistry, deps: Deps) -> None:
         comentarios_semana_turno,
         metricas_turnos,
         auditoria_publicacion,
+        disponibilidad_dia,
     ):
         registry.register(factory(deps))

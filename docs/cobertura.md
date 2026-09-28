@@ -129,3 +129,23 @@ piden que se concrete si hay varias coincidencias, igual que en una búsqueda de
 empleados. Reglas nuevas: PLA-001 (Calendario es la fuente histórica autoritativa),
 PLA-002 (plantillas y comentarios de semana no son histórico) y PLA-003 (personas por
 nombre).
+
+## Tercera revisión y cómo demostrar la paridad
+
+Añadido tras revisar los módulos v12 y los frontends anteriores:
+
+| Sistema anterior | mIA | Estado |
+|---|---|---|
+| Disponibilidad cruzada (`turnos_availability_v12`: plantilla + Calendario + vacaciones + ETT, con alertas) | `disponibilidad_dia` | ✅ |
+| Micrófono (dictado por voz) en los frontends | Botón 🎤 en 2D, 3D y holograma | ✅ |
+| Voz del navegador si ElevenLabs no responde | Respaldo automático en el cliente | ✅ |
+| Rutas que llaman los frontends anteriores (`/api/mia/chat`, `/chat/stream`, `/v4/chat`, `/v4/health`, `/voice`, `/informes/generar`, `/api/version`) | Alias de compatibilidad | ✅ |
+
+**Esta matriz es una auditoría, no una prueba.** El sistema anterior no guardó el texto de
+sus respuestas, así que la paridad solo se demuestra preguntando a los dos a la vez:
+`tools/shadow_compare.py` reproduce conversaciones reales en ambos y clasifica cada
+respuesta (coinciden, difieren, solo responde el antiguo, solo responde el nuevo). Cada
+«solo_antiguo» es un posible hueco; cada «difieren», una cifra que hay que contrastar.
+
+Quedan fuera a propósito: las rutas de diagnóstico interno (`/api/sharepoint/*`, `qa/*`,
+`roadmap/*`, `cache/*`, `modelo-datos/*`), que exponían listas sin autenticación.

@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { MiaClient } from "../../core/client.js";
+import { bindMicButton } from "../../core/dictation.js";
 import { avatarLabel } from "../../core/avatar.js";
 import { renderPresentation } from "../../core/present.js";
 import { MiaScene } from "../../core/scene.js";
@@ -128,3 +129,13 @@ scene
     console.error(error);
     caption.textContent = "No se ha podido cargar la proyección.";
   });
+
+bindMicButton(document.getElementById("mic"), {
+  onInterim: (text) => {
+    input.value = text;
+  },
+  onFinal: (text) => {
+    input.value = "";
+    submit(text);
+  },
+});
