@@ -33,6 +33,7 @@ CANNOT = re.compile(
     r"|todav[ií]a\s+no\s+(puedo|est[aá])|fuera\s+de\s+mi\s+alcance|problema\s+t[eé]cnico"
 )
 DATES = re.compile(r"\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}\b")
+TECH_ERROR = re.compile(r"(?i)error\s+t[eé]cnico|problema\s+t[eé]cnico")
 NUMBER = re.compile(r"(?<![\w.,])\d+(?:[.,]\d+)?(?![\w])")
 
 
@@ -121,11 +122,24 @@ def main() -> int:
         )
         return 3
     print(f"Sistema anterior leyendo datos: «{probe[:120]}»")
+    new_probe = new.ask("¿Cuántos empleados activos hay?")
+    new.reset()
+    if not figures(new_probe) or TECH_ERROR.search(new_probe):
+        print("mIA nueva no está respondiendo con datos:", file=sys.stderr)
+        print(f"  «{new_probe[:300]}»", file=sys.stderr)
+        print(
+            "Revisa la consola de mIA (error completo), el espacio en disco y la conexión con OpenAI.", file=sys.stderr
+        )
+        return 4
+    print(f"mIA nueva respondiendo: «{new_probe[:120]}»")
     results: list[dict[str, Any]] = []
     conversations = [json.loads(line) for line in source.read_text(encoding="utf-8").splitlines() if line.strip()]
     if args.domain:
         conversations = [c for c in conversations if any(t.get("domain") == args.domain for t in c["turns"])]
+    consecutive_errors = 0
     for n, conversation in enumerate(conversations[: args.limit], 1):
+        if consecutive_errors >= 5:
+            break
         legacy.reset()
         new.reset()
         for turn in conversation["turns"]:
@@ -136,6 +150,11 @@ def main() -> int:
                 results.append({"conv": n, "question": question, "kind": "error", "old": "", "new": str(exc)})
                 continue
             kind = classify(old_answer, new_answer)
+            consecutive_errors = consecutive_errors + 1 if TECH_ERROR.search(new_answer) else 0
+            if consecutive_errors >= 5:
+                print("\nmIA ha fallado 5 veces seguidas con «error técnico»: comparación detenida.", file=sys.stderr)
+                print("Revisa su consola; el informe incluye lo comparado hasta aquí.", file=sys.stderr)
+                break
             results.append(
                 {
                     "conv": n,
