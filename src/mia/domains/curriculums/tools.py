@@ -376,5 +376,7 @@ def _result(
 
 
 def register(registry: ToolRegistry, deps: Deps) -> None:
-    for factory in (buscar, parecidos, candidaturas, ficha_candidato):
+    from mia.domains.curriculums.cruces import candidatos_y_plantilla  # noqa: PLC0415
+
+    for factory in (buscar, parecidos, candidaturas, ficha_candidato, candidatos_y_plantilla):
         registry.register(factory(deps))

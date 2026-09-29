@@ -10,3 +10,6 @@ __all__ = ["ABSENCE_KINDS", "AbsencePeriod", "absence_periods", "register"]
 def register(registry: ToolRegistry, deps: Deps) -> None:
     _register_tools(registry, deps)
     historico.register(registry, deps)
+    from mia.domains.turnos.companeros import companeros_de_turno  # noqa: PLC0415
+
+    registry.register(companeros_de_turno(deps))

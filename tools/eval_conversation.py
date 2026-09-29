@@ -229,6 +229,22 @@ CASES = [
         must_not=[r"(?i)inactiv"],
     ),
     Case(
+        "consulta_cruzada_compuesta",
+        ["¿Quién de cocina está de vacaciones la semana que viene y tiene saldo negativo?"],
+        must_not=[r"(?i)no\s+(puedo|tengo)\s+(cruzar|informaci)"],
+    ),
+    Case(
+        "ficha_de_departamento",
+        ["Cuéntame cómo está el departamento de Pisos hoy"],
+        must=[r"\d"],
+        must_not=[r"(?i)no\s+(puedo|tengo)"],
+    ),
+    Case(
+        "salario_medio_agregado",
+        ["¿Cuál es el salario medio de un cocinero?"],
+        must_not=[r"(?i)no\s+(puedo|tengo\s+acceso)"],
+    ),
+    Case(
         "consulta_general_literatura",
         ["¿Quién escribió Cien años de soledad?"],
         must=[r"(?i)garc[ií]a\s+m[aá]rquez"],

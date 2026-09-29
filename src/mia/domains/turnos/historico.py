@@ -254,6 +254,7 @@ def comentarios_semana_turno(deps: Deps) -> Tool:
 # ------------------------------------------------------------------ métricas
 class MetricasParams(Periodo):
     departamento: str = Field(description="Departamento (el calendario es por departamento)")
+    empleado: str | None = Field(default=None, description="Nombre de una persona: sus horas y jornadas del periodo")
 
 
 def metricas_turnos(deps: Deps) -> Tool:
@@ -278,6 +279,14 @@ def metricas_turnos(deps: Deps) -> Tool:
                     )
                 ).all()
             )
+        if p.empleado:
+            tokens = normalize_key(p.empleado).split()
+            rows = [r for r in rows if all(t in (r.employee_name_key or "") for t in tokens)]
+            people = {r.employee_name for r in rows if r.employee_name}
+            if len(people) > 1:
+                return ToolResult(
+                    ToolStatus.AMBIGUOUS, {"mensaje": "Hay varias personas que encajan", "personas": sorted(people)}
+                )
         working = [r for r in rows if r.kind in WORKING_KINDS]
         by_person: dict[str, dict[str, float]] = defaultdict(lambda: {"jornadas": 0, "horas": 0.0, "nocturnas": 0.0})
         for r in working:
@@ -308,8 +317,8 @@ def metricas_turnos(deps: Deps) -> Tool:
 
     return Tool(
         "metricas_turnos",
-        "Jornadas, horas y horas nocturnas reales de un departamento en un periodo, "
-        "por persona (a partir del Calendario).",
+        "Jornadas, horas y horas nocturnas reales de un departamento en un periodo, por persona (a partir del "
+        "Calendario); con empleado, las horas de una persona concreta.",
         MetricasParams,
         handler,
         permission=Permission.TURNOS_LEER,

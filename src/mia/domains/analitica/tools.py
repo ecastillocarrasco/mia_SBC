@@ -453,8 +453,12 @@ def calidad(deps: Deps) -> Tool:
 
 
 def register(registry: ToolRegistry, deps: Deps) -> None:
+    from mia.domains.analitica.consultas import consulta_cruzada  # noqa: PLC0415
     from mia.domains.analitica.cruces import datos_de_personas  # noqa: PLC0415
+    from mia.domains.analitica.departamento import ficha_departamento  # noqa: PLC0415
 
     registry.register(datos_de_personas(deps))
+    registry.register(consulta_cruzada(deps))
+    registry.register(ficha_departamento(deps))
     for factory in (panel, comparar, cobertura, analitica_vacaciones, altas, calidad):
         registry.register(factory(deps))

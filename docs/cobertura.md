@@ -208,3 +208,16 @@ ausencias y reincorporaciones** (parámetro `incluir_inactivos`). Cada resumen i
 («plantilla activa (POB-001)» o «activos e inactivos»). Una persona concreta por nombre se busca aunque
 esté inactiva, y la ficha lo indica. El histórico de calendarios y métricas de horas reales es histórico:
 incluye a quien trabajó en su día.
+
+
+## Cierre de la fase 4: alcance y cruces
+
+Ver [consultas.md](consultas.md) para el catálogo completo. Novedades de esta entrega:
+
+- `consulta_cruzada`: criterios de varios dominios sobre las mismas personas (vacaciones, bajas, permisos,
+  turnos por franja, saldo, nóminas sin leer o ausentes, documentos, edad, cumpleaños) con listar, contar o
+  agrupar; admite «que no…» y seguir sobre el resultado anterior.
+- `estadisticas_salariales` (NOM-004): salario medio, mediana, mínimo y máximo por puesto o departamento,
+  solo agregados y con un mínimo de 5 personas por grupo.
+- `ficha_departamento`, `candidatos_y_plantilla`, `companeros_de_turno`, y horas de una persona en
+  `metricas_turnos`.

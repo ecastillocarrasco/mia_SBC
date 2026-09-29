@@ -33,6 +33,9 @@ Campo = Literal[
     "ultima_nomina",
     "nominas_no_leidas",
     "documentos_firmados",
+    "nacionalidad",
+    "codigo_empleado",
+    "cumpleanos",
 ]
 LABELS: dict[str, str] = {
     "puesto": "Puesto",
@@ -48,6 +51,9 @@ LABELS: dict[str, str] = {
     "ultima_nomina": "Última nómina",
     "nominas_no_leidas": "Nóminas sin leer",
     "documentos_firmados": "Docs. firmados",
+    "nacionalidad": "Nacionalidad",
+    "codigo_empleado": "Código",
+    "cumpleanos": "Cumpleaños",
 }
 MAX_PEOPLE = 300
 
@@ -134,6 +140,9 @@ def _base(e: Employee, field: str, today: date) -> Any:
         "edad": age(e.birth_date, today),
         "email": e.email,
         "telefono": e.phone,
+        "nacionalidad": e.nationality,
+        "codigo_empleado": e.employee_code,
+        "cumpleanos": f"{e.birth_date.day:02d}/{e.birth_date.month:02d}" if e.birth_date else None,
     }.get(field)
 
 
