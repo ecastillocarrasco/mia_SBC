@@ -197,3 +197,14 @@ fragmento que lo demuestra. La búsqueda libre por perfil queda como `candidatos
 - **A demanda**: `datos_de_personas` añade a cualquier grupo (el resultado anterior, uno anterior con
   «resultado», o una lista de personas) puesto, departamento, responsable, edad, contacto, turno de hoy,
   saldo y próximas vacaciones, última nómina, nóminas sin leer y documentos firmados.
+
+
+## Población: plantilla activa por defecto (POB-001)
+
+Toda consulta de grupo es sobre empleados **activos** salvo que se pida expresamente lo contrario
+(«incluyendo inactivos», «antiguos empleados», «todos»). Aplicado en: plantilla, saldos, nóminas por
+periodo, documentos faltantes, panel y analítica y, desde esta versión, **vacaciones, turnos del día,
+ausencias y reincorporaciones** (parámetro `incluir_inactivos`). Cada resumen indica su población
+(«plantilla activa (POB-001)» o «activos e inactivos»). Una persona concreta por nombre se busca aunque
+esté inactiva, y la ficha lo indica. El histórico de calendarios y métricas de horas reales es histórico:
+incluye a quien trabajó en su día.

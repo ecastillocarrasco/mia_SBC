@@ -8,24 +8,27 @@ from itertools import pairwise
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.data import Employee, Vacation, VacationBalance
 from mia.domains.common import (
     MAX_ROWS_FOR_MODEL,
+    ActivosParams,
     CohortParams,
     Deps,
     PeopleDirectory,
     Periodo,
     PersonaParams,
+    active_emails,
     department_problem,
     employees_for,
     fmt_date,
     focus_person,
     no_population,
     person_problem,
+    population_label,
     population_state,
     previous_population,
     resolve_department,
@@ -50,12 +53,21 @@ class _OptionalPerson(BaseModel):
 
 
 # ------------------------------------------------------------------ solicitudes
-class VacacionesParams(_OptionalPerson, Periodo, CohortParams):
+class VacacionesParams(_OptionalPerson, Periodo, CohortParams, ActivosParams):
     departamento: str | None = Field(default=None, description="Departamento (opcional)")
     estado: Literal["aceptadas", "pendientes", "rechazadas", "todas"] = Field(
         default="aceptadas", description="Por defecto solo las aceptadas"
     )
     tipo: Literal["vacaciones", "asuntos propios", "todos"] = "todos"
+
+
+def _scope(stmt: Any, department_key: str | None, *, group: bool) -> Any:
+    """Departamento y, en consultas de grupo, solo la plantilla activa (POB-001)."""
+    if department_key:
+        stmt = stmt.where(Vacation.department_key == department_key)
+    if group:
+        stmt = stmt.where(func.lower(Vacation.employee_email).in_(active_emails()))
+    return stmt
 
 
 def _people_and_overlaps(rows: list[Vacation], today: date) -> tuple[int, int]:
@@ -95,8 +107,7 @@ def solicitudes(deps: Deps) -> Tool:
             dept = await resolve_department(db, p.departamento)
             if dept.status is not ToolStatus.OK:
                 return department_problem(dept, p.departamento)
-            if dept.key:
-                stmt = stmt.where(Vacation.department_key == dept.key)
+            stmt = _scope(stmt, dept.key, group=employee is None and not p.incluir_inactivos)
             if p.desde or p.hasta or employee is None:
                 start, end = p.resolve(today, default_days=30)
                 stmt = stmt.where(Vacation.start_date <= end, Vacation.end_date >= start)
@@ -132,6 +143,7 @@ def solicitudes(deps: Deps) -> Tool:
         ]
         persons, overlapping = _people_and_overlaps(rows, today)
         summary: dict[str, Any] = {
+            "poblacion": population_label(p.incluir_inactivos) if not p.person() else "una persona",
             "personas_distintas": persons,
             "solicitudes": len(items),
             "solicitudes_solapadas": overlapping,

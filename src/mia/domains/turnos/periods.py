@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.data import ShiftDay
+from mia.domains.common import active_person_keys
 from mia.sources.mappers.hr import ShiftKind
 
 ABSENCE_KINDS = (ShiftKind.BAJA, ShiftKind.VACACIONES, ShiftKind.PERMISO, ShiftKind.ASUNTOS_PROPIOS)
@@ -105,10 +106,13 @@ async def absence_periods(
     kinds: tuple[str, ...] = ABSENCE_KINDS,
     person_keys: list[str] | None = None,
     department_like: str | None = None,
+    only_active: bool = False,
 ) -> list[AbsencePeriod]:
     """Periodos completos de las personas ausentes en algún día de [lo, hi]."""
     if person_keys is None:
         stmt = select(ShiftDay.person_key).distinct().where(ShiftDay.day.between(lo, hi), ShiftDay.kind.in_(kinds))
+        if only_active:
+            stmt = stmt.where(ShiftDay.person_key.in_(active_person_keys()))
         if department_like:
             stmt = stmt.where(ShiftDay.department_key.like(f"%{department_like}%"))
         person_keys = [k for k in (await db.scalars(stmt)).all() if k]

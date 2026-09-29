@@ -260,6 +260,31 @@ class CohortParams(BaseModel):
     )
 
 
+class ActivosParams(BaseModel):
+    incluir_inactivos: bool = Field(
+        default=False,
+        description="POB-001: por defecto SOLO la plantilla activa. true únicamente si el usuario pide "
+        "expresamente inactivos, antiguos empleados o «todos, activos e inactivos».",
+    )
+
+
+POBLACION_ACTIVA = "plantilla activa (POB-001)"
+
+
+def active_person_keys() -> Any:
+    """Subconsulta con los seudónimos de DNI de la plantilla activa."""
+    return select(Employee.person_key).where(Employee.active.is_(True), Employee.person_key.is_not(None))
+
+
+def active_emails() -> Any:
+    """Subconsulta con los emails (en minúsculas) de la plantilla activa."""
+    return select(func.lower(Employee.email)).where(Employee.active.is_(True), Employee.email.is_not(None))
+
+
+def population_label(include_inactive: bool) -> str:
+    return "activos e inactivos" if include_inactive else POBLACION_ACTIVA
+
+
 def population_state(label: str, employees: list[Employee]) -> dict[str, Any]:
     """Conserva en privado la población de una respuesta para poder cruzarla después."""
     people = employees[:MAX_POPULATION]

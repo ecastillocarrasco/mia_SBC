@@ -355,3 +355,67 @@ async def test_cross_domain_data_over_the_previous_result(registry: ToolRegistry
     assert row["puesto"] == "Camarera de pisos"
     assert row["saldo_vacaciones"].startswith("-2.5") and row["turno_hoy"].startswith("Vacaciones")
     assert result.presentation["columns"][0] == "Persona"
+
+
+async def test_group_queries_use_active_staff_unless_inactive_are_requested(tmp_path: Any) -> None:
+    """POB-001: vacaciones, turnos, ausencias y reincorporaciones de grupo son de la plantilla activa."""
+    from datetime import timedelta  # noqa: PLC0415
+
+    from mia.data import Vacation  # noqa: PLC0415
+    from tests.dbutil import fresh_database  # noqa: PLC0415
+    from tests.hr_seed import TODAY, _emp, _shift  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "pob.db")
+    day = TODAY + timedelta(days=1)
+    async with db.session() as s:
+        s.add_all(
+            [
+                _emp(1, "Activa Uno", "Pisos", email="a@x.test", person_key="pk-a"),
+                _emp(2, "Inactiva Dos", "Pisos", active=False, email="i@x.test", person_key="pk-i"),
+                _shift(1, "pk-a", "Activa Uno", "Pisos", TODAY, "Trabajo", "8:00-16:00"),
+                _shift(2, "pk-i", "Inactiva Dos", "Pisos", TODAY, "Trabajo", "8:00-16:00"),
+                _shift(3, "pk-a", "Activa Uno", "Pisos", TODAY, "Baja/IT", "Baja"),
+                _shift(4, "pk-i", "Inactiva Dos", "Pisos", day, "Baja/IT", "Baja"),
+                Vacation(
+                    sp_id=1,
+                    employee_email="a@x.test",
+                    employee_name="Activa Uno",
+                    department="Pisos",
+                    department_key="pisos",
+                    status="Aceptada",
+                    start_date=TODAY,
+                    end_date=day,
+                    total_days=2,
+                ),
+                Vacation(
+                    sp_id=2,
+                    employee_email="i@x.test",
+                    employee_name="Inactiva Dos",
+                    department="Pisos",
+                    department_key="pisos",
+                    status="Aceptada",
+                    start_date=TODAY,
+                    end_date=day,
+                    total_days=2,
+                ),
+            ]
+        )
+    registry = build_registry(db)
+    args = {"desde": TODAY.isoformat(), "hasta": day.isoformat()}
+    vac = await call(registry, "vacaciones", **args)
+    assert vac.summary["personas_distintas"] == 1 and vac.summary["poblacion"].startswith("plantilla activa")
+    assert (await call(registry, "vacaciones", incluir_inactivos=True, **args)).summary["personas_distintas"] == 2
+    aus = await call(registry, "ausencias", **args)
+    assert {p["persona"] for p in aus.summary["periodos"]} == {"Activa Uno"}
+    assert {
+        p["persona"] for p in (await call(registry, "ausencias", incluir_inactivos=True, **args)).summary["periodos"]
+    } == {"Activa Uno", "Inactiva Dos"}
+    day_shifts = await call(registry, "turnos_dia", fecha=TODAY.isoformat(), tipo="Trabajo")
+    assert day_shifts.summary["total_seleccionado"] == 1
+    assert (
+        await call(registry, "turnos_dia", fecha=TODAY.isoformat(), tipo="Trabajo", incluir_inactivos=True)
+    ).summary["total_seleccionado"] == 2
+    # Una persona concreta se busca aunque esté inactiva.
+    named = await call(registry, "ausencias", nombre="Inactiva Dos", desde=TODAY.isoformat(), hasta=day.isoformat())
+    assert named.summary["periodos"][0]["persona"] == "Inactiva Dos"
+    await db.dispose()

@@ -154,6 +154,10 @@ no hereda el foco.
 - Seguimientos: «y los de vacaciones» tras «los de baja» es OTRO grupo del mismo listado: repite la
   consulta original con el nuevo filtro, sin cruzar con el último resultado. «Volviendo a los de X»
   se refiere a un grupo anterior que no es el último: usa resultado=«X».
+- Empleados: toda consulta de grupo (vacaciones, turnos, ausencias, reincorporaciones, saldos, plantilla…)
+  es sobre empleados ACTIVOS. Solo incluye inactivos (incluir_inactivos=true o estado) si el usuario lo pide
+  expresamente («incluyendo inactivos», «antiguos empleados», «todos»). Si es útil, di que hablas de la
+  plantilla activa. Una persona concreta por su nombre se busca aunque esté inactiva, y se indica.
 - Cruza dominios: los listados ya traen el puesto de cada persona. Si piden otros datos sobre un grupo
   («de esos, ¿qué puesto / saldo / turno hoy / última nómina?»), usa datos_de_personas sobre ese
   resultado; no digas que no tienes el dato si está en otro dominio.

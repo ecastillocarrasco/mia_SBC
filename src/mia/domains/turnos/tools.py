@@ -16,17 +16,20 @@ from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolSt
 from mia.data import Employee, ShiftDay
 from mia.domains.common import (
     MAX_ROWS_FOR_MODEL,
+    ActivosParams,
     CohortParams,
     Deps,
     PeopleDirectory,
     Periodo,
     PersonaParams,
+    active_person_keys,
     days_between,
     employees_for,
     fmt_date,
     focus_person,
     no_population,
     person_problem,
+    population_label,
     population_state,
     previous_population,
     resolve_person,
@@ -73,6 +76,18 @@ def tomorrow_not_morning(message: str, franja: str | None, fecha: date | None, t
 
 
 _WORKING = re.compile(r"\btrabaj|\bqui[eé]n(?:es)?\s+(?:est[aá]n?|hay)\s+(?:de\s+)?turno", re.IGNORECASE)
+
+
+async def _shifts_of_day(
+    db: AsyncSession, day: date, dept_key: str | None, *, include_inactive: bool
+) -> list[ShiftDay]:
+    """Turnos publicados de un día; por defecto solo de la plantilla activa (POB-001)."""
+    stmt = select(ShiftDay).where(ShiftDay.day == day)
+    if not include_inactive:
+        stmt = stmt.where(ShiftDay.person_key.in_(active_person_keys()))
+    if dept_key:
+        stmt = stmt.where(ShiftDay.department_key == dept_key)
+    return list((await db.scalars(stmt.order_by(ShiftDay.department, ShiftDay.employee_name))).all())
 
 
 def _day_rows(selected: list[ShiftDay], directory: PeopleDirectory, summary: dict[str, Any]) -> list[list[Any]]:
@@ -220,7 +235,7 @@ def turnos_persona(deps: Deps) -> Tool:
 
 
 # ------------------------------------------------------------------ turnos de un día
-class TurnosDiaParams(CohortParams):
+class TurnosDiaParams(CohortParams, ActivosParams):
     fecha: date | None = Field(default=None, description="Día AAAA-MM-DD (por defecto hoy)")
     departamento: str | None = Field(default=None, description="Departamento (opcional; sin él, toda la plantilla)")
     franja: Franja | None = Field(
@@ -235,7 +250,7 @@ class TurnosDiaParams(CohortParams):
 
 
 def turnos_dia(deps: Deps) -> Tool:
-    async def handler(p: TurnosDiaParams, ctx: ToolContext) -> ToolResult:  # noqa: PLR0912  (un filtro por criterio de la pregunta)
+    async def handler(p: TurnosDiaParams, ctx: ToolContext) -> ToolResult:
         day = p.fecha or ctx.now.date()
         note = None
         if tomorrow_not_morning(ctx.user_message, p.franja, p.fecha, ctx.now.date()):
@@ -246,10 +261,7 @@ def turnos_dia(deps: Deps) -> Tool:
             status, dept_key, options = await resolve_shift_department(db, p.departamento)
             if status is not ToolStatus.OK:
                 return department_not_found(status, p.departamento, options)
-            stmt = select(ShiftDay).where(ShiftDay.day == day)
-            if dept_key:
-                stmt = stmt.where(ShiftDay.department_key == dept_key)
-            shifts = list((await db.scalars(stmt.order_by(ShiftDay.department, ShiftDay.employee_name))).all())
+            shifts = await _shifts_of_day(db, day, dept_key, include_inactive=p.incluir_inactivos)
             fresh = await deps.freshness(db, "turnos")
         if not shifts:
             scope = f"en {p.departamento}" if p.departamento else "en ninguna parte de la plantilla"
@@ -288,6 +300,7 @@ def turnos_dia(deps: Deps) -> Tool:
             "departamento": shifts[0].department if dept_key else "toda la plantilla",
             "criterio": ", ".join(criteria) or "todos los turnos del día",
             **({"nota": note} if note else {}),
+            "poblacion": population_label(p.incluir_inactivos),
             "total_seleccionado": len(selected),
             "personas_trabajando_ese_dia": len(working),
             "horas_seleccionadas": round(sum(s.hours or 0 for s in selected), 1),
@@ -361,7 +374,7 @@ def _period_view(
     return view
 
 
-class AusenciasParams(Periodo, CohortParams):
+class AusenciasParams(Periodo, CohortParams, ActivosParams):
     empleado_id: int | None = Field(default=None, description="Persona concreta (del foco o de una búsqueda)")
     nombre: str | None = Field(default=None, description="Nombre de la persona, si no hay empleado_id")
     departamento: str | None = Field(default=None, description="Departamento (opcional)")
@@ -473,7 +486,13 @@ def ausencias(deps: Deps) -> Tool:
                     return no_population()
                 person_keys = list(previous["person_keys"])
             periods = await absence_periods(
-                db, lo=lo, hi=hi, kinds=kinds, person_keys=person_keys, department_like=dept_key
+                db,
+                lo=lo,
+                hi=hi,
+                kinds=kinds,
+                person_keys=person_keys,
+                department_like=dept_key,
+                only_active=person_keys is None and not p.incluir_inactivos,
             )
             people = await employees_for(db, person_keys={x.person_key for x in periods})
             fresh = await deps.freshness(db, "turnos")
@@ -483,6 +502,8 @@ def ausencias(deps: Deps) -> Tool:
             directory = await PeopleDirectory.load(db, person_keys={x.person_key for x in periods})
         summary, rows = _absence_summary(periods, today, lo, hi, directory)
         summary.update(fresh)
+        if person_keys is None or p.sobre_resultado_anterior:
+            summary["poblacion"] = population_label(p.incluir_inactivos)
         state["foco_periodo"] = {"desde": lo.isoformat(), "hasta": hi.isoformat()}
         if person_keys and len(person_keys) == 1:
             summary.update(_last_sick_leave(periods, today))
@@ -523,7 +544,7 @@ def _multi_kind(periods: list[AbsencePeriod]) -> list[dict[str, Any]]:
     return [{"persona": names[k], "motivos": sorted(v)} for k, v in kinds.items() if len(v) > 1]
 
 
-class ReincorporacionesParams(Periodo, CohortParams):
+class ReincorporacionesParams(Periodo, CohortParams, ActivosParams):
     departamento: str | None = Field(default=None, description="Departamento (opcional)")
     empleado_ids: list[int] | None = Field(
         default=None, description="Limitar a estas personas (ids del foco o de una búsqueda)"
@@ -558,7 +579,13 @@ def reincorporaciones(deps: Deps) -> Tool:
                     return no_population()
                 person_keys = list(previous["person_keys"])
             periods = await absence_periods(
-                db, lo=lo, hi=hi, kinds=kinds, department_like=dept_key, person_keys=person_keys
+                db,
+                lo=lo,
+                hi=hi,
+                kinds=kinds,
+                department_like=dept_key,
+                person_keys=person_keys,
+                only_active=person_keys is None and not p.incluir_inactivos,
             )
             fresh = await deps.freshness(db, "turnos")
             published = [x for x in periods if x.return_shift is not None and lo <= x.return_shift.day <= hi]
@@ -584,6 +611,7 @@ def reincorporaciones(deps: Deps) -> Tool:
         summary: dict[str, Any] = {
             "desde": lo.isoformat(),
             "hasta": hi.isoformat(),
+            "poblacion": population_label(p.incluir_inactivos),
             "con_reincorporacion_publicada": len(items),
             "personas_distintas": len({x.person_key for x in published}),
             "por_motivo": dict(Counter(x.kind for x in published)),

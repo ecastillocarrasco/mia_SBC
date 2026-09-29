@@ -224,6 +224,11 @@ CASES = [
         must_not=[r"(?i)no\s+(tengo|dispongo)\s+(de\s+)?(esa\s+)?informaci[oó]n|no\s+puedo"],
     ),
     Case(
+        "consultas_de_grupo_solo_activos",
+        ["¿Cuántas personas de Pisos están de vacaciones esta semana?"],
+        must_not=[r"(?i)inactiv"],
+    ),
+    Case(
         "consulta_general_literatura",
         ["¿Quién escribió Cien años de soledad?"],
         must=[r"(?i)garc[ií]a\s+m[aá]rquez"],
