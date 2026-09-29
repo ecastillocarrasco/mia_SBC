@@ -69,6 +69,8 @@ async def test_pending_migrations_are_reported_clearly(tmp_path: Path) -> None:
     from tests.dbutil import fresh_database  # noqa: PLC0415
 
     db = await fresh_database(tmp_path, "versiones.db")
+    async with db.session() as s:  # en PostgreSQL la base de pruebas es compartida: partir siempre de cero
+        await s.execute(text("DROP TABLE IF EXISTS alembic_version"))
     assert await schema_problem(db) is None  # sin tabla de versiones no se puede saber: no se avisa
     async with db.session() as s:
         await s.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
@@ -78,4 +80,6 @@ async def test_pending_migrations_are_reported_clearly(tmp_path: Path) -> None:
     async with db.session() as s:
         await s.execute(text("UPDATE alembic_version SET version_num = :v"), {"v": EXPECTED_REVISION})
     assert await schema_problem(db) is None
+    async with db.session() as s:
+        await s.execute(text("DROP TABLE alembic_version"))  # no dejar rastro para otros tests
     await db.dispose()
