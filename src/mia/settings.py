@@ -11,6 +11,7 @@ from __future__ import annotations
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -135,6 +136,9 @@ class MailSettings(BaseModel):
     """Buzón compartido (Microsoft Graph, misma aplicación y certificado que SharePoint)."""
 
     mailbox: str = ""
+    mailbox_source: Literal["configured", "user"] = "configured"
+    """«configured»: el buzón de MIA_MAIL__MAILBOX (desarrollo). «user»: el de la cuenta con la que inicia sesión
+    cada usuario (MSAL/Entra ID)."""
     max_messages: int = 50
     drafts_enabled: bool = True
     send_enabled: bool = False

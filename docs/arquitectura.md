@@ -137,3 +137,27 @@ SharePoint (RRHH) ──sincronización──▶ source_items (réplica, seudoni
   En producción conviene moverlos a Blob Storage (la cuenta ya está en la infraestructura).
 - **CI**: toda la batería se ejecuta también contra PostgreSQL, además de subir y bajar
   las migraciones.
+
+
+## Correo y autenticación
+
+El buzón se resuelve en un único punto (`mia/domains/correo/mailbox.py`) a partir del usuario de la sesión:
+
+| Fase | `MIA_MAIL__MAILBOX_SOURCE` | Buzón |
+|---|---|---|
+| Desarrollo (hoy) | `configured` | El declarado en `.env` (`MIA_MAIL__MAILBOX`), el mismo para todos |
+| Con MSAL / Entra ID (fase 7) | `user` | El de la cuenta con la que inicia sesión cada usuario (`UserContext.email`) |
+
+Garantías ya en su sitio, para que el cambio sea solo de configuración:
+
+- Las herramientas de correo **no reciben el buzón como parámetro**: ni el modelo ni el usuario pueden apuntar a la
+  bandeja de otra persona.
+- Cada **borrador queda ligado al buzón** en el que se creó; otro usuario no puede enviarlo aunque comparta sesión.
+- Las instrucciones al modelo llevan el buzón del usuario **en cada turno**, no uno fijo al arrancar.
+- Si la sesión no trae email/UPN, el correo se declara no disponible en lugar de abrir otro buzón.
+
+**Decisión pendiente para la fase 7.** Hoy Graph se llama con la aplicación (certificado) sobre `users/{buzón}`.
+Con buzones personales hay dos caminos: (1) **permisos delegados**, usando el token del propio usuario (flujo
+on-behalf-of): cada persona solo puede ver su bandeja y no hace falta conceder acceso a toda la organización; es
+lo recomendable; (2) **permisos de aplicación** con una *Application Access Policy* de Exchange que limite a qué
+buzones puede entrar la aplicación (sin ella, `Mail.Read` de aplicación da acceso a todos los buzones del tenant).

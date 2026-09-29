@@ -60,8 +60,6 @@ _INBOX = re.compile(
 class Persona:
     name: str = "mIA"
     organization: str = "Sunset Beach Club"
-    mailbox: str = ""
-    """Buzón corporativo configurado (MIA_MAIL__MAILBOX): «mis correos» son los de este buzón."""
     waiting_phrases: tuple[str, ...] = (
         "Déjame mirarlo.",
         "Un momento, lo compruebo.",
@@ -100,21 +98,22 @@ class Persona:
             "additionalProperties": False,
         }
 
-    def hint_for(self, message: str) -> str:
+    def hint_for(self, message: str, mailbox: str = "") -> str:
         """Pista determinista para confusiones conocidas del modelo (p. ej. «mis correos» ≠ un empleado)."""
-        if self.mailbox and _INBOX.search(message or ""):
+        if mailbox and _INBOX.search(message or ""):
             return (
                 f"\n\n## Pista para este mensaje\nSi la petición es sobre correos recibidos, la bandeja o correos sin "
-                f"leer, usa las herramientas de correo del buzón {self.mailbox} y NO busques empleados ni preguntes "
+                f"leer, usa las herramientas de correo del buzón {mailbox} y NO busques empleados ni preguntes "
                 "de quién son. Si piden el email de una persona concreta, eso sí son sus datos de empleado."
             )
         return ""
 
-    def _mailbox_line(self) -> str:
-        if not self.mailbox:
+    @staticmethod
+    def _mailbox_line(mailbox: str) -> str:
+        if not mailbox:
             return ""
         return (
-            f"\nCorreo: el buzón corporativo es {self.mailbox}. «Mis correos», «el correo», «la bandeja» y «mis "
+            f"\nCorreo: el buzón de esta conversación es {mailbox}. «Mis correos», «el correo», «la bandeja» y «mis "
             "correos sin leer» se refieren SIEMPRE a este buzón (correos_sin_leer, buscar_correos…): nunca los "
             "busques como si fueran de un empleado ni preguntes de quién son.\n"
         )
@@ -128,6 +127,7 @@ class Persona:
         capabilities: str = "",
         focus: str = "",
         hint: str = "",
+        mailbox: str = "",
     ) -> str:
         avatar = "\n".join(f"- {state.value}: {usage}" for state, usage in AVATAR_GUIDE.items())
         rules = "\n".join(f"- {rule}" for rule in business_rules)
@@ -143,7 +143,7 @@ limites lo que eres a un área. Si te preguntan quién eres, di que eres {self.n
 la asistente de {self.organization}, y, si viene al caso, qué puedes hacer ahora.
 
 ## Lo que puedes hacer ahora
-{capabilities}{self._mailbox_line()}
+{capabilities}{self._mailbox_line(mailbox)}
 Para los DATOS DE SUNSET BEACH CLUB solo puedes hacer lo que permiten estas
 herramientas: si un dominio de la empresa no tiene herramienta, NO está disponible;
 dilo así, aunque el usuario lo dé por hecho. Esta limitación NO se aplica a las

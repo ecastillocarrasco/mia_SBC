@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
@@ -176,7 +176,9 @@ class ConversationEngine:
         max_tool_rounds: int = 4,
         max_output_tokens: int = 1200,
         max_report_rows: int = 5000,
+        mailbox_for: Callable[[UserContext], str | None] | None = None,
     ) -> None:
+        self._mailbox_for = mailbox_for
         self._max_report_rows = max_report_rows
         self._llm = llm
         self._tools = tools
@@ -209,13 +211,15 @@ class ConversationEngine:
         ]
         messages.append(Message(role="user", content=message))
         now = datetime.now(self._tz)
+        mailbox = self._mailbox_for(user) or "" if self._mailbox_for else ""
         system = self.persona.system_prompt(
             user_name=user.display_name,
             now=now,
             business_rules=rules_for_prompt(),
             capabilities=self._tools.capabilities_for(user),
             focus=describe_focus(turn.state),
-            hint=self.persona.hint_for(message),
+            hint=self.persona.hint_for(message, mailbox),
+            mailbox=mailbox,
         )
         ctx = ToolContext(user=user, request_id=request_id, now=now, session_state=turn.state, user_message=message)
 

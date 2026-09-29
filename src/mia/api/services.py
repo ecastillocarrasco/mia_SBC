@@ -8,6 +8,7 @@ from mia.auth import IdentityProvider, build_identity_provider
 from mia.conversation import ConversationEngine, Persona
 from mia.data import Database
 from mia.domains import build_registry
+from mia.domains.correo.mailbox import mailbox_available, resolve_mailbox
 from mia.llm import LLMProvider, build_llm_provider
 from mia.settings import Settings
 from mia.sources.graph import GraphClient
@@ -18,7 +19,11 @@ from mia.voice import CachedVoice, build_voice
 
 def build_graph_client(settings: Settings) -> GraphClient | None:
     """Graph para el correo: misma aplicación y certificado que SharePoint."""
-    if "correo" not in settings.domains.enabled or not settings.mail.mailbox or not settings.sharepoint.configured:
+    if (
+        "correo" not in settings.domains.enabled
+        or not mailbox_available(settings.mail)
+        or not settings.sharepoint.configured
+    ):
         return None
     return GraphClient(CertificateTokenProvider(settings.sharepoint, scope="https://graph.microsoft.com/.default"))
 
@@ -59,7 +64,8 @@ class Services:
                 enabled=settings.domains.enabled,
             ),
             db=database,
-            persona=Persona(mailbox=settings.mail.mailbox),
+            persona=Persona(),
+            mailbox_for=lambda user: resolve_mailbox(settings.mail, user),
             timezone=settings.timezone,
             history_turns=settings.history_turns,
             max_tool_rounds=settings.llm.max_tool_rounds,

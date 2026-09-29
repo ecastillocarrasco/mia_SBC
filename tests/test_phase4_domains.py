@@ -488,3 +488,50 @@ async def test_requirements_with_exclusion(env: Any) -> None:
     )
     assert [m["nombre"] for m in result.summary["muestra"]] == ["Tres"]
     assert result.summary["excluidas_solo_por_el_texto_del_cv"] == 1
+
+
+async def test_mailbox_comes_from_env_in_development_and_from_the_login_with_msal(env: Any) -> None:
+    """Hoy el buzón es el del .env; con MSAL será el de la cuenta con la que se inicia sesión."""
+    from mia.domains.correo.mailbox import resolve_mailbox  # noqa: PLC0415
+    from mia.settings import MailSettings  # noqa: PLC0415
+
+    dev = UserContext("u", "Enrique", email="enrique@sbc.test", roles=frozenset({"mia.admin"}))
+    configured = MailSettings(mailbox="rrhh@sbc.test")
+    assert resolve_mailbox(configured, dev) == "rrhh@sbc.test"  # el mismo para todos, tal como se declara
+    per_user = MailSettings(mailbox="rrhh@sbc.test", mailbox_source="user")
+    assert resolve_mailbox(per_user, dev) == "enrique@sbc.test"  # el del usuario, aunque haya uno configurado
+    assert resolve_mailbox(per_user, UserContext("x", "Sin correo")) is None
+
+
+async def test_each_user_only_reaches_their_own_mailbox_and_drafts_do_not_travel(env: Any) -> None:
+    from mia.domains.correo.mailbox import resolve_mailbox  # noqa: PLC0415
+
+    _, db, settings = env
+    per_user = settings.model_copy(update={"mail": settings.mail.model_copy(update={"mailbox_source": "user"})})
+    paths: list[str] = []
+    fake = _FakeGraph()
+
+    def spy(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return fake.handler(request)
+
+    graph = GraphClient(StaticTokenProvider(), transport=httpx.MockTransport(spy))
+    registry = build_registry(db, settings=per_user, graph=graph)
+    ana = UserContext("a", "Ana", email="ana@sbc.test", roles=frozenset({"mia.admin"}))
+    luis = UserContext("l", "Luis", email="luis@sbc.test", roles=frozenset({"mia.admin"}))
+    nobody = UserContext("n", "Sin cuenta", roles=frozenset({"mia.admin"}))
+
+    async def as_user(user: UserContext, name: str, state: dict[str, Any], message: str = "", rid: str = "r", **a: Any):
+        ctx = ToolContext(user=user, request_id=rid, now=NOW, session_state=state, user_message=message)
+        return (await registry.execute(ToolCall("c", name, json.dumps(a)), ctx)).result
+
+    state: dict[str, Any] = {}
+    assert (await as_user(ana, "correos_sin_leer", state)).status is ToolStatus.OK
+    assert any("ana%40sbc.test" in p or "ana@sbc.test" in p for p in paths) and not any("luis" in p for p in paths)
+    assert (await as_user(nobody, "correos_sin_leer", {})).status is ToolStatus.SOURCE_UNAVAILABLE
+    await as_user(ana, "preparar_respuesta", state, ref="c1", texto="Recibido.", rid="t1")
+    # Luis, aunque compartiera la sesión, no puede enviar un borrador del buzón de Ana.
+    blocked = await as_user(luis, "enviar_borrador", state, message="Sí, envíalo", rid="t2", borrador="b1")
+    assert blocked.status is ToolStatus.PERMISSION_DENIED and fake.sent == []
+    assert resolve_mailbox(per_user.mail, ana) == "ana@sbc.test"
+    await graph.aclose()

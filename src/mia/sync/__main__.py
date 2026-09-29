@@ -50,6 +50,11 @@ async def _check_mailbox(settings: Settings) -> int:
     if graph is None:
         print("—     correo                       buzón sin configurar (MIA_MAIL__MAILBOX) o desactivado")
         return 0
+    if settings.mail.mailbox_source == "user":
+        print(
+            "OK    correo                       cada usuario usa el buzón de su cuenta (MSAL); nada que comprobar aquí"
+        )
+        return 0
     try:
         await graph.request(
             "GET",

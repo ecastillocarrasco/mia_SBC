@@ -142,17 +142,20 @@ def test_broken_json_is_never_spoken_or_shown_as_such() -> None:
 
 def test_inbox_questions_get_a_hint_but_employee_email_questions_do_not() -> None:
     """Fallo real: «resumen de mis últimos 10 correos sin leer» se tomó por una búsqueda del empleado «Enrique»."""
+    from datetime import datetime  # noqa: PLC0415
+
     from mia.conversation.persona import Persona  # noqa: PLC0415
 
-    persona = Persona(mailbox="nominas@sunsetbeachclub.com")
+    persona, mailbox = Persona(), "nominas@sunsetbeachclub.com"
     for message in ("Resumen de mis últimos 10 correos sin leer", "¿Tengo correos nuevos?", "resume mi bandeja"):
-        assert "nominas@sunsetbeachclub.com" in persona.hint_for(message)
-    assert persona.hint_for("¿Cuál es el email de Sandra Asencio?") == ""
-    assert Persona().hint_for("mis correos sin leer") == ""  # sin buzón configurado no hay pista
+        assert mailbox in persona.hint_for(message, mailbox)
+    assert persona.hint_for("¿Cuál es el email de Sandra Asencio?", mailbox) == ""
+    assert persona.hint_for("mis correos sin leer", "") == ""  # sin buzón no hay pista
     prompt = persona.system_prompt(
         user_name="Enrique",
-        now=__import__("datetime").datetime.now(),
+        now=datetime.now(),
         business_rules=[],
-        hint=persona.hint_for("mis correos"),
+        mailbox=mailbox,
+        hint=persona.hint_for("mis correos", mailbox),
     )
-    assert "buzón corporativo es nominas@sunsetbeachclub.com" in prompt and "Pista para este mensaje" in prompt
+    assert f"el buzón de esta conversación es {mailbox}" in prompt and "Pista para este mensaje" in prompt
