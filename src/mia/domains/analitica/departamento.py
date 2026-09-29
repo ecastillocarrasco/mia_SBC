@@ -103,7 +103,7 @@ def ficha_departamento(deps: Deps) -> Tool:
                 else None,
                 "con_saldo_negativo": sum(1 for b in balances if (b.current_balance or 0) < 0),
             },
-            "nominas_sin_leer": int(unread),
+            "personas_con_nominas_sin_leer": int(unread),
             "ett_con_boletin_hoy": int(ett),
         }
         flat = [
@@ -116,7 +116,7 @@ def ficha_departamento(deps: Deps) -> Tool:
                 "Ausencias próximos 7 días": upcoming,
                 "Saldo medio de vacaciones": summary["vacaciones"]["saldo_medio"],
                 "Saldos negativos": summary["vacaciones"]["con_saldo_negativo"],
-                "Nóminas sin leer": int(unread),
+                "Personas con nóminas sin leer": int(unread),
                 "ETT hoy": int(ett),
             }.items()
         ]

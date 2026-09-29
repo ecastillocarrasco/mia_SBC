@@ -10,6 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from mia.assets import resolve_logo
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.conversation.tools import LAST_TABLE
@@ -26,7 +27,7 @@ class InformeParams(BaseModel):
 
 
 def _render(fmt: str, document: Document, generated: datetime, logo: Path | None) -> bytes:
-    return RENDERERS[fmt](document, generated, logo if logo and logo.is_file() else None)
+    return RENDERERS[fmt](document, generated, resolve_logo(logo))
 
 
 def _write(path: Path, content: bytes) -> None:

@@ -74,3 +74,18 @@ export function renderPresentation(presentation) {
   }
   return `<section class="mia-presentation">${heading}${body}</section>`;
 }
+
+/** Enlaces a las fuentes web consultadas ({url, title}); solo http(s). */
+export function renderSources(sources) {
+  const list = (sources || []).filter((s) => /^https?:\/\//i.test(s?.url || ""));
+  if (!list.length) return "";
+  const items = list
+    .map((s, i) => {
+      let host = "";
+      try { host = new URL(s.url).hostname.replace(/^www\./, ""); } catch { /* noop */ }
+      return `<a class="mia-source" href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">
+        <b>${i + 1}</b><span>${escapeHtml(s.title || host)}<small>${escapeHtml(host)}</small></span><i>↗</i></a>`;
+    })
+    .join("");
+  return `<section class="mia-sources"><h4>Fuentes consultadas · ${list.length}</h4>${items}</section>`;
+}

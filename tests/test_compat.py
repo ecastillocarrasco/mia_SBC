@@ -48,3 +48,24 @@ async def test_legacy_report_buttons_return_a_file(client: httpx.AsyncClient) ->
     assert "spreadsheetml" in response.headers["content-type"]
     bad = await client.post("/api/mia/informes/generar", json={"modulo": "inventado", "formato": "pdf"})
     assert bad.status_code == 400
+
+
+async def test_web_sources_reach_the_2d_as_links(client: httpx.AsyncClient, script: list) -> None:
+    """El 2D pinta «Fuentes web consultadas» a partir de data.web_sources ({url, title, domain})."""
+    from mia.llm import WebSources  # noqa: PLC0415
+    from mia.llm.fake import final_answer  # noqa: PLC0415
+
+    def with_sources(request: object) -> list:
+        return [
+            WebSources(({"url": "https://www.aemet.es/prediccion", "title": "AEMET"},)),
+            WebSources(({"url": "https://www.aemet.es/prediccion", "title": "AEMET"},)),  # duplicada
+            *final_answer("Mañana, sol.", "Mañana habrá sol."),
+        ]
+
+    script[0] = with_sources
+    body = (await client.post("/api/mia/chat", json={"message": "¿tiempo mañana en Málaga?"})).json()
+    assert body["data"]["web_sources"] == [
+        {"url": "https://www.aemet.es/prediccion", "title": "AEMET", "domain": "aemet.es"}
+    ]
+    chat = (await client.post("/api/chat", json={"message": "otra vez"})).json()
+    assert chat["web_sources"] == [{"url": "https://www.aemet.es/prediccion", "title": "AEMET"}]

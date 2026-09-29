@@ -14,6 +14,7 @@ import re
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, status
@@ -27,6 +28,7 @@ from mia.api.routes.chat import prime
 from mia.api.routes.reports import MEDIA
 from mia.api.routes.voice import stream_speech
 from mia.api.sse import to_ndjson
+from mia.assets import resolve_logo
 from mia.conversation import TurnResult
 from mia.conversation.events import ProgressEvent, ResultEvent, ToolEvent
 from mia.conversation.tools import ToolContext, ToolStatus
@@ -56,6 +58,10 @@ class LegacyVoiceRequest(BaseModel):
 
 def legacy_payload(result: TurnResult) -> dict[str, Any]:
     data, actions = legacy_view(result.presentations, result.summaries)
+    if result.web_sources:
+        data["web_sources"] = [
+            {**s, "domain": urlsplit(s["url"]).netloc.removeprefix("www.")} for s in result.web_sources
+        ]
     return {
         "status": "ok" if result.status == "ok" else "error",
         "answer": result.answer,
@@ -149,8 +155,9 @@ async def legacy_report(body: dict[str, Any], services: ServicesDep, user: UserD
     if execution.result.status is not ToolStatus.OK or not execution.result.presentation:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No hay datos para ese informe")
     document = to_document(execution.result.presentation)
-    logo = services.settings.reports.logo_path
-    content = await asyncio.to_thread(RENDERERS[fmt], document, ctx.now, logo if logo and logo.is_file() else None)
+    content = await asyncio.to_thread(
+        RENDERERS[fmt], document, ctx.now, resolve_logo(services.settings.reports.logo_path)
+    )
     name = re.sub(r"[^\w\- ]+", "", document.title).strip()[:60] or "informe"
     return Response(
         content,

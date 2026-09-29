@@ -38,6 +38,8 @@ class Case:
     """Patrones que no pueden aparecer en lo que mIA dice en voz alta."""
     truth: Truth | None = None
     """Cifra real calculada en la base de datos: la respuesta debe contenerla."""
+    needs_sources: bool = False
+    """Consulta externa: la respuesta debe traer fuentes web con enlace (web_sources)."""
 
 
 async def _count(db: Database, stmt: object) -> int:
@@ -245,6 +247,12 @@ CASES = [
         must_not=[r"(?i)no\s+(puedo|tengo\s+acceso)"],
     ),
     Case(
+        "consulta_externa_con_fuentes",
+        ["¿Qué tiempo va a hacer mañana en Málaga?"],
+        must_not=[r"(?i)no\s+(puedo|tengo\s+acceso)"],
+        needs_sources=True,
+    ),
+    Case(
         "consulta_general_literatura",
         ["¿Quién escribió Cien años de soledad?"],
         must=[r"(?i)garc[ií]a\s+m[aá]rquez"],
@@ -322,6 +330,10 @@ def run(url: str) -> int:
             speech = str(body.get("speech", ""))
             problems = [f"contiene /{rx}/" for rx in case.must_not if re.search(rx, answer, re.I)]
             problems += [f"falta /{rx}/" for rx in case.must if not re.search(rx, answer)]
+            if case.needs_sources and not [
+                s for s in body.get("web_sources", []) if str(s.get("url", "")).startswith("http")
+            ]:
+                problems.append("sin fuentes web enlazables")
             if case.name in truths and not mentions_number(answer, truths[case.name]):
                 problems.append(f"la cifra real es {truths[case.name]}")
             problems += [f"voz contiene /{rx}/" for rx in case.speech_must_not if re.search(rx, speech, re.I)]

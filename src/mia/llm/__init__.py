@@ -9,6 +9,7 @@ from mia.llm.base import (
     ToolCall,
     ToolCallRequested,
     ToolSchema,
+    WebSources,
 )
 from mia.llm.factory import build_llm_provider
 
@@ -23,5 +24,6 @@ __all__ = [
     "ToolCall",
     "ToolCallRequested",
     "ToolSchema",
+    "WebSources",
     "build_llm_provider",
 ]

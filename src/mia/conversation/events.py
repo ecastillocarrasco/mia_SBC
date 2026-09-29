@@ -16,6 +16,8 @@ class TurnResult(BaseModel):
     presentations: list[dict[str, Any]] = Field(default_factory=list)
     summaries: list[dict[str, Any]] = Field(default_factory=list)
     """Resumen de cada herramienta (totales, desgloses, avisos): lo mismo que ve el modelo, para la pantalla."""
+    web_sources: list[dict[str, str]] = Field(default_factory=list)
+    """Fuentes web consultadas por el modelo ({url, title}): la pantalla las muestra como enlaces."""
     tools: list[dict[str, Any]] = Field(default_factory=list)
     elapsed_ms: int = 0
     usage: dict[str, int] = Field(default_factory=dict)

@@ -96,3 +96,32 @@ async def test_never_returns_a_persons_amount_or_name(registry: ToolRegistry) ->
 
 async def test_needs_its_own_permission(registry: ToolRegistry) -> None:
     assert (await call(registry, MANAGER, puesto="cocinero")).status is ToolStatus.PERMISSION_DENIED
+
+
+async def test_ranking_is_computed_over_the_whole_group_not_a_sample(registry: ToolRegistry) -> None:
+    """Fallo real: «los 3 que más cobraron» ordenaba solo las primeras personas de la lista (por orden alfabético)."""
+    ctx = ToolContext(user=ADMIN, request_id=None, now=NOW, session_state={})
+    result = (
+        await registry.execute(ToolCall("c", "ranking_salarial", json.dumps({"puesto": "cocinero", "cuantos": 3})), ctx)
+    ).result
+    top = result.summary["ranking"]
+    assert [r["persona"] for r in top] == ["Cocinero 105", "Cocinero 104", "Cocinero 103"]  # 1800, 1700, 1600
+    assert top[0]["importe"] == 1800.0 and result.summary["nominas_ordenadas"] == 6
+    lowest = (
+        await registry.execute(
+            ToolCall("c", "ranking_salarial", json.dumps({"puesto": "cocinero", "cuantos": 1, "orden": "menor"})), ctx
+        )
+    ).result
+    assert lowest.summary["ranking"][0]["persona"] == "Cocinero 101"
+
+
+async def test_ranking_refuses_small_groups_and_needs_the_permission(registry: ToolRegistry) -> None:
+    ctx = ToolContext(user=ADMIN, request_id=None, now=NOW, session_state={})
+    small = (
+        await registry.execute(ToolCall("c", "ranking_salarial", json.dumps({"puesto": "jefe de sala"})), ctx)
+    ).result
+    assert small.status is ToolStatus.PERMISSION_DENIED and "protección de datos" in small.summary["mensaje"]
+    denied = ToolContext(user=MANAGER, request_id=None, now=NOW, session_state={})
+    assert (
+        await registry.execute(ToolCall("c", "ranking_salarial", json.dumps({"puesto": "cocinero"})), denied)
+    ).result.status is ToolStatus.PERMISSION_DENIED

@@ -221,3 +221,17 @@ Ver [consultas.md](consultas.md) para el catálogo completo. Novedades de esta e
   solo agregados y con un mínimo de 5 personas por grupo.
 - `ficha_departamento`, `candidatos_y_plantilla`, `companeros_de_turno`, y horas de una persona en
   `metricas_turnos`.
+
+
+## Feedback de las pruebas en el 2D
+
+| Hallazgo | Corrección |
+|---|---|
+| «Los 3 que cobraron más» ordenaba solo las primeras personas de la lista (alfabético) | `ranking_salarial` ordena sobre todas las nóminas del grupo; el modelo no puede ordenar con datos parciales |
+| Correo sin botón de abrir, proponer respuesta ni confirmar envío | Panel de correo con acciones y tarjeta de borrador con confirmación en dos pasos |
+| Ficha en PDF con datos técnicos, sin logo y con «generado por mIA» | Ficha legible, logo en todas las cabeceras, sin esa línea |
+| Respuestas sin gráficos | Barras, anillo y línea (pantalla e informes) |
+| Consultas externas sin origen | Fuentes web enlazables |
+| Ficha de departamento: «2036 nóminas sin leer» (todo el histórico) | Personas con nóminas sin leer |
+| Consulta cruzada con 0 resultados sin explicación | «Embudo» criterio a criterio |
+| Texto de la respuesta sin numeraciones, enlaces ni tablas | Formato enriquecido |

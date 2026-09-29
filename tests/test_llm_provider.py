@@ -152,3 +152,66 @@ async def test_web_search_is_dropped_if_the_provider_rejects_it() -> None:
     assert bodies[1]["tools"] == [{"type": "web_search_preview"}] and bodies[2]["tools"] == [
         {"type": "web_search_preview"}
     ]
+
+
+async def test_web_sources_are_cited_links_without_tracking_or_unsafe_schemes() -> None:
+    """Las consultas externas deben poder verse en su origen: se leen las citas del texto y se limpian los enlaces."""
+    from mia.llm import WebSources  # noqa: PLC0415
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        body = _sse(
+            {"type": "response.output_text.delta", "delta": "Madrid"},
+            {
+                "type": "response.output_text.annotation.added",
+                "annotation": {
+                    "type": "url_citation",
+                    "url": "https://www.ejemplo.es/nota?utm_source=openai",
+                    "title": "Nota",
+                },
+            },
+            {
+                "type": "response.output_item.done",
+                "item": {
+                    "type": "message",
+                    "content": [
+                        {
+                            "annotations": [
+                                {
+                                    "type": "url_citation",
+                                    "url": "https://www.ejemplo.es/nota?utm_source=openai",
+                                    "title": "Nota",
+                                },
+                                {"type": "url_citation", "url": "javascript:alert(1)", "title": "Malo"},
+                                {
+                                    "type": "url_citation",
+                                    "url": "https://otra.org/a?id=7&utm_source=openai",
+                                    "title": "Otra",
+                                },
+                            ]
+                        }
+                    ],
+                },
+            },
+            {"type": "response.completed", "response": {"output": [], "usage": {}}},
+        )
+        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    provider = _provider(httpx.MockTransport(handle))
+    events = [e async for e in provider.stream(LLMRequest(system="s", messages=[Message("user", "x")]))]
+    await provider.aclose()
+    found = [s for e in events if isinstance(e, WebSources) for s in e.sources]
+    assert {"url": "https://www.ejemplo.es/nota", "title": "Nota"} in found
+    assert {"url": "https://otra.org/a?id=7", "title": "Otra"} in found
+    assert all(s["url"].startswith("https://") for s in found)  # el enlace javascript: se descarta
+
+
+def test_consulted_sources_are_used_only_when_nothing_is_cited() -> None:
+    from mia.llm.openai_responses import extract_web_sources  # noqa: PLC0415
+
+    searched = {"type": "web_search_call", "action": {"sources": [{"url": "https://a.org/x", "title": "A"}]}}
+    assert extract_web_sources([searched]) == ({"url": "https://a.org/x", "title": "A"},)
+    cited = {
+        "type": "message",
+        "content": [{"annotations": [{"type": "url_citation", "url": "https://b.org", "title": "B"}]}],
+    }
+    assert [s["url"] for s in extract_web_sources([searched, cited])] == ["https://b.org"]

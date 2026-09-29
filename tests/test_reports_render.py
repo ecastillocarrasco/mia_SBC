@@ -56,5 +56,7 @@ def test_every_result_renders_in_every_format(presentation: dict[str, object], f
 def test_profile_sections_become_blocks() -> None:
     doc = to_document(PROFILE)
     titles = [b.title for b in doc.blocks]
-    assert titles[0] == "Datos" and "Indicadores" in titles and "Semana actual" in titles
+    assert titles[0] == "Indicadores" and "Semana actual" in titles and "Ficha laboral" in titles
     assert "Acciones rapidas" not in " ".join(titles)
+    flat = " ".join(str(v) for b in doc.blocks for v in b.data.values())
+    assert "Empleado id" not in flat and "sin_incidencias" not in flat  # nada técnico en la ficha

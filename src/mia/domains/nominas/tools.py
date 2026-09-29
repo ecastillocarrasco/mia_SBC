@@ -338,7 +338,7 @@ def evolucion_nominas(deps: Deps) -> Tool:
 
 
 def register_amounts(registry: ToolRegistry, deps: Deps) -> None:
-    from mia.domains.nominas.estadisticas import estadisticas_salariales  # noqa: PLC0415
+    from mia.domains.nominas.estadisticas import estadisticas_salariales, ranking_salarial  # noqa: PLC0415
 
-    for factory in (nomina_importes, evolucion_nominas, estadisticas_salariales):
+    for factory in (nomina_importes, evolucion_nominas, estadisticas_salariales, ranking_salarial):
         registry.register(factory(deps))

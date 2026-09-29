@@ -49,6 +49,7 @@ from mia.llm import (
     TextDelta,
     ToolCall,
     ToolCallRequested,
+    WebSources,
 )
 from mia.observability import current_request_id, get_logger
 from mia.rules import rules_for_prompt
@@ -57,6 +58,7 @@ log = get_logger(__name__)
 
 MAX_MESSAGE_CHARS = 4000
 NEUTRAL_SPEECH = "Te lo dejo en pantalla."
+MAX_WEB_SOURCES = 12
 
 
 @dataclass(slots=True)
@@ -67,6 +69,11 @@ class _TurnState:
     executions: list[ToolExecution] = field(default_factory=list)
     usage: dict[str, int] = field(default_factory=lambda: {"input": 0, "cached": 0, "output": 0})
     spoken: list[str] = field(default_factory=list)
+    web_sources: list[dict[str, str]] = field(default_factory=list)
+
+    def add_web_sources(self, sources: tuple[dict[str, str], ...]) -> None:
+        known = {s["url"] for s in self.web_sources}
+        self.web_sources += [s for s in sources if s["url"] not in known and len(self.web_sources) < MAX_WEB_SOURCES]
 
     def elapsed_ms(self) -> int:
         return int((time.perf_counter() - self.started) * 1000)
@@ -198,6 +205,7 @@ class ConversationEngine:
             speech=final.speech,
             avatar_state=final.avatar_state,
             presentations=[e.result.presentation for e in turn.executions if e.result.presentation],
+            web_sources=turn.web_sources,
             summaries=[
                 {"tool": e.call.name, "summary": e.result.summary}
                 for e in turn.executions
@@ -286,6 +294,8 @@ class ConversationEngine:
                         yield speech_event
                 elif isinstance(event, ToolCallRequested):
                     calls.append(event.call)
+                elif isinstance(event, WebSources):
+                    turn.add_web_sources(event.sources)
                 elif isinstance(event, LLMCompleted):
                     turn.usage["input"] += event.input_tokens
                     turn.usage["cached"] += event.cached_tokens

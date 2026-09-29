@@ -46,6 +46,7 @@ plantilla activa (POB-001) salvo que se pida expresamente «incluyendo inactivos
 | «¿Cuántas nóminas tiene X?», «la última», «quién no tiene la de agosto» | `nominas_persona`, `nominas_periodo`, `consulta_cruzada` |
 | Importes de una nómina, evolución | `nomina_importes`, `evolucion_nominas` (permiso propio) |
 | **«Salario medio de un cocinero»**, líquido medio por departamento | `estadisticas_salariales` (solo agregados, mínimo 5 personas, permiso propio) |
+| **«Los 3 que más cobraron en Cocina»** (ordenado sobre todo el grupo, con la cobertura de nóminas leídas) | `ranking_salarial` (máx. 10, grupos de 5+, solo en pantalla, permiso propio) |
 | Documentos firmados, faltantes, contenido de un documento | `documentos_persona`, `documentos_faltantes`, `leer_documento` |
 
 ## Otros
@@ -53,3 +54,16 @@ Correo (`correos_sin_leer`, `buscar_correos`, `preparar_respuesta`…), trabajo 
 `boletines_tt`, `estimar_coste_tt`, `anomalias_tt`, `comunicaciones_tt`), panel de RRHH (`panel_rrhh`),
 altas, calidad de datos e informes PDF/Excel/PowerPoint (`generar_informe`). Cualquier pregunta general
 (fuera de Sunset Beach Club) se responde con el conocimiento del modelo y la búsqueda web.
+
+
+## Correo desde la pantalla
+Cada correo del listado tiene **Abrir correo** y **Proponer respuesta**. Un borrador se muestra como tarjeta con
+**Confirmar y enviar** (pide una segunda confirmación y solo se habilita si el envío está activado), **Modificar** y
+**Descartar**. Nada se envía sin que el usuario lo confirme en su último mensaje.
+
+## Gráficos y fuentes
+- Los recuentos por categorías (p. ej. empleados por departamento) se dibujan como **barras**, **anillo** (hasta 6
+  categorías) o **línea** (series por mes o día), en pantalla y en los informes (PDF, Excel y PowerPoint).
+- Las consultas externas (búsqueda web) muestran **enlaces a las fuentes** consultadas; son solo http(s), sin
+  duplicados y sin el rastreo del proveedor.
+- Todos los informes llevan el **logo de Sunset Beach Club** en la cabecera.

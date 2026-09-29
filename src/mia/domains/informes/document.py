@@ -3,7 +3,9 @@ se normaliza a bloques que después se pintan en PDF, Excel o PowerPoint."""
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 
 LABELS = {
@@ -31,6 +33,8 @@ class Block:
 class Document:
     title: str
     blocks: list[Block] = field(default_factory=list)
+    subtitle: str | None = None
+    badges: list[str] = field(default_factory=list)
 
 
 def _label(key: str) -> str:
@@ -61,8 +65,73 @@ def _list_table(title: str, items: list[dict[str, Any]]) -> Block:
     )
 
 
+_CAMEL = re.compile(r"(?<=[a-z])(?=[A-Z])")
+
+
+def _humanize(key: str) -> str:
+    text = _CAMEL.sub(" ", str(key)).replace("_", " ").strip()
+    return text[:1].upper() + text[1:].lower() if text else text
+
+
+def _pairs(data: dict[str, Any]) -> dict[str, str]:
+    """Pares etiqueta → valor legibles, sin los vacíos ni los técnicos."""
+    out = {}
+    for key, value in data.items():
+        if value in (None, "", [], {}) or key in {"cuenta"}:
+            continue
+        out[_humanize(key)] = ", ".join(map(str, value)) if isinstance(value, list) else _flat(value)
+    return out
+
+
+_WEEKDAYS = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
+
+
+def _day_label(value: Any) -> str:
+    """«2026-09-28» → «lun 28/09/2026»."""
+    try:
+        day = date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return str(value or "")
+    return f"{_WEEKDAYS[day.weekday()]} {day:%d/%m/%Y}"
+
+
+def _employee_document(card: dict[str, Any]) -> Document:
+    """Ficha 360 → secciones legibles (misma estructura que ve el usuario en pantalla)."""
+    from mia.api.legacy_view import employee360_view  # noqa: PLC0415
+
+    view = employee360_view(card)
+    hero = view["hero"]
+    doc = Document(
+        str(card.get("title") or f"Ficha 360 · {hero['title']}"),
+        subtitle=hero.get("subtitle") or None,
+        badges=["Activo" if hero.get("status") == "active" else "Inactivo"],
+    )
+    if view["kpis"]:
+        doc.blocks.append(Block("kpis", "Indicadores", {k["label"]: k["value"] for k in view["kpis"]}))
+    for section in view["sections"]:
+        layout, title = section["layout"], section["title"]
+        if layout == "week_strip" and section.get("items"):
+            rows = [
+                [_day_label(i.get("FechaISO") or i.get("Fecha")), i.get("Turno") or i.get("Tipo")]
+                for i in section["items"]
+            ]
+            doc.blocks.append(Block("table", title, {"columns": ["Día", "Turno"], "rows": rows}))
+        elif layout == "timeline" and section.get("items"):
+            rows = [
+                [i.get("display_date") or i.get("date"), i.get("title"), i.get("subtitle")] for i in section["items"]
+            ]
+            doc.blocks.append(Block("table", title, {"columns": ["Fecha", "Hito", "Detalle"], "rows": rows}))
+        elif layout in {"metric_detail", "definition_grid", "people_chips"}:
+            pairs = _pairs(section.get("data") or {})
+            if pairs:
+                doc.blocks.append(Block("section", title, pairs))
+    return doc
+
+
 def to_document(presentation: dict[str, Any]) -> Document:
     kind = presentation.get("type")
+    if kind == "employee_360":
+        return _employee_document(presentation)
     doc = Document(str(presentation.get("title") or "Informe de mIA"))
     if kind == "table":
         doc.blocks.append(Block("table", doc.title, presentation))

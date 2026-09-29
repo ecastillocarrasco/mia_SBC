@@ -11,6 +11,7 @@ import base64
 import json
 from collections.abc import AsyncIterator
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 
@@ -23,6 +24,7 @@ from mia.llm.base import (
     TextDelta,
     ToolCall,
     ToolCallRequested,
+    WebSources,
 )
 from mia.observability import get_logger
 
@@ -47,6 +49,34 @@ def _input_items(messages: list[Message]) -> list[dict[str, Any]]:
                 }
             )
     return items
+
+
+def _clean_url(url: str) -> str | None:
+    """Solo enlaces http(s); se quita el rastreo que añade el proveedor (utm_source=openai)."""
+    parts = urlsplit(url.strip())
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        return None
+    query = [
+        (k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if not (k == "utm_source" and v == "openai")
+    ]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), ""))
+
+
+def extract_web_sources(output_items: list[dict[str, Any]]) -> tuple[dict[str, str], ...]:
+    """Fuentes web de la salida del proveedor: las CITADAS en el texto (url_citation) y, si no hay ninguna,
+    las que consultó la búsqueda. Devuelve enlaces únicos y seguros, con su título."""
+    cited: dict[str, str] = {}
+    consulted: dict[str, str] = {}
+    for item in output_items:
+        for part in item.get("content") or []:
+            for note in part.get("annotations") or []:
+                if note.get("type") == "url_citation" and (url := _clean_url(str(note.get("url") or ""))):
+                    cited.setdefault(url, str(note.get("title") or "").strip())
+        for source in (item.get("action") or {}).get("sources") or []:
+            if url := _clean_url(str(source.get("url") or "")):
+                consulted.setdefault(url, str(source.get("title") or "").strip())
+    chosen = cited or consulted
+    return tuple({"url": url, "title": title} for url, title in chosen.items())
 
 
 def build_payload(model: str, request: LLMRequest, *, web_search: bool | str = False) -> dict[str, Any]:
@@ -195,7 +225,7 @@ class OpenAIResponsesProvider:
             except httpx.HTTPError as exc:
                 raise LLMError(f"Error de red con el proveedor LLM: {exc}") from exc
 
-    async def _parse_sse(self, response: httpx.Response) -> AsyncIterator[LLMEvent]:
+    async def _parse_sse(self, response: httpx.Response) -> AsyncIterator[LLMEvent]:  # noqa: PLR0912
         async for line in response.aiter_lines():
             if not line.startswith("data:"):
                 continue
@@ -210,8 +240,13 @@ class OpenAIResponsesProvider:
             kind = event.get("type")
             if kind == "response.output_text.delta":
                 yield TextDelta(str(event.get("delta", "")))
+            elif kind == "response.output_text.annotation.added":
+                if found := extract_web_sources([{"content": [{"annotations": [event.get("annotation") or {}]}]}]):
+                    yield WebSources(found)
             elif kind == "response.output_item.done":
                 item = event.get("item") or {}
+                if found := extract_web_sources([item]):
+                    yield WebSources(found)
                 if item.get("type") == "function_call":
                     yield ToolCallRequested(
                         ToolCall(
@@ -221,6 +256,8 @@ class OpenAIResponsesProvider:
                         )
                     )
             elif kind == "response.completed":
+                if found := extract_web_sources((event.get("response") or {}).get("output") or []):
+                    yield WebSources(found)
                 usage = (event.get("response") or {}).get("usage") or {}
                 details = usage.get("input_tokens_details") or {}
                 yield LLMCompleted(

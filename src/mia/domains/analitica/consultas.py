@@ -283,6 +283,7 @@ def consulta_cruzada(deps: Deps) -> Tool:
         people = base
         default_lo, default_hi = p.resolve(today)
         unknown: list[str] = []
+        funnel: list[dict[str, Any]] = [{"criterio": "partida (base)", "personas": len(people)}]
         async with deps.db.session() as db:
             for c in p.condiciones:
                 cond = (
@@ -296,6 +297,7 @@ def consulta_cruzada(deps: Deps) -> Tool:
                     continue
                 keep = {e.sp_id for e in people} - matched if c.negar else matched
                 people = [e for e in people if e.sp_id in keep]
+                funnel.append({"criterio": ("NO " if c.negar else "") + DESCRIPTIONS[c.que], "personas": len(people)})
                 start, end = _period(cond, default_lo, default_hi)
                 criteria.append(
                     ("NO " if c.negar else "")
@@ -313,6 +315,9 @@ def consulta_cruzada(deps: Deps) -> Tool:
             "total": len(people),
             **({"criterios_no_reconocidos": unknown} if unknown else {}),
         }
+        if len(funnel) > 1:
+            # Dónde se pierde el resultado: sirve para explicar un «ninguno» o un número pequeño.
+            summary["embudo"] = funnel
         state = population_state(f"consulta cruzada ({'; '.join(criteria) or 'plantilla'})", people)
         if p.operacion == "contar":
             return ToolResult(ToolStatus.OK, summary, None, state)

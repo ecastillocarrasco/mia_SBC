@@ -61,7 +61,14 @@ class LLMCompleted:
     output_tokens: int = 0
 
 
-LLMEvent = TextDelta | ToolCallRequested | LLMCompleted
+@dataclass(frozen=True, slots=True)
+class WebSources:
+    """Fuentes web que el proveedor ha citado o consultado en la búsqueda: [{url, title}]."""
+
+    sources: tuple[dict[str, str], ...]
+
+
+LLMEvent = TextDelta | ToolCallRequested | LLMCompleted | WebSources
 
 
 class LLMError(Exception):

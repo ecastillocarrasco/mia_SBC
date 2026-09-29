@@ -198,7 +198,7 @@ async def test_department_360(registry: ToolRegistry) -> None:
     s = result.summary
     assert s["departamento"] == "Cocina" and s["plantilla_activa"] == 2  # el exempleado no cuenta
     assert s["hoy"]["vacaciones"] == 1 and s["hoy"]["trabajando"] == 1
-    assert s["vacaciones"]["con_saldo_negativo"] == 1 and s["nominas_sin_leer"] == 1
+    assert s["vacaciones"]["con_saldo_negativo"] == 1 and s["personas_con_nominas_sin_leer"] == 1
 
 
 async def _candidate_registry(tmp_path: Path) -> tuple[ToolRegistry, Any]:
@@ -289,3 +289,12 @@ async def test_shift_mates_and_hours_of_one_person(tmp_path: Path) -> None:
     ).result
     await db.dispose()
     assert hours.summary["horas_totales"] == 6.0 and hours.summary["jornadas_trabajadas"] == 1
+
+
+async def test_funnel_explains_where_the_result_is_lost(registry: ToolRegistry) -> None:
+    result = await q(
+        registry, departamento="Cocina", condiciones=[{"que": "de_vacaciones"}, {"que": "saldo_mayor_que", "valor": 5}]
+    )
+    assert result.summary["total"] == 0
+    steps = [(s["criterio"][:12], s["personas"]) for s in result.summary["embudo"]]
+    assert steps == [("partida (bas", 2), ("está de vaca", 1), ("saldo de vac", 0)]

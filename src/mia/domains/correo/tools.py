@@ -59,6 +59,29 @@ def _remember(ctx: ToolContext, messages: list[dict[str, Any]]) -> list[dict[str
     return out
 
 
+def _mail_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Filas en el formato del panel de correo del 2D, con la referencia para poder abrir cada correo."""
+    return [
+        {
+            "ref": i["ref"],
+            "from": i["de"],
+            "subject": i["asunto"],
+            "received_at": i["recibido"],
+            "has_attachments": bool(i.get("adjuntos")),
+            "preview": i.get("extracto"),
+            "is_read": bool(i.get("leido")),
+        }
+        for i in items
+    ]
+
+
+def _mail_table(title: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+    view = table(
+        title, ["Ref", "De", "Asunto", "Recibido"], [[i["ref"], i["de"], i["asunto"], i["recibido"]] for i in items]
+    )
+    return {**view, "mail_rows": _mail_rows(items)}
+
+
 def _unavailable(deps: Deps) -> ToolResult | None:
     if deps.graph is None or not deps.settings or not deps.settings.mail.mailbox:
         return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, "El buzón de correo no está configurado")
@@ -100,11 +123,7 @@ def pendientes(deps: Deps) -> Tool:
         return ToolResult(
             ToolStatus.OK,
             {"sin_leer_mostrados": len(items), "correos": items},
-            table(
-                "Correos sin leer",
-                ["Ref", "De", "Asunto", "Recibido"],
-                [[i["ref"], i["de"], i["asunto"], i["recibido"]] for i in items],
-            ),
+            _mail_table("Correos sin leer", items),
         )
 
     return Tool(
@@ -140,11 +159,7 @@ def buscar(deps: Deps) -> Tool:
         return ToolResult(
             status,
             {"consulta": p.consulta, "correos": items},
-            table(
-                f"Correos: {p.consulta}",
-                ["Ref", "De", "Asunto", "Recibido"],
-                [[i["ref"], i["de"], i["asunto"], i["recibido"]] for i in items],
-            ),
+            _mail_table(f"Correos: {p.consulta}", items),
         )
 
     return Tool(
@@ -238,7 +253,13 @@ def borrador(deps: Deps) -> Tool:
                 "texto": p.texto,
                 "mensaje": "Borrador guardado en el buzón. Para enviarlo, el usuario debe confirmarlo.",
             },
-            {"type": "mail_draft", "borrador": ref, "texto": p.texto},
+            {
+                "type": "mail_draft",
+                "borrador": ref,
+                "texto": p.texto,
+                "responde_a": p.ref,
+                "envio_habilitado": bool(deps.settings.mail.send_enabled),
+            },
         )
 
     return Tool(
@@ -333,7 +354,12 @@ def modificar(deps: Deps) -> Tool:
                 "texto": p.texto,
                 "mensaje": "Borrador actualizado; enséñalo y espera confirmación.",
             },
-            {"type": "mail_draft", "borrador": p.borrador, "texto": p.texto},
+            {
+                "type": "mail_draft",
+                "borrador": p.borrador,
+                "texto": p.texto,
+                "envio_habilitado": bool(deps.settings.mail.send_enabled),
+            },
         )
 
     return Tool(

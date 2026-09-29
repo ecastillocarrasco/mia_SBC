@@ -83,3 +83,88 @@ def test_tool_summaries_reach_the_screen() -> None:
     assert "Una persona puede tener varias solicitudes." in data["insights"]
     assert data["alertas_calidad"] == ["Última sincronización hace 45 minutos: pueden faltar cambios recientes."]
     assert not any("interna" in str(v) for v in data.values())
+
+
+def test_counts_by_category_become_a_chart() -> None:
+    """Enriquecer con gráficos: «número de empleados por departamento» es un recuento por categorías."""
+    table = {
+        "type": "table",
+        "title": "Por departamento",
+        "columns": ["Departamento", "Personas"],
+        "rows": [
+            ["Pisos", 136],
+            ["Restaurante", 71],
+            ["Cocina", 43],
+            ["Animación", 20],
+            ["Recepción", 20],
+            ["Mantenimiento", 14],
+            ["Supermercado", 13],
+        ],
+    }
+    data, _ = legacy_view([table])
+    chart = data["charts"][0]
+    assert chart["type"] == "bar" and chart["labels"][0] == "Pisos" and chart["series"][0]["values"][0] == 136
+    few, _ = legacy_view([{**table, "rows": table["rows"][:3]}])
+    assert few["charts"][0]["type"] == "donut"  # pocas categorías: partes de un todo
+    months = {
+        "type": "table",
+        "title": "Nóminas por mes",
+        "columns": ["Mes", "Documentos"],
+        "rows": [["2026-05", 40], ["2026-06", 41], ["2026-07", 43]],
+    }
+    assert legacy_view([months])[0]["charts"][0]["type"] == "line"
+
+
+def test_no_chart_for_lists_indicators_or_mixed_values() -> None:
+    people = {
+        "type": "table",
+        "title": "Edad",
+        "columns": ["Persona", "Edad"],
+        "rows": [[f"P{i}", 30 + i] for i in range(40)],
+    }
+    kpis = {
+        "type": "table",
+        "title": "Departamento",
+        "columns": ["Indicador", "Valor"],
+        "rows": [["Plantilla", 136], ["Trabajando", 55], ["Baja", 16]],
+    }
+    assert "charts" not in legacy_view([people])[0] and "charts" not in legacy_view([kpis])[0]
+
+
+def test_mail_is_translated_to_the_mail_panel_with_refs() -> None:
+    listing = {
+        "type": "table",
+        "title": "Correos sin leer",
+        "columns": ["Ref", "De", "Asunto", "Recibido"],
+        "rows": [["c1", "Ana <a@x.com>", "Hola", "2026-08-22T13:35:11Z"]],
+        "mail_rows": [
+            {
+                "ref": "c1",
+                "from": "Ana <a@x.com>",
+                "subject": "Hola",
+                "received_at": "2026-08-22T13:35:11Z",
+                "has_attachments": False,
+            }
+        ],
+    }
+    data, _ = legacy_view([listing])
+    row = data["mail_rows"][0]
+    assert row["ref"] == "c1" and row["sender_name"] == "Ana" and row["sender_address"] == "a@x.com"
+    assert "table" not in data  # el panel de correo sustituye a la tabla genérica
+    draft, _ = legacy_view(
+        [{"type": "mail_draft", "borrador": "b1", "texto": "Gracias", "responde_a": "c1", "envio_habilitado": False}]
+    )
+    assert draft["mail_draft"]["borrador"] == "b1" and draft["mail_draft"]["envio_habilitado"] is False
+    opened, _ = legacy_view(
+        [
+            {
+                "type": "mail",
+                "ref": "c1",
+                "de": "Ana <a@x.com>",
+                "asunto": "Hola",
+                "texto": "Cuerpo",
+                "adjuntos": ["a.pdf"],
+            }
+        ]
+    )
+    assert opened["mail_message"]["text"] == "Cuerpo" and opened["mail_message"]["attachments"] == ["a.pdf"]

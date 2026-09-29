@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { MiaClient } from "../../core/client.js";
 import { bindMicButton } from "../../core/dictation.js";
 import { avatarLabel } from "../../core/avatar.js";
-import { renderPresentation } from "../../core/present.js";
+import { renderPresentation, renderSources } from "../../core/present.js";
 import { MiaScene } from "../../core/scene.js";
 
 // Material de proyección: brillo en los bordes (fresnel) y bandas que suben, aditivo.
@@ -75,7 +75,7 @@ async function submit(text) {
   try {
     const result = await client.send(text);
     caption.textContent = result.answer;
-    resultEl.innerHTML = (result.presentations || []).map(renderPresentation).join("");
+    resultEl.innerHTML = (result.presentations || []).map(renderPresentation).join("") + renderSources(result.web_sources);
     await client.speak(result.speech, { onStart: () => scene.playState("hablando") });
     scene.playState(result.avatar_state);
   } catch (error) {
