@@ -30,8 +30,10 @@ async def registry(tmp_path: Path) -> AsyncIterator[ToolRegistry]:
     await db.dispose()
 
 
-async def call(registry: ToolRegistry, name: str, user: UserContext = ADMIN, **args: Any) -> Any:
-    ctx = ToolContext(user=user, request_id=None, now=NOW)
+async def call(
+    registry: ToolRegistry, name: str, user: UserContext = ADMIN, state: dict[str, Any] | None = None, **args: Any
+) -> Any:
+    ctx = ToolContext(user=user, request_id=None, now=NOW, session_state=state or {})
     execution = await registry.execute(ToolCall("c", name, json.dumps(args)), ctx)
     return execution.result
 
@@ -325,3 +327,31 @@ async def test_department_passed_as_position_is_treated_as_department(registry: 
 async def test_balances_exclude_inactive_and_sort_by_most_days(registry: ToolRegistry) -> None:
     result = await call(registry, "saldo_vacaciones", ordenar="mayor", limite=1)
     assert result.summary["saldos"][0]["saldo_actual"] == max(s["saldo_actual"] for s in result.summary["saldos"])
+
+
+async def test_lists_are_crossed_with_the_employee_record(registry: ToolRegistry) -> None:
+    """Fallo reportado: vacaciones (y otros listados) no traían el puesto de EmpleadosCorporativos."""
+    vac = await call(registry, "vacaciones", desde="2026-08-01", hasta="2026-08-31")
+    assert vac.presentation["columns"][:2] == ["Persona", "Puesto"]
+    assert vac.presentation["rows"][0][1] == "Camarera de pisos"
+    absences = await call(registry, "ausencias", desde="2026-08-01", hasta="2026-08-31")
+    assert "Puesto" in absences.presentation["columns"]
+    assert all(r[1] for r in absences.presentation["rows"])
+
+
+async def test_cross_domain_data_over_the_previous_result(registry: ToolRegistry) -> None:
+    """«De los que están de vacaciones, ¿qué puesto tienen, cuánto saldo y qué turno hoy?»."""
+    ctx_state: dict[str, Any] = {}
+    first = await call(registry, "vacaciones", desde="2026-08-01", hasta="2026-08-31")
+    ctx_state.update(first.state_updates)
+    result = await call(
+        registry,
+        "datos_de_personas",
+        state=ctx_state,
+        campos=["puesto", "saldo_vacaciones", "turno_hoy", "ultima_nomina", "nominas_no_leidas", "documentos_firmados"],
+    )
+    assert result.status.value == "ok"
+    row = next(r for r in result.summary["detalle"] if r["persona"] == "Ana Ruiz Sanz")
+    assert row["puesto"] == "Camarera de pisos"
+    assert row["saldo_vacaciones"].startswith("-2.5") and row["turno_hoy"].startswith("Vacaciones")
+    assert result.presentation["columns"][0] == "Persona"

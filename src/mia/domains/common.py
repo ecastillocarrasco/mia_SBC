@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.conversation import ToolResult, ToolStatus
@@ -301,3 +301,60 @@ async def employees_for(
     if not conditions:
         return []
     return list((await db.scalars(select(Employee).where(or_(*conditions)).order_by(Employee.name))).all())
+
+
+# ------------------------------------------------------------------ cruce con EmpleadosCorporativos
+@dataclass(frozen=True, slots=True)
+class PersonInfo:
+    empleado_id: int
+    puesto: str | None
+    departamento: str | None
+    activo: bool
+    responsable: str | None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "empleado_id": self.empleado_id,
+            "puesto": self.puesto,
+            "departamento_actual": self.departamento,
+            "activo": self.activo,
+            "responsable": self.responsable,
+        }
+
+
+class PeopleDirectory:
+    """Cruza cualquier listado con la ficha del empleado (EmpleadosCorporativos) por email o por
+    seudónimo del DNI, para que vacaciones, turnos, saldos… lleven también puesto, departamento actual,
+    responsable y si sigue activo (como hacía el sistema anterior)."""
+
+    def __init__(self, employees: list[Employee]) -> None:
+        self._by_email: dict[str, PersonInfo] = {}
+        self._by_key: dict[str, PersonInfo] = {}
+        for e in sorted(employees, key=lambda x: x.active):  # los activos prevalecen si hay duplicados
+            info = PersonInfo(e.sp_id, e.position, e.department, bool(e.active), e.manager_name)
+            if e.email:
+                self._by_email[e.email.lower()] = info
+            if e.person_key:
+                self._by_key[e.person_key] = info
+
+    @classmethod
+    async def load(
+        cls, db: AsyncSession, *, emails: set[str] | None = None, person_keys: set[str] | None = None
+    ) -> PeopleDirectory:
+        conditions = []
+        if emails:
+            conditions.append(func.lower(Employee.email).in_({e.lower() for e in emails if e}))
+        if person_keys:
+            conditions.append(Employee.person_key.in_({k for k in person_keys if k}))
+        if not conditions:
+            return cls([])
+        return cls(list((await db.scalars(select(Employee).where(or_(*conditions)))).all()))
+
+    def get(self, *, email: str | None = None, person_key: str | None = None) -> PersonInfo | None:
+        return (self._by_email.get(email.lower()) if email else None) or (
+            self._by_key.get(person_key) if person_key else None
+        )
+
+    def puesto(self, *, email: str | None = None, person_key: str | None = None) -> str | None:
+        info = self.get(email=email, person_key=person_key)
+        return info.puesto if info else None

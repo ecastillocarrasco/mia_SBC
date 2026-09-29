@@ -219,6 +219,11 @@ CASES = [
         must_not=[r"(?i)no\s+(puedo|tengo\s+acceso)"],
     ),
     Case(
+        "cruce_entre_dominios",
+        ["¿Quién está de vacaciones hoy?", "De esos, ¿qué puesto tienen y cuánto saldo les queda?"],
+        must_not=[r"(?i)no\s+(tengo|dispongo)\s+(de\s+)?(esa\s+)?informaci[oó]n|no\s+puedo"],
+    ),
+    Case(
         "consulta_general_literatura",
         ["¿Quién escribió Cien años de soledad?"],
         must=[r"(?i)garc[ií]a\s+m[aá]rquez"],

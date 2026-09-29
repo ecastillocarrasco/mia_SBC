@@ -187,3 +187,13 @@ sinónimos, especialidades, niveles), y los comprueba por separado en este orden
 
 Devuelve cuántas candidaturas y personas únicas cumplen todo, dónde se cumple cada requisito y el
 fragmento que lo demuestra. La búsqueda libre por perfil queda como `candidatos_parecidos`.
+
+
+## Cruce entre dominios
+
+- **Automático**: vacaciones, saldos, ausencias, reincorporaciones y turnos del día se cruzan con
+  EmpleadosCorporativos (por email o por el seudónimo del DNI) y muestran el puesto de cada persona;
+  vacaciones indica además cuántas solicitudes no tienen ficha en la plantilla.
+- **A demanda**: `datos_de_personas` añade a cualquier grupo (el resultado anterior, uno anterior con
+  «resultado», o una lista de personas) puesto, departamento, responsable, edad, contacto, turno de hoy,
+  saldo y próximas vacaciones, última nómina, nóminas sin leer y documentos firmados.

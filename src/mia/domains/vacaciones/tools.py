@@ -17,6 +17,7 @@ from mia.domains.common import (
     MAX_ROWS_FOR_MODEL,
     CohortParams,
     Deps,
+    PeopleDirectory,
     Periodo,
     PersonaParams,
     department_problem,
@@ -115,9 +116,11 @@ def solicitudes(deps: Deps) -> Tool:
         async with deps.db.session() as db:
             people = await employees_for(db, emails={v.employee_email for v in rows if v.employee_email})
         state.update(population_state(f"vacaciones ({p.estado})", people))
+        directory = PeopleDirectory(people)
         items = [
             {
                 "persona": v.employee_name,
+                "puesto": directory.puesto(email=v.employee_email),
                 "departamento": v.department,
                 "desde": fmt_date(v.start_date),
                 "hasta": fmt_date(v.end_date),
@@ -134,6 +137,7 @@ def solicitudes(deps: Deps) -> Tool:
             "solicitudes_solapadas": overlapping,
             "estado": p.estado,
             "nota": "Cuenta personas con «personas_distintas»; una persona puede tener varias solicitudes.",
+            "sin_correspondencia_en_plantilla": sum(1 for v in rows if not directory.get(email=v.employee_email)),
             **fresh,
         }
         if len(items) <= MAX_ROWS_FOR_MODEL:
@@ -143,7 +147,7 @@ def solicitudes(deps: Deps) -> Tool:
             summary,
             table(
                 "Vacaciones",
-                ["Persona", "Departamento", "Desde", "Hasta", "Días", "Estado", "Tipo"],
+                ["Persona", "Puesto", "Departamento", "Desde", "Hasta", "Días", "Estado", "Tipo"],
                 [list(i.values()) for i in items],
             ),
             state,
@@ -211,9 +215,11 @@ def saldos(deps: Deps) -> Tool:
             return ToolResult(
                 ToolStatus.NOT_FOUND, {"mensaje": f"No hay saldos de {year} con esos criterios.", **fresh}
             )
+        directory = PeopleDirectory(people)
         items = [
             {
                 "persona": b.employee_name,
+                "puesto": directory.puesto(email=b.employee_email),
                 "departamento": b.department,
                 "saldo_actual": b.current_balance,
                 "saldo_total": b.total_balance,
@@ -239,7 +245,7 @@ def saldos(deps: Deps) -> Tool:
             summary,
             table(
                 f"Saldo de vacaciones {year}",
-                ["Persona", "Departamento", "Saldo actual", "Saldo total"],
+                ["Persona", "Puesto", "Departamento", "Saldo actual", "Saldo total", "Consumido"],
                 [list(i.values()) for i in items],
             ),
             state,

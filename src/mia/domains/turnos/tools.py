@@ -18,6 +18,7 @@ from mia.domains.common import (
     MAX_ROWS_FOR_MODEL,
     CohortParams,
     Deps,
+    PeopleDirectory,
     Periodo,
     PersonaParams,
     days_between,
@@ -72,6 +73,25 @@ def tomorrow_not_morning(message: str, franja: str | None, fecha: date | None, t
 
 
 _WORKING = re.compile(r"\btrabaj|\bqui[eé]n(?:es)?\s+(?:est[aá]n?|hay)\s+(?:de\s+)?turno", re.IGNORECASE)
+
+
+def _day_rows(selected: list[ShiftDay], directory: PeopleDirectory, summary: dict[str, Any]) -> list[list[Any]]:
+    """Filas de los turnos del día cruzadas con la ficha del empleado (puesto)."""
+    for person in summary.get("personas", []):
+        match = next((s for s in selected if s.employee_name == person["nombre"]), None)
+        person["puesto"] = directory.puesto(person_key=match.person_key) if match else None
+    return [
+        [
+            s.employee_name,
+            directory.puesto(person_key=s.person_key),
+            s.department,
+            s.kind,
+            s.raw_value,
+            s.area,
+            s.comment,
+        ]
+        for s in selected
+    ]
 
 
 def _minutes(hhmm: str | None) -> int | None:
@@ -288,10 +308,10 @@ def turnos_dia(deps: Deps) -> Tool:
                 }
                 for s in selected
             ]
-        rows = [[s.employee_name, s.department, s.kind, s.raw_value, s.area, s.comment] for s in selected]
         state: dict[str, Any] = {"foco_periodo": {"desde": day.isoformat()}}
         async with deps.db.session() as db:
             people = await employees_for(db, person_keys={s.person_key for s in selected if s.person_key})
+        rows = _day_rows(selected, PeopleDirectory(people), summary)
         state.update(population_state(f"turnos {day.isoformat()} ({summary['criterio']})", people))
         if dept_key:
             state["foco_departamento"] = shifts[0].department
@@ -300,7 +320,7 @@ def turnos_dia(deps: Deps) -> Tool:
             summary,
             table(
                 f"Turnos {fmt_date(day)}",
-                ["Persona", "Departamento", "Tipo", "Turno", "Área", "Comentario"],
+                ["Persona", "Puesto", "Departamento", "Tipo", "Turno", "Área", "Comentario"],
                 rows,
             ),
             state,
@@ -318,9 +338,12 @@ def turnos_dia(deps: Deps) -> Tool:
 
 
 # ------------------------------------------------------------------ ausencias
-def _period_view(p: AbsencePeriod, today: date, lo: date, hi: date) -> dict[str, Any]:
+def _period_view(
+    p: AbsencePeriod, today: date, lo: date, hi: date, directory: PeopleDirectory | None = None
+) -> dict[str, Any]:
     view: dict[str, Any] = {
         "persona": p.name,
+        "puesto": directory.puesto(person_key=p.person_key) if directory else None,
         "departamento": p.department,
         "tipo": p.kind,
         "desde": p.start.isoformat(),
@@ -349,9 +372,9 @@ class AusenciasParams(Periodo, CohortParams):
 
 
 def _absence_summary(
-    periods: list[AbsencePeriod], today: date, lo: date, hi: date
+    periods: list[AbsencePeriod], today: date, lo: date, hi: date, directory: PeopleDirectory | None = None
 ) -> tuple[dict[str, Any], list[list[Any]]]:
-    views = [_period_view(x, today, lo, hi) for x in periods]
+    views = [_period_view(x, today, lo, hi, directory) for x in periods]
     by_kind: dict[str, dict[str, float]] = defaultdict(
         lambda: {"personas": 0, "periodos": 0, "dias": 0, "_dias_completos": 0}
     )
@@ -392,6 +415,7 @@ def _absence_summary(
     rows = [
         [
             v["persona"],
+            v["puesto"],
             v["departamento"],
             v["tipo"],
             fmt_date(date.fromisoformat(v["desde"])),
@@ -455,7 +479,9 @@ def ausencias(deps: Deps) -> Tool:
             fresh = await deps.freshness(db, "turnos")
         key = (lambda x: -x.days) if p.ordenar_por == "duracion" else (lambda x: x.start.toordinal())
         periods.sort(key=key)
-        summary, rows = _absence_summary(periods, today, lo, hi)
+        async with deps.db.session() as db:
+            directory = await PeopleDirectory.load(db, person_keys={x.person_key for x in periods})
+        summary, rows = _absence_summary(periods, today, lo, hi, directory)
         summary.update(fresh)
         state["foco_periodo"] = {"desde": lo.isoformat(), "hasta": hi.isoformat()}
         if person_keys and len(person_keys) == 1:
@@ -471,7 +497,7 @@ def ausencias(deps: Deps) -> Tool:
         return ToolResult(
             ToolStatus.OK,
             summary,
-            table("Ausencias", ["Persona", "Departamento", "Tipo", "Desde", "Hasta", "Días"], rows),
+            table("Ausencias", ["Persona", "Puesto", "Departamento", "Tipo", "Desde", "Hasta", "Días"], rows),
             state,
         )
 
@@ -539,9 +565,12 @@ def reincorporaciones(deps: Deps) -> Tool:
             people = await employees_for(db, person_keys={x.person_key for x in published})
         pending = [x for x in periods if x.return_shift is None and x.end <= hi]
         published.sort(key=lambda x: x.return_shift.day if x.return_shift else x.end)
+        async with deps.db.session() as db:
+            directory = await PeopleDirectory.load(db, person_keys={x.person_key for x in published})
         items = [
             {
                 "persona": x.name,
+                "puesto": directory.puesto(person_key=x.person_key),
                 "departamento": x.department,
                 "motivo": x.kind,
                 "tras": f"tras {x.kind.lower()}",
@@ -569,11 +598,11 @@ def reincorporaciones(deps: Deps) -> Tool:
         }
         if len(items) <= MAX_ROWS_FOR_MODEL:
             summary["reincorporaciones"] = items
-        rows = [[i["persona"], i["departamento"], i["motivo"], i["vuelve"], i["turno"]] for i in items]
+        rows = [[i["persona"], i["puesto"], i["departamento"], i["motivo"], i["vuelve"], i["turno"]] for i in items]
         return ToolResult(
             ToolStatus.OK,
             summary,
-            table("Reincorporaciones", ["Persona", "Departamento", "Vuelve tras", "Vuelve", "Turno"], rows),
+            table("Reincorporaciones", ["Persona", "Puesto", "Departamento", "Vuelve tras", "Vuelve", "Turno"], rows),
             {
                 "foco_periodo": {"desde": lo.isoformat(), "hasta": hi.isoformat()},
                 **population_state(f"reincorporaciones {lo.isoformat()}–{hi.isoformat()}", people),
