@@ -312,7 +312,7 @@ async def test_cohort_without_previous_result(registry: ToolRegistry) -> None:
 
 
 async def test_headcount_includes_average_age(registry: ToolRegistry) -> None:
-    result = await call(registry, "plantilla")
+    result = await call(registry, "plantilla", incluir_edad=True)
     assert result.summary["edad_media"] > 0
     assert set(result.summary["edad_media_por_departamento"]) <= {"Pisos", "Cocina", "Spa"}
 

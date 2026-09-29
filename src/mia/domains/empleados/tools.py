@@ -348,7 +348,14 @@ class PlantillaParams(CohortParams):
     estado: Literal["activos", "inactivos", "todos"] = Field(
         default="activos", description="Por defecto solo activos (regla POB-001)"
     )
-    agrupar_por: Literal["departamento", "puesto", "nacionalidad"] | None = None
+    agrupar_por: Literal["departamento", "puesto", "nacionalidad"] | None = Field(
+        default=None,
+        description="Recuento por departamento, puesto o nacionalidad (se muestra agrupado, sin listar a todos)",
+    )
+    incluir_edad: bool = Field(
+        default=False, description="true SOLO si preguntan por la edad (media, por departamento…)"
+    )
+    listar: bool = Field(default=False, description="true para listar también a las personas cuando se agrupa")
 
 
 def plantilla(deps: Deps) -> Tool:
@@ -388,11 +395,22 @@ def plantilla(deps: Deps) -> Tool:
             field = {"departamento": "department", "puesto": "position", "nacionalidad": "nationality"}[p.agrupar_por]
             counts = Counter(getattr(e, field) or "Sin dato" for e in people)
             summary["por_" + p.agrupar_por] = dict(counts.most_common())
-        summary.update(age_stats(people, ctx.now.date()))
+        if p.incluir_edad:
+            summary.update(age_stats(people, ctx.now.date()))
         if len(people) <= MAX_ROWS_FOR_MODEL:
             summary["personas"] = [person_summary(e) for e in people]
         state: dict[str, Any] = {"foco_departamento": dept.name} if dept.name else {}
         state.update(population_state(f"plantilla {p.estado} {dept.name or ''}".strip(), people))
+        if p.agrupar_por and not p.listar:
+            # Un recuento por categorías se presenta agrupado (y se dibuja como gráfico), no como 343 nombres.
+            label = p.agrupar_por.capitalize()
+            grouped = summary["por_" + p.agrupar_por]
+            return ToolResult(
+                ToolStatus.OK,
+                summary,
+                table(f"Empleados por {p.agrupar_por}", [label, "Personas"], list(grouped.items())),
+                state,
+            )
         rows = [[e.name, e.department, e.position] for e in people]
         return ToolResult(
             ToolStatus.OK,
@@ -403,7 +421,7 @@ def plantilla(deps: Deps) -> Tool:
 
     return Tool(
         "plantilla",
-        "Cuenta y lista la plantilla por departamento o puesto, con edad media (global y por departamento). "
+        "Cuenta y lista la plantilla por departamento o puesto (edad media solo con incluir_edad). "
         "Por defecto solo activos; usa estado='inactivos' o 'todos' solo si el usuario lo pide.",
         PlantillaParams,
         handler,

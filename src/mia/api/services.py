@@ -59,7 +59,7 @@ class Services:
                 enabled=settings.domains.enabled,
             ),
             db=database,
-            persona=Persona(),
+            persona=Persona(mailbox=settings.mail.mailbox),
             timezone=settings.timezone,
             history_turns=settings.history_turns,
             max_tool_rounds=settings.llm.max_tool_rounds,

@@ -128,7 +128,8 @@ def pendientes(deps: Deps) -> Tool:
 
     return Tool(
         "correos_sin_leer",
-        "Correos sin leer del buzón de RRHH (los más recientes).",
+        "Correos sin leer del buzón corporativo configurado (los más recientes). Es lo que se pide con «mis correos "
+        "sin leer», «resume mi bandeja» o «el correo»: NO es un empleado.",
         PendientesParams,
         handler,
         permission=Permission.CORREO_LEER,

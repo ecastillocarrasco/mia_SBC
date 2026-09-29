@@ -12,9 +12,11 @@ activan vistas que recortan columnas o esperan campos del sistema anterior.
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import Any
 
 from mia.domains.charts import chart_spec
+from mia.text import humanize_label
 
 MAX_CARDS = 8
 
@@ -31,7 +33,7 @@ def _flat(value: Any) -> Any:
 
 
 def _label(key: str) -> str:
-    return str(key).replace("_", " ").strip().capitalize()
+    return humanize_label(key)
 
 
 def table_view(p: dict[str, Any], subtitle: str = "Información estructurada") -> dict[str, Any]:
@@ -68,6 +70,32 @@ def cards_from(values: dict[str, Any]) -> list[dict[str, Any]]:
     ][:MAX_CARDS]
 
 
+SECTION_ORDER: dict[str, tuple[str, ...]] = {
+    "hoy": ("turno", "ausencia_en_curso"),
+    "employment": ("Situacion", "Departamento", "Puesto", "Edad"),
+    "datos_de_contacto": ("email", "telefono", "codigo_empleado", "nacionalidad", "cuenta"),
+    "vacaciones": ("saldo_actual", "saldo_total", "pendientes", "proximas", "consumido"),
+    "bajas": ("periodos", "dias"),
+    "documentacion": ("nominas_este_anio", "nominas_no_leidas", "documentos_firmados", "documentos_por_tipo"),
+}
+KPI_ORDER = ("saldo_vacaciones", "dias_de_baja_este_anio", "nominas_no_leidas", "documentos_firmados")
+_WEEKDAYS = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
+
+
+def _ordered(data: dict[str, Any], order: tuple[str, ...]) -> dict[str, Any]:
+    rank = {k: i for i, k in enumerate(order)}
+    return dict(sorted(data.items(), key=lambda kv: (rank.get(kv[0], len(rank)), 0)))
+
+
+def _pretty_date(value: Any) -> Any:
+    """«2026-10-03» → «sáb 03/10/2026»; cualquier otro valor se deja tal cual."""
+    try:
+        day = date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return value
+    return f"{_WEEKDAYS[day.weekday()]} {day:%d/%m/%Y}"
+
+
 def employee360_view(card: dict[str, Any]) -> dict[str, Any]:
     labor = card.get("ficha_laboral") or {}
     org = card.get("organizacion") or {}
@@ -87,7 +115,7 @@ def employee360_view(card: dict[str, Any]) -> dict[str, Any]:
     timeline = [
         {
             "date": h.get("fecha"),
-            "display_date": h.get("fecha"),
+            "display_date": _pretty_date(h.get("fecha")),
             "title": str(h.get("hito", "Hito")).capitalize(),
             "subtitle": " · ".join(f"{_label(k)}: {v}" for k, v in h.items() if k not in {"hito", "fecha"} and v),
             "state": "info",
@@ -171,6 +199,10 @@ def employee360_view(card: dict[str, Any]) -> dict[str, Any]:
                 "data": {k: f"{len(v)} registros" for k, v in card["historico"].items()},
             }
         )
+    for section in sections:
+        if section.get("id") in SECTION_ORDER and isinstance(section.get("data"), dict):
+            section["data"] = _ordered(section["data"], SECTION_ORDER[section["id"]])
+    kpis = _ordered(kpis, KPI_ORDER)
     return {
         "schema": "mia.employee360.presentation",
         "version": "mia-1",
@@ -204,6 +236,7 @@ def summary_view(summaries: list[dict[str, Any]]) -> dict[str, list[Any]]:
     departamento), lectura contextual (desgloses simples y notas) y observaciones (avisos)."""
     cards: list[dict[str, Any]] = []
     comparison: list[dict[str, Any]] = []
+    charts: list[dict[str, Any]] = []
     insights: list[str] = []
     quality: list[str] = []
     for item in summaries:
@@ -227,10 +260,15 @@ def summary_view(summaries: list[dict[str, Any]]) -> dict[str, list[Any]]:
                     if all(_is_scalar(v.get(m)) or v.get(m) is None for v in value.values())
                 ]
             elif isinstance(value, dict) and value and all(_is_scalar(v) for v in value.values()):
+                if key.startswith(("por_", "grupos")) and (
+                    spec := chart_spec(_label(key), [_label(key), "Personas"], [[k, v] for k, v in value.items()])
+                ):
+                    charts.append(spec)
                 shown = list(value.items())[:12]
                 rest = "" if len(value) <= 12 else f" … y {len(value) - 12} más"
                 insights.append(f"{_label(key)}: " + " · ".join(f"{k} {_flat(v)}" for k, v in shown) + rest)
     return {
+        "charts": charts,
         "cards": cards,
         "comparacion": comparison,
         "insights": list(dict.fromkeys(insights)),
@@ -349,7 +387,7 @@ def legacy_view(
         data["table"] = tables[0]
         cards += [{"label": t["title"], "value": t["total"], "unit": "registros"} for t in tables[1:]]
     _merge_extra(data, cards, extra)
-    charts = [c for t in every_table if (c := chart_from_table(t))][:2]
+    charts = [c for t in every_table if (c := chart_from_table(t))][:2] or extra["charts"][:1]
     if charts:
         data["charts"] = charts
     return data, actions

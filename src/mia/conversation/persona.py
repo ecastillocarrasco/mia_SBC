@@ -7,6 +7,7 @@ reglas de lo que se dice en voz alta. Cambiar de modelo no cambia el personaje.
 from __future__ import annotations
 
 import itertools
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -48,10 +49,19 @@ AVATAR_GUIDE: dict[AvatarState, str] = {
 }
 
 
+_INBOX = re.compile(
+    r"\b(correos?|e-?mails?|mensajes?)\b.{0,30}\b(sin\s+leer|recibid\w+|nuevos?|pendientes?|bandeja)\b"
+    r"|\b(bandeja|buz[oó]n)\b|\b(mis|mi|los|las|últimos|ultimos)\s+(\d+\s+)?(últimos\s+|ultimos\s+)?(correos|e-?mails)\b",
+    re.IGNORECASE,
+)
+
+
 @dataclass(frozen=True, slots=True)
 class Persona:
     name: str = "mIA"
     organization: str = "Sunset Beach Club"
+    mailbox: str = ""
+    """Buzón corporativo configurado (MIA_MAIL__MAILBOX): «mis correos» son los de este buzón."""
     waiting_phrases: tuple[str, ...] = (
         "Déjame mirarlo.",
         "Un momento, lo compruebo.",
@@ -90,6 +100,25 @@ class Persona:
             "additionalProperties": False,
         }
 
+    def hint_for(self, message: str) -> str:
+        """Pista determinista para confusiones conocidas del modelo (p. ej. «mis correos» ≠ un empleado)."""
+        if self.mailbox and _INBOX.search(message or ""):
+            return (
+                f"\n\n## Pista para este mensaje\nSi la petición es sobre correos recibidos, la bandeja o correos sin "
+                f"leer, usa las herramientas de correo del buzón {self.mailbox} y NO busques empleados ni preguntes "
+                "de quién son. Si piden el email de una persona concreta, eso sí son sus datos de empleado."
+            )
+        return ""
+
+    def _mailbox_line(self) -> str:
+        if not self.mailbox:
+            return ""
+        return (
+            f"\nCorreo: el buzón corporativo es {self.mailbox}. «Mis correos», «el correo», «la bandeja» y «mis "
+            "correos sin leer» se refieren SIEMPRE a este buzón (correos_sin_leer, buscar_correos…): nunca los "
+            "busques como si fueran de un empleado ni preguntes de quién son.\n"
+        )
+
     def system_prompt(
         self,
         *,
@@ -98,6 +127,7 @@ class Persona:
         business_rules: list[str],
         capabilities: str = "",
         focus: str = "",
+        hint: str = "",
     ) -> str:
         avatar = "\n".join(f"- {state.value}: {usage}" for state, usage in AVATAR_GUIDE.items())
         rules = "\n".join(f"- {rule}" for rule in business_rules)
@@ -113,7 +143,7 @@ limites lo que eres a un área. Si te preguntan quién eres, di que eres {self.n
 la asistente de {self.organization}, y, si viene al caso, qué puedes hacer ahora.
 
 ## Lo que puedes hacer ahora
-{capabilities}
+{capabilities}{self._mailbox_line()}
 Para los DATOS DE SUNSET BEACH CLUB solo puedes hacer lo que permiten estas
 herramientas: si un dominio de la empresa no tiene herramienta, NO está disponible;
 dilo así, aunque el usuario lo dé por hecho. Esta limitación NO se aplica a las
@@ -129,7 +159,7 @@ tienes, responde con lo que sabes y di de cuándo es tu información. Los datos 
 Beach Club nunca salen de la web ni de tu conocimiento: solo de las herramientas.
 
 ## Foco de la conversación
-{focus or "Sin foco todavía."}
+{focus or "Sin foco todavía."}{hint}
 Si el usuario se refiere a alguien o algo ya hablado ("ella", "su saldo", "y la semana
 que viene", "de ese departamento"), usa el foco: pasa el empleado_id en foco a la
 herramienta en lugar de volver a buscar el nombre. Una pregunta completa y nueva
@@ -158,6 +188,9 @@ no hereda el foco.
   es sobre empleados ACTIVOS. Solo incluye inactivos (incluir_inactivos=true o estado) si el usuario lo pide
   expresamente («incluyendo inactivos», «antiguos empleados», «todos»). Si es útil, di que hablas de la
   plantilla activa. Una persona concreta por su nombre se busca aunque esté inactiva, y se indica.
+- Respuestas con búsqueda web: «texto» lleva la respuesta COMPLETA (datos, cifras, condiciones) y «habla» un
+  resumen breve; nunca dejes «texto» vacío o solo con el nombre de una fuente. No pegues enlaces ni citas en
+  ninguno de los dos.
 - Búsqueda web: cuando respondas con información de fuera de Sunset Beach Club, apóyate en la búsqueda y di
   de dónde sale («según AEMET…»). No escribas ni inventes enlaces: la pantalla muestra automáticamente los
   enlaces a las fuentes consultadas para que se pueda ver el origen.

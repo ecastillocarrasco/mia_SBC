@@ -168,3 +168,57 @@ def test_mail_is_translated_to_the_mail_panel_with_refs() -> None:
         ]
     )
     assert opened["mail_message"]["text"] == "Cuerpo" and opened["mail_message"]["attachments"] == ["a.pdf"]
+
+
+def test_headcount_by_department_from_the_tool_summary_becomes_a_chart() -> None:
+    """Caso real: «empleados por departamento» llegó como listado de 343 personas + resumen; sin gráfico."""
+    grouped = {
+        "Pisos": 136,
+        "Restaurante": 71,
+        "Cocina": 43,
+        "Animación": 20,
+        "Recepción": 20,
+        "Mantenimiento": 14,
+        "Supermercado": 13,
+        "RRHH": 6,
+    }
+    people = {
+        "type": "table",
+        "title": "Plantilla",
+        "columns": ["Nombre", "Departamento", "Puesto"],
+        "rows": [[f"P{i}", "Pisos", "X"] for i in range(30)],
+    }
+    data, _ = legacy_view([people], [{"tool": "plantilla", "summary": {"total": 30, "por_departamento": grouped}}])
+    chart = data["charts"][0]
+    assert chart["type"] == "bar" and chart["labels"][:2] == ["Pisos", "Restaurante"]
+
+
+def test_labels_have_their_accents_and_the_card_order_is_stable() -> None:
+    from mia.api.legacy_view import employee360_view  # noqa: PLC0415
+
+    card = {
+        "nombre": "Sandra",
+        "activo": True,
+        "indicadores": {
+            "documentos_firmados": 17,
+            "nominas_no_leidas": 7,
+            "saldo_vacaciones": 0.0,
+            "dias_de_baja_este_anio": 0,
+        },
+        "vacaciones": {"pendientes": 0, "saldo_total": 24.0, "saldo_actual": 0.0},
+        "ficha_laboral": {"telefono": "635", "codigo_empleado": "303"},
+        "proximos_hitos": [{"hito": "próximo descanso", "fecha": "2026-10-03"}],
+    }
+    view = employee360_view(card)
+    assert [k["label"] for k in view["kpis"]] == [
+        "Saldo vacaciones",
+        "Días de baja este año",
+        "Nóminas no leídas",
+        "Documentos firmados",
+    ]
+    sections = {s["id"]: s for s in view["sections"]}
+    assert list(sections["vacaciones"]["data"]) == ["saldo_actual", "saldo_total", "pendientes"]
+    assert sections["next"]["items"][0]["display_date"] == "sáb 03/10/2026"
+    from mia.text import humanize_label  # noqa: PLC0415
+
+    assert humanize_label("codigo_empleado") == "Código empleado"

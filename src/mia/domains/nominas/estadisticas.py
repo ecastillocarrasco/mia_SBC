@@ -54,6 +54,11 @@ class SalarialesParams(ActivosParams):
     )
 
 
+def format_eur(value: float) -> str:
+    """2200.12 → «2.200,12 €» (formato español, para pantalla)."""
+    return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " €"
+
+
 def _stats(values: list[float]) -> dict[str, float]:
     return {
         "media": round(mean(values), 2),
@@ -193,7 +198,7 @@ def ranking_salarial(deps: Deps) -> Tool:
             ],
             "regla": RULE + " Importes individuales solo en pantalla, con permiso y auditoría.",
         }
-        rows = [[i, e.name, e.position, amount] for i, (e, amount) in enumerate(ordered, 1)]
+        rows = [[i, e.name, e.position, format_eur(amount)] for i, (e, amount) in enumerate(ordered, 1)]
         return ToolResult(
             ToolStatus.OK if ordered else ToolStatus.NOT_FOUND,
             summary,

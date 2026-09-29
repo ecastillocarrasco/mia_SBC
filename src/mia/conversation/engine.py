@@ -10,6 +10,7 @@ mantiene abierta mientras se espera al LLM.
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -107,16 +108,51 @@ def describe_focus(state: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+_CITATION = re.compile(r"\s*\(\s*\[[^\]]*\]\(https?://[^)]*\)\s*\)")
+_MD_LINK = re.compile(r"\[([^\]]+)\]\((?:https?://)[^)]*\)")
+_FIELD = r'"{key}"\s*:\s*"((?:[^"\\]|\\.)*)"'
+
+
+def _answer_fields(raw: str) -> dict[str, str] | None:
+    """Campos habla/texto/estado_avatar de la respuesta del modelo.
+
+    Con búsqueda web, el proveedor mete las citas con saltos de línea REALES dentro de las cadenas del JSON,
+    que el JSON estricto rechaza (fallo real: se mostraba el JSON en bruto). Se prueba el modo tolerante y,
+    como último recurso, se extrae cada campo por separado.
+    """
+    text = raw.strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start >= 0 < end:
+        try:
+            data = json.loads(text[start : end + 1], strict=False)
+            if isinstance(data, dict):
+                return {k: str(v or "") for k, v in data.items()}
+        except json.JSONDecodeError:
+            pass
+    found = {}
+    for key in ("habla", "estado_avatar", "texto"):
+        if match := re.search(_FIELD.format(key=key), text, re.DOTALL):
+            try:
+                found[key] = json.loads(f'"{match.group(1)}"', strict=False)
+            except json.JSONDecodeError:
+                found[key] = match.group(1)
+    return found or None
+
+
 def parse_final_answer(raw: str) -> FinalAnswer:
-    try:
-        data = json.loads(raw)
-        speech = str(data.get("habla") or "").strip()
-        text = str(data.get("texto") or "").strip() or speech
-        state = str(data.get("estado_avatar") or "")
-    except (json.JSONDecodeError, AttributeError):
+    fields = _answer_fields(raw)
+    if fields is not None:
+        speech = fields.get("habla", "").strip()
+        text = fields.get("texto", "").strip() or speech
+        state = fields.get("estado_avatar", "")
+    else:
         text = raw.strip()
-        speech = text.split(". ")[0][:250]
+        # Sin JSON legible: nunca se locuta el texto en bruto (podría ser el propio JSON roto).
+        speech = NEUTRAL_SPEECH if text.startswith("{") else text.split(". ")[0][:250]
         state = ""
+    # Las citas «([sitio](url))» las muestra la pantalla como fuentes: fuera del texto y de la voz.
+    text = _CITATION.sub("", text).strip()
+    speech = _MD_LINK.sub(r"\1", _CITATION.sub("", speech)).strip()
     if state not in AvatarState.__members__.values():
         state = AvatarState.HABLANDO.value
     cleaned_speech, text = guard.clean_speech(speech), guard.clean(text)
@@ -179,6 +215,7 @@ class ConversationEngine:
             business_rules=rules_for_prompt(),
             capabilities=self._tools.capabilities_for(user),
             focus=describe_focus(turn.state),
+            hint=self.persona.hint_for(message),
         )
         ctx = ToolContext(user=user, request_id=request_id, now=now, session_state=turn.state, user_message=message)
 

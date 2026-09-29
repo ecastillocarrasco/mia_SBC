@@ -253,6 +253,23 @@ CASES = [
         needs_sources=True,
     ),
     Case(
+        "mis_correos_son_los_del_buzon",
+        ["Resumen de mis últimos 10 correos sin leer"],
+        must_not=[r"(?i)a\s+cu[aá]l\s+te\s+refieres|personas\s+llamadas|dos\s+personas"],
+    ),
+    Case(
+        "recuento_por_departamento_agrupado",
+        ["Listame el número de empleados por departamento y ordénalos de mayor a menor"],
+        must=[r"Pisos"],
+        must_not=[r"(?i)edad\s+media"],
+    ),
+    Case(
+        "tiempo_sin_json_en_bruto",
+        ["¿Qué tiempo hará mañana en Málaga?"],
+        must_not=[r"\{\s*\"habla\"", r"estado_avatar"],
+        needs_sources=True,
+    ),
+    Case(
         "consulta_general_literatura",
         ["¿Quién escribió Cien años de soledad?"],
         must=[r"(?i)garc[ií]a\s+m[aá]rquez"],

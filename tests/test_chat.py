@@ -115,3 +115,44 @@ async def test_audited_tool_leaves_trace(client: httpx.AsyncClient, services: Se
     assert events[0].resource == "empleados"
     assert events[0].detail == {"arguments": {"nombre": "Ana"}}
     assert events[0].user_id == "dev-user"
+
+
+def test_answer_with_real_newlines_inside_json_strings_is_still_parsed() -> None:
+    """Fallo real: al citar fuentes web el proveedor mete saltos de línea reales dentro del JSON; se veía en bruto."""
+    from mia.conversation.engine import parse_final_answer  # noqa: PLC0415
+
+    raw = (
+        '{"habla":"Mañana en Málaga habrá sol, entre 21 y 27 grados.","estado_avatar":"reposo",'
+        '"texto":"Mañana en Málaga: **sol**, entre 21 °C y 27 °C.\n\n([Málaga, España](https://www.google.com/x?utm_source=openai))"}'
+    )
+    answer = parse_final_answer(raw)
+    assert answer.text == "Mañana en Málaga: **sol**, entre 21 °C y 27 °C."  # la cita la muestra la pantalla
+    assert answer.speech == "Mañana en Málaga habrá sol, entre 21 y 27 grados."
+    assert answer.avatar_state == "reposo"
+
+
+def test_broken_json_is_never_spoken_or_shown_as_such() -> None:
+    from mia.conversation.engine import NEUTRAL_SPEECH, parse_final_answer  # noqa: PLC0415
+
+    answer = parse_final_answer('{"habla":"Hola","texto":"Cosas" ')  # JSON cortado
+    assert answer.text == "Cosas" and answer.speech == "Hola"
+    garbage = parse_final_answer("{esto no es json}")
+    assert garbage.speech == NEUTRAL_SPEECH  # nunca se locuta un JSON roto
+
+
+def test_inbox_questions_get_a_hint_but_employee_email_questions_do_not() -> None:
+    """Fallo real: «resumen de mis últimos 10 correos sin leer» se tomó por una búsqueda del empleado «Enrique»."""
+    from mia.conversation.persona import Persona  # noqa: PLC0415
+
+    persona = Persona(mailbox="nominas@sunsetbeachclub.com")
+    for message in ("Resumen de mis últimos 10 correos sin leer", "¿Tengo correos nuevos?", "resume mi bandeja"):
+        assert "nominas@sunsetbeachclub.com" in persona.hint_for(message)
+    assert persona.hint_for("¿Cuál es el email de Sandra Asencio?") == ""
+    assert Persona().hint_for("mis correos sin leer") == ""  # sin buzón configurado no hay pista
+    prompt = persona.system_prompt(
+        user_name="Enrique",
+        now=__import__("datetime").datetime.now(),
+        business_rules=[],
+        hint=persona.hint_for("mis correos"),
+    )
+    assert "buzón corporativo es nominas@sunsetbeachclub.com" in prompt and "Pista para este mensaje" in prompt

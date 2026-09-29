@@ -60,3 +60,25 @@ def test_profile_sections_become_blocks() -> None:
     assert "Acciones rapidas" not in " ".join(titles)
     flat = " ".join(str(v) for b in doc.blocks for v in b.data.values())
     assert "Empleado id" not in flat and "sin_incidencias" not in flat  # nada técnico en la ficha
+
+
+def test_numbers_are_formatted_in_spanish_in_reports() -> None:
+    from mia.domains.informes.document import format_number  # noqa: PLC0415
+
+    assert [format_number(v) for v in (0.0, 24.0, 2.5, 1234.5, 343)] == ["0", "24", "2,5", "1.234,5", "343"]
+
+
+def test_profile_indicators_have_no_decimal_noise() -> None:
+    """Caso real: el PDF de la ficha mostraba «0.0» de saldo y «24.0» de saldo total."""
+    doc = to_document(
+        {
+            **PROFILE,
+            "type": "employee_360",
+            "indicadores": {"saldo_vacaciones": 0.0},
+            "vacaciones": {"saldo_total": 24.0},
+        }
+    )
+    kpis = next(b for b in doc.blocks if b.kind == "kpis")
+    assert list(kpis.data.values()) == ["0"]
+    vac = next(b for b in doc.blocks if b.title == "Vacaciones")
+    assert vac.data["Saldo total"] == "24"

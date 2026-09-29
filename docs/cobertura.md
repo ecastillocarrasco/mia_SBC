@@ -235,3 +235,18 @@ Ver [consultas.md](consultas.md) para el catálogo completo. Novedades de esta e
 | Ficha de departamento: «2036 nóminas sin leer» (todo el histórico) | Personas con nóminas sin leer |
 | Consulta cruzada con 0 resultados sin explicación | «Embudo» criterio a criterio |
 | Texto de la respuesta sin numeraciones, enlaces ni tablas | Formato enriquecido |
+
+
+## Segunda ronda de pruebas en el 2D
+
+| Hallazgo | Corrección |
+|---|---|
+| «Resumen de mis últimos 10 correos sin leer» se tomó por buscar un empleado «Enrique» | El buzón configurado (`MIA_MAIL__MAILBOX`) va en las instrucciones; pista determinista cuando el mensaje habla de correos, bandeja o «sin leer»; la herramienta lo dice en su descripción |
+| Con búsqueda web se veía el JSON en bruto (y se habría locutado) | Lector de la respuesta tolerante a saltos de línea dentro del JSON, con extracción por campos; un JSON roto nunca se locuta; las citas salen del texto y de la voz y se muestran como fuentes |
+| Respuesta externa con «texto» vacío (solo el nombre de una fuente) | Instrucción: «texto» lleva la respuesta completa |
+| «Empleados por departamento» devolvía 343 nombres y edad media por departamento | Se presenta agrupado (Departamento, Personas) y con gráfico; la edad solo si se pregunta (`incluir_edad`) |
+| Ranking con importes sin formato (2200.12) | «2.200,12 €» |
+| PDF de la ficha: «Nominas», «Telefono», «Dias de baja este anio», «0.0», hitos en ISO, secciones desordenadas | Etiquetas con tildes, números en formato español, fechas legibles y orden estable de secciones e indicadores |
+
+Nota: en la plantilla activa hay ~14 cuentas de prueba («test…», «testAltaTurno»…) que cuentan en los totales
+(p. ej. Restaurante).

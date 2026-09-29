@@ -3,10 +3,11 @@ se normaliza a bloques que después se pintan en PDF, Excel o PowerPoint."""
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
+
+from mia.text import humanize_label
 
 LABELS = {
     "hoy": "Hoy",
@@ -41,11 +42,21 @@ def _label(key: str) -> str:
     return LABELS.get(key, key.replace("_", " ").capitalize())
 
 
+def format_number(value: float) -> str:
+    """0.0 → «0», 24.0 → «24», 2.5 → «2,5», 1234.5 → «1.234,5» (formato español)."""
+    if float(value).is_integer():
+        return f"{int(value):,}".replace(",", ".") if abs(value) >= 10000 else str(int(value))
+    text = f"{value:,.2f}".rstrip("0").rstrip(".")
+    return text.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 def _flat(value: Any) -> str:
     if value is None:
         return "—"
     if isinstance(value, bool):
         return "Sí" if value else "No"
+    if isinstance(value, int | float):
+        return format_number(value)
     if isinstance(value, dict):
         return ", ".join(f"{_label(k)}: {_flat(v)}" for k, v in value.items() if v not in (None, "", [], {}))
     if isinstance(value, list):
@@ -65,12 +76,8 @@ def _list_table(title: str, items: list[dict[str, Any]]) -> Block:
     )
 
 
-_CAMEL = re.compile(r"(?<=[a-z])(?=[A-Z])")
-
-
 def _humanize(key: str) -> str:
-    text = _CAMEL.sub(" ", str(key)).replace("_", " ").strip()
-    return text[:1].upper() + text[1:].lower() if text else text
+    return humanize_label(key)
 
 
 def _pairs(data: dict[str, Any]) -> dict[str, str]:
@@ -107,7 +114,7 @@ def _employee_document(card: dict[str, Any]) -> Document:
         badges=["Activo" if hero.get("status") == "active" else "Inactivo"],
     )
     if view["kpis"]:
-        doc.blocks.append(Block("kpis", "Indicadores", {k["label"]: k["value"] for k in view["kpis"]}))
+        doc.blocks.append(Block("kpis", "Indicadores", {k["label"]: _flat(k["value"]) for k in view["kpis"]}))
     for section in view["sections"]:
         layout, title = section["layout"], section["title"]
         if layout == "week_strip" and section.get("items"):
@@ -120,7 +127,10 @@ def _employee_document(card: dict[str, Any]) -> Document:
             rows = [
                 [i.get("display_date") or i.get("date"), i.get("title"), i.get("subtitle")] for i in section["items"]
             ]
-            doc.blocks.append(Block("table", title, {"columns": ["Fecha", "Hito", "Detalle"], "rows": rows}))
+            columns = ["Fecha", "Hito", "Detalle"]
+            keep = [n for n in range(3) if any(r[n] for r in rows)]  # sin columnas vacías
+            block = {"columns": [columns[n] for n in keep], "rows": [[r[n] for n in keep] for r in rows]}
+            doc.blocks.append(Block("table", title, block))
         elif layout in {"metric_detail", "definition_grid", "people_chips"}:
             pairs = _pairs(section.get("data") or {})
             if pairs:
