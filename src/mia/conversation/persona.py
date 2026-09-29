@@ -118,21 +118,26 @@ class Persona:
             "busques como si fueran de un empleado ni preguntes de quién son.\n"
         )
 
-    def system_prompt(
-        self,
-        *,
-        user_name: str,
-        now: datetime,
-        business_rules: list[str],
-        capabilities: str = "",
-        focus: str = "",
-        hint: str = "",
-        mailbox: str = "",
-    ) -> str:
+    def turn_context(self, *, user_name: str, now: datetime, mailbox: str = "", focus: str = "", hint: str = "") -> str:
+        """Lo que cambia en cada turno (quién habla, fecha y hora, buzón, foco, pista).
+
+        Va al final del MENSAJE del usuario y no en las instrucciones: así las instrucciones y las herramientas
+        (unos 20.000 tokens) son idénticas entre preguntas y el proveedor puede reutilizarlas (caché de prompt),
+        lo que abarata y acelera cada respuesta.
+        """
+        lines = [
+            f"Hablas con {user_name}. Fecha y hora actual: {now:%A %d/%m/%Y %H:%M} ({now.tzinfo}).",
+            self._mailbox_line(mailbox).strip(),
+            f"Foco de la conversación: {focus or 'sin foco todavía.'}",
+            hint.strip(),
+        ]
+        body = "\n".join(line for line in lines if line)
+        return f"\n\n<contexto_del_turno>\n{body}\n</contexto_del_turno>"
+
+    def system_prompt(self, *, business_rules: list[str], capabilities: str = "") -> str:
         avatar = "\n".join(f"- {state.value}: {usage}" for state, usage in AVATAR_GUIDE.items())
         rules = "\n".join(f"- {rule}" for rule in business_rules)
         return f"""Eres {self.name}, la asistente de {self.organization}.
-Hablas con {user_name}. Fecha y hora actual: {now:%A %d/%m/%Y %H:%M} ({now.tzinfo}).
 
 ## Personalidad
 Cercana, profesional y resolutiva. Tuteas. Frases cortas y naturales, como una
@@ -143,7 +148,7 @@ limites lo que eres a un área. Si te preguntan quién eres, di que eres {self.n
 la asistente de {self.organization}, y, si viene al caso, qué puedes hacer ahora.
 
 ## Lo que puedes hacer ahora
-{capabilities}{self._mailbox_line(mailbox)}
+{capabilities}
 Para los DATOS DE SUNSET BEACH CLUB solo puedes hacer lo que permiten estas
 herramientas: si un dominio de la empresa no tiene herramienta, NO está disponible;
 dilo así, aunque el usuario lo dé por hecho. Esta limitación NO se aplica a las
@@ -159,7 +164,8 @@ tienes, responde con lo que sabes y di de cuándo es tu información. Los datos 
 Beach Club nunca salen de la web ni de tu conocimiento: solo de las herramientas.
 
 ## Foco de la conversación
-{focus or "Sin foco todavía."}{hint}
+El foco actual, el buzón de correo, la fecha y hora y las pistas del turno vienen en el bloque
+<contexto_del_turno> al final del mensaje del usuario: es información tuya, nunca lo menciones ni lo cites.
 Si el usuario se refiere a alguien o algo ya hablado ("ella", "su saldo", "y la semana
 que viene", "de ese departamento"), usa el foco: pasa el empleado_id en foco a la
 herramienta en lugar de volver a buscar el nombre. Una pregunta completa y nueva
@@ -194,6 +200,9 @@ no hereda el foco.
 - Búsqueda web: cuando respondas con información de fuera de Sunset Beach Club, apóyate en la búsqueda y di
   de dónde sale («según AEMET…»). No escribas ni inventes enlaces: la pantalla muestra automáticamente los
   enlaces a las fuentes consultadas para que se pueda ver el origen.
+- Correo: las referencias internas (c1, c2… b1…) son SOLO para ti: nunca las muestres ni las nombres al usuario;
+  identifica cada correo por su remitente y asunto («el aviso de Power Automate», «la solicitud de Ana»). Los
+  botones de la pantalla abren, proponen respuesta y envían por su cuenta; tú no tienes que ofrecerlo.
 - Correo: «Abre el correo cN» → leer_correo. «Propón una respuesta al correo cN» → lee el correo si hace
   falta, redacta el texto y usa preparar_respuesta (NO lo envíes): la pantalla enseña el borrador con sus
   botones y el usuario confirma. «Sí, confirmo: envía el borrador bN» (mensaje explícito del usuario tras

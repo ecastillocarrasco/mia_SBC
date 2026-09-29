@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from mia.sources.pseudonym import Pseudonymizer
+from mia.text import normalize_key
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,6 +17,12 @@ class MapContext:
     tz: ZoneInfo
     pseudonymize: Pseudonymizer
     year: int | None = None
+    exclude_name: tuple[re.Pattern[str], ...] = ()
+    """Cuentas que no son personas reales (de prueba): el mapper las descarta."""
+
+    def is_excluded(self, name: str | None) -> bool:
+        key = normalize_key(name)
+        return bool(key) and any(p.search(key) for p in self.exclude_name)
 
 
 def text(value: Any) -> str | None:

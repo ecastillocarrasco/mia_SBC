@@ -16,6 +16,7 @@ from datetime import date
 from typing import Any
 
 from mia.domains.charts import chart_spec
+from mia.domains.correo.tools import is_noreply
 from mia.text import humanize_label
 
 MAX_CARDS = 8
@@ -299,6 +300,7 @@ def mail_rows_view(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 "received_at": r.get("received_at"),
                 "has_attachments": bool(r.get("has_attachments")),
                 "preview": r.get("preview"),
+                "no_reply": bool(r.get("no_reply")),
             }
         )
     return {
@@ -318,6 +320,7 @@ def _mail_message_view(p: dict[str, Any]) -> dict[str, Any]:
         "received_at": p.get("recibido"),
         "text": p.get("texto"),
         "attachments": p.get("adjuntos") or [],
+        "no_reply": is_noreply(str(p.get("de") or "")),
     }
 
 

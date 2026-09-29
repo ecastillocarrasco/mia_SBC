@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 from mia.auth import UserContext
 from mia.conversation import Persona
 from mia.data import Database
@@ -21,7 +19,7 @@ def test_rules_reach_the_prompt() -> None:
 
 
 def test_persona_forbids_unkeepable_promises() -> None:
-    prompt = Persona().system_prompt(user_name="Enrique", now=datetime.now(UTC), business_rules=[])
+    prompt = Persona().system_prompt(business_rules=[])
     assert "No prometas lo que no puedes hacer" in prompt
     assert "no la repitas" in prompt
 
@@ -35,6 +33,6 @@ def test_prompt_states_real_capabilities() -> None:
     available, pending = text.split("TODAVÍA NO puedes consultar")
     assert "turnos_persona" in available
     assert "nóminas" in pending and "turnos" not in pending
-    prompt = Persona().system_prompt(user_name="Enrique", now=datetime.now(UTC), business_rules=[], capabilities=text)
+    prompt = Persona().system_prompt(business_rules=[], capabilities=text)
     assert "NO está disponible" in prompt
     assert text in prompt

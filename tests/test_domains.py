@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -162,7 +162,8 @@ async def test_person_absence_history_defaults_to_the_year(registry: ToolRegistr
         "personas": 1,
         "periodos": 1,
         "dias": 1,
-        "duracion_media_dias": 2.0,
+        "duracion_media_dias": 1.0,
+        "duracion_media_completa_dias": 2.0,
     }
     assert result.summary["periodos"][0]["dias_totales_publicados"] == 2
     assert result.state_updates["foco_persona"]["empleado_id"] == 4
@@ -281,7 +282,9 @@ async def test_focus_reaches_the_next_turn(tmp_path: Path) -> None:
     first = await engine.complete(message="Enséñame la ficha de Ana Ruiz", user=ADMIN, session_id=None)
     await engine.complete(message="¿Y su saldo?", user=ADMIN, session_id=first.session_id)
     await db.dispose()
-    assert "Persona: Ana Ruiz Sanz (empleado_id 1, Pisos)" in llm.requests[-1].system
+    # El foco viaja en el contexto del turno (último mensaje), no en las instrucciones fijas.
+    assert "Persona: Ana Ruiz Sanz (empleado_id 1, Pisos)" in llm.requests[-1].messages[-1].content
+    assert "Ana Ruiz" not in llm.requests[-1].system
 
 
 async def test_search_with_several_matches_is_ambiguous_but_lists_them(registry: ToolRegistry) -> None:
@@ -419,3 +422,65 @@ async def test_group_queries_use_active_staff_unless_inactive_are_requested(tmp_
     named = await call(registry, "ausencias", nombre="Inactiva Dos", desde=TODAY.isoformat(), hasta=day.isoformat())
     assert named.summary["periodos"][0]["persona"] == "Inactiva Dos"
     await db.dispose()
+
+
+async def _absence_registry(tmp_path: Any) -> tuple[ToolRegistry, Any]:
+    from tests.dbutil import fresh_database  # noqa: PLC0415
+    from tests.hr_seed import _emp, _shift  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "aus.db")
+    aug = lambda d: date(2026, 8, d)  # noqa: E731
+    rows: list[Any] = [
+        _emp(1, "Ana", "Pisos", person_key="pk-a"),
+        _emp(2, "Beto", "Pisos", person_key="pk-b"),
+        _emp(3, "Cris", "Recepción", person_key="pk-c"),
+    ]
+    n = 0
+
+    def days(person: str, name: str, dept: str, first: int, last: int, kind: str) -> None:  # noqa: PLR0917
+        nonlocal n
+        for d in range(first, last + 1):
+            n += 1
+            rows.append(_shift(n, person, name, dept, aug(d), kind, kind))
+
+    days("pk-a", "Ana", "Pisos", 3, 5, "Baja/IT")  # 3 días
+    days("pk-b", "Beto", "Pisos", 10, 12, "Baja/IT")  # 3 días
+    days("pk-b", "Beto", "Pisos", 13, 19, "Trabajo")
+    days("pk-b", "Beto", "Pisos", 20, 21, "Baja/IT")  # 2 días (otro periodo)
+    days("pk-c", "Cris", "Recepción", 1, 8, "Baja/IT")  # 8 días
+    async with db.session() as s:
+        s.add_all(rows)
+    return build_registry(db), db
+
+
+async def test_absences_are_compared_by_department_like_the_previous_system(tmp_path: Any) -> None:
+    """«Compara las bajas de Pisos y Recepción en agosto»: periodos, empleados, días, media y el más largo."""
+    registry, db = await _absence_registry(tmp_path)
+    result = await call(registry, "ausencias", tipos=["Baja/IT"], desde="2026-08-01", hasta="2026-08-31")
+    await db.dispose()
+    pisos, recepcion = result.summary["por_departamento"]["Pisos"], result.summary["por_departamento"]["Recepción"]
+    assert (pisos["periodos"], pisos["empleados"], pisos["dias_acumulados"]) == (3, 2, 8)
+    assert pisos["duracion_media_dias"] == 2.67 and pisos["periodo_mas_largo_dias"] == 3
+    assert (recepcion["periodos"], recepcion["empleados"], recepcion["dias_acumulados"]) == (1, 1, 8)
+    assert recepcion["duracion_media_dias"] == 8.0 and recepcion["periodo_mas_largo_dias"] == 8
+
+
+async def test_average_duration_questions_default_to_the_last_twelve_months(tmp_path: Any) -> None:
+    """La media histórica del antiguo usaba 12 meses; preguntada «sin fechas» daba 1 día (el de hoy)."""
+    registry, db = await _absence_registry(tmp_path)
+    september = datetime(2026, 9, 1, 10, tzinfo=NOW.tzinfo)  # las bajas de agosto quedan dentro de los 12 meses
+    ctx = ToolContext(
+        user=ADMIN,
+        request_id=None,
+        now=september,
+        session_state={},
+        user_message="¿Cuál es la duración media de las bajas de Pisos?",
+    )
+    result = (
+        await registry.execute(
+            ToolCall("c", "ausencias", json.dumps({"tipos": ["Baja/IT"], "departamento": "Pisos"})), ctx
+        )
+    ).result
+    await db.dispose()
+    assert result.summary["desde"] == "2025-09-01" and result.summary["hasta"] == "2026-09-01"
+    assert result.summary["resumen_por_tipo"]["Baja/IT"]["duracion_media_dias"] == 2.67

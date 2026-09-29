@@ -40,7 +40,8 @@ async def test_session_history_is_server_side(client: httpx.AsyncClient, service
     llm = services.llm
     assert isinstance(llm, FakeLLMProvider)
     second_request = llm.requests[-1]
-    assert [m.content for m in second_request.messages] == ["Primera", "Hola, soy mIA.", "Segunda"]
+    contents = [m.content.split("\n\n<contexto_del_turno>")[0] for m in second_request.messages]
+    assert contents == ["Primera", "Hola, soy mIA.", "Segunda"]
 
     async with services.db.session() as db:
         count = await db.scalar(select(func.count()).select_from(ConversationTurn))
@@ -151,11 +152,24 @@ def test_inbox_questions_get_a_hint_but_employee_email_questions_do_not() -> Non
         assert mailbox in persona.hint_for(message, mailbox)
     assert persona.hint_for("¿Cuál es el email de Sandra Asencio?", mailbox) == ""
     assert persona.hint_for("mis correos sin leer", "") == ""  # sin buzón no hay pista
-    prompt = persona.system_prompt(
-        user_name="Enrique",
-        now=datetime.now(),
-        business_rules=[],
-        mailbox=mailbox,
-        hint=persona.hint_for("mis correos", mailbox),
+    context = persona.turn_context(
+        user_name="Enrique", now=datetime.now(), mailbox=mailbox, hint=persona.hint_for("mis correos", mailbox)
     )
-    assert f"el buzón de esta conversación es {mailbox}" in prompt and "Pista para este mensaje" in prompt
+    assert f"el buzón de esta conversación es {mailbox}" in context and "Pista para este mensaje" in context
+
+
+def test_the_fixed_prompt_is_identical_between_turns_so_the_provider_can_cache_it() -> None:
+    """Caso real: 23.000 tokens de entrada por pregunta y tokens_cached=0; la hora al inicio rompía la caché."""
+    import os  # noqa: PLC0415
+    from datetime import datetime  # noqa: PLC0415
+
+    from mia.conversation.persona import Persona  # noqa: PLC0415
+
+    persona = Persona()
+    fixed = persona.system_prompt(business_rules=["R1 regla"], capabilities="- capacidad")
+    again = persona.system_prompt(business_rules=["R1 regla"], capabilities="- capacidad")
+    assert fixed == again  # nada dependiente del usuario, la hora o el foco
+    one = persona.turn_context(user_name="Marisol", now=datetime(2026, 9, 29, 10, 0), focus="Persona: A")
+    two = persona.turn_context(user_name="Luis", now=datetime(2026, 9, 29, 10, 1), mailbox="x@y.z", hint="\n\nPista")
+    assert one != two and "Marisol" in one and "Marisol" not in fixed and "10:00" not in fixed
+    assert len(os.path.commonprefix([fixed + one, fixed + two])) >= len(fixed)

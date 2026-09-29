@@ -31,6 +31,8 @@ Row = dict[str, Any]
 def employee(item: dict[str, Any], ctx: MapContext) -> list[Row]:
     manager_name, manager_email = person_field(item.get("Responsable"))
     name = text(item.get("Nombre")) or ""
+    if ctx.is_excluded(name):
+        return []  # cuenta de prueba: no es una persona real
     department = text(item.get("Departamento"))
     return [
         {

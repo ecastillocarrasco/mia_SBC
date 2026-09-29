@@ -20,6 +20,7 @@ from sqlalchemy import select
 
 from mia.api.services import build_graph_client
 from mia.data import Database, SourceSyncState
+from mia.data.schema import schema_problem
 from mia.domains.curriculums.indexer import CvIndexer
 from mia.llm import build_llm_provider
 from mia.observability import configure_logging
@@ -115,6 +116,9 @@ async def _main(args: argparse.Namespace) -> int:
         if args.list:
             await _list(db, settings)
             return 0
+        if problem := await schema_problem(db):
+            print(f"\n⚠ {problem}\n", file=sys.stderr)
+            return 2
         available = all_sources(domains=settings.domains.enabled, portal=bool(settings.sharepoint.portal_site_url))
         client = build_sharepoint_client(settings)
         if "turnos" in settings.domains.enabled and not args.no_calendars:

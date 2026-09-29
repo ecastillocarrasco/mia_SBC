@@ -62,3 +62,61 @@
 .mia-answer-table th{background:var(--mia-navy,#172044);color:#fff;text-align:left;font-weight:700;padding:7px 10px}
 .mia-answer-table td{padding:6px 10px;border-top:1px solid rgba(23,32,68,.07)}
 .mia-answer-table tr:nth-child(even) td{background:rgba(246,243,238,.7)}
+
+/* ---------------------------------------------------------------- ventanas emergentes premium */
+body.mia-modal-open{overflow:hidden}
+.mia-modal-backdrop{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;padding:24px;
+  background:radial-gradient(1200px 700px at 50% 20%,rgba(216,165,101,.16),transparent 60%),rgba(23,32,68,.42);
+  backdrop-filter:blur(10px) saturate(1.1);-webkit-backdrop-filter:blur(10px) saturate(1.1);opacity:0;transition:opacity .22s ease}
+.mia-modal-backdrop.in{opacity:1}.mia-modal-backdrop.out{opacity:0}
+.mia-modal{width:min(700px,100%);max-height:min(86vh,860px);display:flex;flex-direction:column;overflow:hidden;
+  border-radius:30px;background:linear-gradient(180deg,#fff,#fbf8f3);border:1px solid rgba(255,255,255,.7);
+  box-shadow:0 40px 110px rgba(23,32,68,.35),0 2px 0 rgba(255,255,255,.9) inset;
+  transform:translateY(18px) scale(.965);opacity:0;transition:transform .34s var(--mia-ease,cubic-bezier(.2,.82,.2,1)),opacity .26s ease}
+.mia-modal.wide{width:min(780px,100%)}
+.mia-modal-backdrop.in .mia-modal{transform:none;opacity:1}
+.mia-modal-head{display:flex;align-items:center;gap:14px;padding:20px 22px 14px;border-bottom:1px solid rgba(23,32,68,.07);
+  background:linear-gradient(180deg,rgba(216,165,101,.11),transparent)}
+.mia-modal-avatar{flex:none;width:46px;height:46px;border-radius:16px;display:grid;place-items:center;font-weight:800;font-size:14px;
+  color:#fff;background:linear-gradient(135deg,var(--mia-navy,#172044),var(--mia-navy-2,#27315f));box-shadow:0 10px 24px rgba(23,32,68,.28)}
+.mia-modal-avatar.icon{font-size:20px;background:linear-gradient(135deg,#d8a565,#c98b3f)}
+.mia-modal-title{min-width:0;flex:1}
+.mia-modal-title h3{margin:0;font-size:16px;line-height:1.25;color:var(--mia-navy,#172044);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.mia-modal-title p{margin:3px 0 0;font-size:10.5px;color:#8d796d}
+.mia-modal-x{flex:none;width:34px;height:34px;border-radius:12px;border:1px solid rgba(23,32,68,.1);background:#fff;color:var(--mia-navy,#172044);
+  font-size:20px;line-height:1;cursor:pointer;transition:.16s ease}
+.mia-modal-x:hover{background:rgba(23,32,68,.06);transform:rotate(90deg)}
+.mia-modal-meta{display:flex;flex-wrap:wrap;gap:7px;padding:12px 22px 0}
+.mia-modal-meta:empty{display:none}
+.mia-chip{display:inline-flex;gap:6px;align-items:center;max-width:100%;padding:5px 11px;border-radius:999px;font-size:9.5px;
+  background:rgba(23,32,68,.05);color:#4a4239;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mia-chip b{color:#9a8e87;font-weight:700;text-transform:uppercase;letter-spacing:.06em;font-size:8px}
+.mia-chip.attach{background:rgba(76,167,163,.13);color:#1f6f6b}
+.mia-chip.warn{background:rgba(216,165,101,.2);color:#8a5a1f;font-weight:700}
+.mia-modal-body{padding:16px 22px 8px;overflow:auto;flex:1;scrollbar-width:thin}
+.mia-mail-text{font-size:12px;line-height:1.7;color:#332f2a}
+.mia-mail-text p{margin:0 0 12px}.mia-mail-text h4{margin:0 0 12px;font-size:15px;color:var(--mia-navy,#172044)}
+.mia-mail-text ul{margin:0 0 12px;padding-left:20px}.mia-mail-text li{margin:3px 0}
+.mia-muted{color:#9a8e87}
+.mia-modal-foot{display:flex;flex-wrap:wrap;gap:9px;justify-content:flex-end;padding:14px 22px 20px;border-top:1px solid rgba(23,32,68,.06);
+  background:linear-gradient(0deg,rgba(246,243,238,.7),transparent)}
+.mia-modal-foot .mia-btn{padding:9px 16px;font-size:10.5px}
+.mia-compose{width:100%;box-sizing:border-box;padding:14px 16px;border-radius:18px;border:1px solid rgba(23,32,68,.13);background:#fff;
+  font:inherit;font-size:12px;line-height:1.65;color:#2c2925;resize:vertical;min-height:170px;outline:none;transition:.16s ease}
+.mia-compose:focus{border-color:var(--mia-gold,#d8a565);box-shadow:0 0 0 4px rgba(216,165,101,.18)}
+.mia-compose.loading{opacity:.55}
+.mia-regen{display:flex;gap:8px;margin:10px 0 4px}
+.mia-input{flex:1;box-sizing:border-box;padding:9px 13px;border-radius:999px;border:1px solid rgba(23,32,68,.13);font:inherit;font-size:10.5px;outline:none;background:#fff}
+.mia-input:focus{border-color:var(--mia-gold,#d8a565)}
+.mia-status{margin-bottom:10px}.mia-status:empty{display:none}
+.mia-banner{padding:10px 14px;border-radius:14px;font-size:10.5px;line-height:1.5}
+.mia-banner.info{background:rgba(23,32,68,.05);color:#3d4566}
+.mia-banner.ok{background:rgba(76,167,163,.14);color:#1f6f6b;font-weight:650}
+.mia-banner.error{background:rgba(164,71,47,.1);color:#8b3520;font-weight:650}
+.mia-shimmer{display:grid;gap:10px;padding:6px 0}
+.mia-shimmer i{display:block;height:13px;border-radius:8px;background:linear-gradient(90deg,rgba(23,32,68,.05),rgba(216,165,101,.22),rgba(23,32,68,.05));
+  background-size:200% 100%;animation:mia-shine 1.3s linear infinite}
+.mia-shimmer i:nth-child(3n){width:70%}.mia-shimmer i:nth-child(4n){width:88%}
+@keyframes mia-shine{to{background-position:-200% 0}}
+@media (max-width:640px){.mia-modal-backdrop{padding:0;place-items:end}.mia-modal,.mia-modal.wide{width:100%;max-height:92vh;border-radius:26px 26px 0 0}}
+@media (prefers-reduced-motion:reduce){.mia-modal,.mia-modal-backdrop,.mia-bar-fill,.mia-line-path{transition:none}.mia-shimmer i{animation:none}}

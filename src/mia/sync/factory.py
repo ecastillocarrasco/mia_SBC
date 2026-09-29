@@ -47,4 +47,5 @@ def build_runner(settings: Settings, db: Database, client: SharePointClient) -> 
         pseudonymize=Pseudonymizer(settings.data.pseudonym_key.get_secret_value()),
         timezone=settings.timezone,
         full_sync_hour=settings.data.full_sync_hour,
+        exclude_name_patterns=settings.data.exclude_name_patterns,
     )

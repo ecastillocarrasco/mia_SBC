@@ -400,10 +400,12 @@ def _absence_summary(
     for kind, keys in seen.items():
         by_kind[kind]["personas"] = len(keys)
     for stats in by_kind.values():
-        # Duración media = duración COMPLETA de cada periodo / número de periodos. Con los días dentro de la
-        # ventana, preguntar por «hoy» daba 1 día de media (fallo real del modo sombra).
+        # Misma fórmula que el sistema anterior: días acumulados DENTRO de la ventana / número de periodos
+        # (4.799 / 253 = 18,97). La duración completa de cada baja va aparte, como dato informativo.
         full = stats.pop("_dias_completos", 0)
-        stats["duracion_media_dias"] = round(full / stats["periodos"], 2) if stats["periodos"] else 0
+        count = stats["periodos"]
+        stats["duracion_media_dias"] = round(stats["dias"] / count, 2) if count else 0
+        stats["duracion_media_completa_dias"] = round(full / count, 2) if count else 0
     dept_kind: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     for x in periods:
         dept_kind[x.department or "Sin dato"][x.kind].add(x.person_key)
@@ -414,6 +416,7 @@ def _absence_summary(
         "desde": lo.isoformat(),
         "hasta": hi.isoformat(),
         "resumen_por_tipo": dict(by_kind),
+        "por_departamento": _department_stats(periods, today, lo, hi),
         "personas_por_departamento": dict(sorted(((d, len(k)) for d, k in dept_people.items()), key=lambda kv: -kv[1])),
         "personas_por_departamento_y_tipo": {
             d: {k: len(v) for k, v in kinds.items()} for d, kinds in sorted(dept_kind.items())
@@ -440,6 +443,38 @@ def _absence_summary(
     return summary, rows
 
 
+def _department_stats(periods: list[AbsencePeriod], today: date, lo: date, hi: date) -> dict[str, dict[str, Any]]:
+    """Por departamento: periodos, empleados, días acumulados en la ventana, media, el más largo y abiertas hoy.
+
+    Es lo que permite «compara las bajas de Pisos y Recepción en agosto» (antes solo había el recuento de personas).
+    """
+    groups: dict[str, list[AbsencePeriod]] = defaultdict(list)
+    for x in periods:
+        groups[x.department or "Sin dato"].append(x)
+    stats = {}
+    for department, items in groups.items():
+        days = [x.days_within(lo, hi) for x in items]
+        stats[department] = {
+            "periodos": len(items),
+            "empleados": len({x.person_key for x in items}),
+            "dias_acumulados": sum(days),
+            "duracion_media_dias": round(sum(days) / len(items), 2),
+            "periodo_mas_largo_dias": max(days),
+            "abiertas_hoy": sum(1 for x in items if x.start <= today <= x.end),
+        }
+    return dict(sorted(stats.items(), key=lambda kv: -kv[1]["empleados"]))
+
+
+_AVERAGE_QUESTION = re.compile(
+    r"duraci[oó]n\s+media|media\s+de\s+(las\s+)?(bajas|ausencias)|promedio|de\s+media", re.IGNORECASE
+)
+
+
+def wants_history_window(message: str) -> bool:
+    """«¿Cuál es la duración media de las bajas?» es una estadística histórica: ventana de 12 meses, no «hoy»."""
+    return bool(_AVERAGE_QUESTION.search(message or ""))
+
+
 def _last_sick_leave(periods: list[AbsencePeriod], today: date) -> dict[str, Any]:
     last = max((x for x in periods if x.kind == ShiftKind.BAJA), key=lambda x: x.start, default=None)
     return {
@@ -457,7 +492,7 @@ def _last_sick_leave(periods: list[AbsencePeriod], today: date) -> dict[str, Any
 
 
 def ausencias(deps: Deps) -> Tool:
-    async def handler(p: AusenciasParams, ctx: ToolContext) -> ToolResult:
+    async def handler(p: AusenciasParams, ctx: ToolContext) -> ToolResult:  # noqa: PLR0912
         today = ctx.now.date()
         kinds = tuple(
             k for k in ABSENCE_KINDS if not p.tipos or any(normalize_key(t) in normalize_key(k) for t in p.tipos)
@@ -474,6 +509,8 @@ def ausencias(deps: Deps) -> Tool:
                 # De una persona sin fechas: su historial del año en curso.
                 default_lo = date(today.year, 1, 1)
                 lo, hi = (p.desde or default_lo), (p.hasta or today)
+            elif not p.desde and not p.hasta and wants_history_window(ctx.user_message):
+                lo, hi = today - timedelta(days=365), today  # estadística histórica: 12 meses, no «hoy»
             else:
                 lo, hi = p.resolve(today)
             dept_key = None

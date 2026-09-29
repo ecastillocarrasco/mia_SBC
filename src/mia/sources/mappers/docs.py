@@ -315,6 +315,8 @@ def tt_timesheet(item: dict[str, Any], ctx: MapContext) -> list[Row]:
 # ------------------------------------------------------------------ fase 4b
 def new_hire(item: dict[str, Any], ctx: MapContext) -> list[Row]:
     name = " ".join(filter(None, [text(item.get("Nombre")), text(item.get("Apellidos"))])) or text(item.get("Title"))
+    if ctx.is_excluded(name):
+        return []
     return [
         {
             "sp_id": int(item["ID"]),

@@ -213,14 +213,16 @@ class ConversationEngine:
         now = datetime.now(self._tz)
         mailbox = self._mailbox_for(user) or "" if self._mailbox_for else ""
         system = self.persona.system_prompt(
+            business_rules=rules_for_prompt(), capabilities=self._tools.capabilities_for(user)
+        )
+        context = self.persona.turn_context(
             user_name=user.display_name,
             now=now,
-            business_rules=rules_for_prompt(),
-            capabilities=self._tools.capabilities_for(user),
+            mailbox=mailbox,
             focus=describe_focus(turn.state),
             hint=self.persona.hint_for(message, mailbox),
-            mailbox=mailbox,
         )
+        messages[-1] = Message(role="user", content=message + context)
         ctx = ToolContext(user=user, request_id=request_id, now=now, session_state=turn.state, user_message=message)
 
         status: Literal["ok", "error"] = "ok"

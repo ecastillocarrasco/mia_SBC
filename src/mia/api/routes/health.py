@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from mia import __version__
 from mia.api.deps import ServicesDep
+from mia.data.schema import schema_problem
 
 router = APIRouter(tags=["salud"])
 
@@ -19,5 +20,8 @@ async def live() -> dict[str, str]:
 async def ready(services: ServicesDep) -> JSONResponse:
     """Listo para atender: la base de datos responde (sonda de readiness)."""
     db_ok = await services.db.ping()
-    body = {"status": "ok" if db_ok else "degraded", "database": db_ok, "version": __version__}
-    return JSONResponse(body, status_code=200 if db_ok else 503)
+    problem = await schema_problem(services.db) if db_ok else None
+    body: dict[str, object] = {"status": "ok" if db_ok else "degraded", "database": db_ok, "version": __version__}
+    if problem:
+        body |= {"status": "migrations_pending", "detail": problem}
+    return JSONResponse(body, status_code=200 if db_ok and not problem else 503)

@@ -8,7 +8,6 @@ desactivado salvo que se habilite en la configuración.
 
 from __future__ import annotations
 
-import html
 import re
 from typing import Any
 
@@ -17,21 +16,20 @@ from pydantic import BaseModel, Field
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.domains.common import Deps, table
+from mia.domains.correo.htmltext import plain_text
 from mia.domains.correo.mailbox import resolve_mailbox
 from mia.sources.graph import GraphClient, GraphError
 
-_TAGS = re.compile(r"<[^>]+>")
 _CONFIRM = re.compile(r"\b(s[ií]|env[ií]a(lo)?|adelante|confirm[oa]|de acuerdo|vale|ok)\b", re.IGNORECASE)
-_NOREPLY = re.compile(r"no-?reply|do-?not-?reply|noresponder", re.IGNORECASE)
+_NOREPLY = re.compile(
+    r"no[-_.]?reply|do[-_.]?not[-_.]?reply|no[-_.]?responder|no[-_.]?contestar|no[-_.]?contestes", re.IGNORECASE
+)
 _DENY = re.compile(r"\b(no|espera|todav[ií]a no|cancela)\b", re.IGNORECASE)
 SELECT = "id,subject,from,receivedDateTime,bodyPreview,hasAttachments,isRead"
 
 
 def _plain(body: dict[str, Any] | None) -> str:
-    content = str((body or {}).get("content") or "")
-    if (body or {}).get("contentType", "").lower() == "html":
-        content = html.unescape(_TAGS.sub(" ", content))
-    return " ".join(content.split())
+    return plain_text(str((body or {}).get("content") or ""), str((body or {}).get("contentType") or "text"))
 
 
 def _sender(message: dict[str, Any]) -> str:
@@ -60,6 +58,11 @@ def _remember(ctx: ToolContext, messages: list[dict[str, Any]]) -> list[dict[str
     return out
 
 
+def is_noreply(sender: str) -> bool:
+    """Remitente automático (no-reply): no admite respuesta."""
+    return bool(_NOREPLY.search(sender or ""))
+
+
 def _mail_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Filas en el formato del panel de correo del 2D, con la referencia para poder abrir cada correo."""
     return [
@@ -71,6 +74,7 @@ def _mail_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "has_attachments": bool(i.get("adjuntos")),
             "preview": i.get("extracto"),
             "is_read": bool(i.get("leido")),
+            "no_reply": is_noreply(i["de"]),
         }
         for i in items
     ]
@@ -216,7 +220,7 @@ def leer(deps: Deps) -> Tool:
             "para": [r.get("emailAddress", {}).get("address") for r in message.get("toRecipients", [])],
             "asunto": message.get("subject"),
             "recibido": message.get("receivedDateTime"),
-            "texto": _plain(message.get("body"))[:4000],
+            "texto": _plain(message.get("body"))[:8000],
             "adjuntos": [a.get("name") for a in attachments],
         }
         return ToolResult(ToolStatus.OK, view, {"type": "mail", **view})

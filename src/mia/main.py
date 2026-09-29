@@ -13,9 +13,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from mia import __version__
 from mia.api.errors import install_error_handlers
 from mia.api.middleware import RequestContextMiddleware
-from mia.api.routes import admin, chat, compat, documents, health, reports, voice
+from mia.api.routes import admin, chat, compat, documents, health, mail, reports, voice
 from mia.api.routes.frontend import mount_frontend
 from mia.api.services import Services
+from mia.data.schema import schema_problem
 from mia.observability import configure_logging, get_logger
 from mia.observability.telemetry import configure_telemetry
 from mia.settings import Settings, VoiceProviderName, get_settings
@@ -43,6 +44,8 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
         app.state.services = services or Services.build(settings)
         warm = asyncio.create_task(_warm_voice(app.state.services))
         log.info("app.started", version=__version__, environment=settings.environment.value)
+        if problem := await schema_problem(app.state.services.db):
+            log.error("app.migrations_pending", detail=problem)
         try:
             yield
         finally:
@@ -68,6 +71,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
         documents.router,
         admin.router,
         compat.router,
+        mail.router,
     ):
         app.include_router(router)
     mount_frontend(app, settings.frontend)

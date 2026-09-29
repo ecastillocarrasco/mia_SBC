@@ -107,6 +107,9 @@ class DataSettings(BaseModel):
     """Clave HMAC para seudonimizar identificadores personales (DNI/NIE). En Azure, desde Key Vault."""
     full_sync_hour: int = 3
     stale_after_minutes: int = 30
+    exclude_name_patterns: list[str] = Field(default_factory=lambda: ["^test", "^tezt"])
+    """Expresiones regulares (sobre el nombre, sin tildes ni mayúsculas) de cuentas que NO son personas reales, p. ej.
+    las de prueba: no se sincronizan y no cuentan en ningún total. Para más: MIA_DATA__EXCLUDE_NAME_PATTERNS."""
     content_enabled: bool = True
     """Lectura en el momento del contenido de nóminas y documentos (con permiso propio y auditoría)."""
     """A partir de cuántos minutos sin sincronizar avisa mIA de que los datos pueden no estar al día."""

@@ -250,3 +250,17 @@ Ver [consultas.md](consultas.md) para el catálogo completo. Novedades de esta e
 
 Nota: en la plantilla activa hay ~14 cuentas de prueba («test…», «testAltaTurno»…) que cuentan en los totales
 (p. ej. Restaurante).
+
+
+## Cierre de las fases 3 y 5 (tercera ronda de pruebas)
+
+| Hallazgo / pendiente | Corrección |
+|---|---|
+| `python -m mia.sync` fallaba con «no existe la columna extra» (migración 0007 sin aplicar) | La sincronización se detiene con un mensaje claro («aplica `alembic upgrade head`»); `/health/ready` y el arranque avisan de migraciones pendientes |
+| Cuentas de prueba (`test…`, `tezt…`) contando en los totales | No se sincronizan y se retiran las ya cargadas (`MIA_DATA__EXCLUDE_NAME_PATTERNS`, por defecto `^test`, `^tezt`) |
+| Correo: el cuerpo HTML se veía como CSS en una sola línea | Conversor de HTML a texto (párrafos, viñetas, enlaces) |
+| Correo: «Abrir correo» y «Proponer respuesta» escribían mensajes en el chat con referencias (c9) | Ventanas emergentes con acciones directas (`/api/mia/mail/*`): sin pasar por el modelo, sin referencias visibles; los correos automáticos avisan y no ofrecen responder |
+| Bloqueo de no-reply no reconocía `do_not_reply@…` (guiones bajos) | Reconoce cualquier separador |
+| Bajas por departamento y periodo (41 frente a 18 en Pisos/agosto) | `ausencias` devuelve por departamento periodos, empleados, días acumulados, media y el más largo; misma fórmula que el antiguo (días en la ventana / periodos) |
+| «Duración media de las bajas» respondía 1 día (ventana de hoy) | Las preguntas de media usan los últimos 12 meses, como el antiguo |
+| 23.000 tokens por pregunta y `tokens_cached=0` | Instrucciones y herramientas idénticas entre preguntas; lo variable (hora, foco, buzón, pista) va en el mensaje del usuario |

@@ -535,3 +535,125 @@ async def test_each_user_only_reaches_their_own_mailbox_and_drafts_do_not_travel
     assert blocked.status is ToolStatus.PERMISSION_DENIED and fake.sent == []
     assert resolve_mailbox(per_user.mail, ana) == "ana@sbc.test"
     await graph.aclose()
+
+
+def test_html_mail_becomes_clean_readable_text() -> None:
+    """Fallo real: el correo de Power Automate se veía como cientos de líneas de CSS en una sola línea."""
+    from mia.domains.correo.htmltext import html_to_text  # noqa: PLC0415
+
+    html = (
+        "<html><head><style>table {width:640px} @media only screen {.a{padding:1px}}</style></head><body>"
+        '<div style="display:none;max-height:0">Texto previo oculto &#847; &#847;</div>'
+        "<table><tr><td><h1>1 of your flow(s) have failed</h1></td></tr><tr><td><p>Hola Enrique,</p>"
+        "<p>Tu flujo <b>Aprobaciones</b> ha fallado.</p><ul><li>Acción: Enviar correo</li><li>Error: 401</li></ul>"
+        '<a href="https://make.powerautomate.com/runs">Ver detalles</a></td></tr></table></body></html>'
+    )
+    text = html_to_text(html)
+    assert "width:640px" not in text and "@media" not in text and "oculto" not in text
+    assert text.splitlines()[0] == "1 of your flow(s) have failed"
+    assert "Hola Enrique,\n\nTu flujo Aprobaciones ha fallado." in text
+    assert "- Acción: Enviar correo\n- Error: 401" in text
+    assert "Ver detalles (https://make.powerautomate.com/runs)" in text
+
+
+class _Services:
+    """Lo mínimo de Services que usan las acciones de correo de la pantalla."""
+
+    def __init__(
+        self, registry: ToolRegistry, db: Any, settings: Any, llm_text: str = "Hola,\n\nGracias.\n\nUn saludo,\nEnrique"
+    ) -> None:
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        from mia.llm import LLMCompleted, TextDelta  # noqa: PLC0415
+
+        class _LLM:
+            async def stream(self, request: Any):
+                self.last_prompt = request.messages[-1].content
+                yield TextDelta(llm_text)
+                yield LLMCompleted()
+
+        self.engine = SimpleNamespace(tools=registry)
+        self.db, self.settings, self.llm = db, settings, _LLM()
+
+
+async def test_screen_mail_actions_open_propose_draft_and_send(env: Any) -> None:
+    from mia.api.mail_actions import execute_mail_action  # noqa: PLC0415
+
+    _, db, settings = env
+    fake = _FakeGraph()
+    graph = GraphClient(StaticTokenProvider(), transport=httpx.MockTransport(fake.handler))
+    registry = build_registry(db, settings=settings, graph=graph)
+    services = _Services(registry, db, settings)
+    admin = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
+    listing_state: dict[str, Any] = {}
+    await call(registry, "correos_sin_leer", listing_state)  # crea la referencia c1 en la sesión
+    from mia.data.models import ConversationSession  # noqa: PLC0415
+
+    async with db.session() as s:
+        s.add(ConversationSession(id="s1", user_id="u", state=listing_state))
+
+    opened = await execute_mail_action(services, admin, "open", {"session_id": "s1", "ref": "c1"})
+    assert (
+        opened["ok"] and opened["message"]["text"] == "Hola & gracias" and opened["message"]["subject"] == "Solicitud"
+    )
+    proposed = await execute_mail_action(
+        services, admin, "propose", {"session_id": "s1", "ref": "c1", "instrucciones": "dile que lo vemos el lunes"}
+    )
+    assert proposed["texto"].startswith("Hola,") and "dile que lo vemos el lunes" in services.llm.last_prompt
+    assert "Hola & gracias" in services.llm.last_prompt and "Firma como: Enrique" in services.llm.last_prompt
+    saved = await execute_mail_action(
+        services, admin, "draft", {"session_id": "s1", "ref": "c1", "texto": proposed["texto"]}
+    )
+    assert saved["ok"] and saved["draft"]["borrador"] == "b1" and fake.sent == []
+    edited = await execute_mail_action(
+        services, admin, "update", {"session_id": "s1", "borrador": "b1", "texto": "Nuevo texto"}
+    )
+    assert edited["ok"] and fake.patched
+    sent = await execute_mail_action(services, admin, "send", {"session_id": "s1", "borrador": "b1"})
+    assert sent["ok"] and len(fake.sent) == 1  # pulsar «Sí, enviar» es la confirmación explícita
+    again = await execute_mail_action(services, admin, "send", {"session_id": "s1", "borrador": "b1"})
+    assert not again["ok"] and len(fake.sent) == 1  # no se envía dos veces
+    await graph.aclose()
+
+
+async def test_screen_mail_actions_keep_the_safeguards(env: Any) -> None:
+    from mia.api.mail_actions import execute_mail_action  # noqa: PLC0415
+    from mia.data.models import ConversationSession  # noqa: PLC0415
+    from mia.data.repositories import SessionNotOwnedError  # noqa: PLC0415
+
+    _, db, settings = env
+    fake = _FakeGraph(recipient="do_not_reply@sbc.test")  # el destinatario es un no-reply
+    graph = GraphClient(StaticTokenProvider(), transport=httpx.MockTransport(fake.handler))
+    registry = build_registry(db, settings=settings, graph=graph)
+    services = _Services(registry, db, settings)
+    admin = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
+    state: dict[str, Any] = {}
+    await call(registry, "correos_sin_leer", state)
+    async with db.session() as s:
+        s.add(ConversationSession(id="s2", user_id="u", state=state))
+    await execute_mail_action(services, admin, "draft", {"session_id": "s2", "ref": "c1", "texto": "Recibido."})
+    blocked = await execute_mail_action(services, admin, "send", {"session_id": "s2", "borrador": "b1"})
+    assert not blocked["ok"] and fake.sent == []  # bloqueo de no-reply en código, también desde la pantalla
+    other = UserContext("x", "Otra persona", roles=frozenset({"mia.admin"}))
+    with pytest.raises(SessionNotOwnedError):
+        await execute_mail_action(services, other, "open", {"session_id": "s2", "ref": "c1"})
+    unknown = await execute_mail_action(services, admin, "open", {"session_id": "s2", "ref": "c99"})
+    assert not unknown["ok"]
+    await graph.aclose()
+
+
+def test_noreply_addresses_are_recognised_with_any_separator() -> None:
+    """Fallo real: el buzón recibe de «do_not_reply@…» (guiones bajos) y no se bloqueaba."""
+    from mia.domains.correo.tools import _NOREPLY  # noqa: PLC0415
+
+    for address in (
+        "do_not_reply@sunsetbeachclub.com",
+        "PowerAutomateNoReply@microsoft.com",
+        "no-reply@x.com",
+        "noreply@x.com",
+        "no.responder@x.es",
+        "do-not-reply@x.com",
+    ):
+        assert _NOREPLY.search(address), address
+    for address in ("ana@x.es", "reply.team@x.es", "notify@x.es"):
+        assert not _NOREPLY.search(address), address

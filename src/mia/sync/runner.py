@@ -10,6 +10,7 @@ Un error en un elemento no detiene la sincronización: se registra y se continú
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
@@ -22,12 +23,13 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mia.data import Database, SourceItem, SourceSyncState
+from mia.data import Database, Employee, NewHire, SourceItem, SourceSyncState
 from mia.observability import get_logger
 from mia.sources.definitions import SourceDefinition
 from mia.sources.mappers.common import MapContext
 from mia.sources.pseudonym import Pseudonymizer, mask_ids, pseudonymize_path
 from mia.sources.sharepoint import ChangeTokenExpiredError, SharePointClient
+from mia.text import normalize_key
 
 log = get_logger(__name__)
 
@@ -69,7 +71,9 @@ class SyncRunner:
         site_clients: dict[str, SharePointClient] | None = None,
         timezone: str = "Europe/Madrid",
         full_sync_hour: int = 3,
+        exclude_name_patterns: list[str] | None = None,
     ) -> None:
+        self._exclude = tuple(re.compile(p) for p in exclude_name_patterns or ())
         self._db = db
         self._base_client = client
         self._site_clients = {"rrhh": client, **(site_clients or {})}
@@ -99,6 +103,17 @@ class SyncRunner:
         present = [f for f in source.optional_fields if f in existing]
         return replace(source, select=",".join([source.select, *present])) if present else source
 
+    async def _prune_excluded(self, source: SourceDefinition) -> list[str]:
+        """Quita de la base las cuentas excluidas (de prueba) que ya estaban cargadas de antes."""
+        if source.model not in (Employee, NewHire):
+            return []
+        async with self._db.session() as db:
+            rows = (await db.execute(select(source.model.sp_id, source.model.name))).all()
+            doomed = [sp_id for sp_id, name in rows if any(p.search(normalize_key(name)) for p in self._exclude)]
+            for chunk in _chunks(doomed, 500):
+                await db.execute(delete(source.model).where(source.model.sp_id.in_(chunk)))
+        return [f"cuentas excluidas retiradas: {len(doomed)}"] if doomed else []
+
     async def run(self, source: SourceDefinition, mode: SyncMode = SyncMode.AUTO) -> SyncReport:
         started = time.perf_counter()
         self._client = self._site_clients.get(source.site, self._base_client)
@@ -120,6 +135,8 @@ class SyncRunner:
             report.status = "error"
             report.error = str(exc)[:1000]
             log.exception("sync.failed", source=source.key)
+        if report.status == "ok" and self._exclude:
+            report.notes.extend(await self._prune_excluded(source))
         report.elapsed_ms = int((time.perf_counter() - started) * 1000)
         await self._save_state(source, report)
         log.info(
@@ -218,7 +235,7 @@ class SyncRunner:
     async def _insert_canonical(
         self, db: AsyncSession, source: SourceDefinition, items: list[dict[str, Any]], report: SyncReport
     ) -> int:
-        ctx = MapContext(tz=self._tz, pseudonymize=self._pseudonymize, year=source.year)
+        ctx = MapContext(tz=self._tz, pseudonymize=self._pseudonymize, year=source.year, exclude_name=self._exclude)
         rows: list[dict[str, Any]] = []
         for item in items:
             try:

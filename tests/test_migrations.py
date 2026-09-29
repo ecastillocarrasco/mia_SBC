@@ -46,3 +46,36 @@ def test_downgrade_is_clean(tmp_path: Path) -> None:
     tables = set(inspect(engine).get_table_names())
     engine.dispose()
     assert tables == {"alembic_version"}
+
+
+def test_expected_revision_matches_the_latest_migration() -> None:
+    """mIA avisa de migraciones pendientes comparando con esta revisión: debe ser siempre la última."""
+    from alembic.config import Config  # noqa: PLC0415
+    from alembic.script import ScriptDirectory  # noqa: PLC0415
+
+    from mia.data.schema import EXPECTED_REVISION  # noqa: PLC0415
+
+    root = Path(__file__).resolve().parents[1]
+    config = Config(str(root / "alembic.ini"))
+    config.set_main_option("script_location", str(root / "migrations"))
+    assert ScriptDirectory.from_config(config).get_current_head() == EXPECTED_REVISION
+
+
+async def test_pending_migrations_are_reported_clearly(tmp_path: Path) -> None:
+    """Caso real: PostgreSQL en la 0006 y el código en la 0007 daba «no existe la columna extra» en plena sincronización."""
+    from sqlalchemy import text  # noqa: PLC0415
+
+    from mia.data.schema import EXPECTED_REVISION, schema_problem  # noqa: PLC0415
+    from tests.dbutil import fresh_database  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "versiones.db")
+    assert await schema_problem(db) is None  # sin tabla de versiones no se puede saber: no se avisa
+    async with db.session() as s:
+        await s.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
+        await s.execute(text("INSERT INTO alembic_version VALUES ('0006')"))
+    problem = await schema_problem(db)
+    assert problem and "0006" in problem and "alembic upgrade head" in problem
+    async with db.session() as s:
+        await s.execute(text("UPDATE alembic_version SET version_num = :v"), {"v": EXPECTED_REVISION})
+    assert await schema_problem(db) is None
+    await db.dispose()

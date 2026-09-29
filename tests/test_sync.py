@@ -208,3 +208,30 @@ async def test_unknown_custom_columns_of_curriculums_are_synced(tmp_path: Path) 
     await db.dispose()
     assert report.status == "ok" and row.extra == {"Especialidad": "Sushi"}
     assert "Especialidad" in str(fake.requests[-1].url.params.get("$select"))
+
+
+async def test_test_accounts_are_never_synced_and_previous_ones_are_pruned(tmp_path: Path) -> None:
+    """Las cuentas de prueba («test…», «testAltaTurno») no son personas: no entran ni cuentan en ningún total."""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from mia.data import Employee  # noqa: PLC0415
+    from mia.sources.definitions import EMPLEADOS  # noqa: PLC0415
+    from mia.sync import SyncMode  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "excl.db")
+    fake = FakeSharePoint(page_size=10)
+    for n, name in enumerate(["Ana Ruiz", "test3243243243", "tezt55"], 1):
+        fake.put("EmpleadosCorporativos", {"ID": n, "Nombre": name, "Activo": "1", "Departamento": "Pisos"})
+    client = SharePointClient(site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport())
+    runner = SyncRunner(db=db, client=client, pseudonymize=Pseudonymizer("k"), exclude_name_patterns=["^test", "^tezt"])
+    await runner.run(EMPLEADOS)  # carga completa: las cuentas de prueba no entran
+    async with db.session() as s:
+        assert sorted((await s.scalars(select(Employee.name))).all()) == ["Ana Ruiz"]
+        # una cuenta de prueba que ya estuviera cargada de antes: la sincronización incremental la retira
+        s.add(Employee(sp_id=99, name="testAltaTurno", name_key="testaltaturno", active=True))
+    report = await runner.run(EMPLEADOS, SyncMode.INCREMENTAL)
+    await client.aclose()
+    async with db.session() as s:
+        names = sorted((await s.scalars(select(Employee.name))).all())
+    await db.dispose()
+    assert names == ["Ana Ruiz"] and any("retiradas: 1" in n for n in report.notes)
