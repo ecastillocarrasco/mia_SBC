@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolResult, ToolStatus
 from mia.data import Employee, Payslip, ShiftDay, SignedDocument, Vacation, VacationBalance
-from mia.modules.rrhh.common import Deps, fmt_date, is_operational, no_population, previous_population, table
+from mia.modules.rrhh.common import Deps, confirmed_vacations, fmt_date, no_population, previous_population, table
 from mia.modules.rrhh.empleados.tools import age
 
 Campo = Literal[
@@ -101,11 +101,11 @@ async def _extra(deps: Deps, people: list[Employee], fields: set[str], today: da
                 .where(Vacation.end_date >= today, func.lower(Vacation.employee_email).in_(by_mail))
                 .order_by(Vacation.start_date)
             )
-            for v in (await db.scalars(stmt)).all():
-                if is_operational(v.status) and (v.request_type or "").lower() == "vacaciones":
-                    out[by_mail[(v.employee_email or "").lower()]].setdefault(
-                        "proximas_vacaciones", f"{fmt_date(v.start_date)}–{fmt_date(v.end_date)}"
-                    )
+            rows = [v for v in (await db.scalars(stmt)).all() if (v.request_type or "").lower() == "vacaciones"]
+            for v in await confirmed_vacations(db, rows):
+                out[by_mail[(v.employee_email or "").lower()]].setdefault(
+                    "proximas_vacaciones", f"{fmt_date(v.start_date)}–{fmt_date(v.end_date)}"
+                )
         if {"ultima_nomina", "nominas_no_leidas"} & fields and by_key:
             for key, last, unread in (
                 await db.execute(

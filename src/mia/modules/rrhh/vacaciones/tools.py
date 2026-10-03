@@ -12,8 +12,7 @@ from sqlalchemy import func, select
 
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
-from mia.data import Employee, ShiftDay, Vacation, VacationBalance
-from mia.ingestion.mappers.hr import ShiftKind
+from mia.data import Employee, Vacation, VacationBalance
 from mia.modules.rrhh.common import (
     MAX_ROWS_FOR_MODEL,
     ActivosParams,
@@ -23,6 +22,7 @@ from mia.modules.rrhh.common import (
     Periodo,
     PersonaParams,
     active_emails,
+    confirmed_vacations,
     department_problem,
     employees_for,
     fmt_date,
@@ -42,39 +42,6 @@ from mia.modules.rrhh.turnos.tools import DAY_NAMES
 from mia.text import normalize_key
 
 ESTADOS = {"aceptadas": "aceptada", "pendientes": "pendiente", "rechazadas": "rechazada"}
-
-CONFIRMED_VACATION_STATES = frozenset({"aceptada", "aprobada"})
-PENDING_SIGNATURE_STATE = "pendiente firma"
-
-
-async def _pending_backed_by_shift(deps: Deps, pending: list[Vacation]) -> set[str]:
-    """Emails en Pendiente Firma cuyo turno YA refleja Vacaciones en el periodo de la solicitud.
-
-    Acuerdo con el cliente: se da por hecho que las vacaciones se firman y se aceptan,
-    pero a veces la firma llega después de disfrutarlas (en el menor de los casos). Por
-    eso Pendiente Firma solo cuenta como «de vacaciones» cuando el turno ya lo confirma;
-    si solo hay solicitud y ningún turno de Vacaciones en esas fechas, no se cuenta todavía.
-    """
-    emails = {v.employee_email for v in pending if v.employee_email and v.start_date and v.end_date}
-    if not emails:
-        return set()
-    async with deps.db.session() as db:
-        backed: set[str] = set()
-        for v in pending:
-            if not v.employee_email or not v.start_date or not v.end_date or v.employee_email in backed:
-                continue
-            exists = await db.scalar(
-                select(ShiftDay.email)
-                .where(
-                    ShiftDay.email == v.employee_email,
-                    ShiftDay.kind == ShiftKind.VACACIONES,
-                    ShiftDay.day.between(v.start_date, v.end_date),
-                )
-                .limit(1)
-            )
-            if exists:
-                backed.add(v.employee_email)
-        return backed
 
 
 class _OptionalPerson(BaseModel):
@@ -158,16 +125,9 @@ def solicitudes(deps: Deps) -> Tool:
                 stmt = stmt.where(Vacation.employee_email.in_(previous["emails"]))
             rows = list((await db.scalars(stmt.order_by(Vacation.start_date))).all())
             fresh = await deps.freshness(db, "vacaciones")
-        if p.estado == "aceptadas":
-            pending = [v for v in rows if normalize_key(v.status) == PENDING_SIGNATURE_STATE]
-            backed = await _pending_backed_by_shift(deps, pending)
-            rows = [
-                v
-                for v in rows
-                if normalize_key(v.status) in CONFIRMED_VACATION_STATES
-                or (normalize_key(v.status) == PENDING_SIGNATURE_STATE and v.employee_email in backed)
-            ]
-        elif p.estado != "todas":
+            if p.estado == "aceptadas":
+                rows = await confirmed_vacations(db, rows)
+        if p.estado in ("pendientes", "rechazadas"):
             rows = [v for v in rows if normalize_key(v.status) == ESTADOS[p.estado]]
         if p.tipo != "todos":
             rows = [v for v in rows if normalize_key(v.request_type) == normalize_key(p.tipo)]

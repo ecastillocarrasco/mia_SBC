@@ -28,7 +28,7 @@ def _emp(sp_id: int, name: str, dept: str, active: bool = True, **kw: object) ->
 
 
 def _shift(  # noqa: PLR0917
-    item: int, person: str, name: str, dept: str, day: date, kind: str, raw: str | None
+    item: int, person: str, name: str, dept: str, day: date, kind: str, raw: str | None, *, email: str | None = None
 ) -> ShiftDay:
     from mia.text import normalize_key  # noqa: PLC0415
 
@@ -38,6 +38,7 @@ def _shift(  # noqa: PLR0917
         day=day,
         person_key=person,
         employee_name=name,
+        email=email,
         department=dept,
         department_key=normalize_key(dept),
         iso_year=iso.year,

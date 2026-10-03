@@ -22,11 +22,11 @@ from mia.data import Employee, Payslip, ShiftDay, SignedDocument, Vacation, Vaca
 from mia.ingestion.mappers.hr import ShiftKind
 from mia.modules.rrhh.analitica.cruces import LABELS, Campo, _base, _extra
 from mia.modules.rrhh.common import (
-    OPERATIONAL_VACATION_STATES,
     ActivosParams,
     CohortParams,
     Deps,
     Periodo,
+    confirmed_vacations,
     department_problem,
     no_population,
     population_label,
@@ -158,16 +158,16 @@ async def _matching(db: Any, people: list[Employee], c: Condicion, today: date) 
     if c.que == "de_vacaciones":
         rows = (
             await db.scalars(
-                select(Vacation.employee_email).where(
+                select(Vacation).where(
                     Vacation.start_date <= hi,
                     Vacation.end_date >= lo,
-                    func.lower(Vacation.status).in_(sorted(OPERATIONAL_VACATION_STATES)),
                     func.lower(Vacation.request_type) == "vacaciones",
                     func.lower(Vacation.employee_email).in_(by_mail),
                 )
             )
         ).all()
-        return {by_mail[m.lower()] for m in rows if m}
+        confirmed = await confirmed_vacations(db, rows)
+        return {by_mail[v.employee_email.lower()] for v in confirmed if v.employee_email}
     if c.que in {"saldo_menor_que", "saldo_mayor_que"}:
         limit = float(c.valor or 0)
         cmp = (

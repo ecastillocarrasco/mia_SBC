@@ -19,11 +19,11 @@ from mia.modules.rrhh.common import (
     CohortParams,
     Deps,
     PersonaParams,
+    confirmed_vacations,
     department_problem,
     find_people,
     fmt_date,
     focus_person,
-    is_operational,
     no_population,
     person_problem,
     person_summary,
@@ -153,7 +153,7 @@ async def build_profile(db: AsyncSession, e: Employee, today: date, *, full_hist
         docs = list((await db.scalars(select(SignedDocument).where(SignedDocument.person_key == e.person_key))).all())
     by_day = {s.day: s for s in shifts}
     today_shift = by_day.get(today)
-    accepted = [v for v in vacations if is_operational(v.status)]
+    accepted = await confirmed_vacations(db, vacations)
     upcoming: list[dict[str, Any]] = []
     if current_absence is not None:
         back = current_absence.return_shift

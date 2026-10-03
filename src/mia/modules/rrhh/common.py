@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import difflib
 import re
+from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -13,7 +15,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.conversation import ToolResult, ToolStatus
-from mia.data import Database, Employee, SourceSyncState
+from mia.data import Database, Employee, ShiftDay, SourceSyncState, Vacation
+from mia.ingestion.mappers.hr import ShiftKind
 from mia.text import normalize_key
 
 STALE_AFTER = timedelta(minutes=30)
@@ -400,12 +403,51 @@ def document_entry(
     }
 
 
-OPERATIONAL_VACATION_STATES = frozenset({"aceptada", "aprobada", "pendiente firma"})
-"""Solicitudes que cuentan como vacaciones «en firme» (igual que VACACIONES_ESTADOS_OPERATIVOS del sistema anterior)."""
+CONFIRMED_VACATION_STATES = frozenset({"aceptada", "aprobada"})
+PENDING_SIGNATURE_STATE = "pendiente firma"
 
 
-def is_operational(status: str | None) -> bool:
-    return normalize_key(status) in OPERATIONAL_VACATION_STATES
+async def _vacation_shift_days(db: AsyncSession, emails: set[str]) -> dict[str, list[date]]:
+    """Días con turno de tipo Vacaciones ya publicado, por email (orden ascendente)."""
+    if not emails:
+        return {}
+    out: dict[str, list[date]] = defaultdict(list)
+    rows = await db.execute(
+        select(ShiftDay.email, ShiftDay.day)
+        .where(ShiftDay.email.in_(emails), ShiftDay.kind == ShiftKind.VACACIONES)
+        .order_by(ShiftDay.email, ShiftDay.day)
+    )
+    for email, day in rows:
+        if email:
+            out[email].append(day)
+    return out
+
+
+async def confirmed_vacations(db: AsyncSession, rows: Sequence[Vacation]) -> list[Vacation]:
+    """Solicitudes de vacaciones/asuntos propios que cuentan como «en firme».
+
+    Aceptada y aprobada siempre cuentan. Pendiente de firma solo cuenta cuando el turno YA
+    refleja Vacaciones en el periodo exacto de esa solicitud (VAC-002, REI-001): se da por
+    hecho que las vacaciones se firman y se aceptan, pero a veces la firma llega después de
+    disfrutarlas; si solo hay solicitud y ningún turno de Vacaciones en esas fechas, la
+    solicitud todavía no cuenta.
+    """
+    pending_emails = {
+        v.employee_email
+        for v in rows
+        if v.employee_email and v.start_date and v.end_date and normalize_key(v.status) == PENDING_SIGNATURE_STATE
+    }
+    shift_days = await _vacation_shift_days(db, pending_emails)
+
+    def _counts(v: Vacation) -> bool:
+        status = normalize_key(v.status)
+        if status in CONFIRMED_VACATION_STATES:
+            return True
+        if status != PENDING_SIGNATURE_STATE or not v.employee_email or not v.start_date or not v.end_date:
+            return False
+        return any(v.start_date <= d <= v.end_date for d in shift_days.get(v.employee_email, []))
+
+    return [v for v in rows if _counts(v)]
 
 
 _REFERRED = re.compile(
@@ -420,10 +462,28 @@ def referred_label(message: str | None) -> str | None:
     return match.group(1) if match else None
 
 
+_GENERIC_FOLLOWUP = re.compile(
+    r"^\s*[¿]?\s*(?:y\s+)?"
+    r"(?:qui[eé]nes?|cu[aá]les?|cu[aá]nt[oa]s?)\s+"
+    r"(?:personas?\s+)?(?:distintas?\s+)?"
+    r"(?:son|hay|eran|quedan|representan)"
+    r"(?:\s+(?:esas?|esos?|ellas?|ellos?|en\s+total)(?:\s+personas?)?)?"
+    r"\s*[.?!¿]*\s*$",
+    re.IGNORECASE,
+)
+"""«Quiénes son», «cuántos son», «cuántas personas distintas representan»…: un seguimiento sin
+criterio propio, sin «de esos/ellas» explícito. El modelo debería marcar sobre_resultado_anterior
+él solo (se le indica en el prompt), pero en la práctica no siempre lo hace con esta formulación
+(el prompt solo cita «de esos/ellas» como ejemplo) — de ahí este respaldo determinista."""
+
+
 def wants_previous(p: Any, ctx: Any) -> bool:
-    """¿La consulta es sobre un resultado anterior? Lo dice el modelo o lo delata «volviendo a los de…»."""
+    """¿La consulta es sobre un resultado anterior? Lo dice el modelo, lo delata «volviendo a los
+    de…», o es un seguimiento genérico sin criterio propio («quiénes son», «cuántos son»)."""
+    message = getattr(ctx, "user_message", "") or ""
     return bool(
         getattr(p, "sobre_resultado_anterior", False)
         or getattr(p, "resultado", None)
-        or referred_label(getattr(ctx, "user_message", ""))
+        or referred_label(message)
+        or _GENERIC_FOLLOWUP.search(message)
     )

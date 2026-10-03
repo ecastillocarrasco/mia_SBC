@@ -100,7 +100,7 @@ def describe_focus(state: dict[str, Any]) -> str:
     if isinstance(population, dict) and population.get("total") is not None:
         lines.append(
             f"- Último resultado con personas: {population.get('etiqueta')} ({population['total']}). "
-            "Para «de esos/ellas», usa sobre_resultado_anterior=true."
+            "Para «de esos/ellas», «quiénes son» o «cuántos son», usa sobre_resultado_anterior=true."
         )
     period = state.get("foco_periodo")
     if isinstance(period, dict) and period.get("desde"):

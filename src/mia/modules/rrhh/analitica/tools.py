@@ -24,7 +24,7 @@ from mia.data import (
     VacationBalance,
 )
 from mia.ingestion.mappers.hr import ShiftKind
-from mia.modules.rrhh.common import Deps, department_problem, fmt_date, is_operational, resolve_department, table
+from mia.modules.rrhh.common import Deps, confirmed_vacations, department_problem, fmt_date, resolve_department, table
 from mia.modules.rrhh.turnos.periods import absence_periods
 from mia.modules.rrhh.turnos.tools import franja_of
 from mia.text import normalize_key
@@ -397,7 +397,7 @@ def analitica_vacaciones(deps: Deps) -> Tool:
             if p.departamento:
                 stmt = stmt.where(Vacation.department_key.like(f"%{normalize_key(p.departamento)}%"))
             rows = list((await db.scalars(stmt)).all())
-        accepted = [v for v in rows if is_operational(v.status)]
+            accepted = await confirmed_vacations(db, rows)
         per_month: Counter[int] = Counter()
         for v in accepted:
             if v.start_date and v.end_date:

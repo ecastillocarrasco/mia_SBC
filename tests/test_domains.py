@@ -547,6 +547,9 @@ async def _return_scenario(tmp_path: Any) -> tuple[ToolRegistry, Any, Any]:
         if key != "pk-baja":
             n += 1
             rows.append(_shift(n, key, key, "Pisos", d(4), "Trabajo", "8:00-16:00"))
+    # Beto (pendiente de firma): el turno YA refleja Vacaciones en el periodo de su solicitud, así
+    # que cuenta como operativa (VAC-002/REI-001); Cris (pendiente) no tiene turno que la respalde.
+    rows.append(_shift(21, "pk-v2", "Beto", "Pisos", d(2), "Vacaciones", "Vacaciones", email="pk-v2@x.test"))
 
     def vac(sp: int, key: str, status: str, kind: str, a: int, b: int) -> Any:  # noqa: PLR0917
         return Vacation(
@@ -585,12 +588,13 @@ async def test_a_sick_leave_that_ended_yesterday_returns_today(tmp_path: Any) ->
 
 
 async def test_vacation_returns_come_from_operational_requests_only(tmp_path: Any) -> None:
-    """Vacaciones: solicitudes aceptadas, aprobadas o pendientes de firma; no las pendientes ni las rechazadas."""
+    """Vacaciones: aceptadas/aprobadas siempre cuentan; pendiente de firma solo si el turno ya
+    la refleja (Beto); pendiente sin turno (Cris) y rechazada (Dani) no cuentan."""
     registry, db, _ = await _return_scenario(tmp_path)
     result = await call(registry, "reincorporaciones", tipos=["Vacaciones"])
     await db.dispose()
     names = [r["persona"] for r in result.summary["reincorporaciones"]]
-    assert sorted(names) == ["Ana", "Beto", "Eli"]  # Cris (pendiente) y Dani (rechazada) no cuentan
+    assert sorted(names) == ["Ana", "Beto", "Eli"]  # Cris (pendiente, sin turno) y Dani (rechazada) no cuentan
     assert names.count("Eli") == 1  # dos solicitudes encadenadas son una sola ausencia
 
 

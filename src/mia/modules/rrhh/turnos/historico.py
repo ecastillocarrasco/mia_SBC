@@ -19,7 +19,7 @@ from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.data import CalendarShift, ShiftDay, ShiftTemplate, ShiftTypeCatalog, WeekComment
 from mia.ingestion.definitions import CALENDAR_DEPARTMENTS
-from mia.modules.rrhh.common import Deps, Periodo, fmt_date, is_operational, table
+from mia.modules.rrhh.common import Deps, Periodo, confirmed_vacations, fmt_date, table
 from mia.text import normalize_key
 
 WORKING_KINDS = ("work", "special")
@@ -452,7 +452,7 @@ def disponibilidad_dia(deps: Deps) -> Tool:
                 normalize_key(w.name)
                 for w in (await db.scalars(select(TtWorker).where(TtWorker.visible.is_(True)))).all()
             }
-        on_vacation = {v.employee_email for v in vacations if is_operational(v.status)}
+            on_vacation = {v.employee_email for v in await confirmed_vacations(db, vacations)}
         plan_by_name = {r.employee_name_key: r for r in planned if r.employee_name_key}
         working: list[str] = []
         off: list[str] = []
