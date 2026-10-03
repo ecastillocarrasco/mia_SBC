@@ -290,3 +290,25 @@ Nota: en la plantilla activa hay ~14 cuentas de prueba («test…», «testAltaT
 | «Volviendo a los de baja…», «los de baja y los de vacaciones» sobre toda la plantilla | El modelo no usaba el resultado anterior | Detección determinista de «volviendo a los de X»; reglas de seguimiento |
 | «Timed out» en consultas encadenadas | Varias rondas de herramientas sin tope de tiempo | Presupuesto de 75 s por turno (`MIA_LLM__TURN_BUDGET_SECONDS`) |
 | Pisos trabajando 58/59, de baja 16/15; mañana 151/155; saldos negativos 4 frente a 6 | Sin determinar con certeza: datos sin sincronizar y/o turnos de personas sin ficha activa | `tools/diagnostico_paridad.py` lo desglosa con datos reales |
+
+
+## Reestructuración a plataforma multi-módulo (01/10)
+
+mIA deja de ser solo RRHH: pasa a ser una plataforma con varios módulos de conocimiento de la
+empresa (RRHH hoy; Finanzas, Administración, Legal y Compliance después), multiusuario y
+multilenguaje, con login real contra Entra ID. Cambio de fontanería en 6 pasos, cada uno con su
+propio commit y la suite completa de tests validada antes y después; ningún test ni comportamiento
+cambió, solo dónde vive el código.
+
+| Paso | Qué cambia |
+|---|---|
+| 1. `domains/` → `modules/rrhh/` | Los 10 dominios de RRHH, con un manifiesto nuevo (`ModuleManifest`): permisos, idiomas e información de las fuentes que usa. Sin enrutado multi-módulo todavía (no hay un segundo módulo que enrutar). |
+| 2. `connectors/` e `ingestion/` | Separados según quién importa qué: SharePoint y Graph se llaman también en vivo (correo, CV, `api/services.py`) → `connectors/`; lo que solo lee la sincronización (mappers, definiciones, seudonimización, `sync/`) → `ingestion/`. Nuevo `python -m mia.ingestion.sync`. `connectors/a3/` queda como interfaz vacía para Conectia (sin documentación de su API todavía). |
+| 3. Manifiesto de RRHH | Los 13 `Permission` que usan sus herramientas hoy, idioma español únicamente, fuentes SharePoint/Graph. |
+| 4. Login con Entra ID | `EntraIdIdentityProvider`: valida el token (JWT) contra el JWKS del tenant -firma, emisor, audiencia, expiración- y lee los app roles, sin tocar `api/deps.py` ni ningún dominio (el contrato ya estaba listo). |
+| 5. Mecanismo de i18n | `core/i18n.py`: textos de la aplicación y valores de catálogo (estado de vacaciones, tipo de turno) en español/inglés. Solo el mecanismo; los textos existentes no se han traducido todavía. |
+| 6. Huecos arquitectónicos | `knowledge/` (RAG, Azure AI Search), `learning/` (feedback y banco de evaluación) y `analytics/` (predictivo con Azure ML -aviso de alto riesgo, Reglamento (UE) 2024/1689, nacionalidad excluida siempre-): interfaces reales sin implementación. |
+
+Pendiente, explícitamente fuera de esta sesión: conector A3/Conectia real (falta documentación
+de su API), modelo predictivo (falta evaluación legal), traducción completa de los textos
+existentes, y enrutado multi-módulo real (no hay un segundo módulo que enrutar todavía).
