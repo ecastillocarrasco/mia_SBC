@@ -73,6 +73,9 @@ class UserContext:
     email: str | None = None
     roles: frozenset[str] = field(default_factory=frozenset)
     auth_method: str = "dev"
+    language: str = "es"
+    """ISO 639-1 (``mia.core.i18n.SUPPORTED_LANGUAGES``). Por ahora siempre «es»: ningún
+    proveedor de identidad la rellena todavía desde una preferencia real del usuario."""
 
     @property
     def permissions(self) -> frozenset[Permission]:
