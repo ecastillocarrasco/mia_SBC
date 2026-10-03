@@ -74,3 +74,32 @@ modo sombra) antes de cambiar cómo se buscan candidatos.
    reduce el no-determinismo observado (más cobertura puede estabilizar qué aparece).
 3. Si el no-determinismo persiste, aplicar el fix de `_semantic_pass` y comparar resultados
    antes/después sobre consultas reales del corpus de modo sombra, no solo con tests.
+
+---
+
+## Fase 3: Identidad y permisos (completa)
+
+Añadido: 03/10. Saltada a propósito (decisión del usuario) para pasar a la Fase 4.
+
+Lo que la Fase 3 del roadmap pide completo, y de lo que solo se hizo una parte dentro del
+trabajo de la Fase 2 (ver `docs/cobertura.md`, "Reestructuración a plataforma multi-módulo"):
+
+- ✅ Hecho: `EntraIdIdentityProvider` (`src/mia/auth/providers.py`) — valida el token JWT de
+  Entra ID contra el JWKS del tenant (firma, emisor, audiencia, expiración) y lee los app
+  roles. `AuthMode.ENTRA` en `settings.py`.
+- ❌ Sin hacer: sesión y foco de conversación aislados por usuario (hoy conviven en el mismo
+  `ConversationSession`/estado de servidor sin partición explícita por `user_id` más allá de
+  lo que ya aísla `ConversationRepository.get_or_create`— revisar si eso basta para 4-5
+  usuarios simultáneos o hace falta algo más).
+- ❌ Sin hacer: reparto de recursos compartidos entre usuarios (cuota de voz ElevenLabs,
+  presupuesto de LLM) — hoy son recursos de proceso, no por usuario.
+- ❌ Sin hacer: envío de correo a la cuenta del usuario logueado (consentimiento delegado de
+  Graph) — hoy usa el buzón fijo de `.env` (`MIA_MAIL__MAILBOX`), pensado para desarrollo con
+  un único usuario de pruebas.
+
+### Para retomar
+
+Repasar `src/mia/conversation/engine.py` (sesión/estado), `src/mia/voice/` (cuota ElevenLabs)
+y `src/mia/modules/rrhh/correo/mailbox.py` + `src/mia/connectors/graph.py` (hoy certificado de
+aplicación, no delegado) antes de proponer el diseño — no asumir que el aislamiento actual por
+`session_id` es suficiente sin comprobarlo primero.
