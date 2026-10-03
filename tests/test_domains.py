@@ -220,6 +220,51 @@ async def test_reincorporations_include_the_four_reasons(tmp_path: Any) -> None:
     assert {r["tras"] for r in result.summary["reincorporaciones"]} == {f"tras {k.lower()}" for k in reasons}
 
 
+async def test_one_person_two_reasons_counts_once_in_total_and_once_per_reason(tmp_path: Any) -> None:
+    """Tarea 3: 90 vs 103 vs 103 eventos — una persona con dos reincorporaciones de motivo
+    distinto en el periodo cuenta 1 en personas_distintas y 1 en cada motivo, nunca al revés:
+    por_motivo sí puede sumar más que personas_distintas (ahí está personas_con_mas_de_un_motivo
+    para verlo), pero personas_distintas nunca se duplica por tener más de un motivo."""
+    from datetime import timedelta  # noqa: PLC0415
+
+    from mia.data import Vacation  # noqa: PLC0415
+    from tests.dbutil import fresh_database  # noqa: PLC0415
+    from tests.hr_seed import TODAY, _emp, _shift  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "rei_overlap.db")
+    rows: list[Any] = [
+        _emp(1, "Overlap Persona", "Pisos", person_key="pk-overlap", email="overlap@x.test"),
+        # vuelve de baja el día 3
+        _shift(1, "pk-overlap", "Overlap Persona", "Pisos", TODAY + timedelta(days=1), "Baja/IT", "Baja"),
+        _shift(2, "pk-overlap", "Overlap Persona", "Pisos", TODAY + timedelta(days=2), "Baja/IT", "Baja"),
+        _shift(3, "pk-overlap", "Overlap Persona", "Pisos", TODAY + timedelta(days=3), "Trabajo", "8:00-16:00"),
+        # y, en el mismo periodo, vuelve de vacaciones el día 12
+        _shift(4, "pk-overlap", "Overlap Persona", "Pisos", TODAY + timedelta(days=12), "Trabajo", "8:00-16:00"),
+        Vacation(
+            sp_id=1,
+            employee_email="overlap@x.test",
+            employee_name="Overlap Persona",
+            department="Pisos",
+            department_key="pisos",
+            status="Aceptada",
+            request_type="Vacaciones",
+            start_date=TODAY + timedelta(days=10),
+            end_date=TODAY + timedelta(days=11),
+            total_days=2,
+        ),
+    ]
+    async with db.session() as s:
+        s.add_all(rows)
+    result = await call(build_registry(db), "reincorporaciones")
+    await db.dispose()
+    assert result.summary["personas_distintas"] == 1
+    assert result.summary["con_reincorporacion_publicada"] == 2  # 2 eventos, no 2 personas
+    assert result.summary["por_motivo"] == {"Baja/IT": 1, "Vacaciones": 1}  # suma 2, no 1
+    assert result.summary["personas_con_mas_de_un_motivo"] == [
+        {"persona": "Overlap Persona", "motivos": ["Baja/IT", "Vacaciones"]}
+    ]
+
+
 async def test_absences_are_merged_into_periods(registry: ToolRegistry) -> None:
     result = await call(registry, "ausencias", desde="2026-08-01", hasta="2026-08-31")
     periods = {(p["persona"], p["tipo"], p["desde"], p["hasta"]) for p in result.summary["periodos"]}
