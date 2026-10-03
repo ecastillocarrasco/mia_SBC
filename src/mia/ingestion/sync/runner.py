@@ -23,12 +23,12 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mia.connectors.sharepoint import ChangeTokenExpiredError, SharePointClient
 from mia.data import Database, Employee, NewHire, SourceItem, SourceSyncState
+from mia.ingestion.definitions import SourceDefinition
+from mia.ingestion.mappers.common import MapContext
+from mia.ingestion.pseudonym import Pseudonymizer, mask_ids, pseudonymize_path
 from mia.observability import get_logger
-from mia.sources.definitions import SourceDefinition
-from mia.sources.mappers.common import MapContext
-from mia.sources.pseudonym import Pseudonymizer, mask_ids, pseudonymize_path
-from mia.sources.sharepoint import ChangeTokenExpiredError, SharePointClient
 from mia.text import normalize_key
 
 log = get_logger(__name__)

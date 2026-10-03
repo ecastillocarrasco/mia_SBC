@@ -8,7 +8,7 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from mia.sources.pseudonym import Pseudonymizer
+from mia.ingestion.pseudonym import Pseudonymizer
 from mia.text import normalize_key
 
 

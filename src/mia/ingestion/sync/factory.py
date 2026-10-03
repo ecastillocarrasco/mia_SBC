@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from mia.connectors.sharepoint import CertificateTokenProvider, SharePointClient
 from mia.data import Database
+from mia.ingestion import Pseudonymizer
+from mia.ingestion.sync.runner import SyncRunner
 from mia.settings import Settings
-from mia.sources import Pseudonymizer
-from mia.sources.sharepoint import CertificateTokenProvider, SharePointClient
-from mia.sync.runner import SyncRunner
 
 
 def build_sharepoint_client(settings: Settings) -> SharePointClient:

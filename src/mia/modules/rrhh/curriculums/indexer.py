@@ -17,10 +17,10 @@ from datetime import UTC, datetime
 import numpy as np
 from sqlalchemy import and_, delete, or_, select
 
+from mia.connectors.sharepoint import SharePointClient, SharePointError
 from mia.data import CvChunk, CvDocument, CvText, Database
 from mia.llm import LLMProvider
 from mia.observability import get_logger
-from mia.sources.sharepoint import SharePointClient, SharePointError
 
 log = get_logger(__name__)
 logging.getLogger("pypdf").setLevel(logging.ERROR)  # PDF mal formados: el estado ya lo refleja

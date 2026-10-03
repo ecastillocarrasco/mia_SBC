@@ -17,8 +17,8 @@ from typing import Any
 
 import httpx
 
+from mia.connectors.sharepoint.auth import TokenProvider
 from mia.observability import get_logger
-from mia.sources.sharepoint.auth import TokenProvider
 
 log = get_logger(__name__)
 

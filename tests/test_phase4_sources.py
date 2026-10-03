@@ -11,14 +11,14 @@ import docx
 import pytest
 from sqlalchemy import func, select
 
+from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.data import CvChunk, CvText, Database, Payslip, SignedDocument, SourceItem
+from mia.ingestion import Pseudonymizer, definitions
+from mia.ingestion.mappers import docs
+from mia.ingestion.mappers.common import MapContext
+from mia.ingestion.sync import SyncRunner
 from mia.llm.fake import FakeLLMProvider
 from mia.modules.rrhh.curriculums.indexer import CvIndexer, chunk_text, extract_text
-from mia.sources import Pseudonymizer, definitions
-from mia.sources.mappers import docs
-from mia.sources.mappers.common import MapContext
-from mia.sources.sharepoint import SharePointClient, StaticTokenProvider
-from mia.sync import SyncRunner
 from tests.dbutil import fresh_database
 from tests.fakes.sharepoint import FakeSharePoint
 

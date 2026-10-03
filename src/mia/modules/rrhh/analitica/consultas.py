@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolResult, ToolStatus
 from mia.data import Employee, Payslip, ShiftDay, SignedDocument, Vacation, VacationBalance
+from mia.ingestion.mappers.hr import ShiftKind
 from mia.modules.rrhh.analitica.cruces import LABELS, Campo, _base, _extra
 from mia.modules.rrhh.common import (
     OPERATIONAL_VACATION_STATES,
@@ -37,7 +38,6 @@ from mia.modules.rrhh.common import (
 )
 from mia.modules.rrhh.empleados.tools import age
 from mia.modules.rrhh.turnos.tools import starts_in
-from mia.sources.mappers.hr import ShiftKind
 from mia.text import normalize_key
 
 MAX_ROWS = 200

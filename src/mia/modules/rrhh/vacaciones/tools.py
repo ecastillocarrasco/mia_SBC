@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.data import Employee, ShiftDay, Vacation, VacationBalance
+from mia.ingestion.mappers.hr import ShiftKind
 from mia.modules.rrhh.common import (
     MAX_ROWS_FOR_MODEL,
     ActivosParams,
@@ -38,7 +39,6 @@ from mia.modules.rrhh.common import (
 )
 from mia.modules.rrhh.turnos import absence_periods
 from mia.modules.rrhh.turnos.tools import DAY_NAMES
-from mia.sources.mappers.hr import ShiftKind
 from mia.text import normalize_key
 
 ESTADOS = {"aceptadas": "aceptada", "pendientes": "pendiente", "rechazadas": "rechazada"}

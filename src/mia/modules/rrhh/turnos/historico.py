@@ -18,8 +18,8 @@ from sqlalchemy import select
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.data import CalendarShift, ShiftDay, ShiftTemplate, ShiftTypeCatalog, WeekComment
+from mia.ingestion.definitions import CALENDAR_DEPARTMENTS
 from mia.modules.rrhh.common import Deps, Periodo, fmt_date, is_operational, table
-from mia.sources.definitions import CALENDAR_DEPARTMENTS
 from mia.text import normalize_key
 
 WORKING_KINDS = ("work", "special")

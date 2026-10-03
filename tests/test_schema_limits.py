@@ -10,8 +10,8 @@ from sqlalchemy import String
 
 from mia.conversation import AvatarState, ToolStatus
 from mia.data import AuditEvent, ConversationTurn, ShiftDay, SourceSyncState
-from mia.sources import all_sources
-from mia.sources.mappers.hr import ShiftKind
+from mia.ingestion import all_sources
+from mia.ingestion.mappers.hr import ShiftKind
 
 
 def _length(column: Any) -> int:

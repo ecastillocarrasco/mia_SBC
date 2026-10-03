@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from mia.sources.mappers.common import (
+from mia.ingestion.mappers.common import (
     MapContext,
     boolean,
     ddmmyyyy,

@@ -7,9 +7,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from mia.sources import Pseudonymizer
-from mia.sources.mappers import hr
-from mia.sources.mappers.common import MapContext, boolean, people_field, sp_local_date
+from mia.ingestion import Pseudonymizer
+from mia.ingestion.mappers import hr
+from mia.ingestion.mappers.common import MapContext, boolean, people_field, sp_local_date
 
 CTX = MapContext(tz=ZoneInfo("Europe/Madrid"), pseudonymize=Pseudonymizer("k"), year=2026)
 
@@ -147,7 +147,7 @@ def test_department_managers_accept_all_shapes() -> None:
 
 def test_candidate_keeps_every_custom_column_as_metadata() -> None:
     """Las columnas propias de CurriculosVitae que no tienen campo dedicado se guardan para buscar en ellas."""
-    from mia.sources.mappers.docs import candidate, column_label  # noqa: PLC0415
+    from mia.ingestion.mappers.docs import candidate, column_label  # noqa: PLC0415
 
     assert column_label("Puesto_x0020_solicitado") == "Puesto solicitado"
     row = candidate(

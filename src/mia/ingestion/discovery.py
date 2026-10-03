@@ -6,15 +6,15 @@ from __future__ import annotations
 import asyncio
 from datetime import date
 
-from mia.observability import get_logger
-from mia.sources.definitions import (
+from mia.connectors.sharepoint import SharePointClient
+from mia.ingestion.definitions import (
     CALENDAR_BASE_YEAR,
     CALENDAR_DEPARTMENTS,
     SourceDefinition,
     calendar_source,
     calendar_title,
 )
-from mia.sources.sharepoint import SharePointClient
+from mia.observability import get_logger
 
 log = get_logger(__name__)
 

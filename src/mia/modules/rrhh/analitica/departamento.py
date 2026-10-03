@@ -12,9 +12,9 @@ from sqlalchemy import func, select
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolResult, ToolStatus
 from mia.data import Employee, OrgUnit, Payslip, ShiftDay, TtTimesheet, VacationBalance
+from mia.ingestion.mappers.hr import ShiftKind
 from mia.modules.rrhh.common import Deps, department_problem, resolve_department, table
 from mia.modules.rrhh.empleados.tools import age
-from mia.sources.mappers.hr import ShiftKind
 
 ABSENT = (ShiftKind.BAJA, ShiftKind.VACACIONES, ShiftKind.PERMISO, ShiftKind.ASUNTOS_PROPIOS)
 

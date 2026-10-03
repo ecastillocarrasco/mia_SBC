@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 import httpx
 
-from mia.sources.sharepoint.auth import TokenProvider
+from mia.connectors.sharepoint.auth import TokenProvider
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 _RETRY = {429, 500, 502, 503, 504}

@@ -23,10 +23,10 @@ from mia.data import (
     Vacation,
     VacationBalance,
 )
+from mia.ingestion.mappers.hr import ShiftKind
 from mia.modules.rrhh.common import Deps, department_problem, fmt_date, is_operational, resolve_department, table
 from mia.modules.rrhh.turnos.periods import absence_periods
 from mia.modules.rrhh.turnos.tools import franja_of
-from mia.sources.mappers.hr import ShiftKind
 from mia.text import normalize_key
 
 

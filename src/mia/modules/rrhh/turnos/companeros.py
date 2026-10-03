@@ -11,6 +11,7 @@ from sqlalchemy import select
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolResult, ToolStatus
 from mia.data import Employee, ShiftDay
+from mia.ingestion.mappers.hr import ShiftKind
 from mia.modules.rrhh.common import (
     ActivosParams,
     Deps,
@@ -23,7 +24,6 @@ from mia.modules.rrhh.common import (
     table,
 )
 from mia.modules.rrhh.turnos.tools import _minutes
-from mia.sources.mappers.hr import ShiftKind
 
 
 class CompanerosParams(PersonaParams, ActivosParams):

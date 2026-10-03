@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from mia.sources.sharepoint import (
+from mia.connectors.sharepoint import (
     ChangeTokenExpiredError,
     SharePointClient,
     SharePointError,

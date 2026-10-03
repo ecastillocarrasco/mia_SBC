@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from mia.sources.mappers.common import MapContext, boolean, number, sp_datetime, text
+from mia.ingestion.mappers.common import MapContext, boolean, number, sp_datetime, text
 from mia.text import normalize_key
 
 Row = dict[str, Any]
@@ -114,7 +114,7 @@ def shift_type(item: dict[str, Any], ctx: MapContext) -> list[Row]:
 
 
 def shift_template(item: dict[str, Any], ctx: MapContext) -> list[Row]:
-    from mia.sources.mappers.common import sp_local_date  # noqa: PLC0415
+    from mia.ingestion.mappers.common import sp_local_date  # noqa: PLC0415
 
     department = text(item.get("DepartamentoTurno"))
     schedule = {code: text(item.get(field)) for code, field in DAY_FIELDS if text(item.get(field))}

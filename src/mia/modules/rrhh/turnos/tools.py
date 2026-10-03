@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.data import Employee, ShiftDay
+from mia.ingestion.mappers.hr import ShiftKind
 from mia.modules.rrhh.common import (
     MAX_ROWS_FOR_MODEL,
     ActivosParams,
@@ -38,7 +39,6 @@ from mia.modules.rrhh.common import (
 )
 from mia.modules.rrhh.turnos.periods import ABSENCE_KINDS, AbsencePeriod, absence_periods
 from mia.modules.rrhh.turnos.returns import collect_returns
-from mia.sources.mappers.hr import ShiftKind
 from mia.text import normalize_key
 
 DAY_NAMES = {

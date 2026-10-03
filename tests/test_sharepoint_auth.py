@@ -11,8 +11,8 @@ from cryptography.hazmat.primitives.serialization import pkcs12
 from cryptography.x509.oid import NameOID
 from pydantic import SecretStr
 
+from mia.connectors.sharepoint.auth import SharePointAuthError, _private_key_pem
 from mia.settings import SharePointSettings
-from mia.sources.sharepoint.auth import SharePointAuthError, _private_key_pem
 
 
 def _pfx(password: bytes) -> bytes:

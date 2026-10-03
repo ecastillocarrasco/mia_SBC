@@ -4,7 +4,7 @@ El sistema anterior no guardó el texto de sus respuestas, así que la única fo
 la paridad es preguntar a la vez al antiguo y al nuevo. Requiere los dos arrancados:
 
     # ANTES de comparar, sincroniza mIA (el antiguo lee SharePoint en vivo; mIA, su última sincronización):
-    #   python -m mia.sync
+    #   python -m mia.ingestion.sync
     # sistema anterior, como siempre: python avatar_backend_mia.py (5001) + su gateway: python mIA_LLM_CHAT_V4.py (5002)
     # sistema nuevo en otros puertos:  $env:MIA_PORT=5201; $env:MIA_COMPAT_PORT=5202; python -m mia
     python tools/shadow_compare.py --limit 60

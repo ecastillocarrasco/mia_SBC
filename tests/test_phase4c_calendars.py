@@ -12,17 +12,17 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from mia.auth import UserContext
+from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.conversation import ToolContext, ToolRegistry, ToolStatus
 from mia.data import CalendarShift, ShiftDay, ShiftTemplate, ShiftTypeCatalog, WeekComment
+from mia.ingestion import Pseudonymizer
+from mia.ingestion.definitions import CALENDAR_BASE_YEAR, calendar_source, calendar_title
+from mia.ingestion.discovery import discover_calendar_sources
+from mia.ingestion.mappers import calendars
+from mia.ingestion.mappers.common import MapContext
+from mia.ingestion.sync import SyncRunner
 from mia.llm import ToolCall
 from mia.modules.rrhh import build_registry
-from mia.sources import Pseudonymizer
-from mia.sources.definitions import CALENDAR_BASE_YEAR, calendar_source, calendar_title
-from mia.sources.discovery import discover_calendar_sources
-from mia.sources.mappers import calendars
-from mia.sources.mappers.common import MapContext
-from mia.sources.sharepoint import SharePointClient, StaticTokenProvider
-from mia.sync import SyncRunner
 from tests.dbutil import fresh_database
 from tests.fakes.sharepoint import FakeSharePoint
 

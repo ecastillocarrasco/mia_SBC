@@ -74,11 +74,11 @@ Genera en `tests/parity/corpus/` las conversaciones reales del sistema anterior.
 ## Sincronización con SharePoint
 
 ```powershell
-python -m mia.sync --check       # probar el acceso a cada lista (no escribe nada)
-python -m mia.sync --list        # fuentes y estado
-python -m mia.sync --full        # primera carga completa
-python -m mia.sync               # incremental (o completa si toca)
-python -m mia.sync --loop 300    # en local, repetir cada 5 minutos
+python -m mia.ingestion.sync --check       # probar el acceso a cada lista (no escribe nada)
+python -m mia.ingestion.sync --list        # fuentes y estado
+python -m mia.ingestion.sync --full        # primera carga completa
+python -m mia.ingestion.sync               # incremental (o completa si toca)
+python -m mia.ingestion.sync --loop 300    # en local, repetir cada 5 minutos
 ```
 
 Fuentes: empleados, departamentos, turnos, vacaciones, saldo del año en curso,

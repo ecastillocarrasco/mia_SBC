@@ -18,6 +18,7 @@ from sqlalchemy import and_, or_, select
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.data import Employee, Payslip
+from mia.ingestion.mappers.docs import _month_in_text as month_in_text
 from mia.modules.rrhh.common import (
     MAX_ROWS_FOR_MODEL,
     CohortParams,
@@ -37,7 +38,6 @@ from mia.modules.rrhh.common import (
 )
 from mia.modules.rrhh.content import MAX_BYTES, content_unavailable, pdf_lines
 from mia.modules.rrhh.nominas.parser import parse_payslip
-from mia.sources.mappers.docs import _month_in_text as month_in_text
 from mia.text import normalize_key
 
 RULE = "Metadatos (existencia, periodo, lectura). Para importes: nomina_importes o evolucion_nominas (NOM-002)."

@@ -33,8 +33,8 @@ from mia.data import (
     WeekComment,
 )
 from mia.data.models import Base
-from mia.sources.mappers import calendars, docs, hr
-from mia.sources.mappers.common import MapContext
+from mia.ingestion.mappers import calendars, docs, hr
+from mia.ingestion.mappers.common import MapContext
 from mia.text import normalize_key
 
 Mapper = Callable[[dict[str, Any], MapContext], list[dict[str, Any]]]

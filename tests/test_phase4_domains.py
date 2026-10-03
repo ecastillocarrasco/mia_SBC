@@ -13,6 +13,8 @@ import httpx
 import pytest
 
 from mia.auth import UserContext
+from mia.connectors.graph import GraphClient
+from mia.connectors.sharepoint import StaticTokenProvider
 from mia.conversation import ToolContext, ToolRegistry, ToolStatus
 from mia.conversation.tools import LAST_TABLE
 from mia.data import (
@@ -30,8 +32,6 @@ from mia.llm.fake import FakeLLMProvider
 from mia.modules.rrhh import build_registry
 from mia.modules.rrhh.curriculums.indexer import pack
 from mia.settings import Environment, Settings
-from mia.sources.graph import GraphClient
-from mia.sources.sharepoint import StaticTokenProvider
 from mia.text import normalize_key
 from tests.dbutil import fresh_database
 

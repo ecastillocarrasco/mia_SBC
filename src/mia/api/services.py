@@ -5,15 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from mia.auth import IdentityProvider, build_identity_provider
+from mia.connectors.graph import GraphClient
+from mia.connectors.sharepoint import CertificateTokenProvider, SharePointClient
 from mia.conversation import ConversationEngine, Persona
 from mia.data import Database
+from mia.ingestion.sync.factory import build_sharepoint_client
 from mia.llm import LLMProvider, build_llm_provider
 from mia.modules.rrhh import build_registry
 from mia.modules.rrhh.correo.mailbox import mailbox_available, resolve_mailbox
 from mia.settings import Settings
-from mia.sources.graph import GraphClient
-from mia.sources.sharepoint import CertificateTokenProvider, SharePointClient
-from mia.sync.factory import build_sharepoint_client
 from mia.voice import CachedVoice, build_voice
 
 

@@ -14,11 +14,11 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from mia.auth import Permission
+from mia.connectors.graph import GraphClient, GraphError
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.modules.rrhh.common import Deps, table
 from mia.modules.rrhh.correo.htmltext import plain_text
 from mia.modules.rrhh.correo.mailbox import resolve_mailbox
-from mia.sources.graph import GraphClient, GraphError
 
 _CONFIRM = re.compile(r"\b(s[ií]|env[ií]a(lo)?|adelante|confirm[oa]|de acuerdo|vale|ok)\b", re.IGNORECASE)
 _NOREPLY = re.compile(

@@ -11,7 +11,7 @@ from sqlalchemy import select
 from mia.api.deps import ServicesDep, require
 from mia.auth import Permission, UserContext
 from mia.data import SourceSyncState
-from mia.sources import all_sources
+from mia.ingestion import all_sources
 
 router = APIRouter(prefix="/api/admin", tags=["operación"])
 

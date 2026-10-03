@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.data import Employee, OrgUnit, Payslip, ShiftDay, SignedDocument, Vacation, VacationBalance
+from mia.ingestion.mappers.hr import ShiftKind
 from mia.modules.rrhh.common import (
     MAX_ROWS_FOR_MODEL,
     CohortParams,
@@ -34,7 +35,6 @@ from mia.modules.rrhh.common import (
     wants_previous,
 )
 from mia.modules.rrhh.turnos.periods import AbsencePeriod, absence_periods
-from mia.sources.mappers.hr import ShiftKind
 from mia.text import normalize_key
 
 ACCEPTED = "aceptada"

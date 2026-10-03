@@ -108,7 +108,7 @@ turnos partidos y cohortes privadas para cruces posteriores.
 
 ## Fase 4c: planificación de turnos v12 (calendarios)
 
-Los calendarios de departamento no son una lista fija: `python -m mia.sync` (y `--check`)
+Los calendarios de departamento no son una lista fija: `python -m mia.ingestion.sync` (y `--check`)
 **descubren automáticamente** qué `Calendario<Departamento>_AAAA` existen de verdad (9
 departamentos × los años desde 2023), sin inventar ni asumir ninguno. `--no-calendars`
 salta ese descubrimiento para una sincronización más rápida cuando no hace falta.
@@ -256,7 +256,7 @@ Nota: en la plantilla activa hay ~14 cuentas de prueba («test…», «testAltaT
 
 | Hallazgo / pendiente | Corrección |
 |---|---|
-| `python -m mia.sync` fallaba con «no existe la columna extra» (migración 0007 sin aplicar) | La sincronización se detiene con un mensaje claro («aplica `alembic upgrade head`»); `/health/ready` y el arranque avisan de migraciones pendientes |
+| `python -m mia.ingestion.sync` fallaba con «no existe la columna extra» (migración 0007 sin aplicar) | La sincronización se detiene con un mensaje claro («aplica `alembic upgrade head`»); `/health/ready` y el arranque avisan de migraciones pendientes |
 | Cuentas de prueba (`test…`, `tezt…`) contando en los totales | No se sincronizan y se retiran las ya cargadas (`MIA_DATA__EXCLUDE_NAME_PATTERNS`, por defecto `^test`, `^tezt`) |
 | Correo: el cuerpo HTML se veía como CSS en una sola línea | Conversor de HTML a texto (párrafos, viñetas, enlaces) |
 | Correo: «Abrir correo» y «Proponer respuesta» escribían mensajes en el chat con referencias (c9) | Ventanas emergentes con acciones directas (`/api/mia/mail/*`): sin pasar por el modelo, sin referencias visibles; los correos automáticos avisan y no ofrecen responder |

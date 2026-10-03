@@ -1,11 +1,11 @@
 """Sincronización desde la línea de comandos.
 
-    python -m mia.sync                       # auto: incremental o completa según toque
-    python -m mia.sync --full                # completa de todas las fuentes
-    python -m mia.sync --source turnos       # una fuente concreta
-    python -m mia.sync --loop 300            # local: repetir cada 5 minutos
-    python -m mia.sync --list                # ver fuentes y su estado
-    python -m mia.sync --check               # probar la conexión con cada lista, sin escribir
+    python -m mia.ingestion.sync                       # auto: incremental o completa según toque
+    python -m mia.ingestion.sync --full                # completa de todas las fuentes
+    python -m mia.ingestion.sync --source turnos       # una fuente concreta
+    python -m mia.ingestion.sync --loop 300            # local: repetir cada 5 minutos
+    python -m mia.ingestion.sync --list                # ver fuentes y su estado
+    python -m mia.ingestion.sync --check               # probar la conexión con cada lista, sin escribir
 
 En Azure lo ejecuta un Container Apps Job programado.
 """
@@ -19,17 +19,17 @@ import sys
 from sqlalchemy import select
 
 from mia.api.services import build_graph_client
+from mia.connectors.sharepoint import SharePointClient
 from mia.data import Database, SourceSyncState
 from mia.data.schema import schema_problem
+from mia.ingestion import SourceDefinition, all_sources
+from mia.ingestion.discovery import discover_calendar_sources
+from mia.ingestion.sync.factory import build_portal_client, build_runner, build_sharepoint_client
+from mia.ingestion.sync.runner import SyncMode
 from mia.llm import build_llm_provider
 from mia.modules.rrhh.curriculums.indexer import CvIndexer
 from mia.observability import configure_logging
 from mia.settings import Settings, get_settings
-from mia.sources import SourceDefinition, all_sources
-from mia.sources.discovery import discover_calendar_sources
-from mia.sources.sharepoint import SharePointClient
-from mia.sync.factory import build_portal_client, build_runner, build_sharepoint_client
-from mia.sync.runner import SyncMode
 
 
 async def _list(db: Database, settings: Settings) -> None:

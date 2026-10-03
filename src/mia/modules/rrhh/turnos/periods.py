@@ -18,8 +18,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.data import ShiftDay
+from mia.ingestion.mappers.hr import ShiftKind
 from mia.modules.rrhh.common import active_person_keys
-from mia.sources.mappers.hr import ShiftKind
 
 ABSENCE_KINDS = (ShiftKind.BAJA, ShiftKind.VACACIONES, ShiftKind.PERMISO, ShiftKind.ASUNTOS_PROPIOS)
 MAX_BRIDGE_DAYS = 3

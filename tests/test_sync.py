@@ -9,10 +9,10 @@ from typing import Any
 import pytest
 from sqlalchemy import func, select
 
+from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.data import Database, Employee, ShiftDay, SourceItem, SourceSyncState, VacationBalance
-from mia.sources import Pseudonymizer, definitions
-from mia.sources.sharepoint import SharePointClient, StaticTokenProvider
-from mia.sync import SyncMode, SyncRunner
+from mia.ingestion import Pseudonymizer, definitions
+from mia.ingestion.sync import SyncMode, SyncRunner
 from tests.dbutil import fresh_database
 from tests.fakes.sharepoint import FakeSharePoint
 
@@ -195,7 +195,7 @@ async def test_unknown_custom_columns_of_curriculums_are_synced(tmp_path: Path) 
     from sqlalchemy import select  # noqa: PLC0415
 
     from mia.data import Candidate  # noqa: PLC0415
-    from mia.sources.definitions import CURRICULUMS  # noqa: PLC0415
+    from mia.ingestion.definitions import CURRICULUMS  # noqa: PLC0415
 
     db = await fresh_database(tmp_path, "cv_extra.db")
     fake = FakeSharePoint(page_size=10)
@@ -215,8 +215,8 @@ async def test_test_accounts_are_never_synced_and_previous_ones_are_pruned(tmp_p
     from sqlalchemy import select  # noqa: PLC0415
 
     from mia.data import Employee  # noqa: PLC0415
-    from mia.sources.definitions import EMPLEADOS  # noqa: PLC0415
-    from mia.sync import SyncMode  # noqa: PLC0415
+    from mia.ingestion.definitions import EMPLEADOS  # noqa: PLC0415
+    from mia.ingestion.sync import SyncMode  # noqa: PLC0415
 
     db = await fresh_database(tmp_path, "excl.db")
     fake = FakeSharePoint(page_size=10)
