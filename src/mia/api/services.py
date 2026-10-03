@@ -90,4 +90,7 @@ class Services:
             await self.graph.aclose()
         if self.sharepoint is not None:
             await self.sharepoint.aclose()
+        close_identity = getattr(self.identity, "aclose", None)
+        if close_identity is not None:
+            await close_identity()  # EntraIdIdentityProvider cierra su cliente HTTP del JWKS
         await self.db.dispose()

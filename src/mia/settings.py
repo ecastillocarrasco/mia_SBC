@@ -29,6 +29,10 @@ class AuthMode(StrEnum):
     """Identidad fija configurable. Solo para local, test y dev."""
     EASYAUTH = "easyauth"
     """Identidad inyectada por la autenticación integrada de Azure (Easy Auth)."""
+    ENTRA = "entra"
+    """Valida el access token (JWT) de Microsoft Entra ID en cada petición: firma, emisor,
+    audiencia y expiración contra las claves públicas del tenant (JWKS), y lee los app roles
+    del token. Página de login real: el front-end hace el flujo con MSAL.js; mIA solo valida."""
 
 
 class LLMProviderName(StrEnum):
@@ -77,6 +81,12 @@ class AuthSettings(BaseModel):
     dev_display_name: str = "Usuario de desarrollo"
     dev_email: str = "dev@localhost"
     dev_roles: list[str] = Field(default_factory=lambda: ["mia.admin"])
+    entra_tenant_id: str = ""
+    """El tenant de Entra ID: fija el emisor esperado (issuer) del token."""
+    entra_client_id: str = ""
+    """El Application (client) ID de mIA en Entra ID: la audiencia (aud) que debe traer el token."""
+    entra_role_claim: str = "roles"
+    """El claim del token donde vienen los app roles (p. ej. «mia.rrhh»): por defecto, «roles»."""
 
 
 class SharePointSettings(BaseModel):
@@ -220,9 +230,9 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _fail_closed_in_production(self) -> Settings:
         if self.environment is Environment.PRODUCTION and self.auth.mode is AuthMode.DEV:
-            raise ValueError(
-                "MIA_AUTH__MODE=dev no está permitido en producción: usa 'easyauth' hasta que se implemente Entra ID."
-            )
+            raise ValueError("MIA_AUTH__MODE=dev no está permitido en producción: usa 'easyauth' o 'entra'.")
+        if self.auth.mode is AuthMode.ENTRA and not (self.auth.entra_tenant_id and self.auth.entra_client_id):
+            raise ValueError("MIA_AUTH__MODE=entra exige MIA_AUTH__ENTRA_TENANT_ID y MIA_AUTH__ENTRA_CLIENT_ID.")
         if (
             self.environment is Environment.PRODUCTION
             and self.data.pseudonym_key.get_secret_value() == "solo-para-desarrollo-local"

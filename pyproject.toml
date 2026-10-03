@@ -20,6 +20,7 @@ dependencies = [
     "structlog>=24.4",
     "tzdata>=2024.1",
     "msal>=1.30,<2",
+    "pyjwt[crypto]>=2.9,<3",
     "cryptography>=43",
     "numpy>=1.26",
     "pypdf>=4",
