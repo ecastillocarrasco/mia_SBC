@@ -14,8 +14,8 @@ import pytest
 from mia.auth import UserContext
 from mia.conversation import ToolContext, ToolRegistry, ToolStatus
 from mia.data import Payslip
-from mia.domains import build_registry
 from mia.llm import ToolCall
+from mia.modules.rrhh import build_registry
 from mia.sources.sharepoint import SharePointClient, StaticTokenProvider
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp

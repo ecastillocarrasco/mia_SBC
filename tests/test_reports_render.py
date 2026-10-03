@@ -10,8 +10,8 @@ from openpyxl import load_workbook
 from pptx import Presentation
 from pypdf import PdfReader
 
-from mia.domains.informes.document import to_document
-from mia.domains.informes.render import RENDERERS
+from mia.modules.rrhh.informes.document import to_document
+from mia.modules.rrhh.informes.render import RENDERERS
 
 NOW = datetime(2026, 9, 27, 10, 0)
 TABLE = {
@@ -63,7 +63,7 @@ def test_profile_sections_become_blocks() -> None:
 
 
 def test_numbers_are_formatted_in_spanish_in_reports() -> None:
-    from mia.domains.informes.document import format_number  # noqa: PLC0415
+    from mia.modules.rrhh.informes.document import format_number  # noqa: PLC0415
 
     assert [format_number(v) for v in (0.0, 24.0, 2.5, 1234.5, 343)] == ["0", "24", "2,5", "1.234,5", "343"]
 

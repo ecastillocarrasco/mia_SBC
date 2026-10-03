@@ -4,7 +4,7 @@
 
 | Sistema anterior | mIA |
 |---|---|
-| `mia_legacy_v10_42.py` (23.000 líneas, 141 rutas) | Dominios en `src/mia/domains/` (fases 2–4) |
+| `mia_legacy_v10_42.py` (23.000 líneas, 141 rutas) | Dominios en `src/mia/modules/rrhh/` (fases 2–4) |
 | `mia_core/*_v12.py`, `bootstrap*.py` (capas v11/v12) | Eliminado; sin equivalente |
 | `semantic_v12.py` (parser de regex) | LLM con herramientas tipadas |
 | `mIA_LLM_CHAT_V4.py` + `mia_llm_v4/` (segundo proceso) | `conversation/` en el mismo proceso |

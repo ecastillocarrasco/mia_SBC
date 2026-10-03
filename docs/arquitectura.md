@@ -141,7 +141,7 @@ SharePoint (RRHH) ──sincronización──▶ source_items (réplica, seudoni
 
 ## Correo y autenticación
 
-El buzón se resuelve en un único punto (`mia/domains/correo/mailbox.py`) a partir del usuario de la sesión:
+El buzón se resuelve en un único punto (`mia/modules/rrhh/correo/mailbox.py`) a partir del usuario de la sesión:
 
 | Fase | `MIA_MAIL__MAILBOX_SOURCE` | Buzón |
 |---|---|---|

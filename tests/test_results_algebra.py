@@ -13,8 +13,8 @@ from mia.auth import UserContext
 from mia.conversation import ToolContext, ToolStatus
 from mia.conversation.tools import HISTORY, LAST_TABLE, remember_population
 from mia.data import Database
-from mia.domains import build_registry
 from mia.llm import ToolCall
+from mia.modules.rrhh import build_registry
 from mia.sources import Pseudonymizer
 from mia.sources.mappers import hr
 from mia.sources.mappers.common import MapContext

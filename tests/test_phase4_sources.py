@@ -12,8 +12,8 @@ import pytest
 from sqlalchemy import func, select
 
 from mia.data import CvChunk, CvText, Database, Payslip, SignedDocument, SourceItem
-from mia.domains.curriculums.indexer import CvIndexer, chunk_text, extract_text
 from mia.llm.fake import FakeLLMProvider
+from mia.modules.rrhh.curriculums.indexer import CvIndexer, chunk_text, extract_text
 from mia.sources import Pseudonymizer, definitions
 from mia.sources.mappers import docs
 from mia.sources.mappers.common import MapContext
@@ -154,7 +154,7 @@ async def test_cv_indexer_processes_only_new_or_changed(db: Database) -> None:
 
 def test_control_characters_are_removed() -> None:
     """Fallo real: un PDF con bytes NUL rompía la inserción en PostgreSQL."""
-    from mia.domains.curriculums.indexer import clean_text  # noqa: PLC0415
+    from mia.modules.rrhh.curriculums.indexer import clean_text  # noqa: PLC0415
 
     assert clean_text("Night\x00 Manager\x07 ﬁeld") == "Night Manager ﬁeld"
 

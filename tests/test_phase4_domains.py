@@ -25,10 +25,10 @@ from mia.data import (
     SignedDocument,
     TtTimesheet,
 )
-from mia.domains import build_registry
-from mia.domains.curriculums.indexer import pack
 from mia.llm import ToolCall
 from mia.llm.fake import FakeLLMProvider
+from mia.modules.rrhh import build_registry
+from mia.modules.rrhh.curriculums.indexer import pack
 from mia.settings import Environment, Settings
 from mia.sources.graph import GraphClient
 from mia.sources.sharepoint import StaticTokenProvider
@@ -492,7 +492,7 @@ async def test_requirements_with_exclusion(env: Any) -> None:
 
 async def test_mailbox_comes_from_env_in_development_and_from_the_login_with_msal(env: Any) -> None:
     """Hoy el buzón es el del .env; con MSAL será el de la cuenta con la que se inicia sesión."""
-    from mia.domains.correo.mailbox import resolve_mailbox  # noqa: PLC0415
+    from mia.modules.rrhh.correo.mailbox import resolve_mailbox  # noqa: PLC0415
     from mia.settings import MailSettings  # noqa: PLC0415
 
     dev = UserContext("u", "Enrique", email="enrique@sbc.test", roles=frozenset({"mia.admin"}))
@@ -504,7 +504,7 @@ async def test_mailbox_comes_from_env_in_development_and_from_the_login_with_msa
 
 
 async def test_each_user_only_reaches_their_own_mailbox_and_drafts_do_not_travel(env: Any) -> None:
-    from mia.domains.correo.mailbox import resolve_mailbox  # noqa: PLC0415
+    from mia.modules.rrhh.correo.mailbox import resolve_mailbox  # noqa: PLC0415
 
     _, db, settings = env
     per_user = settings.model_copy(update={"mail": settings.mail.model_copy(update={"mailbox_source": "user"})})
@@ -539,7 +539,7 @@ async def test_each_user_only_reaches_their_own_mailbox_and_drafts_do_not_travel
 
 def test_html_mail_becomes_clean_readable_text() -> None:
     """Fallo real: el correo de Power Automate se veía como cientos de líneas de CSS en una sola línea."""
-    from mia.domains.correo.htmltext import html_to_text  # noqa: PLC0415
+    from mia.modules.rrhh.correo.htmltext import html_to_text  # noqa: PLC0415
 
     html = (
         "<html><head><style>table {width:640px} @media only screen {.a{padding:1px}}</style></head><body>"
@@ -644,7 +644,7 @@ async def test_screen_mail_actions_keep_the_safeguards(env: Any) -> None:
 
 def test_noreply_addresses_are_recognised_with_any_separator() -> None:
     """Fallo real: el buzón recibe de «do_not_reply@…» (guiones bajos) y no se bloqueaba."""
-    from mia.domains.correo.tools import _NOREPLY  # noqa: PLC0415
+    from mia.modules.rrhh.correo.tools import _NOREPLY  # noqa: PLC0415
 
     for address in (
         "do_not_reply@sunsetbeachclub.com",
@@ -657,3 +657,104 @@ def test_noreply_addresses_are_recognised_with_any_separator() -> None:
         assert _NOREPLY.search(address), address
     for address in ("ana@x.es", "reply.team@x.es", "notify@x.es"):
         assert not _NOREPLY.search(address), address
+
+
+async def test_documents_can_be_opened_from_the_screen_according_to_permissions(env: Any, monkeypatch: Any) -> None:
+    """El antiguo ofrecía «abrir el documento» en el listado; el PDF de nómina lleva importes: solo con ese permiso."""
+    from mia.auth.context import ROLE_PERMISSIONS, Permission  # noqa: PLC0415
+
+    registry, _, _ = env
+    result = await call(registry, "nominas_persona", empleado_id=1)
+    docs = result.presentation["documents"]
+    assert docs and all(d["url"].startswith("/api/documents/nomina/") and d["kind"] == "nomina" for d in docs)
+    assert docs[0]["date"] == "2026-08"  # la más reciente primero
+
+    monkeypatch.setitem(
+        ROLE_PERMISSIONS, "test.lectura", frozenset({Permission.NOMINAS_LEER, Permission.EMPLEADOS_LEER})
+    )
+    ctx = ToolContext(
+        user=UserContext("l", "Lectura", roles=frozenset({"test.lectura"})), request_id="r", now=NOW, session_state={}
+    )
+    limited = (await registry.execute(ToolCall("c", "nominas_persona", json.dumps({"empleado_id": 1})), ctx)).result
+    assert limited.status is ToolStatus.OK and "documents" not in limited.presentation
+
+
+def test_documents_reach_the_screen_and_nothing_else_leaks() -> None:
+    from mia.api.legacy_view import legacy_view  # noqa: PLC0415
+
+    table = {
+        "type": "table",
+        "title": "Nóminas",
+        "columns": ["Periodo"],
+        "rows": [["2026-08"]],
+        "documents": [
+            {
+                "kind": "nomina",
+                "title": "Agosto",
+                "subtitle": "mensual",
+                "date": "2026-08",
+                "url": "/api/documents/nomina/1",
+                "secreto": "x",
+            }
+        ],
+    }
+    data, _ = legacy_view([table])
+    assert data["documents"] == [
+        {
+            "kind": "nomina",
+            "title": "Agosto",
+            "subtitle": "mensual",
+            "date": "2026-08",
+            "url": "/api/documents/nomina/1",
+        }
+    ]
+
+
+def test_payslip_kinds_follow_the_previous_systems_priority() -> None:
+    """MesNomina manda sobre el nombre del fichero (como el antiguo): un mes real es nómina mensual aunque el nombre diga extra."""
+    from mia.data import Payslip  # noqa: PLC0415
+    from mia.modules.rrhh.nominas.tools import document_kind  # noqa: PLC0415
+
+    def kind(file_name: str, label: str | None, **kw: Any) -> str:
+        return document_kind(Payslip(sp_id=1, person_key="p", file_name=file_name, label=label, **kw))
+
+    assert kind("2026-08_Agosto.pdf", "Agosto") == "nómina mensual"
+    assert kind("2025-71_Extra Julio.pdf", "Extra Julio") == "paga extra"
+    assert kind("2026-07_Extra.pdf", "Julio") == "nómina mensual"  # el mes de MesNomina manda
+    assert kind("Certificado retenciones 2025.pdf", None) == "certificado de retenciones"
+    assert kind("Bolsa vacaciones 2025.pdf", None) == "bolsa de vacaciones"
+    assert kind("2026-03.pdf", None) == "nómina mensual"
+    assert kind("Otra cosa.pdf", None) == "otro documento"
+
+
+async def test_cv_is_found_on_another_application_of_the_same_person(env: Any) -> None:
+    """Caso real: «resúmeme el CV de Gisella Terzolo» → «no hay un CV» (el texto colgaba de otra candidatura suya)."""
+    registry, db, _ = env
+    async with db.session() as s:
+        s.add_all(
+            [
+                Candidate(
+                    sp_id=7101,
+                    name="Gisella Terzolo",
+                    name_key="gisella terzolo",
+                    email="g@x.test",
+                    applied_on=date(2026, 3, 1),
+                ),
+                CvText(
+                    document_id=71,
+                    candidate_id=7101,
+                    status="ok",
+                    text="Más de 20 años de experiencia; supervisora en Miami.",
+                ),
+                Candidate(
+                    sp_id=7102,
+                    name="Gisella Terzolo",
+                    name_key="gisella terzolo",
+                    email="g@x.test",
+                    applied_on=date(2026, 9, 22),
+                ),  # la más reciente, SIN texto de CV propio
+            ]
+        )
+    result = await call(registry, "ficha_candidato", nombre="Gisella Terzolo")
+    assert result.status.value == "ok" and result.summary["candidato_id"] == 7102
+    assert "supervisora en Miami" in result.summary["cv"]["extracto"]

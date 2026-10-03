@@ -32,9 +32,9 @@ from mia.assets import resolve_logo
 from mia.conversation import TurnResult
 from mia.conversation.events import ProgressEvent, ResultEvent, ToolEvent
 from mia.conversation.tools import ToolContext, ToolStatus
-from mia.domains.informes.document import to_document
-from mia.domains.informes.render import RENDERERS
 from mia.llm import ToolCall
+from mia.modules.rrhh.informes.document import to_document
+from mia.modules.rrhh.informes.render import RENDERERS
 from mia.observability import current_request_id
 from mia.text import normalize_key
 

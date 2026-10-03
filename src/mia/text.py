@@ -61,3 +61,11 @@ def humanize_label(key: object) -> str:
     fixed = [_LABEL_WORDS.get(w.lower(), w.lower()) if w.upper() != w or len(w) > 3 else w for w in words]
     text = " ".join(fixed)
     return text[:1].upper() + text[1:]
+
+
+def format_number(value: float) -> str:
+    """0.0 → «0», 24.0 → «24», 2.5 → «2,5», 1234.5 → «1.234,5», 8.8 → «8,8» (formato español)."""
+    if float(value).is_integer():
+        return f"{int(value):,}".replace(",", ".") if abs(value) >= 10000 else str(int(value))
+    text = f"{value:,.2f}".rstrip("0").rstrip(".")
+    return text.replace(",", "X").replace(".", ",").replace("X", ".")

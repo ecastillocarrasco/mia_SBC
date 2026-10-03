@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from mia.auth import IdentityProvider, build_identity_provider
 from mia.conversation import ConversationEngine, Persona
 from mia.data import Database
-from mia.domains import build_registry
-from mia.domains.correo.mailbox import mailbox_available, resolve_mailbox
 from mia.llm import LLMProvider, build_llm_provider
+from mia.modules.rrhh import build_registry
+from mia.modules.rrhh.correo.mailbox import mailbox_available, resolve_mailbox
 from mia.settings import Settings
 from mia.sources.graph import GraphClient
 from mia.sources.sharepoint import CertificateTokenProvider, SharePointClient
@@ -69,6 +69,7 @@ class Services:
             timezone=settings.timezone,
             history_turns=settings.history_turns,
             max_tool_rounds=settings.llm.max_tool_rounds,
+            turn_budget_seconds=settings.llm.turn_budget_seconds,
             max_output_tokens=settings.llm.max_output_tokens,
         )
         return cls(

@@ -21,8 +21,8 @@ from sqlalchemy import select
 from mia.api.services import build_graph_client
 from mia.data import Database, SourceSyncState
 from mia.data.schema import schema_problem
-from mia.domains.curriculums.indexer import CvIndexer
 from mia.llm import build_llm_provider
+from mia.modules.rrhh.curriculums.indexer import CvIndexer
 from mia.observability import configure_logging
 from mia.settings import Settings, get_settings
 from mia.sources import SourceDefinition, all_sources

@@ -16,7 +16,7 @@ from mia.api.deps import ServicesDep, UserDep
 from mia.auth import Permission
 from mia.data import CvDocument, Payslip, SignedDocument
 from mia.data.repositories import AuditRepository
-from mia.domains.content import MAX_BYTES
+from mia.modules.rrhh.content import MAX_BYTES
 from mia.observability import current_request_id
 
 router = APIRouter(prefix="/api/documents", tags=["documentos"])

@@ -177,7 +177,9 @@ class ConversationEngine:
         max_output_tokens: int = 1200,
         max_report_rows: int = 5000,
         mailbox_for: Callable[[UserContext], str | None] | None = None,
+        turn_budget_seconds: float = 75.0,
     ) -> None:
+        self._turn_budget = turn_budget_seconds
         self._mailbox_for = mailbox_for
         self._max_report_rows = max_report_rows
         self._llm = llm
@@ -319,7 +321,10 @@ class ConversationEngine:
         tools = self._tools.schemas_for(ctx.user)
         filler_sent = False
         for round_index in range(self._max_tool_rounds + 1):
-            allow_tools = bool(tools) and round_index < self._max_tool_rounds
+            over_budget = (time.perf_counter() - turn.started) > self._turn_budget
+            allow_tools = bool(tools) and round_index < self._max_tool_rounds and not over_budget
+            if over_budget and round_index:
+                log.warning("conversation.turn_budget_exceeded", elapsed_s=round(time.perf_counter() - turn.started, 1))
             request = LLMRequest(
                 system=system,
                 messages=messages,

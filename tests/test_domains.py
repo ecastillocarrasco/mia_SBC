@@ -13,8 +13,8 @@ import pytest
 
 from mia.auth import UserContext
 from mia.conversation import ToolContext, ToolRegistry, ToolStatus
-from mia.domains import build_registry
 from mia.llm import ToolCall
+from mia.modules.rrhh import build_registry
 from tests.dbutil import fresh_database
 from tests.hr_seed import TODAY, seed
 
@@ -177,13 +177,15 @@ async def test_reincorporations_list(registry: ToolRegistry) -> None:
     assert result.summary["con_reincorporacion_publicada"] == 1
     assert result.summary["reincorporaciones"][0]["persona"] == "Ana Ruiz Sanz"
     assert result.summary["reincorporaciones"][0]["tras"] == "tras vacaciones"  # REI-001: siempre con su motivo
-    assert result.summary["ausencia_termina_pero_sin_turno_publicado"] == 1  # Eva
+    # Eva (baja) y Ana Gómez (asuntos propios, REI-001) terminan su ausencia sin turno de vuelta publicado
+    assert result.summary["ausencia_termina_pero_sin_turno_publicado"] == 2
 
 
 async def test_reincorporations_include_the_four_reasons(tmp_path: Any) -> None:
-    """REI-001: tras baja, permiso, vacaciones o asuntos propios, y cada una dice tras cuál vuelve."""
+    """REI-001: tras baja, permiso, vacaciones o asuntos propios; las dos últimas salen de las solicitudes."""
     from datetime import timedelta  # noqa: PLC0415
 
+    from mia.data import Vacation  # noqa: PLC0415
     from tests.dbutil import fresh_database  # noqa: PLC0415
     from tests.hr_seed import TODAY, _emp, _shift  # noqa: PLC0415
 
@@ -191,9 +193,25 @@ async def test_reincorporations_include_the_four_reasons(tmp_path: Any) -> None:
     rows: list[Any] = []
     reasons = {"Baja/IT": "pk-1", "Permiso": "pk-2", "Vacaciones": "pk-3", "Asuntos propios": "pk-4"}
     for n, (kind, key) in enumerate(reasons.items(), 1):
-        rows.append(_emp(n, f"Persona {n}", "Pisos", person_key=key))
-        rows.append(_shift(1000 + n, key, f"Persona {n}", "Pisos", TODAY + timedelta(days=1), kind, kind))
+        rows.append(_emp(n, f"Persona {n}", "Pisos", person_key=key, email=f"p{n}@x.test"))
         rows.append(_shift(2000 + n, key, f"Persona {n}", "Pisos", TODAY + timedelta(days=2), "Trabajo", "8:00-16:00"))
+        if kind in ("Baja/IT", "Permiso"):  # de Turnos
+            rows.append(_shift(1000 + n, key, f"Persona {n}", "Pisos", TODAY + timedelta(days=1), kind, kind))
+        else:  # de las solicitudes de Vacaciones
+            rows.append(
+                Vacation(
+                    sp_id=n,
+                    employee_email=f"p{n}@x.test",
+                    employee_name=f"Persona {n}",
+                    department="Pisos",
+                    department_key="pisos",
+                    status="Aceptada",
+                    request_type=kind,
+                    start_date=TODAY,
+                    end_date=TODAY + timedelta(days=1),
+                    total_days=2,
+                )
+            )
     async with db.session() as s:
         s.add_all(rows)
     result = await call(build_registry(db), "reincorporaciones")
@@ -386,6 +404,7 @@ async def test_group_queries_use_active_staff_unless_inactive_are_requested(tmp_
                     department="Pisos",
                     department_key="pisos",
                     status="Aceptada",
+                    request_type="Vacaciones",
                     start_date=TODAY,
                     end_date=day,
                     total_days=2,
@@ -397,6 +416,7 @@ async def test_group_queries_use_active_staff_unless_inactive_are_requested(tmp_
                     department="Pisos",
                     department_key="pisos",
                     status="Aceptada",
+                    request_type="Vacaciones",
                     start_date=TODAY,
                     end_date=day,
                     total_days=2,
@@ -484,3 +504,130 @@ async def test_average_duration_questions_default_to_the_last_twelve_months(tmp_
     await db.dispose()
     assert result.summary["desde"] == "2025-09-01" and result.summary["hasta"] == "2026-09-01"
     assert result.summary["resumen_por_tipo"]["Baja/IT"]["duracion_media_dias"] == 2.67
+
+
+async def test_compare_departments_over_a_period_is_a_balance_not_a_single_day(tmp_path: Any) -> None:
+    """Caso real: «compara las bajas de Pisos y Recepción en agosto» se contestó con la foto del 1 de agosto."""
+    registry, db = await _absence_registry(tmp_path)
+    period = await call(
+        registry, "comparar_departamentos", departamentos=["Pisos", "Recepción"], desde="2026-08-01", hasta="2026-08-31"
+    )
+    day = await call(registry, "comparar_departamentos", departamentos=["Pisos", "Recepción"], fecha="2026-08-04")
+    await db.dispose()
+    rows = {r[0]: r[1:] for r in period.presentation["rows"]}
+    assert period.presentation["columns"] == ["Indicador", "Pisos", "Recepción"]
+    assert rows["Baja/IT · periodos"] == [3, 1] and rows["Baja/IT · personas"] == [2, 1]
+    assert rows["Baja/IT · días acumulados"] == [8, 8] and rows["Baja/IT · periodo más largo (días)"] == [3, 8]
+    assert "Balance de todo el periodo" in period.summary["nota"]
+    assert {r[0] for r in day.presentation["rows"]} >= {"Plantilla activa", "Trabajando", "Saldo medio de vacaciones"}
+    assert any(r[0] == "Ausentes · Baja/IT" for r in day.presentation["rows"])  # la foto de un día sigue existiendo
+
+
+async def _return_scenario(tmp_path: Any) -> tuple[ToolRegistry, Any, Any]:
+    from datetime import timedelta  # noqa: PLC0415
+
+    from mia.data import Vacation  # noqa: PLC0415
+    from tests.dbutil import fresh_database  # noqa: PLC0415
+    from tests.hr_seed import TODAY, _emp, _shift  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "vuelta.db")
+    d = lambda n: TODAY + timedelta(days=n)  # noqa: E731
+    rows: list[Any] = []
+    people = {"pk-baja": "Alexander", "pk-v1": "Ana", "pk-v2": "Beto", "pk-v3": "Cris", "pk-v4": "Dani", "pk-v5": "Eli"}
+    for n, (key, name) in enumerate(people.items(), 1):
+        rows.append(_emp(n, name, "Pisos", person_key=key, email=f"{key}@x.test"))
+    # Alexander: baja que acabó AYER y vuelve HOY (el antiguo la contaba; mirar solo desde hoy la perdía)
+    rows += [
+        _shift(1, "pk-baja", "Alexander", "Pisos", d(-3), "Baja/IT", "Baja"),
+        _shift(2, "pk-baja", "Alexander", "Pisos", d(-1), "Baja/IT", "Baja"),
+        _shift(3, "pk-baja", "Alexander", "Pisos", d(0), "Trabajo", "16:00-00:00"),
+    ]
+    n = 10
+    for key in people:
+        if key != "pk-baja":
+            n += 1
+            rows.append(_shift(n, key, key, "Pisos", d(4), "Trabajo", "8:00-16:00"))
+
+    def vac(sp: int, key: str, status: str, kind: str, a: int, b: int) -> Any:  # noqa: PLR0917
+        return Vacation(
+            sp_id=sp,
+            employee_email=f"{key}@x.test",
+            employee_name=key,
+            department="Pisos",
+            department_key="pisos",
+            status=status,
+            request_type=kind,
+            start_date=d(a),
+            end_date=d(b),
+            total_days=b - a + 1,
+        )
+
+    rows += [
+        vac(1, "pk-v1", "Aceptada", "Vacaciones", 1, 3),
+        vac(2, "pk-v2", "Pendiente Firma", "Vacaciones", 1, 3),
+        vac(3, "pk-v3", "Pendiente", "Vacaciones", 1, 3),
+        vac(4, "pk-v4", "Rechazada", "Vacaciones", 1, 3),
+        vac(5, "pk-v5", "Aceptada", "Vacaciones", 1, 1),
+        vac(6, "pk-v5", "Aceptada", "Vacaciones", 2, 3),
+    ]  # encadenadas
+    async with db.session() as s:
+        s.add_all(rows)
+    return build_registry(db), db, TODAY
+
+
+async def test_a_sick_leave_that_ended_yesterday_returns_today(tmp_path: Any) -> None:
+    """Caso real: «quién vuelve primero» era Alexander de Brouwer, que vuelve HOY tras una baja que acabó ayer."""
+    registry, db, _ = await _return_scenario(tmp_path)
+    result = await call(registry, "reincorporaciones", tipos=["Baja/IT"])
+    await db.dispose()
+    first = result.summary["reincorporaciones"][0]
+    assert first["persona"] == "Alexander" and first["vuelve"] == "2026-08-05" and first["tras"] == "tras baja/it"
+
+
+async def test_vacation_returns_come_from_operational_requests_only(tmp_path: Any) -> None:
+    """Vacaciones: solicitudes aceptadas, aprobadas o pendientes de firma; no las pendientes ni las rechazadas."""
+    registry, db, _ = await _return_scenario(tmp_path)
+    result = await call(registry, "reincorporaciones", tipos=["Vacaciones"])
+    await db.dispose()
+    names = [r["persona"] for r in result.summary["reincorporaciones"]]
+    assert sorted(names) == ["Ana", "Beto", "Eli"]  # Cris (pendiente) y Dani (rechazada) no cuentan
+    assert names.count("Eli") == 1  # dos solicitudes encadenadas son una sola ausencia
+
+
+async def test_who_is_on_vacation_counts_vacations_not_personal_days_by_default(tmp_path: Any) -> None:
+    """Caso real: «de vacaciones hoy» daba 24 frente a 19 porque contaba también los asuntos propios."""
+    from mia.data import Vacation  # noqa: PLC0415
+    from tests.dbutil import fresh_database  # noqa: PLC0415
+    from tests.hr_seed import TODAY, _emp  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "tipos.db")
+    async with db.session() as s:
+        s.add_all(
+            [
+                _emp(1, "Ana", "Pisos", email="a@x.test"),
+                _emp(2, "Beto", "Pisos", email="b@x.test"),
+                *[
+                    Vacation(
+                        sp_id=n,
+                        employee_email=f"{m}@x.test",
+                        employee_name=m,
+                        department="Pisos",
+                        department_key="pisos",
+                        status=st,
+                        request_type=kind,
+                        start_date=TODAY,
+                        end_date=TODAY,
+                        total_days=1,
+                    )
+                    for n, (m, st, kind) in enumerate(
+                        [("a", "Aprobada", "Vacaciones"), ("b", "Aceptada", "Asuntos propios")], 1
+                    )
+                ],
+            ]
+        )
+    registry = build_registry(db)
+    default = await call(registry, "vacaciones", desde=TODAY.isoformat(), hasta=TODAY.isoformat())
+    everything = await call(registry, "vacaciones", desde=TODAY.isoformat(), hasta=TODAY.isoformat(), tipo="todos")
+    await db.dispose()
+    assert default.summary["personas_distintas"] == 1  # «Aprobada» cuenta como operativa; los asuntos propios, no
+    assert everything.summary["personas_distintas"] == 2

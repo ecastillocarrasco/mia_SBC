@@ -17,8 +17,8 @@ from mia.api.legacy_view import _mail_message_view
 from mia.auth import UserContext
 from mia.conversation import ToolContext
 from mia.data.repositories import ConversationRepository
-from mia.domains.common import Deps  # noqa: F401  (documenta de dónde salen las herramientas)
 from mia.llm import LLMRequest, Message, TextDelta, ToolCall
+from mia.modules.rrhh.common import Deps  # noqa: F401  (documenta de dónde salen las herramientas)
 
 ACTIONS = ("open", "propose", "draft", "update", "send", "discard")
 CONFIRMATION = "Sí, confirmo el envío"

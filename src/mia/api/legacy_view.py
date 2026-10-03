@@ -15,9 +15,9 @@ import re
 from datetime import date
 from typing import Any
 
-from mia.domains.charts import chart_spec
-from mia.domains.correo.tools import is_noreply
-from mia.text import humanize_label
+from mia.modules.rrhh.charts import chart_spec
+from mia.modules.rrhh.correo.tools import is_noreply
+from mia.text import format_number, humanize_label
 
 MAX_CARDS = 8
 
@@ -30,6 +30,8 @@ def _flat(value: Any) -> Any:
         return ", ".join(str(_flat(v)) for v in value if v not in (None, ""))
     if isinstance(value, bool):
         return "Sí" if value else "No"
+    if isinstance(value, float):
+        return format_number(value)
     return value
 
 
@@ -225,6 +227,7 @@ def employee360_view(card: dict[str, Any]) -> dict[str, Any]:
 
 # Claves del resumen de las herramientas que no aportan a la pantalla (van en la tabla o son internas).
 SKIP_SUMMARY = {"al_dia", "regla", "desde", "hasta", "empleado_id", "candidato_id", "estado", "anio", "fecha"}
+GENERIC_KEYS = {"comparativa", "ausencias_en_el_periodo", "resumen"}
 NOTE_KEYS = {"nota", "criterio", "mensaje", "nota_bajas", "persona_destacada"}
 
 
@@ -256,7 +259,10 @@ def summary_view(summaries: list[dict[str, Any]]) -> dict[str, list[Any]]:
                 # {tipo: {personas, periodos, dias}} → comparativa: una fila por métrica, una columna por tipo.
                 metrics = list(dict.fromkeys(m for v in value.values() for m in v))
                 comparison += [
-                    {"metrica": f"{_label(key)} · {_label(m)}", **{str(col): v.get(m) for col, v in value.items()}}
+                    {
+                        "metrica": _label(m) if key in GENERIC_KEYS else f"{_label(key)} · {_label(m)}",
+                        **{str(col): v.get(m) for col, v in value.items()},
+                    }
                     for m in metrics
                     if all(_is_scalar(v.get(m)) or v.get(m) is None for v in value.values())
                 ]
@@ -342,6 +348,10 @@ def _absorb(
 ) -> None:
     """Traduce una presentación de mIA a lo que pinta el 2D (tablas, tarjetas, acciones, correo…)."""
     kind = p.get("type")
+    if p.get("documents"):
+        data.setdefault("documents", []).extend(
+            {k: d.get(k) for k in ("kind", "title", "subtitle", "date", "url")} for d in p["documents"][:36]
+        )
     if kind == "employee_360":
         data["presentation"] = employee360_view(p)
     elif kind == "table" and p.get("mail_rows") is not None:
@@ -390,6 +400,9 @@ def legacy_view(
         data["table"] = tables[0]
         cards += [{"label": t["title"], "value": t["total"], "unit": "registros"} for t in tables[1:]]
     _merge_extra(data, cards, extra)
+    main = data.get("table")
+    if main and main["columns"] and str(main["columns"][0]["label"]).lower() == "indicador":
+        data.pop("comparacion", None)  # la tabla ya ES la comparativa: no se repite
     charts = [c for t in every_table if (c := chart_from_table(t))][:2] or extra["charts"][:1]
     if charts:
         data["charts"] = charts

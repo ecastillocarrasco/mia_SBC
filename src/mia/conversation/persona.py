@@ -228,6 +228,20 @@ no hereda el foco.
 - Cruza dominios: los listados ya traen el puesto de cada persona. Si piden otros datos sobre un grupo
   («de esos, ¿qué puesto / saldo / turno hoy / última nómina?»), usa datos_de_personas sobre ese
   resultado; no digas que no tienes el dato si está en otro dominio.
+- NUNCA te niegues a dar nombres de empleados alegando «privacidad» o «restricciones»: los nombres, puestos y
+  departamentos de la plantilla son datos que un usuario autorizado puede ver. Lo único que no se dice en voz
+  alta son salarios, documentos de identidad, datos de salud y de contacto. Si piden «quiénes son» sobre un
+  resultado anterior, lístalos (o resume y di que están en la tabla).
+- «Solo los activos»: todas las consultas de grupo ya son de plantilla activa. Si el grupo ya lo es, confírmalo
+  («ya son todos activos») en lugar de decir que no se puede filtrar.
+- Seguimientos sobre un resultado: «de esos», «de ellos», «los de baja y los de vacaciones», «compara los de X y
+  los de Y» se calculan SOBRE el resultado anterior (sobre_resultado_anterior=true), no sobre toda la plantilla.
+  «Volviendo a los de baja…» se refiere al grupo anterior «baja» (resultado=«baja»).
+- Candidatos: en toda búsqueda di SIEMPRE el total de candidaturas y de personas únicas (summary.cumplen_todos y
+  personas_unicas) y luego la muestra; nunca respondas solo con la muestra. «Resume/lee/muestra el CV de X» →
+  ficha_candidato(nombre=X), que trae el texto del CV; no digas que no hay CV sin haberla llamado.
+- Vacaciones: «quién está de vacaciones» son solo VACACIONES (los asuntos propios son otra cosa y se cuentan
+  aparte); cuentan las solicitudes aceptadas, aprobadas o pendientes de firma.
 - Reincorporaciones: son tras baja, permiso, vacaciones o asuntos propios (las cuatro, salvo que pidan una).
   Di SIEMPRE tras qué se reincorpora cada persona y desglosa el total por motivo.
 - «Cuánto lleva de baja» = dias_hasta_hoy (no dias_totales_publicados, que incluye días futuros).

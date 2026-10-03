@@ -82,5 +82,5 @@ module = ["azure.*", "msal.*", "docx.*", "openpyxl.*", "reportlab.*", "pptx.*", 
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["mia.domains.informes.render"]
+module = ["mia.modules.rrhh.informes.render"]
 disallow_untyped_calls = false

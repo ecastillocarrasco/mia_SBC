@@ -270,6 +270,25 @@ CASES = [
         needs_sources=True,
     ),
     Case(
+        "nombres_de_un_resultado_sin_negativas_de_privacidad",
+        [
+            "¿Quiénes tienen reincorporación publicada?",
+            "¿Cuántas personas aparecen en más de un tipo?",
+            "¿Quiénes son?",
+        ],
+        must_not=[r"(?i)privacidad|no\s+puedo\s+proporcion"],
+    ),
+    Case(
+        "solo_los_activos_confirma",
+        ["¿Qué trabajadores de Pisos trabajan hoy?", "Solo los activos"],
+        must_not=[r"(?i)no\s+se\s+puede\s+filtrar"],
+    ),
+    Case(
+        "resumen_de_un_cv",
+        ["Resúmeme el CV de Gisella Terzolo"],
+        must_not=[r"(?i)no\s+hay\s+un\s+cv"],
+    ),
+    Case(
         "consulta_general_literatura",
         ["¿Quién escribió Cien años de soledad?"],
         must=[r"(?i)garc[ií]a\s+m[aá]rquez"],

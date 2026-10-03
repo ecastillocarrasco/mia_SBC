@@ -285,6 +285,35 @@
     return card;
   }
 
+
+  /* ------------------------------------------------------------------ documentos: abrir CV, nóminas y firmados */
+  var DOC_ICON = { cv: 'CV', nomina: '€', documento: '✍' };
+  var DOC_LABEL = { cv: 'Currículum', nomina: 'Nómina', documento: 'Documento firmado' };
+  function previewDocument(doc) {
+    var m = modal({ title: doc.title || 'Documento', subtitle: (DOC_LABEL[doc.kind] || 'Documento') + (doc.subtitle ? ' · ' + doc.subtitle : ''), icon: DOC_ICON[doc.kind] || '📄', wide: true });
+    m.panel.classList.add('doc-preview');
+    var frame = document.createElement('iframe'); frame.className = 'mia-doc-frame'; frame.title = doc.title || 'Documento'; frame.src = doc.url;
+    m.body.appendChild(shimmer(4)); frame.addEventListener('load', function () { var sh = m.body.querySelector('.mia-shimmer'); if (sh) sh.remove(); });
+    m.body.appendChild(frame);
+    var a = safeLink(doc.url, 'Abrir en una pestaña nueva'); a.className = 'mia-btn'; m.foot.appendChild(a); m.foot.appendChild(button('Cerrar', 'primary', m.close));
+  }
+  function documentsCard(list) {
+    var card = el('section', 'mia-docs'); var head = el('div', 'mia-chart-head');
+    head.appendChild(el('strong', null, 'Documentos')); head.appendChild(el('span', null, list.length + (list.length === 1 ? ' disponible' : ' disponibles')));
+    card.appendChild(head);
+    list.slice(0, 12).forEach(function (doc) {
+      var row = el('div', 'mia-doc'); row.appendChild(el('span', 'mia-doc-icon ' + (doc.kind || ''), DOC_ICON[doc.kind] || '📄'));
+      var info = el('div', 'mia-doc-info'); info.appendChild(el('b', null, doc.title || 'Documento'));
+      var meta = [DOC_LABEL[doc.kind], doc.subtitle, doc.date].filter(Boolean).join(' · '); if (meta) info.appendChild(el('small', null, meta));
+      row.appendChild(info);
+      var open = button('Abrir', 'primary', function () { previewDocument(doc); }); row.appendChild(open);
+      var out = safeLink(doc.url, '↗'); out.className = 'mia-btn mia-doc-out'; out.title = 'Abrir en una pestaña nueva'; row.appendChild(out);
+      card.appendChild(row);
+    });
+    if (list.length > 12) card.appendChild(el('div', 'mia-note', 'Se muestran 12 de ' + list.length + '; el resto está en la tabla.'));
+    return card;
+  }
+
   /* ------------------------------------------------------------------ texto de la respuesta */
   function escapeHtml(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function inline(html) {
@@ -331,10 +360,13 @@
       var data = (r && r.data) || {}, extras = [];
       if (data.mail_message) extras.push(mailMessageCard(data.mail_message));
       if (data.mail_draft) extras.push(draftCard(data.mail_draft));
+      if (Array.isArray(data.documents) && data.documents.length) extras.push(documentsCard(data.documents));
       (Array.isArray(data.charts) ? data.charts : []).forEach(function (spec) {
         if (spec && spec.series && spec.series[0] && spec.labels) extras.push(chartCard(spec));
       });
       var all = msg.querySelectorAll('.results'), wrap = all.length > before ? all[all.length - 1] : null;
+      // El globo se ajusta al contenido más ancho: con resultados (tablas, gráficos, correo) hay que ensancharlo.
+      if (wrap || extras.length) { var bubble = msg.classList && msg.classList.contains('msg') ? msg : msg.closest && msg.closest('.msg'); if (bubble) bubble.classList.add('has-results'); }
       if (wrap && Array.isArray(data.mail_rows) && data.mail_rows.length) decorateMailList(wrap, data.mail_rows);
       if (!extras.length) return;
       if (!wrap) {  // el 2D original no crea contenedor para un correo abierto o un borrador: lo creamos

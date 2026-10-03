@@ -14,8 +14,8 @@ import pytest
 from mia.auth import UserContext
 from mia.conversation import ToolContext, ToolRegistry
 from mia.data import Employee, Payslip, ShiftDay, SignedDocument, Vacation, VacationBalance
-from mia.domains import build_registry
 from mia.llm import ToolCall
+from mia.modules.rrhh import build_registry
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp, _shift
 
@@ -58,6 +58,7 @@ async def registry(tmp_path: Path) -> AsyncIterator[ToolRegistry]:
                     department="Cocina",
                     department_key="cocina",
                     status="Aceptada",
+                    request_type="Vacaciones",
                     start_date=TODAY,
                     end_date=tomorrow,
                     total_days=2,
@@ -69,6 +70,7 @@ async def registry(tmp_path: Path) -> AsyncIterator[ToolRegistry]:
                     department="Cocina",
                     department_key="cocina",
                     status="Aceptada",
+                    request_type="Vacaciones",
                     start_date=TODAY,
                     end_date=tomorrow,
                     total_days=2,

@@ -264,3 +264,29 @@ Nota: en la plantilla activa hay ~14 cuentas de prueba («test…», «testAltaT
 | Bajas por departamento y periodo (41 frente a 18 en Pisos/agosto) | `ausencias` devuelve por departamento periodos, empleados, días acumulados, media y el más largo; misma fórmula que el antiguo (días en la ventana / periodos) |
 | «Duración media de las bajas» respondía 1 día (ventana de hoy) | Las preguntas de media usan los últimos 12 meses, como el antiguo |
 | 23.000 tokens por pregunta y `tokens_cached=0` | Instrucciones y herramientas idénticas entre preguntas; lo variable (hora, foco, buzón, pista) va en el mensaje del usuario |
+
+
+## Cuarta ronda de pruebas en el 2D
+
+| Hallazgo | Corrección |
+|---|---|
+| «Compara las bajas de Pisos y Recepción en agosto» daba 18 bajas: era la foto del 1 de agosto (`comparar_departamentos` es de un día) | `comparar_departamentos` con `desde`/`hasta` da el balance del periodo por departamento: periodos, personas, días acumulados, duración media y el más largo (la descripción de la herramienta indica cuándo usar cada modo). 18 personas un día y 41 en el mes no eran una discrepancia |
+| La tarjeta de resultados salía estrecha (el globo se ajusta al contenido más ancho) | Las respuestas con resultados ocupan hasta 900 px |
+| La comparativa aparecía dos veces (tarjeta y tabla) con nombres técnicos (`plantilla_activa`) y «8.8» | Una sola tabla, etiquetas legibles y decimales en español |
+| Faltaba «abrir el documento» en los listados | Tarjeta «Documentos» con botón **Abrir** (vista previa en ventana emergente y enlace a pestaña nueva) para CV, nóminas y documentos firmados; las nóminas solo con el permiso de importes |
+
+
+## Quinta ronda: modo sombra del 30/09 (diferencias contra el antiguo)
+
+| Diferencia | Causa | Corrección |
+|---|---|---|
+| 344 frente a 330 empleados; 653 frente a 639 | El antiguo cuenta las 14 cuentas de prueba | Esperada: se excluyen a propósito |
+| Bajas de agosto (Pisos 47 periodos, 41 personas, 553 días, media 11,77; Recepción 1 y 8 días) | — | **Coincide exactamente** |
+| Vacaciones de hoy: 24 frente a 19 | `vacaciones` contaba también los asuntos propios (`tipo=todos` por defecto) | Por defecto solo vacaciones; estados operativos del antiguo (aceptada, aprobada, pendiente de firma) |
+| Reincorporaciones: 68 frente a 51; quién vuelve primero | Mirábamos solo desde hoy (el antiguo, 90 días atrás); y las vacaciones salían de los días de Turnos, no de las solicitudes | Baja y permiso de Turnos con margen de 90 días; vacaciones y asuntos propios de las solicitudes de Vacaciones (REI-001) |
+| Nóminas: 103 frente a 104; tipos 79/12 frente a 81/11 | Datos sin sincronizar y clasificación por el nombre del fichero | Clasificación con la prioridad del antiguo (MesNomina primero) |
+| «Resúmeme el CV de Gisella Terzolo» → «no hay un CV» | El CV colgaba de otra candidatura de la misma persona | La ficha busca en todas sus candidaturas (6.000 caracteres) |
+| «Quiénes son» → «no puedo por privacidad» | Negativa inventada por el modelo | Regla: los nombres de la plantilla se pueden dar; evaluación nueva |
+| «Volviendo a los de baja…», «los de baja y los de vacaciones» sobre toda la plantilla | El modelo no usaba el resultado anterior | Detección determinista de «volviendo a los de X»; reglas de seguimiento |
+| «Timed out» en consultas encadenadas | Varias rondas de herramientas sin tope de tiempo | Presupuesto de 75 s por turno (`MIA_LLM__TURN_BUDGET_SECONDS`) |
+| Pisos trabajando 58/59, de baja 16/15; mañana 151/155; saldos negativos 4 frente a 6 | Sin determinar con certeza: datos sin sincronizar y/o turnos de personas sin ficha activa | `tools/diagnostico_paridad.py` lo desglosa con datos reales |

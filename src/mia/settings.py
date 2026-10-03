@@ -51,6 +51,9 @@ class LLMSettings(BaseModel):
     timeout_seconds: float = 45.0
     max_output_tokens: int = 1200
     max_tool_rounds: int = 4
+    turn_budget_seconds: float = 75.0
+    """Tiempo máximo de un turno antes de dejar de llamar a herramientas y contestar con lo que haya (evita los
+    «timed out» de las consultas encadenadas)."""
     web_search: bool = True
     """Búsqueda web del proveedor para consultas generales (tiempo, actualidad). Si el proveedor no la
     admite, se desactiva sola."""

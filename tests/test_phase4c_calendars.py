@@ -14,8 +14,8 @@ import pytest
 from mia.auth import UserContext
 from mia.conversation import ToolContext, ToolRegistry, ToolStatus
 from mia.data import CalendarShift, ShiftDay, ShiftTemplate, ShiftTypeCatalog, WeekComment
-from mia.domains import build_registry
 from mia.llm import ToolCall
+from mia.modules.rrhh import build_registry
 from mia.sources import Pseudonymizer
 from mia.sources.definitions import CALENDAR_BASE_YEAR, calendar_source, calendar_title
 from mia.sources.discovery import discover_calendar_sources
