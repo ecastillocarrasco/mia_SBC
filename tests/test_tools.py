@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from mia.auth import Permission, UserContext
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
+from mia.conversation.tools import LAST_CALL, remember_last_call
 from mia.llm import ToolCall
 
 
@@ -14,8 +15,24 @@ class Params(BaseModel):
     dias: int = Field(ge=1, le=31)
 
 
+class ConParametrosVarios(BaseModel):
+    departamento: str = ""
+    incluir_inactivos: bool = False
+    sobre_resultado_anterior: bool = False
+    resultado: str | None = None
+    limite: int = 0
+
+
 async def _ok(params: Params, ctx: ToolContext) -> ToolResult:
     return ToolResult.ok({"dias": params.dias}, foco_periodo=params.dias)
+
+
+async def _ok_varios(params: ConParametrosVarios, ctx: ToolContext) -> ToolResult:
+    return ToolResult.ok({})
+
+
+async def _not_found(params: Params, ctx: ToolContext) -> ToolResult:
+    return ToolResult(ToolStatus.NOT_FOUND, "nadie encaja")
 
 
 async def _slow(params: Params, ctx: ToolContext) -> ToolResult:
@@ -33,6 +50,8 @@ def _registry() -> ToolRegistry:
     registry.register(Tool("nominas", "con permiso", Params, _ok, permission=Permission.NOMINAS_LEER))
     registry.register(Tool("lenta", "timeout", Params, _slow, timeout_seconds=0.05))
     registry.register(Tool("rota", "falla", Params, _boom))
+    registry.register(Tool("varios", "params variados", ConParametrosVarios, _ok_varios))
+    registry.register(Tool("sin_suerte", "no encuentra nada", Params, _not_found))
     return registry
 
 
@@ -74,6 +93,34 @@ async def test_parallel_execution_and_state_updates() -> None:
     executions = await _registry().execute_all(calls, _ctx())
     assert [e.result.summary["dias"] for e in executions] == [2, 5]
     assert executions[0].result.state_updates == {"foco_periodo": 2}
+
+
+# ------------------------------------------------------------------ remember_last_call
+async def test_remember_last_call_keeps_tool_and_params() -> None:
+    execution = await _registry().execute(ToolCall("c", "publica", '{"dias": 5}'), _ctx())
+    state: dict[str, object] = {}
+    remember_last_call(state, execution)
+    assert state[LAST_CALL] == {"herramienta": "publica", "parametros": {"dias": 5}}
+
+
+async def test_remember_last_call_filters_meta_and_empty_params() -> None:
+    """sobre_resultado_anterior/resultado son instrucciones de interpretación, no datos a repetir;
+    los vacíos/False (los que dejó por defecto el modelo) tampoco aportan nada que repetir."""
+    arguments = (
+        '{"departamento": "Pisos", "incluir_inactivos": false, '
+        '"sobre_resultado_anterior": true, "resultado": "baja", "limite": 0}'
+    )
+    execution = await _registry().execute(ToolCall("c", "varios", arguments), _ctx())
+    state: dict[str, object] = {}
+    remember_last_call(state, execution)
+    assert state[LAST_CALL] == {"herramienta": "varios", "parametros": {"departamento": "Pisos", "limite": 0}}
+
+
+async def test_remember_last_call_ignores_unsuccessful_calls() -> None:
+    execution = await _registry().execute(ToolCall("c", "sin_suerte", '{"dias": 1}'), _ctx())
+    state: dict[str, object] = {}
+    remember_last_call(state, execution)
+    assert LAST_CALL not in state
 
 
 def test_duplicate_tool_names_are_rejected() -> None:

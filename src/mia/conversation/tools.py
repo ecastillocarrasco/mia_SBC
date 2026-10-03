@@ -176,3 +176,32 @@ def remember_population(state: dict[str, Any], population: dict[str, Any] | None
         return
     history = [p for p in state.get(HISTORY, []) if p.get("etiqueta") != population.get("etiqueta")]
     state[HISTORY] = [*history, population][-MAX_HISTORY:]
+
+
+LAST_CALL = "ultima_llamada"
+_META_PARAMS = {"sobre_resultado_anterior", "resultado"}
+"""Son instrucciones sobre CÓMO interpretar la pregunta, no un dato de negocio que repetir."""
+_MAX_PARAM_VALUE_CHARS = 80
+
+
+def remember_last_call(state: dict[str, Any], execution: ToolExecution) -> None:
+    """Guarda la última herramienta que respondió bien, con los parámetros tal como los puso
+    el modelo (no el resultado).
+
+    No hay regex que cubra «y los de Cocina», «y en agosto», «y solo los de baja»… — son
+    infinitas las formas de pedir «la misma pregunta, cambiando un dato». En vez de intentar
+    enumerarlas, se le da al modelo la llamada estructurada para que decida él qué cambia,
+    algo para lo que un LLM es bueno y una lista de patrones de texto nunca lo será del todo.
+    """
+    if execution.result.status is not ToolStatus.OK:
+        return
+    try:
+        args: dict[str, Any] = json.loads(execution.call.arguments or "{}")
+    except json.JSONDecodeError:
+        args = {}
+    params = {
+        k: (v[:_MAX_PARAM_VALUE_CHARS] if isinstance(v, str) else v)
+        for k, v in args.items()
+        if k not in _META_PARAMS and v is not None and v is not False and v not in ("", [])
+    }
+    state[LAST_CALL] = {"herramienta": execution.call.name, "parametros": params}

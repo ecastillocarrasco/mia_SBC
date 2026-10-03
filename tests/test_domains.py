@@ -288,10 +288,11 @@ async def test_focus_reaches_the_next_turn(tmp_path: Path) -> None:
 
     db = await fresh_database(tmp_path, "focus.db")
     await seed(db)
+    rounds: list[int] = []
 
     def script(req: LLMRequest) -> list[Any]:
-        last = req.messages[-1]
-        if last.role == "user" and "ficha" in last.content:
+        rounds.append(1)
+        if len(rounds) == 1:
             return tool_call("ficha_empleado", {"nombre": "Ana Ruiz"})
         return final_answer("Hecho.", "Hecho.")
 
@@ -303,6 +304,36 @@ async def test_focus_reaches_the_next_turn(tmp_path: Path) -> None:
     # El foco viaja en el contexto del turno (último mensaje), no en las instrucciones fijas.
     assert "Persona: Ana Ruiz Sanz (empleado_id 1, Pisos)" in llm.requests[-1].messages[-1].content
     assert "Ana Ruiz" not in llm.requests[-1].system
+
+
+async def test_last_tool_call_reaches_the_next_turn(tmp_path: Path) -> None:
+    """«Y los de Cocina» no tiene patrón que lo cubra (a diferencia de «quiénes son»): se le da
+    al modelo la última llamada estructurada para que él decida qué cambia, no una regex más."""
+    from mia.conversation import ConversationEngine  # noqa: PLC0415
+    from mia.llm.base import LLMRequest  # noqa: PLC0415
+    from mia.llm.fake import FakeLLMProvider, final_answer, tool_call  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "last_call.db")
+    await seed(db)
+    rounds: list[int] = []
+
+    def script(req: LLMRequest) -> list[Any]:
+        rounds.append(1)
+        if len(rounds) == 1:
+            return tool_call("plantilla", {"departamento": "Pisos"})
+        if len(rounds) == 2:
+            return final_answer("En Pisos hay 1 persona.", "En Pisos hay 1 persona.")
+        return final_answer("Hecho.", "Hecho.")
+
+    llm = FakeLLMProvider(script)
+    engine = ConversationEngine(llm=llm, tools=build_registry(db), db=db)
+    first = await engine.complete(message="¿Cuántos hay en Pisos?", user=ADMIN, session_id=None)
+    await engine.complete(message="Y en Cocina", user=ADMIN, session_id=first.session_id)
+    await db.dispose()
+    # El 3er round (2º turno, antes de responder) es el que lleva la pista en el contexto.
+    context = llm.requests[2].messages[-1].content
+    assert "Última consulta: plantilla(departamento=Pisos)" in context
+    assert "si la pregunta solo cambia un dato" in context.lower()
 
 
 async def test_search_with_several_matches_is_ambiguous_but_lists_them(registry: ToolRegistry) -> None:

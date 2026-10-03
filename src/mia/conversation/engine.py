@@ -33,9 +33,11 @@ from mia.conversation.events import (
 from mia.conversation.persona import AvatarState, Persona
 from mia.conversation.speech import SpeechExtractor
 from mia.conversation.tools import (
+    LAST_CALL,
     ToolContext,
     ToolExecution,
     ToolRegistry,
+    remember_last_call,
     remember_population,
     remember_table,
 )
@@ -105,6 +107,14 @@ def describe_focus(state: dict[str, Any]) -> str:
     period = state.get("foco_periodo")
     if isinstance(period, dict) and period.get("desde"):
         lines.append(f"- Periodo: {period['desde']} a {period.get('hasta', period['desde'])}")
+    last_call = state.get(LAST_CALL)
+    if isinstance(last_call, dict) and last_call.get("herramienta"):
+        params = ", ".join(f"{k}={v}" for k, v in (last_call.get("parametros") or {}).items())
+        lines.append(
+            f"- Última consulta: {last_call['herramienta']}({params}). Si la pregunta solo cambia "
+            "un dato de esta (otro departamento, periodo, tipo…), repite esta misma consulta "
+            "cambiando solo ese dato; no la repitas igual si la pregunta es otra cosa distinta."
+        )
     return "\n".join(lines)
 
 
@@ -368,6 +378,7 @@ class ConversationEngine:
                 turn.state.update(execution.result.state_updates)
                 remember_table(turn.state, execution.result.presentation, self._max_report_rows)
                 remember_population(turn.state, execution.result.state_updates.get("ultima_poblacion"))
+                remember_last_call(turn.state, execution)
                 messages.append(
                     Message(role="tool", content=execution.as_llm_output(), tool_call_id=execution.call.call_id)
                 )
