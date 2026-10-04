@@ -35,6 +35,9 @@ export class MiaScene {
     this._groundRoot = new THREE.Object3D();
     this._moveTargetX = 0;
     this._lerpAlpha = 0.02;
+    // Saved after model centering — used for micro-sway offset in _loop().
+    this._modelBaseX = 0;
+    this._modelBaseZ = 0;
     this.scene.add(this._groundRoot);
 
     // Upper-body gesture overlay layer.
@@ -60,29 +63,57 @@ export class MiaScene {
     key.castShadow = shadows;
     key.shadow.mapSize.set(1024, 1024);
     this.scene.add(key);
+
+    // Visible floor plane: warm off-white, just darker than the background, to
+    // give the avatar a clear surface to stand on and a visible horizon line.
+    const floorVis = new THREE.Mesh(
+      new THREE.PlaneGeometry(20, 20),
+      new THREE.MeshLambertMaterial({ color: 0xe8e2d6 }),
+    );
+    floorVis.rotation.x = -Math.PI / 2;
+    floorVis.position.y = -0.002;
+    floorVis.receiveShadow = true;
+    this.scene.add(floorVis);
+
     if (shadows) {
-      const floor = new THREE.Mesh(
+      const shadowFloor = new THREE.Mesh(
         new THREE.PlaneGeometry(40, 40),
-        new THREE.ShadowMaterial({ opacity: 0.12 }),
+        new THREE.ShadowMaterial({ opacity: 0.22 }),
       );
-      floor.rotation.x = -Math.PI / 2;
-      floor.receiveShadow = true;
-      this.scene.add(floor);
+      shadowFloor.rotation.x = -Math.PI / 2;
+      shadowFloor.receiveShadow = true;
+      this.scene.add(shadowFloor);
     }
-    // Elliptical contact shadow disc: grounds the avatar visually even without a floor texture.
-    const disc = new THREE.Mesh(
-      new THREE.CircleGeometry(0.36, 64),
+
+    // Outer soft ambient halo — very wide, very transparent, softens the base.
+    const outerDisc = new THREE.Mesh(
+      new THREE.CircleGeometry(1.0, 64),
       new THREE.MeshBasicMaterial({
-        color: 0x0a0500,
+        color: 0x060300,
         transparent: true,
-        opacity: shadows ? 0.15 : 0.10,
+        opacity: 0.08,
+        depthWrite: false,
+      }),
+    );
+    outerDisc.rotation.x = -Math.PI / 2;
+    outerDisc.position.y = 0.001;
+    outerDisc.scale.set(1, 0.45, 1);
+    this._groundRoot.add(outerDisc);
+
+    // Inner contact shadow disc: clearly visible dark ellipse directly underfoot.
+    const disc = new THREE.Mesh(
+      new THREE.CircleGeometry(0.50, 64),
+      new THREE.MeshBasicMaterial({
+        color: 0x050200,
+        transparent: true,
+        opacity: shadows ? 0.28 : 0.20,
         depthWrite: false,
       }),
     );
     disc.rotation.x = -Math.PI / 2;
-    disc.position.y = 0.001;
-    disc.scale.set(1, 0.38, 1); // narrower on Z = elliptical footprint
-    this._groundRoot.add(disc); // moves with avatar so it always stays underfoot
+    disc.position.y = 0.002;
+    disc.scale.set(1, 0.40, 1);
+    this._groundRoot.add(disc);
   }
 
   async load(onProgress) {
@@ -106,6 +137,9 @@ export class MiaScene {
     model.position.x -= center.x;
     model.position.z -= center.z;
     model.position.y -= fitted.min.y + GROUND_BIAS;
+    // Save centered positions as sway base — the micro-sway in _loop() offsets from here.
+    this._modelBaseX = model.position.x;
+    this._modelBaseZ = model.position.z;
 
     this._groundRoot.add(model);
     this.model = model;
@@ -227,6 +261,17 @@ export class MiaScene {
     const dx = this._moveTargetX - this._groundRoot.position.x;
     if (Math.abs(dx) > 0.0005) {
       this._groundRoot.position.x += dx * this._lerpAlpha;
+    }
+
+    // Continuous micro-sway: sinusoidal offset keeps the avatar always slightly moving.
+    // Gives the impression of natural breathing/weight-shifting even during pauses.
+    if (this.model) {
+      const t = this.clock.elapsedTime;
+      this.model.position.x = this._modelBaseX + Math.sin(t * 0.55) * 0.014;
+      this.model.position.z = this._modelBaseZ + Math.sin(t * 0.72) * 0.008;
+      // Soft-rotate toward camera center when avatar is off to the side — personality.
+      const rotTarget = -this._groundRoot.position.x * 0.22;
+      this.model.rotation.y += (rotTarget - this.model.rotation.y) * 0.02;
     }
 
     // Subtle camera soft-track toward avatar's head — makes the shot feel alive.

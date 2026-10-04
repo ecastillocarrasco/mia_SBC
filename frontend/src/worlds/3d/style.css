@@ -260,6 +260,42 @@ body[data-stage-phase="speaking"] .presentation-bubble{box-shadow:0 28px 78px rg
 .e360-full>summary::-webkit-details-marker{display:none}
 .e360-analytics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 
+/* ── Pause internal animations until bubble is revealed ──────────────────────
+   Animations are defined on child elements, but they fire when the HTML is
+   inserted into the DOM — before the bubble is visible (opacity:0).
+   This block freezes them at their `from` keyframe state.                    */
+.presentation-bubble .stat-kpis article,
+.presentation-bubble .stat-chart,
+.presentation-bubble .stat-bar-track i,
+.presentation-bubble .stat-line-path,
+.presentation-bubble .stat-donut,
+.presentation-bubble .stat-kpi-cluster article,
+.presentation-bubble .stat-metric-tile,
+.presentation-bubble .stat-today-track i,
+.presentation-bubble .e360,
+.presentation-bubble .e360-avatar,
+.presentation-bubble .e360-kpi,
+.presentation-bubble .e360-section
+{animation-play-state:paused}
+
+/* ── Fire animations the moment the bubble becomes visible (.is-visible) ─────
+   The .is-visible selector has higher specificity, so it wins over the paused
+   rule above. The animations start from the beginning (time=0) with their
+   original delays intact, creating the staggered reveal the user sees.       */
+.presentation-bubble.is-visible .stat-kpis article,
+.presentation-bubble.is-visible .stat-chart,
+.presentation-bubble.is-visible .stat-bar-track i,
+.presentation-bubble.is-visible .stat-line-path,
+.presentation-bubble.is-visible .stat-donut,
+.presentation-bubble.is-visible .stat-kpi-cluster article,
+.presentation-bubble.is-visible .stat-metric-tile,
+.presentation-bubble.is-visible .stat-today-track i,
+.presentation-bubble.is-visible .e360,
+.presentation-bubble.is-visible .e360-avatar,
+.presentation-bubble.is-visible .e360-kpi,
+.presentation-bubble.is-visible .e360-section
+{animation-play-state:running}
+
 /* ─── Responsive ─────────────────────────────────────────────────────────────  */
 @media(min-width:980px){
   .panel[data-presentation="analytics"]{width:min(680px,95vw)}

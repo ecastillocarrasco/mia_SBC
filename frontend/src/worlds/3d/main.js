@@ -48,11 +48,12 @@ function setStatus(text, state = "idle") {
 function scheduleIdleWander() {
   clearTimeout(_wanderTimer);
   if (reducedMotion) return;
-  const delay = 11000 + Math.random() * 10000; // 11–21 s
+  const delay = 7000 + Math.random() * 6000; // 7–13 s — more frequent movement
   _wanderTimer = window.setTimeout(() => {
     if (document.body.dataset.miaState === "idle") {
-      const x = (Math.random() - 0.5) * 0.22; // ±0.11 scene units
-      scene.wanderTo(x, 2400);
+      const x = (Math.random() - 0.5) * 0.60; // ±0.30 units — visible cross-screen travel
+      const duration = 1600 + Math.random() * 1800; // 1.6 – 3.4 s — sometimes quick, sometimes slow
+      scene.wanderTo(x, duration);
     }
     scheduleIdleWander();
   }, delay);
