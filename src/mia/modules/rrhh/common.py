@@ -15,6 +15,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.conversation import ToolResult, ToolStatus
+from mia.core.i18n import t
 from mia.data import Database, Employee, ShiftDay, SourceSyncState, Vacation
 from mia.ingestion.mappers.hr import ShiftKind
 from mia.text import normalize_key
@@ -316,7 +317,7 @@ def previous_population(ctx: Any, label: str | None = None) -> dict[str, Any] | 
 
 
 def no_population() -> ToolResult:
-    return ToolResult(ToolStatus.NOT_FOUND, "No hay un resultado anterior con personas sobre el que cruzar.")
+    return ToolResult(ToolStatus.NOT_FOUND, t("errors.no_previous_population"))
 
 
 async def employees_for(

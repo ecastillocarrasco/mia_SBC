@@ -21,17 +21,62 @@ DEFAULT_LANGUAGE = "es"
 
 # ------------------------------------------------------------------ textos de la aplicación
 _STRINGS: dict[str, dict[str, str]] = {
+    # errores: personas
+    "errors.person_not_found": {
+        "es": "No hay ninguna persona que encaje con «{query}».",
+        "en": 'No person matches "{query}".',
+    },
+    "errors.person_ambiguous": {
+        "es": "Hay varias personas que encajan: pregunta cuál antes de continuar.",
+        "en": "Several people match: ask which one before continuing.",
+    },
+    # errores: departamentos
     "errors.department_not_found": {
         "es": "No existe el departamento «{query}».",
-        "en": "There is no department called “{query}”.",
+        "en": 'There is no department called "{query}".',
     },
+    "errors.department_ambiguous": {
+        "es": "Hay varios departamentos que encajan («{query}»).",
+        "en": 'Several departments match "{query}".',
+    },
+    # errores: resultados anteriores
     "errors.no_previous_population": {
         "es": "No hay un resultado anterior con personas sobre el que cruzar.",
         "en": "There is no previous result with people to cross-reference.",
     },
+    "errors.no_previous_table": {
+        "es": "No hay un resultado en tabla anterior sobre el que operar.",
+        "en": "There is no previous table result to operate on.",
+    },
+    # frescura de datos
+    "freshness.never_synced": {
+        "es": "Estas fuentes no se han sincronizado nunca: {sources}",
+        "en": "These sources have never been synced: {sources}",
+    },
+    "freshness.stale": {
+        "es": "Última sincronización hace {minutes} minutos: pueden faltar cambios recientes.",
+        "en": "Last synced {minutes} minutes ago: recent changes may be missing.",
+    },
+    # etiquetas de tabla / interfaz
+    "labels.name": {"es": "Nombre", "en": "Name"},
+    "labels.department": {"es": "Departamento", "en": "Department"},
+    "labels.position": {"es": "Puesto", "en": "Position"},
+    "labels.date": {"es": "Fecha", "en": "Date"},
+    "labels.start_date": {"es": "Inicio", "en": "Start"},
+    "labels.end_date": {"es": "Fin", "en": "End"},
+    "labels.days": {"es": "Días", "en": "Days"},
+    "labels.status": {"es": "Estado", "en": "Status"},
+    "labels.type": {"es": "Tipo", "en": "Type"},
+    "labels.people": {"es": "Personas", "en": "People"},
+    "labels.balance": {"es": "Saldo", "en": "Balance"},
+    "labels.yes": {"es": "Sí", "en": "Yes"},
+    "labels.no": {"es": "No", "en": "No"},
+    "labels.active": {"es": "Activo", "en": "Active"},
+    "labels.inactive": {"es": "Inactivo", "en": "Inactive"},
+    # pista al modelo
     "prompt.previous_result_hint": {
         "es": "Para «de esos/ellas», «quiénes son» o «cuántos son», usa sobre_resultado_anterior=true.",
-        "en": "For “those/them”, “who are they” or “how many”, use sobre_resultado_anterior=true.",
+        "en": "For 'those/them', 'who are they' or 'how many', use sobre_resultado_anterior=true.",
     },
 }
 
@@ -53,13 +98,7 @@ def t(key: str, lang: str = DEFAULT_LANGUAGE, **params: object) -> str:
 # El valor «es» es literal el que manda la fuente hoy (SharePoint): traducirlo no debe
 # cambiar ni un carácter de lo que ya se muestra en español.
 _VALUES: dict[str, dict[str, dict[str, str]]] = {
-    "estado_vacaciones": {
-        "aceptada": {"es": "Aceptada", "en": "Accepted"},
-        "aprobada": {"es": "Aprobada", "en": "Approved"},
-        "pendiente firma": {"es": "Pendiente Firma", "en": "Pending signature"},
-        "pendiente": {"es": "Pendiente", "en": "Pending"},
-        "rechazada": {"es": "Rechazada", "en": "Rejected"},
-    },
+    # ---- tipo de turno (ShiftKind en ingestion/mappers/hr.py) ----------------------------
     "tipo_turno": {
         "trabajo": {"es": "Trabajo", "en": "Work"},
         "descanso": {"es": "Descanso", "en": "Day off"},
@@ -69,6 +108,37 @@ _VALUES: dict[str, dict[str, dict[str, str]]] = {
         "permiso": {"es": "Permiso", "en": "Leave of absence"},
         "festivo": {"es": "Festivo", "en": "Public holiday"},
         "sin publicar": {"es": "Sin publicar", "en": "Not published yet"},
+        "otro": {"es": "Otro", "en": "Other"},
+    },
+    # ---- estado de la solicitud de vacaciones (Vacation.status) -------------------------
+    "estado_vacaciones": {
+        "aceptada": {"es": "Aceptada", "en": "Accepted"},
+        "aprobada": {"es": "Aprobada", "en": "Approved"},
+        "pendiente firma": {"es": "Pendiente Firma", "en": "Pending signature"},
+        "pendiente": {"es": "Pendiente", "en": "Pending"},
+        "rechazada": {"es": "Rechazada", "en": "Rejected"},
+    },
+    # ---- tipo de solicitud (Vacation.request_type, campo TipoSolicitud de SharePoint) ---
+    "tipo_solicitud": {
+        "vacaciones": {"es": "Vacaciones", "en": "Vacation"},
+        "asuntos propios": {"es": "Asuntos propios", "en": "Personal leave"},
+        "permiso": {"es": "Permiso", "en": "Leave of absence"},
+        "baja": {"es": "Baja", "en": "Sick leave"},
+    },
+    # ---- día de la semana (ShiftDay.weekday: código de una letra) -----------------------
+    "dia_semana": {
+        "l": {"es": "Lunes", "en": "Monday"},
+        "m": {"es": "Martes", "en": "Tuesday"},
+        "x": {"es": "Miércoles", "en": "Wednesday"},
+        "j": {"es": "Jueves", "en": "Thursday"},
+        "v": {"es": "Viernes", "en": "Friday"},
+        "s": {"es": "Sábado", "en": "Saturday"},
+        "d": {"es": "Domingo", "en": "Sunday"},
+    },
+    # ---- estado del empleado (boolean Employee.active como etiqueta de pantalla) --------
+    "estado_empleado": {
+        "activo": {"es": "Activo", "en": "Active"},
+        "inactivo": {"es": "Inactivo", "en": "Inactive"},
     },
 }
 
