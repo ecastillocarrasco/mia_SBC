@@ -120,25 +120,3 @@ body.mia-modal-open{overflow:hidden}
 @keyframes mia-shine{to{background-position:-200% 0}}
 @media (max-width:640px){.mia-modal-backdrop{padding:0;place-items:end}.mia-modal,.mia-modal.wide{width:100%;max-height:92vh;border-radius:26px 26px 0 0}}
 @media (prefers-reduced-motion:reduce){.mia-modal,.mia-modal-backdrop,.mia-bar-fill,.mia-line-path{transition:none}.mia-shimmer i{animation:none}}
-
-/* ---------------------------------------------------------------- respuestas con resultados: tarjeta ancha */
-.universe-conversation .msg.mia.has-results,.msg.mia.has-results{width:min(900px,calc(100% - 46px));max-width:none;box-sizing:border-box}
-.msg.has-results .results{overflow-x:auto}
-.msg.has-results .generic-table,.msg.has-results table{min-width:100%}
-.msg.has-results .mia-chart,.msg.has-results .mia-mail-card{max-width:100%}
-@media (max-width:760px){.universe-conversation .msg.mia.has-results,.msg.mia.has-results{width:calc(100% - 46px)}}
-
-/* ---------------------------------------------------------------- documentos */
-.mia-docs{margin:12px 0;padding:14px 16px;border:1px solid rgba(23,32,68,.09);border-radius:22px;background:linear-gradient(180deg,#fff,#fbf9f6);box-shadow:0 18px 40px rgba(38,37,47,.05)}
-.mia-docs .mia-chart-head{margin-bottom:8px}
-.mia-doc{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid rgba(23,32,68,.06)}
-.mia-doc:first-of-type{border-top:0}
-.mia-doc-icon{flex:none;width:36px;height:36px;border-radius:12px;display:grid;place-items:center;font-size:11px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--mia-navy,#172044),var(--mia-navy-2,#27315f))}
-.mia-doc-icon.nomina{background:linear-gradient(135deg,#4ca7a3,#2f7f7b)}.mia-doc-icon.documento{background:linear-gradient(135deg,#d8a565,#c98b3f)}
-.mia-doc-info{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
-.mia-doc-info b{font-size:11.5px;color:var(--mia-navy,#172044);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mia-doc-info small{font-size:9.5px;color:#8d796d}
-.mia-doc-out{text-decoration:none;display:inline-grid;place-items:center;padding:6px 10px}
-.mia-modal.doc-preview{width:min(980px,100%);height:min(88vh,900px)}
-.mia-doc-frame{width:100%;height:100%;min-height:60vh;border:0;border-radius:16px;background:#f3efe8}
-.mia-modal.doc-preview .mia-modal-body{padding:10px 16px}

@@ -6,7 +6,8 @@
   <meta name="theme-color" content="#ffffff">
   <title>mIA · Universo 2D</title>
   <link rel="icon" type="image/png" href="/brand/mia-favicon.png">
-  <link rel="stylesheet" href="/src/worlds/2D/mia-2d.css?v=2D-V4.2-ui-tuning">
+  <link rel="stylesheet" href="/src/worlds/2D/mia-2d.css?v=2D-V4.5-sbc-clean-circle-header">
+  <link rel="stylesheet" href="/src/worlds/2D/mia-enhance.css" />
 </head>
 <body class="mia-universe-2d">
   <div class="universe-bg" aria-hidden="true">
@@ -18,13 +19,11 @@
   </div>
 
   <header class="universe-topbar">
-    <a class="universe-brand" href="/mia-2d.html" aria-label="mIA · Sunset Beach Club">
+    <a class="universe-brand" href="/mia-2d.html" aria-label="mIA · Inicio">
       <span class="universe-brand-copy">
         <strong>mIA</strong>
         <small>Asistente inteligente corporativa</small>
       </span>
-      <span class="universe-brand-divider" aria-hidden="true"></span>
-      <img class="sunset-brand-logo" src="/mia-assets/sunset_beach_club_logo.gif" alt="Sunset Beach Club">
     </a>
 
     <div class="universe-top-actions">
@@ -37,7 +36,7 @@
         <button class="universe-world active" type="button" aria-pressed="true">
           <span class="world-glyph">2D</span><span>Focus</span>
         </button>
-        <a id="world3dLink" class="universe-world" href="/" aria-label="Entrar en el mundo 3D de mIA">
+        <a id="world3dLink" class="universe-world" href="/mia-3d.html" aria-label="Entrar en el mundo 3D de mIA">
           <span class="world-glyph">3D</span><span>Immersive</span>
         </a>
       </div>
@@ -53,7 +52,7 @@
       </div>
 
       <div id="avatarStage" class="universe-avatar" data-motion="calm">
-        <div class="avatar-field field-a"></div>
+        <div class="avatar-field field-a"><img class="field-a-logo" src="/mia-assets/sunset_beach_club_logo.gif" alt="" aria-hidden="true"></div>
         <div class="avatar-field field-b"></div>
         <div class="avatar-floor"></div>
         <div class="avatar-scanline"></div>
@@ -124,5 +123,6 @@
   <div id="mailModalLayer" class="mail-modal-layer" aria-hidden="true"></div>
   <div id="toastLayer" class="toast-layer" aria-live="polite"></div>
   <script src="/src/worlds/2D/mia-2d.js?v=2D-V4.2-ui-tuning"></script>
+  <script src="/src/worlds/2D/mia-enhance.js"></script>
 </body>
 </html>

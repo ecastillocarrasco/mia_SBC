@@ -1,6 +1,12 @@
 import './style.css'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import {
+  isEmployee360Payload,
+  buildEmployee360Presentation,
+  renderEmployee360PresentationHtml
+} from './core/employee360-presentation.js'
+import { AvatarController } from './core/avatar-controller.js'
 
 console.log('### mIA FRONTEND V15.1 - GROUND + CHOREOGRAPHY + PRESENTATION + MOBILE ###')
 
@@ -49,7 +55,7 @@ scene.background =
 
 const camera =
   new THREE.PerspectiveCamera(
-    42,
+    40,
     window.innerWidth /
       window.innerHeight,
     0.01,
@@ -59,7 +65,7 @@ const camera =
 const CAMERA_BASE = {
   x: 0,
   y: 1.12,
-  z: 6.15
+  z: 5.15
 }
 
 const cameraTarget =
@@ -280,14 +286,29 @@ let currentAction =
 let currentActionName =
   null
 
+let avatarController =
+  null
+
 const actions =
   new Map()
+
+const upperBodyActions =
+  new Map()
+
+let currentUpperBodyAction =
+  null
+
+let currentUpperBodyCleanup =
+  null
 
 let conversationContext =
   {}
 
 let queryInProgress =
   false
+
+let pendingQuickAction =
+  null
 
 let listening =
   false
@@ -340,6 +361,9 @@ let lastPresentationType =
 
 let lastQueryDurationMs =
   0
+
+let lastSubmittedQuery =
+  ''
 
 const MIA_HOME = {
   x: 0,
@@ -538,6 +562,324 @@ function sanitizeClip(
 }
 
 // =======================================================
+// AVATAR V2 · CAPA SUPERIOR
+// =======================================================
+
+const UPPER_BODY_TRACK_TOKENS = [
+  'spine',
+  'neck',
+  'head',
+  'shoulder',
+  'arm',
+  'forearm',
+  'hand',
+  'thumb',
+  'index',
+  'middle',
+  'ring',
+  'pinky'
+]
+
+function buildUpperBodyClip(
+  cleanClip
+) {
+
+  const tracks =
+    cleanClip.tracks
+      .filter(
+        track => {
+
+          const trackName =
+            track.name
+              .toLowerCase()
+
+          return UPPER_BODY_TRACK_TOKENS
+            .some(
+              token =>
+                trackName.includes(
+                  token
+                )
+            )
+        }
+      )
+      .map(
+        track =>
+          track.clone()
+      )
+
+  if (!tracks.length) {
+    return null
+  }
+
+  const clip =
+    new THREE.AnimationClip(
+      `${cleanClip.name}__UPPER`,
+      cleanClip.duration,
+      tracks
+    )
+
+  clip.resetDuration()
+
+  return clip
+}
+
+function stopUpperBodyGesture(
+  fade = 0.16
+) {
+
+  if (
+    currentUpperBodyCleanup
+  ) {
+
+    const cleanup =
+      currentUpperBodyCleanup
+
+    currentUpperBodyCleanup =
+      null
+
+    cleanup(
+      false,
+      fade
+    )
+
+    return
+  }
+
+  const action =
+    currentUpperBodyAction
+
+  if (!action) {
+    return
+  }
+
+  currentUpperBodyAction =
+    null
+
+  try {
+    action.fadeOut(fade)
+  } catch (_) {
+    action.stop()
+    return
+  }
+
+  window.setTimeout(
+    () => {
+      try {
+        action.stop()
+      } catch (_) {
+        // La capa ya puede haber sido detenida por otro cambio de estado.
+      }
+    },
+    Math.max(
+      40,
+      Math.round(
+        fade * 1000
+      ) + 30
+    )
+  )
+}
+
+function playUpperBodyGesture(
+  name,
+  {
+    fadeIn = 0.16,
+    fadeOut = 0.2,
+    weight = 0.72,
+    timeScale = 1
+  } = {}
+) {
+
+  return new Promise(
+    resolve => {
+
+      const action =
+        upperBodyActions.get(
+          name
+        )
+
+      if (!action || !mixer) {
+        resolve(false)
+        return
+      }
+
+      stopUpperBodyGesture(
+        Math.min(
+          fadeOut,
+          0.12
+        )
+      )
+
+      action.stop()
+      action.reset()
+      action.enabled = true
+      action.setEffectiveWeight(
+        Math.max(
+          0.1,
+          Math.min(
+            Number(weight) || 0.72,
+            1
+          )
+        )
+      )
+      action.setEffectiveTimeScale(
+        Number(timeScale) || 1
+      )
+      action.setLoop(
+        THREE.LoopOnce,
+        1
+      )
+      action.clampWhenFinished =
+        false
+
+      currentUpperBodyAction =
+        action
+
+      let settled =
+        false
+
+      let safetyTimer =
+        null
+
+      const finish =
+        (
+          completed = true,
+          finalFade = fadeOut
+        ) => {
+
+          if (settled) {
+            return
+          }
+
+          settled =
+            true
+
+          mixer.removeEventListener(
+            'finished',
+            onFinished
+          )
+
+          if (safetyTimer) {
+            window.clearTimeout(
+              safetyTimer
+            )
+          }
+
+          if (
+            currentUpperBodyAction ===
+              action
+          ) {
+            currentUpperBodyAction =
+              null
+          }
+
+          if (
+            currentUpperBodyCleanup ===
+              cleanup
+          ) {
+            currentUpperBodyCleanup =
+              null
+          }
+
+          try {
+            action.fadeOut(
+              finalFade
+            )
+          } catch (_) {
+            action.stop()
+            resolve(completed)
+            return
+          }
+
+          window.setTimeout(
+            () => {
+              try {
+                action.stop()
+              } catch (_) {
+                // Sin efecto si ya se ha cambiado de gesto.
+              }
+            },
+            Math.max(
+              40,
+              Math.round(
+                finalFade * 1000
+              ) + 30
+            )
+          )
+
+          resolve(completed)
+        }
+
+      const cleanup =
+        (
+          completed = false,
+          finalFade = fadeOut
+        ) =>
+          finish(
+            completed,
+            finalFade
+          )
+
+      const onFinished =
+        event => {
+
+          if (
+            event.action !==
+              action
+          ) {
+            return
+          }
+
+          finish(true)
+        }
+
+      currentUpperBodyCleanup =
+        cleanup
+
+      mixer.addEventListener(
+        'finished',
+        onFinished
+      )
+
+      action.play()
+      action.fadeIn(fadeIn)
+
+      const durationMs =
+        Math.max(
+          700,
+          Math.ceil(
+            (
+              action.getClip().duration /
+                Math.max(
+                  0.1,
+                  Math.abs(
+                    Number(timeScale) || 1
+                  )
+                ) +
+              finalFadePadding(fadeOut)
+            ) * 1000
+          )
+        )
+
+      safetyTimer =
+        window.setTimeout(
+          () =>
+            finish(true),
+          durationMs
+        )
+    }
+  )
+}
+
+function finalFadePadding(
+  fadeOut
+) {
+  return Math.max(
+    0.35,
+    Number(fadeOut) || 0.2
+  ) + 0.25
+}
+
+// =======================================================
 // LOOPS
 // =======================================================
 
@@ -730,6 +1072,18 @@ async function goIdle(
     MIA_STATE.IDLE
   )
 
+  if (
+    avatarController
+  ) {
+
+    await avatarController.enter(
+      'idle',
+      { fade }
+    )
+
+    return
+  }
+
   await playAnimation(
     'mIA_IDLE',
     {
@@ -912,19 +1266,21 @@ function applyResponsive3DProfile() {
     window.innerWidth < 1100
   ) {
 
-    camera.fov = 45
+    camera.fov = 43
 
     CAMERA_BASE.x = 0
     CAMERA_BASE.y = 1.14
-    CAMERA_BASE.z = 6.55
+    CAMERA_BASE.z = 5.85
 
   } else {
 
-    camera.fov = 42
+    // V16.7 · Encuadre de revisión de animaciones.
+    // Acercamos la cámara sin alterar escala, root, suelo ni animaciones.
+    camera.fov = 40
 
     CAMERA_BASE.x = 0
     CAMERA_BASE.y = 1.12
-    CAMERA_BASE.z = 6.15
+    CAMERA_BASE.z = 5.15
   }
 
   camera.aspect =
@@ -2367,13 +2723,29 @@ function startLoadingChoreography() {
         MIA_STATE.THINKING
       )
 
-      playAnimation(
-        'mIA_THINK',
-        {
-          fade: 0.34,
-          loop: true
-        }
-      )
+      if (
+        avatarController
+      ) {
+
+        avatarController.enter(
+          'thinking',
+          {
+            query:
+              lastSubmittedQuery,
+            fade: 0.34
+          }
+        )
+
+      } else {
+
+        playAnimation(
+          'mIA_THINK',
+          {
+            fade: 0.34,
+            loop: true
+          }
+        )
+      }
     }
   )
 
@@ -2516,6 +2888,9 @@ async function submitQuery(
     return
   }
 
+  lastSubmittedQuery =
+    query
+
   queryInProgress =
     true
 
@@ -2562,15 +2937,27 @@ async function submitQuery(
         : 'He recibido tu consulta.'
     )
 
-    // mIA confirma que ha entendido, pero no retrasamos
-    // la llamada al backend esperando a que termine el gesto.
-    playAnimation(
-      'mIA_YES',
-      {
-        fade: 0.28,
-        loop: false
-      }
-    )
+    // mIA confirma que ha entendido. El AvatarController elige
+    // una variante disponible sin bloquear la llamada al backend.
+    if (
+      avatarController
+    ) {
+
+      avatarController.enter(
+        'listening',
+        { query }
+      )
+
+    } else {
+
+      playAnimation(
+        'mIA_YES',
+        {
+          fade: 0.28,
+          loop: false
+        }
+      )
+    }
 
     const choreography =
       startLoadingChoreography()
@@ -2685,6 +3072,26 @@ async function submitQuery(
     if (keyboardButton) {
       keyboardButton.disabled = false
     }
+
+    const queuedAction =
+      pendingQuickAction
+
+    pendingQuickAction =
+      null
+
+    if (queuedAction) {
+      window.setTimeout(
+        () => {
+          if (!queryInProgress) {
+            submitQuery(
+              queuedAction,
+              'action'
+            )
+          }
+        },
+        0
+      )
+    }
   }
 }
 
@@ -2727,6 +3134,80 @@ function handleBackendProgress(
         ''
       )
   }
+}
+
+// =======================================================
+// GUARDIA CONVERSACIONAL
+// =======================================================
+
+function isSimpleConversationQuery(
+  text
+) {
+
+  const normalized =
+    String(text || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[¿?¡!.,;:]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  if (!normalized) {
+    return false
+  }
+
+  const simplePatterns = [
+    /^(hola|buenas|buenos dias|buenas tardes|buenas noches)( mia)?$/,
+    /^(hola|buenas) mia$/,
+    /^(gracias|muchas gracias|gracias mia|muchas gracias mia)$/,
+    /^(adios|hasta luego|nos vemos|hasta pronto)( mia)?$/,
+    /^(que tal|como estas|como va)( mia)?$/,
+    /^(quien eres|que eres|que puedes hacer)( mia)?$/
+  ]
+
+  return simplePatterns.some(
+    pattern =>
+      pattern.test(normalized)
+  )
+}
+
+function presentationHasStructuredData(
+  presentation
+) {
+
+  return Boolean(
+    presentation?.cards?.length ||
+    presentation?.table?.rows?.length ||
+    presentation?.visualizations?.length ||
+    presentation?.insights?.length ||
+    presentation?.actions?.length ||
+    presentation?.type === 'scalar' ||
+    presentation?.type === 'employee360' ||
+    presentation?.type === 'person' ||
+    presentation?.type === 'department' ||
+    presentation?.type === 'analytics' ||
+    presentation?.type === 'comparison' ||
+    presentation?.type === 'list' ||
+    presentation?.type === 'shifts' ||
+    presentation?.type === 'document'
+  )
+}
+
+function shouldUseVoiceOnly(
+  presentation
+) {
+
+  if (
+    !isSimpleConversationQuery(
+      lastSubmittedQuery
+    )
+  ) {
+    return false
+  }
+
+  return !presentationHasStructuredData(
+    presentation
+  ) || presentation.type === 'text'
 }
 
 // =======================================================
@@ -2801,6 +3282,65 @@ async function handleBackendResult(
       payload
     )
 
+  if (
+    shouldUseVoiceOnly(
+      presentation
+    )
+  ) {
+
+    lastPresentationType =
+      'text'
+
+    hideBackendResult()
+
+    setState(
+      MIA_STATE.TALKING
+    )
+
+    if (
+      avatarController
+    ) {
+
+      avatarController.enter(
+        'speaking',
+        {
+          query:
+            lastSubmittedQuery,
+          answer,
+          presentationType:
+            'text',
+          fade: 0.32
+        }
+      )
+
+    } else if (
+      actions.has(
+        'mIA_TALK'
+      )
+    ) {
+
+      playAnimation(
+        'mIA_TALK',
+        {
+          fade: 0.32,
+          loop: true
+        }
+      )
+    }
+
+    setLiveStatus('')
+
+    await speakAnswer(
+      answer
+    )
+
+    await goIdle(
+      0.5
+    )
+
+    return
+  }
+
   lastPresentationType =
     presentation.type
 
@@ -2821,13 +3361,34 @@ async function handleBackendResult(
       presentation.type
     )
 
-  playAnimation(
-    presentationAnimation,
-    {
-      fade: 0.38,
-      loop: false
-    }
-  )
+  if (
+    avatarController
+  ) {
+
+    avatarController.enter(
+      'presenting',
+      {
+        query:
+          lastSubmittedQuery,
+        answer,
+        presentationType:
+          presentation.type,
+        preferredAnimation:
+          presentationAnimation,
+        fade: 0.38
+      }
+    )
+
+  } else {
+
+    playAnimation(
+      presentationAnimation,
+      {
+        fade: 0.38,
+        loop: false
+      }
+    )
+  }
 
   // El resultado aparece mientras el gesto está vivo,
   // no cuando ya ha terminado toda la animación.
@@ -2853,13 +3414,32 @@ async function handleBackendResult(
     MIA_STATE.TALKING
   )
 
-  playAnimation(
-    'mIA_TALK',
-    {
-      fade: 0.38,
-      loop: true
-    }
-  )
+  if (
+    avatarController
+  ) {
+
+    avatarController.enter(
+      'speaking',
+      {
+        query:
+          lastSubmittedQuery,
+        answer,
+        presentationType:
+          presentation.type,
+        fade: 0.38
+      }
+    )
+
+  } else {
+
+    playAnimation(
+      'mIA_TALK',
+      {
+        fade: 0.38,
+        loop: true
+      }
+    )
+  }
 
   setLiveStatus('')
 
@@ -4348,6 +4928,1211 @@ function getColumnLabel(
 }
 
 // =======================================================
+// V16 · DATA-FIRST ANALYTICS (sin dependencias nuevas)
+// =======================================================
+
+function normalizeMetricLabel(
+  label
+) {
+
+  const source =
+    cleanUserFacingText(
+      String(label || '')
+    )
+
+  if (
+    /personas?\s+con\s+n[oó]minas?\s+sin\s+leer/i
+      .test(source)
+  ) {
+    return 'Nóminas sin leer'
+  }
+
+  if (
+    /n[oó]minas?.*sin\s+leer/i
+      .test(source)
+  ) {
+    return 'Nóminas sin leer'
+  }
+
+  return source
+}
+
+function isIndicatorRecord(
+  row
+) {
+
+  if (
+    !row ||
+    typeof row !== 'object' ||
+    Array.isArray(row)
+  ) {
+    return false
+  }
+
+  const keys =
+    Object.keys(row)
+      .map(
+        key =>
+          normalizeFieldKey(key)
+      )
+
+  const hasLabel =
+    keys.some(
+      key =>
+        /^(indicador|label|nombre|metrica|metric|kpi|concepto|titulo|title)$/.test(key)
+    )
+
+  const hasValue =
+    keys.some(
+      key =>
+        /^(valor|value|total|count|cantidad|numero|dato)$/.test(key)
+    )
+
+  return hasLabel && hasValue
+}
+
+function parseComparisonNumber(
+  raw
+) {
+
+  const text =
+    String(raw ?? '')
+      .trim()
+      .replace(',', '.')
+
+  if (
+    !text ||
+    !/^-?\d+(?:\.\d+)?(?:\s*(?:%|d[ií]as?|horas?|h))?$/i.test(text)
+  ) {
+    return null
+  }
+
+  const match =
+    text.match(/-?\d+(?:\.\d+)?/)
+
+  if (!match) {
+    return null
+  }
+
+  const value =
+    Number(match[0])
+
+  return Number.isFinite(value)
+    ? value
+    : null
+}
+
+function getComparisonIndicatorMatrixFromRows(
+  rows
+) {
+
+  if (
+    !Array.isArray(rows) ||
+    rows.length < 2 ||
+    !rows.every(
+      row =>
+        row &&
+        typeof row === 'object' &&
+        !Array.isArray(row)
+    )
+  ) {
+    return null
+  }
+
+  const keys =
+    [...new Set(
+      rows.flatMap(
+        row =>
+          Object.keys(row)
+      )
+    )]
+
+  const labelKey =
+    keys.find(
+      key =>
+        /^(indicador|metrica|metric|kpi|concepto|titulo|title)$/i
+          .test(
+            normalizeFieldKey(key)
+          )
+    )
+
+  if (!labelKey) {
+    return null
+  }
+
+  const seriesKeys =
+    keys
+      .filter(
+        key =>
+          key !== labelKey &&
+          !isTechnicalField(key)
+      )
+      .filter(
+        key => {
+          const numericValues =
+            rows
+              .map(
+                row => {
+                  return parseComparisonNumber(
+                    row?.[key]
+                  )
+                }
+              )
+              .filter(value => value !== null)
+
+          return numericValues.length >=
+            Math.min(2, rows.length)
+        }
+      )
+
+  if (seriesKeys.length < 2) {
+    return null
+  }
+
+  return {
+    labelKey,
+    seriesKeys:
+      seriesKeys.slice(0, 4),
+    rows
+  }
+}
+
+function getComparisonIndicatorMatrix(
+  presentationOrData,
+  explicitTable = null
+) {
+
+  const data =
+    presentationOrData?.data ||
+    presentationOrData ||
+    {}
+
+  const table =
+    presentationOrData?.table ||
+    explicitTable
+
+  const candidates = [
+    data?.turnos,
+    data?.indicadores,
+    data?.comparativa,
+    table?.rows
+  ]
+
+  for (const rows of candidates) {
+    const matrix =
+      getComparisonIndicatorMatrixFromRows(
+        rows
+      )
+
+    if (matrix) {
+      return matrix
+    }
+  }
+
+  return null
+}
+
+function isEmployee360Request(
+  query
+) {
+
+  return /(?:ficha\s+(?:completa\s+)?360|360\s+(?:de\s+)?(?:empleado|empleada|persona|ficha)|employee\s*360|employee360)/i
+    .test(
+      String(query || '')
+    )
+}
+
+function hasEmployee360DataShape(
+  data
+) {
+
+  const root =
+    data?.employee360 &&
+    typeof data.employee360 === 'object'
+      ? data.employee360
+      : data
+
+  return Boolean(
+    root &&
+    typeof root === 'object' &&
+    (
+      root.empleado ||
+      root.persona ||
+      root.datos_laborales ||
+      root.turnos_inteligentes ||
+      root.vacaciones_inteligentes ||
+      root.saldo_vacaciones ||
+      root.nominas ||
+      root.documentos_firmados
+    )
+  )
+}
+
+function isOperationalIndicatorRows(
+  rows
+) {
+
+  return Boolean(
+    Array.isArray(rows) &&
+    rows.length >= 2 &&
+    rows.filter(isIndicatorRecord).length >=
+      Math.min(2, rows.length)
+  )
+}
+
+function readIndicatorRecord(
+  row
+) {
+
+  const entries =
+    Object.entries(row || {})
+
+  const labelEntry =
+    entries.find(
+      ([key]) =>
+        /^(indicador|label|nombre|metrica|metric|kpi|concepto|titulo|title)$/i
+          .test(
+            normalizeFieldKey(key)
+          )
+    )
+
+  const valueEntry =
+    entries.find(
+      ([key]) =>
+        /^(valor|value|total|count|cantidad|numero|dato)$/i
+          .test(
+            normalizeFieldKey(key)
+          )
+    )
+
+  if (
+    !labelEntry ||
+    !valueEntry
+  ) {
+    return null
+  }
+
+  const rawValue =
+    valueEntry[1]
+
+  const numeric =
+    Number(
+      String(rawValue)
+        .replace(',', '.')
+        .replace(/[^0-9.-]/g, '')
+    )
+
+  return {
+    label:
+      normalizeMetricLabel(
+        labelEntry[1]
+      ),
+    value:
+      Number.isFinite(numeric)
+        ? numeric
+        : rawValue,
+    rawValue
+  }
+}
+
+function getOperationalIndicators(
+  presentation
+) {
+
+  const candidates = [
+    presentation?.data?.turnos,
+    presentation?.data?.indicadores,
+    presentation?.data?.kpis,
+    presentation?.table?.rows
+  ]
+
+  for (
+    const rows of candidates
+  ) {
+
+    if (
+      !isOperationalIndicatorRows(rows)
+    ) {
+      continue
+    }
+
+    const normalized =
+      rows
+        .map(readIndicatorRecord)
+        .filter(Boolean)
+
+    if (normalized.length) {
+      return normalized
+    }
+  }
+
+  return []
+}
+
+function findOperationalMetric(
+  indicators,
+  pattern
+) {
+
+  return indicators.find(
+    item =>
+      pattern.test(
+        item.label
+      )
+  )
+}
+
+function renderOperationalOverview(
+  presentation
+) {
+
+  const indicators =
+    getOperationalIndicators(
+      presentation
+    )
+
+  if (!indicators.length) {
+    return ''
+  }
+
+  const featuredPatterns = [
+    /plantilla\s+activa/i,
+    /trabajando\s+hoy/i,
+    /de\s+baja\s+hoy|baja\s+hoy/i,
+    /de\s+vacaciones\s+hoy|vacaciones\s+hoy/i
+  ]
+
+  const featured =
+    featuredPatterns
+      .map(
+        pattern =>
+          findOperationalMetric(
+            indicators,
+            pattern
+          )
+      )
+      .filter(Boolean)
+
+  const today =
+    indicators.filter(
+      item =>
+        /trabajando\s+hoy|baja\s+hoy|vacaciones\s+hoy/i
+          .test(item.label) &&
+        Number.isFinite(
+          Number(item.value)
+        )
+    )
+
+  const featuredLabels =
+    new Set(
+      featured.map(
+        item =>
+          item.label
+      )
+    )
+
+  const secondary =
+    indicators.filter(
+      item =>
+        !featuredLabels.has(
+          item.label
+        )
+    )
+
+  const maxToday =
+    Math.max(
+      1,
+      ...today.map(
+        item =>
+          Number(item.value) || 0
+      )
+    )
+
+  return `
+    <section class="v16-operational reveal-item">
+      <div class="v151-section-title">
+        <div>
+          <span>RESUMEN OPERATIVO</span>
+          <h3>Situación actual</h3>
+        </div>
+      </div>
+
+      ${featured.length ? `
+        <div class="v16-operational-kpis">
+          ${featured.map(item => `
+            <article>
+              <strong>${escapeHtml(formatPresentationValue(item.value))}</strong>
+              <span>${escapeHtml(item.label)}</span>
+            </article>
+          `).join('')}
+        </div>
+      ` : ''}
+
+      ${today.length ? `
+        <div class="v16-operational-bars">
+          ${today.map(item => {
+            const value = Number(item.value) || 0
+            const width = Math.max(3, (value / maxToday) * 100)
+            return `
+              <div class="v16-op-row">
+                <div><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(formatPresentationValue(value))}</strong></div>
+                <i><b style="width:${width}%"></b></i>
+              </div>
+            `
+          }).join('')}
+        </div>
+      ` : ''}
+
+      ${secondary.length ? `
+        <div class="v16-secondary-kpis">
+          ${secondary.slice(0, 8).map(item => `
+            <article>
+              <span>${escapeHtml(item.label)}</span>
+              <strong>${escapeHtml(formatPresentationValue(item.value))}</strong>
+            </article>
+          `).join('')}
+        </div>
+      ` : ''}
+    </section>
+  `
+}
+
+function isComparisonPeopleMetric(
+  label
+) {
+
+  const text =
+    String(label || '')
+      .toLowerCase()
+
+  if (
+    /horas?|saldo|d[ií]as?|n[oó]minas?|documentos?|edad|porcentaje|%/.test(text)
+  ) {
+    return false
+  }
+
+  return /plantilla|trabajando|descans|sin turno|baja|vacaciones|ausent|ett|permiso|asuntos propios/.test(text)
+}
+
+function renderComparisonPeopleBars(
+  rows
+) {
+
+  const peopleRows =
+    rows
+      .filter(row =>
+        isComparisonPeopleMetric(
+          row.label
+        ) &&
+        row.values.some(item =>
+          item.value !== null
+        )
+      )
+      .slice(0, 7)
+
+  if (peopleRows.length < 2) {
+    return ''
+  }
+
+  return `
+    <section class="v162-compare-chart">
+      <header>
+        <div>
+          <span>GRÁFICA DE BARRAS</span>
+          <h4>Personas por situación</h4>
+        </div>
+        <small>Comparación relativa por indicador</small>
+      </header>
+      <div class="v162-compare-bars">
+        ${peopleRows.map(row => {
+          const max = Math.max(
+            1,
+            ...row.values.map(item => Math.max(0, Number(item.value) || 0))
+          )
+
+          return `
+            <article>
+              <h5>${escapeHtml(row.label)}</h5>
+              ${row.values.map((item, index) => {
+                const value = Math.max(0, Number(item.value) || 0)
+                const width = Math.max(value > 0 ? 3 : 0, (value / max) * 100)
+                return `
+                  <div class="v162-chart-series series-${index + 1}">
+                    <div><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(formatPresentationValue(item.raw ?? value))}</strong></div>
+                    <i><b style="width:${width}%"></b></i>
+                  </div>
+                `
+              }).join('')}
+            </article>
+          `
+        }).join('')}
+      </div>
+    </section>
+  `
+}
+
+function renderComparisonActivityDonuts(
+  rows,
+  series
+) {
+
+  const workforce =
+    rows.find(row =>
+      /plantilla(?:\s+activa)?/i.test(
+        row.label
+      )
+    )
+
+  const working =
+    rows.find(row =>
+      /trabajando(?:\s+hoy)?/i.test(
+        row.label
+      )
+    )
+
+  if (!workforce || !working) {
+    return ''
+  }
+
+  const donuts =
+    series
+      .map((item, index) => {
+        const workforceMetric = workforce.values.find(value => value.key === item.key)
+        const workingMetric = working.values.find(value => value.key === item.key)
+        const total = Number(workforceMetric?.value)
+        const active = Number(workingMetric?.value)
+
+        if (
+          !Number.isFinite(total) ||
+          total <= 0 ||
+          !Number.isFinite(active)
+        ) {
+          return ''
+        }
+
+        const safeActive = Math.max(0, Math.min(total, active))
+        const percent = Math.max(0, Math.min(100, (safeActive / total) * 100))
+        const rest = Math.max(0, total - safeActive)
+        const angle = percent * 3.6
+
+        return `
+          <article class="v162-donut-card series-${index + 1}">
+            <div class="v162-donut-ring" style="--v162-angle:${angle}deg">
+              <div><strong>${escapeHtml(percent.toLocaleString('es-ES', { maximumFractionDigits: 1 }))}%</strong><span>trabajando</span></div>
+            </div>
+            <div class="v162-donut-copy">
+              <h5>${escapeHtml(item.label)}</h5>
+              <p><strong>${escapeHtml(formatPresentationValue(safeActive))}</strong> trabajando · ${escapeHtml(formatPresentationValue(rest))} resto</p>
+              <small>Plantilla ${escapeHtml(formatPresentationValue(total))}</small>
+            </div>
+          </article>
+        `
+      })
+      .filter(Boolean)
+
+  if (!donuts.length) {
+    return ''
+  }
+
+  return `
+    <section class="v162-activity-share">
+      <header>
+        <span>GRÁFICA DE DISTRIBUCIÓN</span>
+        <h4>Actividad sobre plantilla</h4>
+      </header>
+      <div>${donuts.join('')}</div>
+    </section>
+  `
+}
+
+function renderComparisonIndicatorMatrix(
+  presentation
+) {
+
+  const matrix =
+    getComparisonIndicatorMatrix(
+      presentation
+    )
+
+  if (!matrix) {
+    return ''
+  }
+
+  const series =
+    matrix.seriesKeys.map(
+      key => ({
+        key,
+        label:
+          normalizeMetricLabel(
+            friendlyLabel(key) ||
+            humanizeKey(key)
+          )
+      })
+    )
+
+  const rows =
+    matrix.rows
+      .slice(0, 14)
+      .map(
+        row => {
+          const values =
+            series.map(
+              item => {
+                const raw =
+                  row?.[item.key]
+
+                const number =
+                  parseComparisonNumber(
+                    raw
+                  )
+
+                return {
+                  ...item,
+                  raw,
+                  value: number
+                }
+              }
+            )
+
+          return {
+            label:
+              normalizeMetricLabel(
+                row?.[matrix.labelKey]
+              ),
+            values
+          }
+        }
+      )
+      .filter(
+        row =>
+          row.label &&
+          row.values.some(
+            item =>
+              item.value !== null
+          )
+      )
+
+  if (!rows.length) {
+    return ''
+  }
+
+  return `
+    <section class="v16-comparison-matrix reveal-item">
+      <div class="v151-section-title">
+        <div>
+          <span>COMPARATIVA</span>
+          <h3>Indicadores por departamento</h3>
+        </div>
+      </div>
+      <div class="v16-comparison-legend">
+        ${series.map(item => `<span>${escapeHtml(item.label)}</span>`).join('')}
+      </div>
+      <div class="v162-comparison-dashboard">
+        ${renderComparisonPeopleBars(rows)}
+        ${renderComparisonActivityDonuts(rows, series)}
+      </div>
+      <div class="v16-comparison-grid">
+        ${rows.map(row => {
+          const max = Math.max(
+            1,
+            ...row.values.map(
+              item =>
+                Math.max(0, Number(item.value) || 0)
+            )
+          )
+
+          return `
+            <article class="v16-comparison-row">
+              <h4>${escapeHtml(row.label)}</h4>
+              <div>
+                ${row.values.map((item, index) => {
+                  const value = Number(item.value) || 0
+                  const width = Math.max(2, (Math.max(0, value) / max) * 100)
+                  return `
+                    <div class="v16-comparison-series series-${index + 1}">
+                      <div class="v16-comparison-value">
+                        <span>${escapeHtml(item.label)}</span>
+                        <strong>${escapeHtml(formatPresentationValue(item.raw ?? value))}</strong>
+                      </div>
+                      <i><b style="width:${width}%"></b></i>
+                    </div>
+                  `
+                }).join('')}
+              </div>
+            </article>
+          `
+        }).join('')}
+      </div>
+    </section>
+  `
+}
+
+function parseMetricList(
+  source
+) {
+
+  return String(source || '')
+    .split(/\s*[·|]\s*/)
+    .map(
+      token => {
+        const match =
+          token
+            .trim()
+            .match(/^(.+?)\s+(-?\d+(?:[.,]\d+)?)(?:\s*([%a-záéíóúñ]+))?$/i)
+
+        if (!match) {
+          return null
+        }
+
+        return {
+          label:
+            normalizeMetricLabel(
+              match[1]
+                .replace(/_/g, ' ')
+                .trim()
+            ),
+          value:
+            Number(
+              match[2]
+                .replace(',', '.')
+            ),
+          unit:
+            match[3] || ''
+        }
+      }
+    )
+    .filter(Boolean)
+}
+
+function extractStructuredAnalytics(
+  presentation
+) {
+
+  const lines = []
+
+  if (
+    Array.isArray(
+      presentation?.insights
+    )
+  ) {
+    lines.push(
+      ...presentation.insights.map(
+        item =>
+          typeof item === 'string'
+            ? item
+            : item?.text || item?.message || item?.title || ''
+      )
+    )
+  }
+
+  if (
+    presentation?.answer
+  ) {
+    lines.push(
+      ...String(presentation.answer)
+        .replace(/\*\*/g, '')
+        .split(/\n+/)
+    )
+  }
+
+  const result = {
+    jobs: [],
+    today: [],
+    vacations: [],
+    context: [],
+    consumed: new Set()
+  }
+
+  lines
+    .map(
+      line =>
+        cleanUserFacingText(
+          String(line || '')
+            .replace(/^\s*[✦•*-]+\s*/, '')
+            .trim()
+        )
+    )
+    .filter(Boolean)
+    .forEach(
+      line => {
+        let match = null
+
+        if (
+          (match = line.match(/^por\s+puesto\s*:\s*(.+)$/i))
+        ) {
+          result.jobs =
+            parseMetricList(
+              match[1]
+            )
+          result.consumed.add(line)
+          return
+        }
+
+        if (
+          (match = line.match(/^hoy\s*:\s*(.+)$/i))
+        ) {
+          result.today =
+            parseMetricList(
+              match[1]
+            )
+          result.consumed.add(line)
+          return
+        }
+
+        if (
+          (match = line.match(/^vacaciones\s*:\s*(.+)$/i))
+        ) {
+          result.vacations =
+            parseMetricList(
+              match[1]
+            )
+          result.consumed.add(line)
+          return
+        }
+
+        if (
+          !/^claves$|^lo\s+m[aá]s\s+relevante$/i
+            .test(line) &&
+          line.length <= 260
+        ) {
+          result.context.push(line)
+        }
+      }
+    )
+
+  return result
+}
+
+function renderHorizontalDataBars(
+  title,
+  data,
+  limit = 12
+) {
+
+  if (!data.length) {
+    return ''
+  }
+
+  const sorted =
+    [...data]
+      .sort(
+        (a, b) =>
+          Number(b.value) - Number(a.value)
+      )
+      .slice(0, limit)
+
+  const max =
+    Math.max(
+      1,
+      ...sorted.map(
+        item =>
+          Number(item.value) || 0
+      )
+    )
+
+  return `
+    <section class="v16-data-block reveal-item">
+      <div class="v151-section-title">
+        <div>
+          <span>ANÁLISIS</span>
+          <h3>${escapeHtml(title)}</h3>
+        </div>
+      </div>
+      <div class="v16-data-bars">
+        ${sorted.map(item => {
+          const value = Number(item.value) || 0
+          const width = Math.max(3, (value / max) * 100)
+          return `
+            <div class="v16-data-row">
+              <div><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(formatPresentationValue(value))}</strong></div>
+              <i><b style="width:${width}%"></b></i>
+            </div>
+          `
+        }).join('')}
+      </div>
+    </section>
+  `
+}
+
+function renderTodayDistribution(
+  data
+) {
+
+  if (!data.length) {
+    return ''
+  }
+
+  const positive =
+    data.filter(
+      item =>
+        Number(item.value) >= 0
+    )
+
+  const total =
+    positive.reduce(
+      (sum, item) =>
+        sum + (Number(item.value) || 0),
+      0
+    )
+
+  if (!total) {
+    return ''
+  }
+
+  const palette = [
+    '#284f86',
+    '#c89a4a',
+    '#df6847',
+    '#6c2f2b',
+    '#3f8d72',
+    '#8d7b70'
+  ]
+
+  let angle = 0
+  const stops = []
+
+  positive.forEach(
+    (item, index) => {
+      const next =
+        angle +
+        (Number(item.value) || 0) /
+          total * 360
+      stops.push(
+        `${palette[index % palette.length]} ${angle.toFixed(1)}deg ${next.toFixed(1)}deg`
+      )
+      angle = next
+    }
+  )
+
+  return `
+    <section class="v16-data-block v16-today reveal-item">
+      <div class="v151-section-title">
+        <div>
+          <span>SITUACIÓN</span>
+          <h3>Hoy</h3>
+        </div>
+      </div>
+      <div class="v16-donut-layout">
+        <div class="v16-donut" style="background:conic-gradient(${stops.join(',')})">
+          <div><strong>${escapeHtml(String(total))}</strong><span>situaciones</span></div>
+        </div>
+        <div class="v16-donut-legend">
+          ${positive.map((item, index) => `
+            <div>
+              <i style="background:${palette[index % palette.length]}"></i>
+              <span>${escapeHtml(item.label)}</span>
+              <strong>${escapeHtml(formatPresentationValue(item.value))}</strong>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </section>
+  `
+}
+
+function renderVacationMetrics(
+  data
+) {
+
+  if (!data.length) {
+    return ''
+  }
+
+  return `
+    <section class="v16-data-block reveal-item">
+      <div class="v151-section-title">
+        <div>
+          <span>VACACIONES</span>
+          <h3>Indicadores</h3>
+        </div>
+      </div>
+      <div class="v16-vacation-kpis">
+        ${data.map(item => `
+          <article>
+            <strong>${escapeHtml(formatPresentationValue(item.value))}${item.unit ? `<small> ${escapeHtml(item.unit)}</small>` : ''}</strong>
+            <span>${escapeHtml(item.label)}</span>
+          </article>
+        `).join('')}
+      </div>
+    </section>
+  `
+}
+
+function getAutoComparisonVisuals(
+  presentation
+) {
+
+  const table =
+    presentation?.table
+
+  if (
+    !table?.rows?.length ||
+    table.rows.length < 2 ||
+    !Array.isArray(table.columns)
+  ) {
+    return ''
+  }
+
+  const numericColumns =
+    table.columns.filter(
+      column => {
+        const values =
+          table.rows
+            .slice(0, 20)
+            .map(
+              row =>
+                Number(
+                  String(row?.[column.key] ?? '')
+                    .replace(',', '.')
+                )
+            )
+            .filter(Number.isFinite)
+
+        return values.length >=
+          Math.min(2, table.rows.length)
+      }
+    )
+
+  const labelColumn =
+    table.columns.find(
+      column =>
+        !numericColumns.includes(column)
+    ) || table.columns[0]
+
+  if (!numericColumns.length) {
+    return ''
+  }
+
+  return numericColumns
+    .slice(0, 2)
+    .map(
+      column => {
+        const data =
+          table.rows
+            .slice(0, 12)
+            .map(
+              (row, index) => ({
+                label:
+                  formatPresentationValue(
+                    row?.[labelColumn.key],
+                    labelColumn.key
+                  ) || `Dato ${index + 1}`,
+                value:
+                  Number(
+                    String(row?.[column.key] ?? 0)
+                      .replace(',', '.')
+                  ) || 0
+              })
+            )
+
+        return renderHorizontalDataBars(
+          column.label || 'Comparativa',
+          data,
+          12
+        )
+      }
+    )
+    .join('')
+}
+
+function renderDataFirstAnalytics(
+  presentation
+) {
+
+  const structured =
+    extractStructuredAnalytics(
+      presentation
+    )
+
+  const hasStructured =
+    structured.jobs.length ||
+    structured.today.length ||
+    structured.vacations.length
+
+  const operational =
+    renderOperationalOverview(
+      presentation
+    )
+
+  const directComparison =
+    renderComparisonIndicatorMatrix(
+      presentation
+    )
+
+  const comparisonCharts =
+    directComparison ||
+    (
+      ['comparison', 'department', 'analytics']
+        .includes(presentation.type)
+        ? getAutoComparisonVisuals(
+            presentation
+          )
+        : ''
+    )
+
+  if (
+    !hasStructured &&
+    !operational &&
+    !comparisonCharts
+  ) {
+    return ''
+  }
+
+  const context =
+    structured.context
+      .filter(
+        text =>
+          !/por\s+puesto\s*:|^hoy\s*:|^vacaciones\s*:/i
+            .test(text)
+      )
+      .slice(0, 2)
+
+  return `
+    <div class="v16-data-first">
+      ${context.length ? `<p class="v16-context-note reveal-item">${escapeHtml(context.join(' '))}</p>` : ''}
+      ${operational}
+      ${renderHorizontalDataBars('Distribución por puesto', structured.jobs)}
+      ${renderTodayDistribution(structured.today)}
+      ${renderVacationMetrics(structured.vacations)}
+      ${comparisonCharts}
+    </div>
+  `
+}
+
+function compactAnalyticsAnswer(
+  presentation
+) {
+
+  const source =
+    String(
+      presentation?.answer || ''
+    )
+      .replace(/\*\*/g, '')
+      .replace(/(^|\n)\s*(CLAVES|Lo más relevante)\s*/gi, ' ')
+      .replace(/(^|\n)\s*[✦•*-]\s*(Por puesto|Hoy|Vacaciones)\s*:[^\n]*/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  if (!source) {
+    return ''
+  }
+
+  const sentences =
+    source.match(/[^.!?]+[.!?]?/g) ||
+    [source]
+
+  const compact =
+    sentences
+      .slice(0, 2)
+      .join(' ')
+      .trim()
+
+  return compact.length > 300
+    ? `${compact.slice(0, 297).trim()}…`
+    : compact
+}
+
+// =======================================================
 // VISUALIZACIONES
 // =======================================================
 
@@ -5362,6 +7147,171 @@ function findFirstValue(
   return ''
 }
 
+function guessPersonNameFromAnswer(
+  answer
+) {
+
+  const text =
+    cleanUserFacingText(
+      String(answer || '')
+        .replace(/\*\*/g, '')
+    )
+
+  const match =
+    text.match(
+      /^([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñüÜ'’-]+(?:\s+[A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñüÜ'’-]+){1,4})\s+(?:es|trabaja|est[aá]|tiene)\b/
+    )
+
+  return match?.[1] || ''
+}
+
+function extractPersonAnswerDetails(
+  answer
+) {
+
+  const text =
+    cleanUserFacingText(
+      String(answer || '')
+        .replace(/\*\*/g, '')
+    )
+
+  if (!text) {
+    return []
+  }
+
+  const details = []
+  const seen = new Set()
+
+  const add = (
+    label,
+    value
+  ) => {
+    const cleanValue =
+      cleanUserFacingText(
+        value
+      )
+
+    if (
+      !label ||
+      !cleanValue ||
+      seen.has(label)
+    ) {
+      return
+    }
+
+    seen.add(label)
+    details.push({
+      key: label,
+      label,
+      value: cleanValue
+    })
+  }
+
+  let match = null
+
+  match =
+    text.match(/\b(?:tiene\s+)?(\d{1,3})\s+a[nñ]os\b/i)
+  if (match) {
+    add('Edad', `${match[1]} años`)
+  }
+
+  match =
+    text.match(/\b(?:email|correo(?:\s+electr[oó]nico)?)\s+(?:es\s+)?([^\s,;]+@[^\s,;]+)/i)
+  if (match) {
+    add('Correo electrónico', match[1])
+  }
+
+  match =
+    text.match(/\b(?:tel[eé]fono|m[oó]vil)\s+(?:es\s+)?([+\d][\d\s-]{6,})/i)
+  if (match) {
+    add('Teléfono', match[1].trim().replace(/[.,;]+$/, ''))
+  }
+
+  match =
+    text.match(/saldo\s+(?:actual\s+)?de\s+vacaciones\s+(?:es\s+)?(-?\d+(?:[.,]\d+)?)\s*d[ií]as?/i)
+  if (match) {
+    add('Saldo de vacaciones', `${match[1]} días`)
+  }
+
+  match =
+    text.match(/(?:con|de)\s+(\d+(?:[.,]\d+)?)\s*d[ií]as?\s+en\s+total/i)
+  if (match) {
+    add('Vacaciones totales', `${match[1]} días`)
+  }
+
+  match =
+    text.match(/\b(\d+)\s+n[oó]minas?\s+(?:no\s+le[ií]das?|sin\s+leer)/i)
+  if (match) {
+    add('Nóminas sin leer', match[1])
+  }
+
+  match =
+    text.match(/\b(\d+)\s+documentos?\s+firmados?/i)
+  if (match) {
+    add('Documentos firmados', match[1])
+  }
+
+  if (/\bhoy\s+descansa\b/i.test(text)) {
+    add('Situación hoy', 'Descanso')
+  } else if (/\bhoy\s+(?:est[aá]\s+)?trabajando\b|\bhoy\s+trabaja\b/i.test(text)) {
+    add('Situación hoy', 'Trabajando')
+  } else if (/\bhoy\s+est[aá]\s+de\s+vacaciones\b/i.test(text)) {
+    add('Situación hoy', 'Vacaciones')
+  } else if (/\bhoy\s+est[aá]\s+de\s+baja\b/i.test(text)) {
+    add('Situación hoy', 'Baja')
+  }
+
+  return details
+}
+
+function mergePersonDetailEntries(
+  ...groups
+) {
+
+  const result = []
+  const seen = new Set()
+
+  groups
+    .flat()
+    .filter(Boolean)
+    .forEach(
+      item => {
+        const label =
+          cleanUserFacingText(
+            item?.label ||
+            item?.key ||
+            ''
+          )
+
+        const value =
+          cleanUserFacingText(
+            item?.value ?? ''
+          )
+
+        const normalized =
+          normalizeFieldKey(label)
+
+        if (
+          !label ||
+          !value ||
+          !normalized ||
+          seen.has(normalized)
+        ) {
+          return
+        }
+
+        seen.add(normalized)
+        result.push({
+          ...item,
+          label,
+          value
+        })
+      }
+    )
+
+  return result.slice(0, 36)
+}
+
 function normalizeSources(
   sources
 ) {
@@ -5470,6 +7420,34 @@ function classifyPresentation(
   const haystack =
     `${intent} ${answer}`
 
+  if (
+    isEmployee360Payload(
+      payload,
+      data
+    ) ||
+    (
+      isEmployee360Request(
+        lastSubmittedQuery
+      ) &&
+      hasEmployee360DataShape(
+        data
+      )
+    )
+  ) {
+
+    return 'employee360'
+  }
+
+  const comparisonMatrix =
+    getComparisonIndicatorMatrix(
+      data,
+      table
+    )
+
+  if (comparisonMatrix) {
+    return 'comparison'
+  }
+
   const visualizations =
     Array.isArray(
       payload.visualizations
@@ -5509,6 +7487,21 @@ function classifyPresentation(
     return 'comparison'
   }
 
+  const operationalRows =
+    isOperationalIndicatorRows(
+      data?.turnos
+    ) ||
+    isOperationalIndicatorRows(
+      table?.rows
+    )
+
+  if (
+    operationalRows
+  ) {
+
+    return 'analytics'
+  }
+
   if (
     /turno|shift/i
       .test(haystack) ||
@@ -5534,6 +7527,12 @@ function classifyPresentation(
         'fullName',
         'nombreCompleto'
       ]
+    ) ||
+    guessPersonNameFromAnswer(
+      payload.answer ||
+      payload.response ||
+      payload.message ||
+      ''
     )
 
   const personRole =
@@ -5548,11 +7547,14 @@ function classifyPresentation(
 
   if (
     /emplead|persona|trabajador|ficha/i
-      .test(haystack) &&
+      .test(
+        `${haystack} ${lastSubmittedQuery}`
+      ) &&
     personName &&
     (
       personRole ||
-      table?.rows?.length === 1
+      table?.rows?.length === 1 ||
+      /ficha/i.test(lastSubmittedQuery)
     )
   ) {
 
@@ -5621,6 +7623,21 @@ function derivePresentationTitle(
   ) {
 
     return scalar.label
+  }
+
+  if (
+    type === 'employee360'
+  ) {
+
+    const employee360 =
+      buildEmployee360Presentation(
+        data
+      )
+
+    return (
+      employee360?.hero?.title ||
+      'Ficha completa de empleado'
+    )
   }
 
   if (
@@ -5760,30 +7777,62 @@ function normalizePresentation(
       scalar
     )
 
+  const employee360Presentation =
+    type === 'employee360'
+      ? buildEmployee360Presentation(
+          data
+        )
+      : null
+
   const rowForPerson =
     table?.rows?.length === 1
       ? table.rows[0]
       : data
 
+  const derivedTitle =
+    derivePresentationTitle(
+      type,
+      data,
+      table,
+      scalar
+    )
+
+  const title =
+    type === 'person' &&
+    derivedTitle === 'Ficha de empleado'
+      ? (
+          guessPersonNameFromAnswer(
+            answer
+          ) ||
+          derivedTitle
+        )
+      : derivedTitle
+
+  const personEntries =
+    mergePersonDetailEntries(
+      extractSafePrimitiveEntries(
+        rowForPerson,
+        30
+      ),
+      extractSafePrimitiveEntries(
+        data,
+        30
+      ),
+      extractPersonAnswerDetails(
+        answer
+      )
+    )
+
   return {
     type,
-    title:
-      derivePresentationTitle(
-        type,
-        data,
-        table,
-        scalar
-      ),
+    employee360Presentation,
+    title,
     answer,
     data,
     cards,
     table,
     scalar,
-    personEntries:
-      extractSafePrimitiveEntries(
-        rowForPerson,
-        30
-      ),
+    personEntries,
     safeEntries:
       extractSafePrimitiveEntries(
         data,
@@ -5830,6 +7879,8 @@ function getPresentationAnimation(
   const preferred = {
     scalar:
       'mIA_YES',
+    employee360:
+      'mIA_POINT',
     person:
       'mIA_POINT',
     department:
@@ -5885,6 +7936,7 @@ async function preparePresentationPosition(
 
   const complex =
     [
+      'employee360',
       'person',
       'department',
       'analytics',
@@ -5959,10 +8011,27 @@ function renderAnswerSummary(
     return ''
   }
 
+  const dataFirst =
+    ['analytics', 'department', 'comparison']
+      .includes(
+        presentation.type
+      )
+
+  const answer =
+    dataFirst
+      ? compactAnalyticsAnswer(
+          presentation
+        )
+      : presentation.answer
+
+  if (!answer) {
+    return ''
+  }
+
   return `
-    <section class="v151-summary reveal-item">
+    <section class="v151-summary reveal-item${dataFirst ? ' v16-summary-compact' : ''}">
       <div class="v151-summary-mark">mIA</div>
-      <p>${escapeHtml(presentation.answer)}</p>
+      <p>${escapeHtml(answer)}</p>
     </section>
   `
 }
@@ -6097,7 +8166,12 @@ function renderPersonPresentation(
         `).join('')}
       </section>
     ` : ''}
-    ${renderPresentationExtras(presentation)}
+    ${renderFriendlyKpis(presentation.cards)}
+    ${renderFriendlyVisualizations(presentation.visualizations)}
+    ${renderInsights(presentation.insights)}
+    ${renderCollapsedFriendlyTable(presentation.table)}
+    ${renderFriendlyQuality(presentation.quality)}
+    ${renderSourcesAndActions(presentation)}
   `
 }
 
@@ -6426,17 +8500,42 @@ function renderShiftPresentation(
   `
 }
 
+function renderCollapsedFriendlyTable(
+  table
+) {
+
+  if (!table) {
+    return ''
+  }
+
+  return `
+    <details class="v16-raw-detail reveal-item">
+      <summary>Ver datos completos</summary>
+      ${renderFriendlyTable(table)}
+    </details>
+  `
+}
+
 function renderStandardPresentation(
   presentation
 ) {
 
+  const dataFirst =
+    renderDataFirstAnalytics(
+      presentation
+    )
+
+  const showRawInsights =
+    !dataFirst
+
   return `
     ${renderPresentationHeader(presentation)}
     ${renderAnswerSummary(presentation)}
-    ${renderFriendlyKpis(presentation.cards)}
-    ${renderFriendlyVisualizations(presentation.visualizations)}
-    ${renderInsights(presentation.insights)}
-    ${renderFriendlyTable(presentation.table)}
+    ${dataFirst}
+    ${dataFirst ? '' : renderFriendlyKpis(presentation.cards)}
+    ${dataFirst ? '' : renderFriendlyVisualizations(presentation.visualizations)}
+    ${showRawInsights ? renderInsights(presentation.insights) : ''}
+    ${dataFirst ? renderCollapsedFriendlyTable(presentation.table) : renderFriendlyTable(presentation.table)}
     ${!presentation.table && presentation.safeEntries.length ? `
       <section class="v151-info-grid reveal-item">
         ${presentation.safeEntries.map(item => `<article><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></article>`).join('')}
@@ -6468,6 +8567,18 @@ function showBackendResultV151(
 
   } else if (
     presentation.type ===
+      'employee360'
+  ) {
+
+    answerCard.innerHTML =
+      renderEmployee360PresentationHtml(
+        presentation.employee360Presentation,
+        presentation.data,
+        presentation.answer
+      )
+
+  } else if (
+    presentation.type ===
       'person'
   ) {
 
@@ -6495,6 +8606,55 @@ function showBackendResultV151(
     ?.addEventListener(
       'click',
       hideBackendResult
+    )
+
+  answerCard
+    .querySelectorAll(
+      '[data-mia-prompt]'
+    )
+    .forEach(
+      button => {
+        button.addEventListener(
+          'click',
+          event => {
+            event.preventDefault()
+            event.stopPropagation()
+
+            const prompt =
+              button.dataset.miaPrompt ||
+              ''
+
+            if (!prompt) {
+              return
+            }
+
+            if (queryInProgress) {
+              pendingQuickAction =
+                prompt
+
+              button.classList.add(
+                'is-queued'
+              )
+
+              button.setAttribute(
+                'aria-busy',
+                'true'
+              )
+
+              setLiveStatus(
+                'En cuanto termine esta respuesta te muestro ese detalle.'
+              )
+
+              return
+            }
+
+            submitQuery(
+              prompt,
+              'action'
+            )
+          }
+        )
+      }
     )
 
   bindFriendlyResultSearch()
@@ -6716,6 +8876,20 @@ loader.load(
             cleanClip
           )
         )
+
+        const upperBodyClip =
+          buildUpperBodyClip(
+            cleanClip
+          )
+
+        if (upperBodyClip) {
+          upperBodyActions.set(
+            cleanClip.name,
+            mixer.clipAction(
+              upperBodyClip
+            )
+          )
+        }
       }
     )
 
@@ -6725,6 +8899,49 @@ loader.load(
         ...actions.keys()
       ]
     )
+
+    // ---------------------------------------------------
+    // AVATAR CONTROLLER · V1
+    // ---------------------------------------------------
+
+    avatarController =
+      new AvatarController({
+        hasAnimation:
+          name =>
+            actions.has(name),
+
+        playAnimation:
+          (
+            name,
+            options
+          ) =>
+            playAnimation(
+              name,
+              options
+            ),
+
+        playGesture:
+          (
+            name,
+            options
+          ) =>
+            playUpperBodyGesture(
+              name,
+              options
+            ),
+
+        stopGesture:
+          fade =>
+            stopUpperBodyGesture(
+              fade
+            ),
+
+        enableIdleMicroGestures:
+          true,
+
+        enableSpeakingGestures:
+          true
+      })
 
     // ---------------------------------------------------
     // ARRANQUE

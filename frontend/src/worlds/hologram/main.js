@@ -101,6 +101,12 @@ scene
     caption.textContent = `Iniciando proyección… ${Math.round(p * 100)} %`;
   })
   .then(() => {
+    // Bajamos la proyección para que el avatar quede completo dentro del viewport
+    // y deje espacio suficiente para el HUD inferior.
+    if (scene.model) {
+      scene.model.position.y -= 0.8;
+    }
+
     // Si el shader no compila en esta GPU/navegador, mIA no debe quedar invisible:
     // se cambia a un material holográfico simple (sin bandas animadas).
     scene.renderer.debug.onShaderError = () => {

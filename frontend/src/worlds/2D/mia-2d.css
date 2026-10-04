@@ -205,9 +205,13 @@ body.mia-universe-2d:before,body.mia-universe-2d:after{display:none!important}
 .universe-avatar .avatar-img{position:absolute;z-index:5;left:50%;bottom:2%;width:min(390px,32vw);height:auto;max-height:94%;object-fit:contain;object-position:center bottom;opacity:0;transform:translateX(-50%) translateY(8px) scale(.985);filter:drop-shadow(0 30px 38px rgba(68,49,39,.10));transition:opacity .34s ease,transform .52s var(--u-ease),filter .35s ease}
 .universe-avatar .avatar-img.active{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}
 .universe-avatar[data-motion="thinking"] .avatar-img.active,.universe-avatar[data-motion="analysis"] .avatar-img.active{filter:drop-shadow(0 32px 40px rgba(108,47,43,.13))}
-.avatar-field{position:absolute;z-index:1;border:1px solid rgba(200,154,74,.16);border-radius:50%;animation:universeOrbit 18s linear infinite}
-.field-a{width:68%;aspect-ratio:1;top:21%;left:16%;box-shadow:0 0 0 26px rgba(200,154,74,.018),0 0 0 54px rgba(223,104,71,.012)}
-.field-b{width:54%;aspect-ratio:1;top:28%;left:23%;border-style:dashed;border-color:rgba(223,104,71,.14);animation-direction:reverse;animation-duration:22s}
+.universe-avatar .avatar-fallback{display:none!important}
+.avatar-field{position:absolute;z-index:1;border-radius:50%}
+.field-a{width:68%;aspect-ratio:1;top:21%;left:16%;display:grid;place-items:center;overflow:hidden;border:1px solid rgba(108,47,43,.08);background:#fff;box-shadow:0 18px 44px rgba(71,51,40,.08),0 0 0 1px rgba(200,154,74,.035)}
+.field-a:before{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 50% 35%,rgba(255,255,255,.96),rgba(255,255,255,.92));pointer-events:none}
+.field-a:after{content:"";position:absolute;inset:7px;border-radius:50%;border:1px solid rgba(200,154,74,.10);pointer-events:none}
+.field-a-logo{position:relative;z-index:2;width:72%;max-width:178px;height:auto;display:block;object-fit:contain;opacity:.98;filter:none;transform:translateY(-1px)}
+.field-b{display:none}
 .avatar-floor{position:absolute;z-index:0;left:12%;right:12%;bottom:2%;height:14%;border-radius:50%;background:radial-gradient(ellipse,rgba(96,72,58,.12),rgba(96,72,58,.025) 52%,transparent 72%);filter:blur(5px);transform:scaleY(.34)}
 .avatar-scanline{position:absolute;z-index:2;left:15%;right:15%;top:56%;height:1px;background:linear-gradient(90deg,transparent,rgba(223,104,71,.34),transparent);box-shadow:0 0 16px rgba(223,104,71,.12)}
 @keyframes universeOrbit{to{transform:rotate(360deg)}}
@@ -480,4 +484,65 @@ body[data-mia-state="escuchando"] .composer-mic{background:rgba(223,104,71,.12);
 @media (max-width:430px){
   .universe-avatar{right:-12px;width:34vw;min-width:132px}
   .universe-avatar .avatar-img{width:32vw;min-width:124px}
+}
+
+
+/* ==========================================================
+   mIA 2D V4.4 · SBC clean integration
+   One white brand circle behind the avatar. No orbit/rings.
+   ========================================================== */
+.universe-avatar .field-a{
+  width:80% !important;
+  aspect-ratio:1 !important;
+  top:15% !important;
+  left:10% !important;
+  display:grid !important;
+  place-items:center !important;
+  overflow:hidden !important;
+  border-radius:50% !important;
+  border:1px solid rgba(76,61,52,.08) !important;
+  background:#fff !important;
+  box-shadow:0 16px 38px rgba(69,51,42,.07) !important;
+  animation:none !important;
+  transform:none !important;
+}
+.universe-avatar .field-a::before,
+.universe-avatar .field-a::after{
+  content:none !important;
+  display:none !important;
+}
+.universe-avatar .field-a-logo{
+  position:relative !important;
+  z-index:2 !important;
+  width:78% !important;
+  max-width:none !important;
+  height:auto !important;
+  display:block !important;
+  object-fit:contain !important;
+  opacity:1 !important;
+  filter:none !important;
+  mix-blend-mode:normal !important;
+  transform:none !important;
+}
+.universe-avatar .field-b{
+  display:none !important;
+  width:0 !important;
+  height:0 !important;
+  border:0 !important;
+  box-shadow:none !important;
+  background:none !important;
+  animation:none !important;
+}
+
+@media (max-width:760px){
+  .universe-avatar .field-a{
+    display:grid !important;
+    width:48vw !important;
+    min-width:184px !important;
+    max-width:220px !important;
+    top:-3% !important;
+    left:auto !important;
+    right:0 !important;
+  }
+  .universe-avatar .field-a-logo{width:76% !important}
 }

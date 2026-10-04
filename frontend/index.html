@@ -1,13 +1,111 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
-  </body>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#fbf7f0" />
+  <title>mIA · Sunset Beach Club</title>
+  <link rel="icon" href="/favicon.svg" />
+  <link rel="stylesheet" href="/src/landing.css?v=landing-mia-v2" />
+</head>
+<body>
+  <div class="landing-bg" aria-hidden="true">
+    <span class="bg-orbit orbit-a"></span>
+    <span class="bg-orbit orbit-b"></span>
+    <span class="bg-glow glow-a"></span>
+    <span class="bg-glow glow-b"></span>
+  </div>
+
+  <main class="landing-shell">
+    <header class="landing-topbar">
+      <a class="mia-brand" href="/" aria-label="mIA · Inicio">
+        <span class="mia-brand-stack">
+          <strong>mIA</strong>
+          <small>Asistente inteligente corporativa</small>
+        </span>
+      </a>
+
+      <div class="brand-partner" aria-label="Sunset Beach Club">
+        <span class="brand-separator" aria-hidden="true"></span>
+        <img src="/mia-assets/sunset_beach_club_logo.gif" alt="Sunset Beach Club" />
+      </div>
+    </header>
+
+    <section class="landing-hero" aria-labelledby="worldTitle">
+      <div class="hero-copy">
+        <span class="hero-eyebrow">UN MISMO CEREBRO · TRES EXPERIENCIAS</span>
+        <h1 id="worldTitle">Entra en el mundo <em>mIA</em></h1>
+        <p>Elige cómo quieres interactuar. Tu conversación, contexto y voz continúan contigo en cualquiera de los mundos.</p>
+      </div>
+
+      <div class="hero-signature" aria-hidden="true">
+        <div class="signature-sun">
+          <span></span>
+          <b>mIA</b>
+        </div>
+      </div>
+    </section>
+
+    <section class="world-grid" aria-label="Selecciona un mundo de mIA">
+      <a class="world-card world-2d" href="/mia-2d.html">
+        <div class="world-visual visual-2d" aria-hidden="true">
+          <div class="visual-sun-logo">
+            <img src="/mia-assets/sunset_beach_club_logo.gif" alt="" />
+          </div>
+          <div class="visual-avatar">
+            <img src="/mia-assets/avatar/reposo.png" alt="" />
+          </div>
+          <span class="visual-label">FOCUS</span>
+        </div>
+        <div class="world-content">
+          <div class="world-meta"><span class="world-index">01</span><span class="world-badge">Ligero · inmediato</span></div>
+          <h2>Mundo 2D</h2>
+          <p>Una experiencia rápida, directa y visual para conversar con mIA y trabajar con datos, fichas, informes y resultados.</p>
+          <div class="world-enter"><span>Entrar en 2D</span><b>↗</b></div>
+        </div>
+      </a>
+
+      <a class="world-card world-3d" href="/src/worlds/3d/index.html">
+        <div class="world-visual visual-3d" aria-hidden="true">
+          <div class="scene-ring ring-one"></div>
+          <div class="scene-ring ring-two"></div>
+          <div class="scene-avatar">
+            <img src="/mia-assets/avatar/sonriendo.png" alt="" />
+          </div>
+          <span class="visual-label">IMMERSIVE</span>
+        </div>
+        <div class="world-content">
+          <div class="world-meta"><span class="world-index">02</span><span class="world-badge">Avatar · escena viva</span></div>
+          <h2>Mundo 3D</h2>
+          <p>La versión inmersiva de mIA, con avatar animado, presentaciones visuales y una escena preparada para interacción avanzada.</p>
+          <div class="world-enter"><span>Entrar en 3D</span><b>↗</b></div>
+        </div>
+      </a>
+
+      <a class="world-card world-hg" href="/src/worlds/hologram/index.html">
+        <div class="world-visual visual-hg" aria-hidden="true">
+          <div class="hg-grid"></div>
+          <div class="hg-halo"></div>
+          <div class="hg-avatar">
+            <img src="/mia-assets/avatar/reposo.png" alt="" />
+          </div>
+          <span class="hg-scan"></span>
+          <span class="visual-label">HOLOGRAPHIC</span>
+        </div>
+        <div class="world-content">
+          <div class="world-meta"><span class="world-index">03</span><span class="world-badge">Proyección · experimental</span></div>
+          <h2>Mundo holográfico</h2>
+          <p>La experiencia de proyección de mIA, pensada para pantallas físicas, tótems y el futuro ventilador holográfico.</p>
+          <div class="world-enter"><span>Entrar en holograma</span><b>↗</b></div>
+        </div>
+      </a>
+    </section>
+
+    <footer class="landing-footer">
+      <span>mIA · Sunset Beach Club</span>
+      <span class="footer-dot"></span>
+      <span>Mismo contexto · misma voz · distinta experiencia</span>
+    </footer>
+  </main>
+</body>
 </html>

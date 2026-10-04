@@ -3,27 +3,40 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#071419" />
   <title>mIA · Mundo 3D</title>
   <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="./style.css?v=3d-v16.4-stage" />
 </head>
 <body>
-  <a class="back-link" href="/index.html">← mIA</a>
+  <a class="back-link" href="/index.html" aria-label="Volver al selector de mundos" title="Volver">
+    <span aria-hidden="true">←</span><b>mIA</b>
+  </a>
   <div id="canvas-root"></div>
 
-  <aside id="panel" class="panel">
-    <header>
-      <span class="status"><span class="dot"></span> <span id="statusLabel">Cargando el modelo…</span></span>
-      <button id="voiceToggle" class="icon-toggle" type="button" title="Silenciar/activar la voz">🔊</button>
+  <aside id="panel" class="panel" aria-label="Conversación y resultados de mIA">
+    <header class="panel-head">
+      <span class="status"><span class="dot"></span><span id="statusLabel">Cargando el modelo…</span></span>
+      <button id="voiceToggle" class="icon-toggle" type="button" title="Silenciar o activar la voz" aria-label="Silenciar o activar la voz" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm12.3 3a4.3 4.3 0 0 0-2-3.6v7.2a4.3 4.3 0 0 0 2-3.6zm0-7.4v2.1a7 7 0 0 1 0 10.6v2.1a9 9 0 0 0 0-14.8z"/></svg>
+      </button>
     </header>
+
     <div id="conversation" class="conversation" aria-live="polite"></div>
+
     <form id="composer" class="composer">
-      <input id="input" type="text" placeholder="Pregúntale algo a mIA…" autocomplete="off" />
-      <button type="button" id="mic" class="mic" title="Hablar con mIA">🎤</button>
-      <button type="submit" id="send">Enviar</button>
+      <button type="button" id="mic" class="icon-button mic" title="Hablar con mIA" aria-label="Hablar con mIA">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21H8v2h8v-2h-3v-3.1A7 7 0 0 0 19 11h-2z"/></svg>
+      </button>
+      <div class="composer-field">
+        <input id="input" type="text" placeholder="Pregunta a mIA…" autocomplete="off" />
+      </div>
+      <button type="submit" id="send" class="icon-button send" title="Enviar" aria-label="Enviar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.2 3.4 21 11.1a1 1 0 0 1 0 1.8L4.2 20.6a1 1 0 0 1-1.4-1.1l1.4-5.3 9.1-2.2-9.1-2.2-1.4-5.3a1 1 0 0 1 1.4-1.1z"/></svg>
+      </button>
     </form>
   </aside>
 
-  <script type="module" src="./main.js"></script>
+  <script type="module" src="./main.js?v=3d-v16.4-stage"></script>
 </body>
 </html>
