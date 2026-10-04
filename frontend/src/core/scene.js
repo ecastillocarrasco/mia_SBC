@@ -64,18 +64,20 @@ export class MiaScene {
     key.shadow.mapSize.set(1024, 1024);
     this.scene.add(key);
 
-    // Visible floor plane: warm off-white, just darker than the background, to
-    // give the avatar a clear surface to stand on and a visible horizon line.
-    const floorVis = new THREE.Mesh(
-      new THREE.PlaneGeometry(20, 20),
-      new THREE.MeshLambertMaterial({ color: 0xe8e2d6 }),
-    );
-    floorVis.rotation.x = -Math.PI / 2;
-    floorVis.position.y = -0.002;
-    floorVis.receiveShadow = true;
-    this.scene.add(floorVis);
-
+    // Floor plane and shadow discs only for light-background (world 3D).
+    // The hologram world uses shadows=false and a dark background — skip all of this.
     if (shadows) {
+      // Visible floor plane: warm off-white, slightly darker than the cream background,
+      // gives the avatar a surface to stand on and creates a visible horizon line.
+      const floorVis = new THREE.Mesh(
+        new THREE.PlaneGeometry(20, 20),
+        new THREE.MeshLambertMaterial({ color: 0xe8e2d6 }),
+      );
+      floorVis.rotation.x = -Math.PI / 2;
+      floorVis.position.y = -0.002;
+      floorVis.receiveShadow = true;
+      this.scene.add(floorVis);
+
       const shadowFloor = new THREE.Mesh(
         new THREE.PlaneGeometry(40, 40),
         new THREE.ShadowMaterial({ opacity: 0.22 }),
@@ -83,37 +85,27 @@ export class MiaScene {
       shadowFloor.rotation.x = -Math.PI / 2;
       shadowFloor.receiveShadow = true;
       this.scene.add(shadowFloor);
+
+      // Outer soft ambient halo.
+      const outerDisc = new THREE.Mesh(
+        new THREE.CircleGeometry(1.0, 64),
+        new THREE.MeshBasicMaterial({ color: 0x060300, transparent: true, opacity: 0.08, depthWrite: false }),
+      );
+      outerDisc.rotation.x = -Math.PI / 2;
+      outerDisc.position.y = 0.001;
+      outerDisc.scale.set(1, 0.45, 1);
+      this._groundRoot.add(outerDisc);
+
+      // Inner contact shadow disc: clearly visible dark ellipse directly underfoot.
+      const disc = new THREE.Mesh(
+        new THREE.CircleGeometry(0.50, 64),
+        new THREE.MeshBasicMaterial({ color: 0x050200, transparent: true, opacity: 0.28, depthWrite: false }),
+      );
+      disc.rotation.x = -Math.PI / 2;
+      disc.position.y = 0.002;
+      disc.scale.set(1, 0.40, 1);
+      this._groundRoot.add(disc);
     }
-
-    // Outer soft ambient halo — very wide, very transparent, softens the base.
-    const outerDisc = new THREE.Mesh(
-      new THREE.CircleGeometry(1.0, 64),
-      new THREE.MeshBasicMaterial({
-        color: 0x060300,
-        transparent: true,
-        opacity: 0.08,
-        depthWrite: false,
-      }),
-    );
-    outerDisc.rotation.x = -Math.PI / 2;
-    outerDisc.position.y = 0.001;
-    outerDisc.scale.set(1, 0.45, 1);
-    this._groundRoot.add(outerDisc);
-
-    // Inner contact shadow disc: clearly visible dark ellipse directly underfoot.
-    const disc = new THREE.Mesh(
-      new THREE.CircleGeometry(0.50, 64),
-      new THREE.MeshBasicMaterial({
-        color: 0x050200,
-        transparent: true,
-        opacity: shadows ? 0.28 : 0.20,
-        depthWrite: false,
-      }),
-    );
-    disc.rotation.x = -Math.PI / 2;
-    disc.position.y = 0.002;
-    disc.scale.set(1, 0.40, 1);
-    this._groundRoot.add(disc);
   }
 
   async load(onProgress) {
@@ -263,9 +255,9 @@ export class MiaScene {
       this._groundRoot.position.x += dx * this._lerpAlpha;
     }
 
-    // Continuous micro-sway: sinusoidal offset keeps the avatar always slightly moving.
-    // Gives the impression of natural breathing/weight-shifting even during pauses.
-    if (this.model) {
+    // Micro-sway and rotation only for the world 3D (shadows=true).
+    // The hologram world uses shadows=false and drives its own animation.
+    if (this.model && this.renderer.shadowMap.enabled) {
       const t = this.clock.elapsedTime;
       this.model.position.x = this._modelBaseX + Math.sin(t * 0.55) * 0.014;
       this.model.position.z = this._modelBaseZ + Math.sin(t * 0.72) * 0.008;
