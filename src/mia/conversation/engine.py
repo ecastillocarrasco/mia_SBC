@@ -30,6 +30,7 @@ from mia.conversation.events import (
     TurnEvent,
     TurnResult,
 )
+from mia.conversation.orchestrator import select_modules
 from mia.conversation.persona import AvatarState, Persona
 from mia.conversation.speech import SpeechExtractor
 from mia.conversation.tools import (
@@ -54,6 +55,7 @@ from mia.llm import (
     ToolCallRequested,
     WebSources,
 )
+from mia.modules.finanzas import KEYWORDS as _FINANZAS_KEYWORDS
 from mia.observability import current_request_id, get_logger
 from mia.rules import rules_for_prompt
 
@@ -62,6 +64,22 @@ log = get_logger(__name__)
 MAX_MESSAGE_CHARS = 4000
 NEUTRAL_SPEECH = "Te lo dejo en pantalla."
 MAX_WEB_SOURCES = 12
+
+MODULE_KEYWORDS: dict[str, tuple[str, ...]] = {"finanzas": _FINANZAS_KEYWORDS}
+"""Vocabulario de cada módulo sin herramientas reales todavía, para el orquestador
+(`select_modules`). `rrhh` no necesita entrada: siempre se incluye por defecto."""
+
+
+def _module_hint(selected: set[str]) -> str:
+    """Si la pregunta suena a un módulo sin herramientas reales todavía, que lo diga con
+    naturalidad en vez de inventar datos (ningún Tool de ese módulo llegaría a ofrecerse)."""
+    if "finanzas" in selected:
+        return (
+            "\n\n## Pista para este mensaje\nLa pregunta parece de Finanzas, que todavía no "
+            "está disponible (no hay fuente de datos conectada). Dilo con naturalidad, sin "
+            "inventar cifras ni datos."
+        )
+    return ""
 
 
 @dataclass(slots=True)
@@ -224,6 +242,7 @@ class ConversationEngine:
         messages.append(Message(role="user", content=message))
         now = datetime.now(self._tz)
         mailbox = self._mailbox_for(user) or "" if self._mailbox_for else ""
+        selected_modules = select_modules(message, MODULE_KEYWORDS)
         system = self.persona.system_prompt(
             business_rules=rules_for_prompt(), capabilities=self._tools.capabilities_for(user)
         )
@@ -232,7 +251,7 @@ class ConversationEngine:
             now=now,
             mailbox=mailbox,
             focus=describe_focus(turn.state),
-            hint=self.persona.hint_for(message, mailbox),
+            hint=(self.persona.hint_for(message, mailbox) + _module_hint(selected_modules)).strip(),
         )
         messages[-1] = Message(role="user", content=message + context)
         ctx = ToolContext(user=user, request_id=request_id, now=now, session_state=turn.state, user_message=message)
@@ -240,7 +259,7 @@ class ConversationEngine:
         status: Literal["ok", "error"] = "ok"
         try:
             final: FinalAnswer | None = None
-            async for event in self._reason(system, messages, ctx, turn):
+            async for event in self._reason(system, messages, ctx, turn, modules=selected_modules):
                 if isinstance(event, FinalAnswer):
                     final = event
                 else:
@@ -326,9 +345,9 @@ class ConversationEngine:
         return events
 
     async def _reason(
-        self, system: str, messages: list[Message], ctx: ToolContext, turn: _TurnState
+        self, system: str, messages: list[Message], ctx: ToolContext, turn: _TurnState, *, modules: set[str]
     ) -> AsyncIterator[TurnEvent | FinalAnswer]:
-        tools = self._tools.schemas_for(ctx.user)
+        tools = self._tools.schemas_for(ctx.user, modules=modules)
         filler_sent = False
         for round_index in range(self._max_tool_rounds + 1):
             over_budget = (time.perf_counter() - turn.started) > self._turn_budget

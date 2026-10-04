@@ -93,22 +93,35 @@ class ToolExecution:
         )
 
 
+DEFAULT_MODULE = "rrhh"
+"""Módulo al que se asigna una herramienta registrada sin indicar otro explícitamente — hoy
+todas lo son. El único módulo que de verdad importa que se declare aparte es uno sin
+herramientas reales todavía (ver mia.modules.finanzas): nada que filtrar, nada que romper."""
+
+
 class ToolRegistry:
     def __init__(self, pending_domains: tuple[str, ...] = ()) -> None:
         self._tools: dict[str, Tool] = {}
+        self._module_of: dict[str, str] = {}
         self.pending_domains = pending_domains
         """Dominios que mIA todavía no puede consultar (se declaran para que no los prometa)."""
 
-    def register(self, tool: Tool) -> None:
+    def register(self, tool: Tool, *, module: str = DEFAULT_MODULE) -> None:
         if tool.name in self._tools:
             raise ValueError(f"Herramienta duplicada: {tool.name}")
         self._tools[tool.name] = tool
+        self._module_of[tool.name] = module
 
     def names(self) -> list[str]:
         return sorted(self._tools)
 
     def capabilities_for(self, user: UserContext) -> str:
-        """Estado real de capacidades, calculado en código: el modelo no lo deduce."""
+        """Estado real de capacidades, calculado en código: el modelo no lo deduce.
+
+        Deliberadamente NO filtra por módulo de la pregunta: es parte del prompt de sistema,
+        fijo entre preguntas para que la caché de prompt no se rompa (ver conversation/engine.py).
+        El filtro por módulo vive en schemas_for(), que sí varía por turno.
+        """
         tools = [t for t in self._tools.values() if user.has(t.permission)]
         lines = ["Herramientas disponibles ahora (esta lista es completa):"]
         lines += [f"- {t.name}: {t.description.split('. ')[0]}" for t in tools] or ["- ninguna"]
@@ -116,9 +129,15 @@ class ToolRegistry:
             lines.append("Dominios que TODAVÍA NO puedes consultar: " + ", ".join(self.pending_domains) + ".")
         return "\n".join(lines)
 
-    def schemas_for(self, user: UserContext) -> list[ToolSchema]:
-        """Solo las herramientas que el usuario puede usar: el LLM no ve el resto."""
-        return [tool.schema() for tool in self._tools.values() if user.has(tool.permission)]
+    def schemas_for(self, user: UserContext, *, modules: set[str] | None = None) -> list[ToolSchema]:
+        """Solo las herramientas que el usuario puede usar y, si se indica, de esos módulos
+        (el orquestador decide cuáles necesita la pregunta de este turno; mia.modules.finanzas
+        hoy no aporta ninguna, así que por ahora esto nunca reduce lo que ya se ofrecía)."""
+        return [
+            tool.schema()
+            for tool in self._tools.values()
+            if user.has(tool.permission) and (modules is None or self._module_of.get(tool.name) in modules)
+        ]
 
     async def execute(self, call: ToolCall, ctx: ToolContext) -> ToolExecution:
         started = time.perf_counter()

@@ -11,6 +11,7 @@ from mia.conversation import ConversationEngine, Persona
 from mia.data import Database
 from mia.ingestion.sync.factory import build_sharepoint_client
 from mia.llm import LLMProvider, build_llm_provider
+from mia.modules import finanzas
 from mia.modules.rrhh import build_registry
 from mia.modules.rrhh.correo.mailbox import mailbox_available, resolve_mailbox
 from mia.settings import Settings
@@ -52,17 +53,19 @@ class Services:
         provider = llm or build_llm_provider(settings.llm)
         graph = build_graph_client(settings)
         sharepoint = build_sharepoint_client(settings) if settings.sharepoint.configured else None
+        registry = build_registry(
+            database,
+            settings.data.stale_after_minutes,
+            settings=settings,
+            llm=provider,
+            graph=graph,
+            sharepoint=sharepoint,
+            enabled=settings.domains.enabled,
+        )
+        finanzas.register(registry, None)
         engine = ConversationEngine(
             llm=provider,
-            tools=build_registry(
-                database,
-                settings.data.stale_after_minutes,
-                settings=settings,
-                llm=provider,
-                graph=graph,
-                sharepoint=sharepoint,
-                enabled=settings.domains.enabled,
-            ),
+            tools=registry,
             db=database,
             persona=Persona(),
             mailbox_for=lambda user: resolve_mailbox(settings.mail, user),

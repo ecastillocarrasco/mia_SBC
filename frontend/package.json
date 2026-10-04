@@ -1,9 +1,8 @@
 {
-  "name": "mia-frontend",
-  "version": "0.1.0",
+  "name": "frontend",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Frontend de mIA: portada, universo 2D y mundo 3D anteriores (idénticos) y holograma.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

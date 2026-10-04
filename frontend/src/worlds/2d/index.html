@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>mIA · Mundo 2D</title>
+  <link rel="icon" href="/favicon.svg" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="top">
+      <a class="brand" href="/index.html">
+        <span class="brandmark">mIA</span>
+        <div>
+          <h1>Sunset Beach Club</h1>
+          <p>Mundo 2D</p>
+        </div>
+      </a>
+      <div class="top-right">
+        <span class="status"><span class="dot"></span> <span id="statusLabel">Conectando…</span></span>
+        <button id="voiceToggle" class="icon-toggle" type="button" title="Silenciar/activar la voz">🔊</button>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="card avatar-card">
+        <div class="avatar-wrap">
+          <img id="avatarImg" src="/assets/avatar/reposo.png" alt="mIA" />
+        </div>
+        <p class="avatar-label" id="avatarLabel">Estoy aquí</p>
+      </section>
+
+      <section class="card conversation-card">
+        <div id="conversation" class="conversation" aria-live="polite"></div>
+        <form id="composer" class="composer">
+          <input id="input" type="text" placeholder="Pregúntale algo a mIA…" autocomplete="off" />
+          <button type="button" id="mic" class="mic" title="Hablar con mIA">🎤</button>
+      <button type="submit" id="send">Enviar</button>
+        </form>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
