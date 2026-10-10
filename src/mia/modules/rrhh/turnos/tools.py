@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import re
+import time as _time
 from collections import Counter, defaultdict
 from datetime import date, timedelta
 from typing import Any, Literal
 
 from pydantic import Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
+from mia.diagnostics import EventStage, EventStatus, current_call_id, current_trace
 from mia.data import Employee, ShiftDay
 from mia.ingestion.mappers.hr import ShiftKind
 from mia.modules.rrhh.common import (
@@ -25,6 +27,7 @@ from mia.modules.rrhh.common import (
     PersonaParams,
     active_person_keys,
     days_between,
+    department_problem,
     employees_for,
     fmt_date,
     focus_person,
@@ -33,6 +36,7 @@ from mia.modules.rrhh.common import (
     population_label,
     population_state,
     previous_population,
+    resolve_department,
     resolve_person,
     table,
     wants_previous,
@@ -79,6 +83,12 @@ def tomorrow_not_morning(message: str, franja: str | None, fecha: date | None, t
 
 _WORKING = re.compile(r"\btrabaj|\bqui[eé]n(?:es)?\s+(?:est[aá]n?|hay)\s+(?:de\s+)?turno", re.IGNORECASE)
 
+# TUR-003: detecta "ahora" en la consulta para filtrar por hora actual cuando el LLM no pasó hora.
+_NOW_RE = re.compile(
+    r"\bahora\b|\bahora\s+mismo\b|\ben\s+este\s+momento\b|\bactualmente\b",
+    re.IGNORECASE,
+)
+
 
 async def _shifts_of_day(
     db: AsyncSession, day: date, dept_key: str | None, *, include_inactive: bool
@@ -89,7 +99,39 @@ async def _shifts_of_day(
         stmt = stmt.where(ShiftDay.person_key.in_(active_person_keys()))
     if dept_key:
         stmt = stmt.where(ShiftDay.department_key == dept_key)
-    return list((await db.scalars(stmt.order_by(ShiftDay.department, ShiftDay.employee_name))).all())
+
+    trace = current_trace()
+    sql_info: dict[str, Any] = {
+        "table": "hr_shift_days",
+        "filter_day": str(day),
+        "active_only": not include_inactive,
+        **({"filter_department_key": dept_key} if dept_key else {}),
+    }
+    if trace is not None:
+        trace.emit(EventStage.SQL_QUERY_START, data=sql_info)
+    _t0 = _time.perf_counter()
+    rows = list((await db.scalars(stmt.order_by(ShiftDay.department, ShiftDay.employee_name))).all())
+    _elapsed = int((_time.perf_counter() - _t0) * 1000)
+    if trace is not None:
+        cid = current_call_id()
+        trace.emit(
+            EventStage.SQL_QUERY_COMPLETE,
+            status=EventStatus.SUCCESS,
+            duration_ms=_elapsed,
+            data={**sql_info, "row_count": len(rows)},
+        )
+        trace.add_call_graph_node({
+            "id": f"sql:hr_shift_days:{_t0}",
+            "kind": "sql",
+            "label": f"SELECT hr_shift_days WHERE day={day}" + (f", dept={dept_key}" if dept_key else ""),
+            "table": "hr_shift_days",
+            "filters": sql_info,
+            "row_count": len(rows),
+            "duration_ms": _elapsed,
+            "status": "ok",
+            "parent_id": f"tool:turnos_dia:{cid}" if cid else None,
+        })
+    return rows
 
 
 def _day_rows(selected: list[ShiftDay], directory: PeopleDirectory, summary: dict[str, Any]) -> list[list[Any]]:
@@ -259,6 +301,11 @@ def turnos_dia(deps: Deps) -> Tool:
             # «¿Quién trabaja mañana?» es el día siguiente, no el turno de mañana (fallo real repetido).
             day, p.franja = ctx.now.date() + timedelta(days=1), None
             note = "Interpretado como el día de mañana (no como el turno de mañana)."
+        # TUR-003: «ahora» sin hora explícita → filtrar por la hora actual del contexto.
+        # works_at() ya maneja turnos que cruzan medianoche correctamente (TUR-002).
+        hora_efectiva = p.hora
+        if hora_efectiva is None and _NOW_RE.search(ctx.user_message or ""):
+            hora_efectiva = ctx.now.strftime("%H:%M")
         async with deps.db.session() as db:
             status, dept_key, options = await resolve_shift_department(db, p.departamento)
             if status is not ToolStatus.OK:
@@ -289,14 +336,16 @@ def turnos_dia(deps: Deps) -> Tool:
         if p.empieza_a and (start := _minutes(p.empieza_a)) is not None:
             selected = [s for s in selected if s.kind == ShiftKind.TRABAJO and _minutes(s.start_time) == start]
             criteria.append(f"entra a las {p.empieza_a}")
-        if p.hora and (minute := _minutes(p.hora)) is not None:
+        if hora_efectiva and (minute := _minutes(hora_efectiva)) is not None:
             selected = [s for s in selected if s.kind == ShiftKind.TRABAJO and works_at(s, minute)]
-            criteria.append(f"trabajando a las {p.hora}")
+            criteria.append(f"trabajando a las {hora_efectiva}")
         working = [s for s in shifts if s.kind == ShiftKind.TRABAJO]
         if not criteria and _WORKING.search(ctx.user_message or ""):
             # «¿Quién trabaja…?» son los turnos de Trabajo, no todos los del día (fallo real: 280 en vez de 128).
             selected = [s for s in selected if s.kind == ShiftKind.TRABAJO]
             criteria.append("trabajando")
+        # Si todos los turnos seleccionados son del mismo tipo la columna «Tipo» es redundante.
+        all_same_kind = len({s.kind for s in selected}) <= 1 if selected else True
         summary: dict[str, Any] = {
             "fecha": day.isoformat(),
             "departamento": shifts[0].department if dept_key else "toda la plantilla",
@@ -318,7 +367,7 @@ def turnos_dia(deps: Deps) -> Tool:
                 {
                     "nombre": s.employee_name,
                     "departamento": s.department,
-                    "tipo": s.kind,
+                    **({"tipo": s.kind} if not all_same_kind else {}),
                     "turno": s.raw_value,
                 }
                 for s in selected
@@ -330,13 +379,21 @@ def turnos_dia(deps: Deps) -> Tool:
         state.update(population_state(f"turnos {day.isoformat()} ({summary['criterio']})", people))
         if dept_key:
             state["foco_departamento"] = shifts[0].department
+        dept_label = shifts[0].department if dept_key else None
+        if all_same_kind:
+            # Omitir la columna «Tipo» (índice 3) cuando todos los turnos son iguales
+            table_cols = ["Persona", "Puesto", "Departamento", "Turno", "Área", "Comentario"]
+            table_rows = [[r[0], r[1], r[2], r[4], r[5], r[6]] for r in rows]
+        else:
+            table_cols = ["Persona", "Puesto", "Departamento", "Tipo", "Turno", "Área", "Comentario"]
+            table_rows = rows
         return ToolResult(
             ToolStatus.OK,
             summary,
             table(
-                f"Turnos {fmt_date(day)}",
-                ["Persona", "Puesto", "Departamento", "Tipo", "Turno", "Área", "Comentario"],
-                rows,
+                f"Turnos {fmt_date(day)}" + (f" — {dept_label}" if dept_label else ""),
+                table_cols,
+                table_rows,
             ),
             state,
         )
@@ -693,6 +750,112 @@ async def _employee_by_key(deps: Deps, person_key: str) -> Employee | None:
     return people[0] if people else None
 
 
+# ------------------------------------------------------------------ horas trabajadas
+class HorasParams(PersonaParams, Periodo):
+    departamento: str | None = Field(default=None, description="Departamento (sin nombre de persona: agrega por departamento)")
+
+
+def horas_trabajadas(deps: Deps) -> Tool:
+    async def handler(p: HorasParams, ctx: ToolContext) -> ToolResult:
+        today = ctx.now.date()
+        lo = p.desde or today.replace(day=1)
+        hi = p.hasta or today
+
+        # ── Por persona ───────────────────────────────────────────────────────
+        if p.empleado_id or (p.nombre or "").strip():
+            async with deps.db.session() as db:
+                match = await resolve_person(db, PersonaParams(empleado_id=p.empleado_id, nombre=p.nombre))
+                if match.employee is None:
+                    return person_problem(match, p.nombre)
+                e = match.employee
+                stmt = select(ShiftDay).where(
+                    ShiftDay.day.between(lo, hi),
+                    ShiftDay.kind == ShiftKind.TRABAJO,
+                )
+                if e.person_key:
+                    stmt = stmt.where(ShiftDay.person_key == e.person_key)
+                elif e.email:
+                    stmt = stmt.where(ShiftDay.email == e.email)
+                days = list((await db.scalars(stmt.order_by(ShiftDay.day))).all())
+
+            total_h = round(sum(d.hours or 0 for d in days), 1)
+            days_worked = len(days)
+            avg_h = round(total_h / days_worked, 1) if days_worked else 0
+
+            from collections import Counter as _C  # noqa: PLC0415
+            by_month: dict[str, float] = {}
+            by_franja: dict[str, float] = {}
+            for d in days:
+                key = f"{d.day.year}-{d.day.month:02d}"
+                by_month[key] = round(by_month.get(key, 0) + (d.hours or 0), 1)
+                fr = franja_of(d) or "sin franja"
+                by_franja[fr] = round(by_franja.get(fr, 0) + (d.hours or 0), 1)
+
+            rows = [[mes, h] for mes, h in sorted(by_month.items())]
+            return ToolResult(
+                ToolStatus.OK,
+                {
+                    "persona": e.name,
+                    "periodo": f"{fmt_date(lo)} – {fmt_date(hi)}",
+                    "dias_trabajados": days_worked,
+                    "horas_totales": total_h,
+                    "horas_media_dia": avg_h,
+                    "por_franja": by_franja,
+                    "por_mes": by_month,
+                },
+                table(f"Horas trabajadas · {e.name}", ["Mes", "Horas"], rows),
+                focus_person(e),
+            )
+
+        # ── Por departamento (o global) ────────────────────────────────────────
+        async with deps.db.session() as db:
+            dept_key: str | None = None
+            if p.departamento:
+                dept = await resolve_department(db, p.departamento)
+                if dept.status is not ToolStatus.OK:
+                    return department_problem(dept, p.departamento)
+                dept_key = dept.key
+
+            stmt = (
+                select(ShiftDay.department, func.count(), func.sum(ShiftDay.hours))
+                .where(
+                    ShiftDay.day.between(lo, hi),
+                    ShiftDay.kind == ShiftKind.TRABAJO,
+                    ShiftDay.hours.is_not(None),
+                )
+                .group_by(ShiftDay.department)
+                .order_by(func.sum(ShiftDay.hours).desc())
+            )
+            if dept_key:
+                stmt = stmt.where(ShiftDay.department_key.like(f"%{dept_key}%"))
+            rows_data = list((await db.execute(stmt)).all())
+
+        rows = [[dept or "Sin dato", int(dias), round(float(h or 0), 1)] for dept, dias, h in rows_data]
+        total_global = round(sum(r[2] for r in rows), 1)
+        return ToolResult(
+            ToolStatus.OK,
+            {
+                "periodo": f"{fmt_date(lo)} – {fmt_date(hi)}",
+                "horas_totales_global": total_global,
+                "por_departamento": [{"departamento": r[0], "dias": r[1], "horas": r[2]} for r in rows],
+            },
+            table(
+                "Horas trabajadas por departamento",
+                ["Departamento", "Días trabajados", "Horas totales"],
+                rows,
+            ),
+        )
+
+    return Tool(
+        "horas_trabajadas",
+        "Horas trabajadas en un periodo: para una persona (desglose por mes y franja horaria) o para toda "
+        "la empresa/un departamento (total por departamento). Por defecto: mes en curso.",
+        HorasParams,
+        handler,
+        permission=Permission.TURNOS_LEER,
+    )
+
+
 def register(registry: ToolRegistry, deps: Deps) -> None:
-    for factory in (turnos_persona, turnos_dia, ausencias, reincorporaciones):
+    for factory in (turnos_persona, turnos_dia, ausencias, reincorporaciones, horas_trabajadas):
         registry.register(factory(deps))

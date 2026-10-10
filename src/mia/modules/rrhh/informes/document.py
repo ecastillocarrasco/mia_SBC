@@ -9,6 +9,23 @@ from typing import Any
 
 from mia.text import format_number, humanize_label
 
+# Claves de distribución en el resumen (orden de preferencia para el gráfico)
+_DIST_KEYS = (
+    "seleccion_por_departamento",
+    "grupos",
+    "por_departamento",
+    "por_tipo",
+    "por_franja",
+    "distribucion",
+)
+
+# Claves escalares del resumen que NO son interesantes como KPIs de presentación
+_SKIP_KPI_KEYS = frozenset({
+    "fecha", "desde", "hasta", "periodo", "criterio", "nota", "departamento",
+    "poblacion", "mensaje", "ultima_sincronizacion", "actualizacion",
+    "personas",  # lista de objetos, no escalar
+})
+
 LABELS = {
     "hoy": "Hoy",
     "semana_actual": "Semana actual",
@@ -130,13 +147,48 @@ def _employee_document(card: dict[str, Any]) -> Document:
     return doc
 
 
-def to_document(presentation: dict[str, Any]) -> Document:
+def to_document(
+    presentation: dict[str, Any],
+    *,
+    include_detail: bool = True,
+    include_chart: bool = True,
+) -> Document:
     kind = presentation.get("type")
     if kind == "employee_360":
         return _employee_document(presentation)
     doc = Document(str(presentation.get("title") or "Informe de mIA"))
     if kind == "table":
-        doc.blocks.append(Block("table", doc.title, presentation))
+        summary = presentation.get("__summary__") or {}
+        # Chart block from summary distribution data (e.g. seleccion_por_departamento)
+        if include_chart:
+            for dist_key in _DIST_KEYS:
+                dist = summary.get(dist_key)
+                if (
+                    isinstance(dist, dict)
+                    and len(dist) >= 2
+                    and all(isinstance(v, (int, float)) for v in dist.values())
+                ):
+                    dist_block = Block(
+                        "table",
+                        _label(dist_key),
+                        {"columns": ["Categoría", "Personas"], "rows": [[k, v] for k, v in dist.items()]},
+                    )
+                    doc.blocks.append(dist_block)
+                    break
+        # KPI scalars from summary when not showing detail table
+        if not include_detail and summary:
+            kpis = {
+                _label(k): _flat(v)
+                for k, v in summary.items()
+                if not k.startswith("_")
+                and k not in _SKIP_KPI_KEYS
+                and isinstance(v, (int, float))
+                and not isinstance(v, bool)
+            }
+            if kpis:
+                doc.blocks.append(Block("kpis", "Indicadores", kpis))
+        if include_detail:
+            doc.blocks.append(Block("table", doc.title, presentation))
         return doc
     if kind == "dashboard":
         doc.blocks.append(Block("kpis", "Indicadores", {_label(k): _flat(v) for k, v in presentation["kpis"].items()}))

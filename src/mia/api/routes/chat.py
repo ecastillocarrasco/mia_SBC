@@ -10,6 +10,13 @@ from mia.api.schemas import ChatRequest
 from mia.api.sse import to_sse
 from mia.conversation import TurnResult
 
+
+def _att_kwargs(body: ChatRequest, services: ServicesDep) -> dict:
+    """Extrae kwargs de adjuntos del request si la funcionalidad está activa."""
+    if services.settings.attachments.enabled and body.attachment_ids:
+        return {"attachment_ids": body.attachment_ids, "attachment_service": services.attachment_service}
+    return {}
+
 router = APIRouter(prefix="/api", tags=["conversación"])
 
 
@@ -28,13 +35,17 @@ async def prime[T](events: AsyncIterator[T]) -> AsyncIterator[T]:
 
 @router.post("/chat", response_model=TurnResult)
 async def chat(body: ChatRequest, services: ServicesDep, user: UserDep) -> TurnResult:
-    return await services.engine.complete(message=body.message, user=user, session_id=body.session_id)
+    return await services.engine.complete(
+        message=body.message, user=user, session_id=body.session_id, **_att_kwargs(body, services)
+    )
 
 
 @router.post("/chat/stream")
 async def chat_stream(body: ChatRequest, services: ServicesDep, user: UserDep) -> StreamingResponse:
     """Eventos SSE: session, avatar, speech, progress, tool y result."""
-    events = await prime(services.engine.run(message=body.message, user=user, session_id=body.session_id))
+    events = await prime(
+        services.engine.run(message=body.message, user=user, session_id=body.session_id, **_att_kwargs(body, services))
+    )
     return StreamingResponse(
         to_sse(events),
         media_type="text/event-stream",

@@ -569,8 +569,9 @@ async function callNaturalLlm(q){
  for(const url of MIA_API.llmCandidates){try{const ctrl=new AbortController(),to=setTimeout(()=>ctrl.abort(),120000);const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/json'},body:JSON.stringify({message:q,context:{...miaProfile,...context}}),signal:ctrl.signal});clearTimeout(to);if(!res.ok){last=new Error('HTTP '+res.status);continue}const j=await res.json();if(j&&typeof j==='object')return j}catch(e){last=e}}
  throw last||new Error('LLM gateway unavailable')
 }
-async function fallbackChat(q){const res=await fetch(MIA_API.backendChat,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/json'},body:JSON.stringify({message:q,context:{...miaProfile,...context}})});return await res.json()}
-async function callBackendStream(q,prog){let finalResult=null;const res=await fetch(MIA_API.backendStream,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/x-ndjson'},body:JSON.stringify({message:q,context:{...miaProfile,...context}})});if(!res.ok||!res.body)throw new Error('stream unavailable');const reader=res.body.getReader(),decoder=new TextDecoder('utf-8');let buf='';while(true){const {value,done}=await reader.read();buf+=decoder.decode(value||new Uint8Array(),{stream:!done});let pos;while((pos=buf.indexOf('\n'))>=0){const line=buf.slice(0,pos).trim();buf=buf.slice(pos+1);if(!line)continue;let ev;try{ev=JSON.parse(line)}catch(_){continue}if(ev.type==='progress')updateProgress(prog,ev);else if(ev.type==='result'){finalResult=ev.payload;break}}if(finalResult||done)break}return finalResult||{}}
+function _chatPayload(q){const ids=typeof window._getAttachmentIds==='function'?window._getAttachmentIds():[];const p={message:q,context:{...miaProfile,...context}};if(ids.length)p.attachment_ids=ids;return p}
+async function fallbackChat(q){const res=await fetch(MIA_API.backendChat,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/json'},body:JSON.stringify(_chatPayload(q))});return await res.json()}
+async function callBackendStream(q,prog){let finalResult=null;const res=await fetch(MIA_API.backendStream,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/x-ndjson'},body:JSON.stringify(_chatPayload(q))});if(!res.ok||!res.body)throw new Error('stream unavailable');const reader=res.body.getReader(),decoder=new TextDecoder('utf-8');let buf='';while(true){const {value,done}=await reader.read();buf+=decoder.decode(value||new Uint8Array(),{stream:!done});let pos;while((pos=buf.indexOf('\n'))>=0){const line=buf.slice(0,pos).trim();buf=buf.slice(pos+1);if(!line)continue;let ev;try{ev=JSON.parse(line)}catch(_){continue}if(ev.type==='progress')updateProgress(prog,ev);else if(ev.type==='result'){finalResult=ev.payload;break}}if(finalResult||done)break}return finalResult||{}}
 async function ask(raw){
  const q=String(raw||input.value||'').trim();if(!q)return;if('speechSynthesis'in window)speechSynthesis.cancel();input.value='';addMsg('Tú',q,'user');lastProgressSpoken=false;setAvatarState('pensando','Interpretando tu consulta y preparando una respuesta natural.');const prog=createProgress();prog.title.textContent='Entendiendo y consultando…';prog.detail.textContent='mIA está combinando interpretación conversacional y datos validados.';let finalResult=null;
  try{
@@ -578,7 +579,7 @@ async function ask(raw){
  }catch(llmErr){
   try{prog.title.textContent='Consultando datos validados…';prog.detail.textContent='La capa LLM no está disponible; uso directo del backend.';finalResult=await callBackendStream(q,prog)}catch(streamErr){try{finalResult=await fallbackChat(q)}catch(e){prog.row.remove();document.getElementById('backendStatus').textContent='sin conexión';setAvatarState('avisando','No puedo conectar con el servidor.');addMsg('mIA','Ahora mismo no puedo conectar con el servidor. No voy a inventar una respuesta: inténtalo de nuevo cuando la conexión esté disponible.','mia','avisando');return}}
  }
- prog.row.remove();const r=finalResult||{};context=r.context||context;const finalState=canonicalState(r.avatar_state||r.avatar?.state||(r.status==='error'?'avisando':'sonriendo'));const answer=r.answer||r.natural_answer||r.response||'He terminado la consulta.';const m=addMsg('mIA',answer,'mia',finalState);renderLlmBadge(r,m.msg);renderData(r,m.msg);if(r.status==='error')setAvatarState('avisando');else speak(r.speech_text||answer,finalState)
+ prog.row.remove();window._clearAttachments?.();const r=finalResult||{};context=r.context||context;const finalState=canonicalState(r.avatar_state||r.avatar?.state||(r.status==='error'?'avisando':'sonriendo'));const answer=r.answer||r.natural_answer||r.response||'He terminado la consulta.';const m=addMsg('mIA',answer,'mia',finalState);renderLlmBadge(r,m.msg);renderData(r,m.msg);if(r.status==='error')setAvatarState('avisando');else speak(r.speech_text||answer,finalState)
 }
 send.addEventListener('click',()=>ask());input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask()}});
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(SR){recognition=new SR();recognition.lang=context.locale||miaProfile.locale;recognition.interimResults=true;recognition.continuous=false;recognition.maxAlternatives=3;recognition.onstart=()=>{recognitionFinalSent=false;if('speechSynthesis'in window)speechSynthesis.cancel();setAvatarState('escuchando','Te escucho. Habla con naturalidad.');};recognition.onresult=e=>{let finalText='',interim='';for(let i=e.resultIndex;i<e.results.length;i++){const t=e.results[i]?.[0]?.transcript||'';if(e.results[i].isFinal)finalText+=t+' ';else interim+=t+' '}input.value=(finalText||interim).trim();if(finalText.trim()&&!recognitionFinalSent){recognitionFinalSent=true;ask(finalText.trim())}};recognition.onerror=()=>setAvatarState('reposo','No te he entendido bien. Puedes repetirlo o escribirlo.');recognition.onend=()=>{if(currentState==='escuchando')setAvatarState('reposo','Lista para ayudarte.');};mic.addEventListener('click',()=>{try{recognition.start()}catch(_){}})}else mic.addEventListener('click',()=>addMsg('mIA','El reconocimiento de voz no está disponible en este navegador.','mia','avisando'));
@@ -673,3 +674,117 @@ if(window.visualViewport){
 }
 
 console.log('### mIA 2D V3 · adaptive modules · Mail V12.4.2 · ElevenLabs ready ###');
+
+// ═══════════════════════════════════════════════════════════
+//  MÓDULO DE ADJUNTOS
+// ═══════════════════════════════════════════════════════════
+(function initAttachments() {
+  const attachBtn = document.getElementById('attachBtn');
+  const fileInput = document.getElementById('fileInput');
+  const previews = document.getElementById('attachmentPreviews');
+  const inputEl = document.getElementById('input');
+  if (!attachBtn || !fileInput || !previews) return;
+
+  // Estado
+  const pendingAttachments = []; // [{id, filename, status}]
+
+  function mimeIcon(filename) {
+    const ext = (filename.split('.').pop() || '').toLowerCase();
+    if (['pdf'].includes(ext)) return '📄';
+    if (['docx', 'doc', 'txt', 'md'].includes(ext)) return '📝';
+    if (['xlsx', 'xls', 'csv'].includes(ext)) return '📊';
+    if (['png', 'jpg', 'jpeg', 'webp'].includes(ext)) return '🖼️';
+    return '📎';
+  }
+
+  function renderPreviews() {
+    previews.innerHTML = '';
+    if (!pendingAttachments.length) { previews.style.display = 'none'; return; }
+    previews.style.display = 'flex';
+    pendingAttachments.forEach((att, i) => {
+      const chip = document.createElement('div');
+      chip.className = 'attachment-chip' + (att.status === 'error' ? ' error' : att.status === 'uploading' ? ' uploading' : '');
+      chip.innerHTML =
+        '<span class="att-icon">' + mimeIcon(att.filename) + '</span>' +
+        '<span class="att-name">' + encodeText(att.filename) + '</span>' +
+        (att.status === 'uploading' ? '<span class="att-status">Procesando…</span>' : '') +
+        (att.status === 'error' ? '<span class="att-status err">' + encodeText(att.error || 'Error') + '</span>' : '') +
+        '<button type="button" class="att-remove" data-idx="' + i + '" title="Quitar">✕</button>';
+      previews.appendChild(chip);
+    });
+    previews.querySelectorAll('.att-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx, 10);
+        pendingAttachments.splice(idx, 1);
+        renderPreviews();
+      });
+    });
+  }
+
+  async function uploadFile(file) {
+    const idx = pendingAttachments.length;
+    pendingAttachments.push({ id: null, filename: file.name, status: 'uploading' });
+    renderPreviews();
+
+    try {
+      const form = new FormData();
+      form.append('file', file, file.name);
+      const resp = await fetch('/api/adjuntos/upload', { method: 'POST', body: form });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: 'Error al subir el archivo' }));
+        pendingAttachments[idx] = { id: null, filename: file.name, status: 'error', error: err.detail || 'Error' };
+      } else {
+        const data = await resp.json();
+        pendingAttachments[idx] = { id: data.attachment_id, filename: data.filename || file.name, status: 'ready', content_type: data.content_type };
+      }
+    } catch (e) {
+      pendingAttachments[idx] = { id: null, filename: file.name, status: 'error', error: 'Error de red' };
+    }
+    renderPreviews();
+  }
+
+  // Botón adjuntar → abre selector de archivos
+  attachBtn.addEventListener('click', () => fileInput.click());
+
+  // Selección de archivo
+  fileInput.addEventListener('change', async () => {
+    const files = Array.from(fileInput.files || []);
+    fileInput.value = '';
+    for (const f of files) await uploadFile(f);
+  });
+
+  // Drag & drop sobre el form
+  const composer = document.getElementById('composer');
+  if (composer) {
+    composer.addEventListener('dragover', e => { e.preventDefault(); composer.classList.add('drag-over'); });
+    composer.addEventListener('dragleave', () => composer.classList.remove('drag-over'));
+    composer.addEventListener('drop', async e => {
+      e.preventDefault(); composer.classList.remove('drag-over');
+      const files = Array.from(e.dataTransfer?.files || []);
+      for (const f of files) await uploadFile(f);
+    });
+  }
+
+  // Paste de imagen desde clipboard
+  document.addEventListener('paste', async e => {
+    const items = Array.from(e.clipboardData?.items || []);
+    for (const item of items) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) await uploadFile(new File([file], 'captura.png', { type: file.type }));
+      }
+    }
+  });
+
+  // Inyectar attachment_ids en el payload del chat
+  // Intercepta el envío del formulario para añadir adjuntos
+  window._getAttachmentIds = function () {
+    return pendingAttachments
+      .filter(a => a.status === 'ready' && a.id)
+      .map(a => a.id);
+  };
+  window._clearAttachments = function () {
+    pendingAttachments.length = 0;
+    renderPreviews();
+  };
+})();

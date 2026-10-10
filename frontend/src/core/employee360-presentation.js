@@ -9,6 +9,24 @@ function isObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
+const E360_URL_RX = /^(https?:\/\/|\/api\/)/
+
+function isApiUrl(value) {
+  return typeof value === 'string' && E360_URL_RX.test(value.trim())
+}
+
+function urlLabelE360(url) {
+  if (/\/api\/documents\/nomina\//.test(url)) return 'Ver nómina'
+  if (/\/api\/documents\/cv\//.test(url)) return 'Ver CV'
+  if (/\/api\/documents\//.test(url)) return 'Abrir documento'
+  if (/\/api\/reports\//.test(url)) return 'Descargar'
+  return 'Ver'
+}
+
+function renderApiLink(url) {
+  return `<a class="mia-doc-link" href="${esc(url)}" target="_blank" rel="noopener">${esc(urlLabelE360(url))}</a>`
+}
+
 function esc(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -292,11 +310,13 @@ function flattenComplete(root, prefix = '', out = [], depth = 0) {
 
 function renderDefinitionGrid(entries) {
   if (!entries.length) return '<div class="e360x-empty">Sin datos disponibles.</div>'
-  return `<div class="e360x-defs">${entries.map(item => `
-    <div class="e360x-def">
+  return `<div class="e360x-defs">${entries.map(item => {
+    const valueHtml = isApiUrl(item.value) ? renderApiLink(item.value) : `<strong>${esc(item.value)}</strong>`
+    return `<div class="e360x-def">
       <span>${esc(item.label)}</span>
-      <strong>${esc(item.value)}</strong>
-    </div>`).join('')}</div>`
+      ${valueHtml}
+    </div>`
+  }).join('')}</div>`
 }
 
 function renderSpotlight(data) {

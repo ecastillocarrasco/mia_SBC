@@ -5,7 +5,7 @@ FIR-001: solo se informa de la existencia y el tipo; nunca del contenido ni de l
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -226,8 +226,85 @@ def maestros(deps: Deps) -> Tool:
     )
 
 
+# ------------------------------------------------------------------ cobertura documental agregada
+class CoberturaDocumentalParams(BaseModel):
+    departamento: str | None = Field(default=None, description="Limitar a un departamento")
+    anio: int | None = Field(default=None, description="Filtrar por año del documento")
+
+
+def cobertura_documental(deps: Deps) -> Tool:
+    async def handler(p: CoberturaDocumentalParams, ctx: ToolContext) -> ToolResult:
+        async with deps.db.session() as db:
+            dept = await resolve_department(db, p.departamento)
+            if dept.status is not ToolStatus.OK:
+                return department_problem(dept, p.departamento)
+            emp_stmt = select(Employee).where(Employee.active.is_(True))
+            if dept.key:
+                emp_stmt = emp_stmt.where(Employee.department_key == dept.key)
+            employees = list((await db.scalars(emp_stmt)).all())
+            keys = {e.person_key for e in employees if e.person_key}
+
+            doc_stmt = select(SignedDocument.person_key, SignedDocument.doc_type)
+            if keys:
+                doc_stmt = doc_stmt.where(SignedDocument.person_key.in_(keys))
+            if p.anio:
+                doc_stmt = doc_stmt.where(SignedDocument.doc_year == p.anio)
+            docs = (await db.execute(doc_stmt)).all()
+
+            type_configs = list((await db.scalars(select(DocumentTypeConfig))).all())
+
+        total = len(employees)
+        if total == 0:
+            return ToolResult(ToolStatus.NOT_FOUND, {"nota": "Sin empleados activos."})
+
+        # Count distinct types per person
+        by_type: dict[str, set[str]] = defaultdict(set)
+        for person_key, doc_type in docs:
+            if person_key and doc_type:
+                by_type[normalize_key(doc_type)].add(person_key)
+
+        # Build coverage per type name
+        type_names = sorted({r.name for r in type_configs})
+        rows = []
+        for name in type_names:
+            key = normalize_key(name)
+            count = len(by_type.get(key, set()))
+            pct = round(count / total * 100)
+            missing = total - count
+            rows.append([name, count, missing, f"{pct}%"])
+
+        rows.sort(key=lambda r: -r[1])  # descending by signed count
+
+        return ToolResult(
+            ToolStatus.OK,
+            {
+                "plantilla_activa": total,
+                "ambito": dept.name or "toda la empresa",
+                "anio": p.anio,
+                "cobertura": [
+                    {"tipo": r[0], "firmado_por": r[1], "faltante": r[2], "porcentaje": r[3]}
+                    for r in rows
+                ],
+            },
+            table(
+                "Cobertura de documentos firmados",
+                ["Tipo de documento", "Firmado por", "Faltante", "Cobertura"],
+                rows,
+            ),
+        )
+
+    return Tool(
+        "cobertura_documental",
+        "Cobertura de documentos firmados: para cada tipo de documento, cuántas personas de la plantilla "
+        "activa lo tienen firmado y cuántas no. Responde «¿qué % tiene firmado el contrato?».",
+        CoberturaDocumentalParams,
+        handler,
+        permission=Permission.DOCUMENTOS_LEER,
+    )
+
+
 def register(registry: ToolRegistry, deps: Deps) -> None:
-    for factory in (documentos_persona, documentos_faltantes, leer_documento, maestros):
+    for factory in (documentos_persona, documentos_faltantes, leer_documento, maestros, cobertura_documental):
         registry.register(factory(deps))
 
 
@@ -254,13 +331,17 @@ def leer_documento(deps: Deps) -> Tool:
             docs = [d for d in docs if normalize_key(p.tipo) in normalize_key(d.doc_type)]
         if p.documento:
             docs = [d for d in docs if normalize_key(p.documento) in normalize_key(d.file_name)]
-        if len(docs) != 1:
-            status = ToolStatus.AMBIGUOUS if docs else ToolStatus.NOT_FOUND
+        if not docs:
+            return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": "No hay ningún documento así"})
+        # Con tipo especificado y varios del mismo tipo → el más reciente (sin pedir más input al usuario)
+        if len(docs) > 1 and p.tipo:
+            docs = sorted(docs, key=lambda d: (d.doc_year or 0, d.created_at or d.sp_id), reverse=True)
+        elif len(docs) > 1:
             return ToolResult(
-                status,
+                ToolStatus.AMBIGUOUS,
                 {
                     "documentos": [{"tipo": d.doc_type, "documento": d.file_name} for d in docs[:20]],
-                    "mensaje": "Indica cuál" if docs else "No hay ningún documento así",
+                    "mensaje": "Indica el tipo de documento",
                 },
             )
         doc = docs[0]
@@ -282,7 +363,9 @@ def leer_documento(deps: Deps) -> Tool:
 
     return Tool(
         "leer_documento",
-        "Lee el contenido de un documento firmado de una persona (contrato, anexo…) para responder sobre él.",
+        "Lee el contenido de un documento firmado de una persona (contrato, protección de datos, "
+        "reconocimiento médico, normativa…) para responder sobre él. Con un tipo especificado y varios "
+        "documentos del mismo tipo, lee el más reciente automáticamente.",
         LeerParams,
         handler,
         permission=Permission.DOCUMENTOS_CONTENIDO,

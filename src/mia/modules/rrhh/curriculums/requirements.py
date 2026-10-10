@@ -29,6 +29,11 @@ BUILTIN_EQUIVALENTS: dict[str, tuple[str, ...]] = {
     "portugues": ("portuguese", "portugues", "portugués"),
     "neerlandes": ("dutch", "holandes", "holandés", "neerlandes", "neerlandés"),
     "cocina": ("cocina", "cocinero", "cocinera", "chef", "kitchen", "cook", "cuisine"),
+    # Cocinas nacionales: términos culinarios específicos sin el gentilicio como idioma
+    "cocina_italiana": ("cocina italiana", "cucina italiana", "italian cuisine", "italian food", "italiana"),
+    "cocina_japonesa": ("cocina japonesa", "japanese cuisine", "sushi", "washoku", "itamae", "ramen", "japonesa"),
+    "cocina_francesa": ("cocina francesa", "french cuisine", "haute cuisine", "francesa"),
+    "cocina_asiatica": ("cocina asiatica", "asian cuisine", "asian food", "asiatica", "asiática"),
 }
 SEMANTIC_THRESHOLD = 0.45
 """Similitud mínima (text-embedding-3-small) para considerar que un fragmento trata del requisito."""

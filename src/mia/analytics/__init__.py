@@ -1,18 +1,37 @@
-"""Predictivo de RRHH (Azure ML) — vacío por ahora.
+"""Analytics — estadística, insights, comparación y módulo predictivo (futuro).
 
-Aviso explícito: un modelo predictivo sobre personas empleadas es de **alto riesgo** según el
-Reglamento Europeo de IA (Reglamento (UE) 2024/1689, sistemas de IA en el ámbito laboral). No
-se implementa en esta sesión -falta la evaluación legal-; esto es solo el hueco arquitectónico
-para cuando exista, estructuralmente separado de ``conversation/`` (el LLM) y de
-``modules/rrhh`` (los dominios transaccionales): un predictivo no debe acoplarse a ninguno
-de los dos para poder auditarlo, explicarlo y, si hiciera falta, desactivarlo por separado.
+Módulos activos:
+  stats      — StatisticsEngine: estadística descriptiva, series temporales, outliers
+  insights   — InsightEngine: detección automática de hechos relevantes
+  comparison — ComparisonEngine: comparación universal A vs B / N grupos
 
-Regla innegociable para cuando se implemente: la nacionalidad (``Employee.nationality``) y
-cualquier variable que actúe como proxy de origen étnico NO se usan como variable predictiva
-bajo ningún concepto.
+El módulo predictivo (PredictiveModel / PredictionRequest) se mantiene como
+infraestructura sin implementación; requiere evaluación de alto riesgo IA (EU AI Act).
 """
 
-from __future__ import annotations
+# Exporta los motores analíticos activos
+from mia.analytics.comparison import ComparisonResult, MetricComparison, MultiGroupComparison
+from mia.analytics.insights import Insight, InsightEngine
+from mia.analytics.stats import TimePoint, descriptive, detect_outliers, time_series_stats
+
+__all__ = [
+    "ComparisonResult",
+    "Insight",
+    "InsightEngine",
+    "MetricComparison",
+    "MultiGroupComparison",
+    "TimePoint",
+    "descriptive",
+    "detect_outliers",
+    "time_series_stats",
+]
+
+
+# ── Predictivo (infraestructura sin implementación) ──────────────────────────
+# Un modelo predictivo sobre personas empleadas es de alto riesgo según el
+# Reglamento Europeo de IA (Reglamento (UE) 2024/1689). No se implementa hasta
+# completar la evaluación legal. La nacionalidad y cualquier proxy de origen
+# étnico no se usan como variable predictiva bajo ningún concepto.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -23,16 +42,14 @@ from typing import Any
 class PredictionRequest:
     person_key: str
     features: dict[str, Any]
-    """Nunca debe incluir nacionalidad ni ningún proxy directo de origen étnico (ver aviso del
-    módulo). Validar esto aquí, no confiar en que quien construya el request lo recuerde."""
+    """Nunca debe incluir nacionalidad ni ningún proxy directo de origen étnico."""
 
 
 class PredictiveModel(ABC):
     """Contrato para un modelo predictivo servido desde Azure ML.
 
-    Sin implementación todavía: falta la evaluación de alto riesgo del Reglamento Europeo de
-    IA (documentación técnica, supervisión humana, registro de decisiones) antes de entrenar
-    o servir nada.
+    Sin implementación todavía: falta la evaluación de alto riesgo del Reglamento
+    Europeo de IA antes de entrenar o servir nada.
     """
 
     @abstractmethod

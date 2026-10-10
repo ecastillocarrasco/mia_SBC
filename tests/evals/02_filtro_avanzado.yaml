@@ -1,0 +1,314 @@
+# Categoría: filtro avanzado
+# Consultas con uno o más criterios de filtrado combinados.
+
+- prompt: "empleados del departamento de IT con contrato indefinido"
+  domain: empleados
+  tags: [filtro_múltiple, departamento, contrato]
+
+- prompt: "trabajadores de Logística con más de 5 años de antigüedad"
+  domain: empleados
+  tags: [filtro_múltiple, departamento, antigüedad]
+
+- prompt: "empleados con salario bruto superior a 30.000 euros"
+  domain: nominas
+  tags: [filtro, salario, rango]
+
+- prompt: "técnicos con contrato temporal en Madrid"
+  domain: empleados
+  tags: [filtro_múltiple, puesto, contrato, centro]
+
+- prompt: "mujeres directivas en la empresa"
+  domain: empleados
+  tags: [filtro_múltiple, género, puesto]
+
+- prompt: "hombres en departamentos de soporte"
+  domain: empleados
+  tags: [filtro_múltiple, género, departamento]
+
+- prompt: "empleados con edad entre 30 y 40 años"
+  domain: empleados
+  tags: [filtro, edad, rango]
+
+- prompt: "trabajadores menores de 25 años"
+  domain: empleados
+  tags: [filtro, edad]
+
+- prompt: "empleados mayores de 55 años con contrato indefinido"
+  domain: empleados
+  tags: [filtro_múltiple, edad, contrato]
+
+- prompt: "empleados con más de 10 años en la empresa del departamento de ventas"
+  domain: empleados
+  tags: [filtro_múltiple, antigüedad, departamento]
+
+- prompt: "ausencias de más de 3 días en el último mes"
+  domain: turnos
+  tags: [filtro, ausencias, duración]
+
+- prompt: "vacaciones pendientes de más de 10 días"
+  domain: vacaciones
+  tags: [filtro, vacaciones, saldo]
+
+- prompt: "nóminas con importe bruto mayor de 40.000 en 2024"
+  domain: nominas
+  tags: [filtro, nominas, importe, año]
+
+- prompt: "empleados a tiempo parcial en el departamento de Atención al Cliente"
+  domain: empleados
+  tags: [filtro_múltiple, jornada, departamento]
+
+- prompt: "trabajadores con convenio colectivo de comercio"
+  domain: empleados
+  tags: [filtro, convenio]
+
+- prompt: "empleados del grupo de cotización 1 o 2"
+  domain: empleados
+  tags: [filtro, cotización]
+
+- prompt: "personas con categoría de responsable o superior"
+  domain: empleados
+  tags: [filtro, categoría]
+
+- prompt: "trabajadores cedidos por ETT en el departamento de producción"
+  domain: trabajo_temporal
+  tags: [filtro_múltiple, ett, departamento]
+
+- prompt: "empleados dados de alta entre enero y marzo de este año"
+  domain: empleados
+  tags: [filtro, altas, periodo]
+
+- prompt: "bajas registradas en el segundo semestre del año pasado"
+  domain: empleados
+  tags: [filtro, bajas, periodo]
+
+- prompt: "solicitudes de vacaciones entre julio y agosto"
+  domain: vacaciones
+  tags: [filtro, vacaciones, periodo]
+
+- prompt: "ausencias de tipo enfermedad en el último trimestre"
+  domain: turnos
+  tags: [filtro_múltiple, ausencias, tipo, periodo]
+
+- prompt: "empleados con más de 15 días de ausencia acumulada este año"
+  domain: turnos
+  tags: [filtro, ausencias, acumulado]
+
+- prompt: "correos recibidos de clientes externos la semana pasada"
+  domain: correo
+  tags: [filtro, correo, remitente]
+
+- prompt: "currículums de candidatos con experiencia en Python"
+  domain: curriculums
+  tags: [filtro, curriculum, habilidad]
+
+- prompt: "CVs de candidatos con más de 5 años de experiencia"
+  domain: curriculums
+  tags: [filtro, curriculum, experiencia]
+
+- prompt: "documentos de tipo nómina de empleados de IT"
+  domain: documentos
+  tags: [filtro_múltiple, documentos, tipo, departamento]
+
+- prompt: "trabajadores en turno de noche del departamento de Seguridad"
+  domain: turnos
+  tags: [filtro_múltiple, turno, departamento]
+
+- prompt: "empleados con categoría de operario en planta"
+  domain: empleados
+  tags: [filtro_múltiple, categoría, centro]
+
+- prompt: "técnicos especialistas con contrato indefinido y antigüedad mayor de 3 años"
+  domain: empleados
+  tags: [filtro_múltiple, puesto, contrato, antigüedad]
+
+- prompt: "empleados que no han tomado vacaciones en los últimos 6 meses"
+  domain: vacaciones
+  tags: [filtro, vacaciones, negación]
+
+- prompt: "trabajadores sin ausencias registradas este año"
+  domain: turnos
+  tags: [filtro, ausencias, negación]
+
+- prompt: "empleados con 0 días de baja por enfermedad en el año"
+  domain: turnos
+  tags: [filtro, bajas_enfermedad, cero]
+
+- prompt: "departamentos con más de 20 empleados"
+  domain: empleados
+  tags: [filtro, departamento, tamaño]
+
+- prompt: "departamentos con menos de 5 personas"
+  domain: empleados
+  tags: [filtro, departamento, tamaño]
+
+- prompt: "puestos ocupados por al menos 3 personas"
+  domain: empleados
+  tags: [filtro, puestos, ocupación]
+
+- prompt: "empleados con más de un centro de trabajo asignado"
+  domain: empleados
+  tags: [filtro, centros]
+
+- prompt: "personas en período de excedencia"
+  domain: empleados
+  tags: [filtro, excedencia]
+
+- prompt: "trabajadores en situación de baja activa"
+  domain: turnos
+  tags: [filtro, baja_activa]
+
+- prompt: "empleados con reducción de jornada activa"
+  domain: empleados
+  tags: [filtro, reducción_jornada]
+
+- prompt: "nóminas con complementos variables superiores al 20% del bruto"
+  domain: nominas
+  tags: [filtro, nominas, complementos, porcentaje]
+
+- prompt: "trabajadores cuyo nombre empieza por M"
+  domain: empleados
+  tags: [filtro, nombre, texto]
+
+- prompt: "empleados del departamento de Ventas con puesto de comercial senior"
+  domain: empleados
+  tags: [filtro_múltiple, departamento, puesto]
+
+- prompt: "técnicos de sistemas en la sede de Madrid con más de 2 años"
+  domain: empleados
+  tags: [filtro_múltiple, puesto, centro, antigüedad]
+
+- prompt: "empleados con jornada parcial y antigüedad mayor de 5 años"
+  domain: empleados
+  tags: [filtro_múltiple, jornada, antigüedad]
+
+- prompt: "vacaciones disfrutadas en verano del año pasado"
+  domain: vacaciones
+  tags: [filtro, vacaciones, verano]
+
+- prompt: "ausencias de maternidad o paternidad registradas"
+  domain: turnos
+  tags: [filtro, ausencias, tipo]
+
+- prompt: "solicitudes de vacaciones rechazadas este año"
+  domain: vacaciones
+  tags: [filtro, vacaciones, estado]
+
+- prompt: "empleados con contrato de formación o prácticas"
+  domain: empleados
+  tags: [filtro, contrato_tipo]
+
+- prompt: "trabajadores con nivel salarial superior al nivel 8"
+  domain: nominas
+  tags: [filtro, nominas, nivel]
+
+- prompt: "candidatos con idioma inglés en el CV"
+  domain: curriculums
+  tags: [filtro, curriculum, idioma]
+
+- prompt: "CVs de ingenieros industriales"
+  domain: curriculums
+  tags: [filtro, curriculum, titulación]
+
+- prompt: "empleados del turno rotativo en producción"
+  domain: turnos
+  tags: [filtro_múltiple, turno, departamento]
+
+- prompt: "contratos que vencen en los próximos 30 días"
+  domain: empleados
+  tags: [filtro, contrato, vencimiento]
+
+- prompt: "empleados con fecha de alta anterior a 2010"
+  domain: empleados
+  tags: [filtro, alta, fecha]
+
+- prompt: "empleados dados de alta después de 2020"
+  domain: empleados
+  tags: [filtro, alta, fecha]
+
+- prompt: "bajas de larga duración activas actualmente"
+  domain: turnos
+  tags: [filtro, baja_larga]
+
+- prompt: "departamentos sin ninguna baja activa"
+  domain: turnos
+  tags: [filtro, departamento, bajas, negación]
+
+- prompt: "empleados con más de 25 días de vacaciones pendientes"
+  domain: vacaciones
+  tags: [filtro, vacaciones, saldo_alto]
+
+- prompt: "trabajadores que han agotado su saldo de vacaciones"
+  domain: vacaciones
+  tags: [filtro, vacaciones, saldo_cero]
+
+- prompt: "documentos generados en los últimos 7 días"
+  domain: documentos
+  tags: [filtro, documentos, recientes]
+
+- prompt: "nóminas con retención de IRPF superior al 30%"
+  domain: nominas
+  tags: [filtro, nominas, irpf]
+
+- prompt: "empleados con categoría de mando intermedio"
+  domain: empleados
+  tags: [filtro, categoría, mando]
+
+- prompt: "trabajadores con turno partido"
+  domain: turnos
+  tags: [filtro, turno_partido]
+
+- prompt: "empleados en activo en este momento"
+  domain: empleados
+  tags: [filtro, estado_activo]
+
+- prompt: "empleados del departamento de IT o de Sistemas"
+  domain: empleados
+  tags: [filtro, departamento, OR]
+
+- prompt: "trabajadores con puesto de analista o programador"
+  domain: empleados
+  tags: [filtro, puesto, OR]
+
+- prompt: "correos con asunto que contenga 'urgente'"
+  domain: correo
+  tags: [filtro, correo, asunto]
+
+- prompt: "emails sin responder de esta semana"
+  domain: correo
+  tags: [filtro, correo, pendientes]
+
+- prompt: "ausencias no justificadas del mes"
+  domain: turnos
+  tags: [filtro, ausencias, justificación]
+
+- prompt: "empleados con nivel de estudios universitario"
+  domain: empleados
+  tags: [filtro, estudios]
+
+- prompt: "trabajadores titulados en ingeniería"
+  domain: empleados
+  tags: [filtro, titulación]
+
+- prompt: "empleados con certificado de discapacidad"
+  domain: empleados
+  tags: [filtro, discapacidad]
+
+- prompt: "contratos a tiempo parcial con jornada inferior al 50%"
+  domain: empleados
+  tags: [filtro, jornada, porcentaje]
+
+- prompt: "empleados con alguna ausencia en los últimos 3 meses"
+  domain: turnos
+  tags: [filtro, ausencias, recientes]
+
+- prompt: "departamentos que tienen al menos un empleado con baja activa"
+  domain: turnos
+  tags: [filtro, departamento, bajas]
+
+- prompt: "empleados con fecha de nacimiento entre 1980 y 1990"
+  domain: empleados
+  tags: [filtro, edad, rango_nacimiento]
+
+- prompt: "vacaciones solicitadas pero aún no aprobadas de este mes"
+  domain: vacaciones
+  tags: [filtro, vacaciones, pendientes]

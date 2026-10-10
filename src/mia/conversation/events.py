@@ -21,6 +21,8 @@ class TurnResult(BaseModel):
     tools: list[dict[str, Any]] = Field(default_factory=list)
     elapsed_ms: int = 0
     usage: dict[str, int] = Field(default_factory=dict)
+    presentation_intent: str = "direct_lookup"
+    """Intención de presentación clasificada para este turno (PresentationIntent value)."""
 
 
 class SessionEvent(BaseModel):

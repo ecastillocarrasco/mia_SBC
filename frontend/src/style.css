@@ -3529,14 +3529,19 @@ canvas {
 
 .e360x-week {
   display: grid;
-  grid-template-columns: repeat(7,minmax(70px,1fr));
+  grid-template-columns: repeat(7,minmax(0,1fr));
   gap: 6px;
   overflow-x: auto;
   padding-bottom: 2px;
 }
 
+/* Week strip section always spans full width */
+.e360x-section:has(.e360x-week) {
+  grid-column: 1 / -1;
+}
+
 .e360x-day {
-  min-width: 70px;
+  min-width: 0;
   padding: 9px 7px;
   border: 1px solid rgba(92,61,43,.08);
   border-radius: 13px;
@@ -3667,6 +3672,93 @@ canvas {
   .e360x-defs { grid-template-columns: 1fr; }
   .e360x-week { grid-template-columns: repeat(7,74px); }
   .e360x-event { grid-template-columns: 72px 1fr; }
+}
+
+/* =====================================================
+   GLASSMORPHISM · Employee 360 card — see-through
+   Translucent backgrounds so mIA is visible behind.
+===================================================== */
+
+/* Outer container: strong blur, very light tint */
+.mia-backend-result.presentation-v151,
+.mia-backend-result {
+  background: rgba(255, 252, 248, 0.38) !important;
+  backdrop-filter: blur(32px) saturate(1.5) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(1.5) !important;
+  border: 1px solid rgba(200, 154, 74, 0.20) !important;
+  box-shadow: 0 28px 80px rgba(87, 56, 37, 0.14), 0 0 0 1px rgba(255,255,255,.18) !important;
+}
+
+/* e360x root: transparent — let the outer blur carry the glass effect */
+.e360x {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Hero: keep its warm gradient but semi-transparent */
+.e360x-hero {
+  background: linear-gradient(135deg, rgba(108,47,43,.72) 0%, rgba(139,65,52,.62) 55%, rgba(200,154,74,.52)) !important;
+}
+
+/* Body: fully transparent */
+.e360x-body {
+  background: transparent !important;
+}
+
+/* Answer strip */
+.e360x-answer {
+  background: rgba(255,255,255,.32) !important;
+  border-color: rgba(108,47,43,.10) !important;
+}
+
+/* KPI tiles */
+.e360x-kpis article {
+  background: rgba(255,255,255,.36) !important;
+  border-color: rgba(92,61,43,.10) !important;
+}
+.e360x-kpis article.primary { background: rgba(255,244,234,.38) !important; }
+.e360x-kpis article.success { background: rgba(242,250,246,.38) !important; }
+.e360x-kpis article.info    { background: rgba(244,248,247,.38) !important; }
+
+/* Sections */
+.e360x-section {
+  background: rgba(255,255,255,.32) !important;
+  border-color: rgba(92,61,43,.07) !important;
+}
+.e360x-section > header {
+  background: rgba(255,250,244,.40) !important;
+}
+
+/* Definition cells */
+.e360x-def {
+  background: rgba(255,255,255,.36) !important;
+  border-color: rgba(92,61,43,.06) !important;
+}
+
+/* Week day cells */
+.e360x-day {
+  background: rgba(255,250,245,.40) !important;
+  border-color: rgba(92,61,43,.07) !important;
+}
+
+/* People chips */
+.e360x-person {
+  background: rgba(255,248,241,.44) !important;
+}
+
+/* Complete/full data toggle */
+.e360x-complete {
+  background: rgba(255,255,255,.28) !important;
+  border-color: rgba(106,35,64,.07) !important;
+}
+.e360x-complete summary {
+  background: rgba(255,250,245,.36) !important;
+}
+
+/* Action buttons */
+.e360x-actions button {
+  background: rgba(255,248,241,.44) !important;
 }
 
 /* =====================================================

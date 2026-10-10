@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
+from datetime import date, timedelta
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -338,6 +339,359 @@ def comunicaciones(deps: Deps) -> Tool:
     )
 
 
+# ------------------------------------------------------------------ tarifas ETT
+class TarifasParams(BaseModel):
+    empresa: str | None = Field(default=None, description="Filtrar por nombre de empresa ETT")
+
+
+def tarifas_tt(deps: Deps) -> Tool:
+    async def handler(p: TarifasParams, ctx: ToolContext) -> ToolResult:
+        async with deps.db.session() as db:
+            stmt = select(TtRate).order_by(TtRate.company)
+            if p.empresa:
+                key = normalize_key(p.empresa)
+                stmt = stmt.where(TtRate.company_key.like(f"%{key}%"))
+            rates = list((await db.scalars(stmt)).all())
+
+        if not rates:
+            return ToolResult(ToolStatus.NOT_FOUND, {"empresa": p.empresa, "nota": "Sin tarifas registradas."})
+
+        def _fmt_time(t: Any) -> str:
+            return str(t)[:5] if t else "—"
+
+        rows = [
+            [
+                r.company or "—",
+                f"{r.price_normal:.2f} €/h" if r.price_normal is not None else "—",
+                f"{r.price_night:.2f} €/h" if r.price_night is not None else "—",
+                f"{r.price_diet:.2f} €" if r.price_diet is not None else "—",
+                f"{r.short_contract_surcharge:.2f} €" if r.short_contract_surcharge is not None else "—",
+                f"{_fmt_time(r.normal_start)}–{_fmt_time(r.normal_end)}",
+                f"{_fmt_time(r.night_start)}–{_fmt_time(r.night_end)}",
+            ]
+            for r in rates
+        ]
+        summary = {
+            "empresas": len(rates),
+            "tarifas": [
+                {
+                    "empresa": r.company,
+                    "precio_normal": r.price_normal,
+                    "precio_nocturno": r.price_night,
+                    "dieta": r.price_diet,
+                    "plus_contrato_corto": r.short_contract_surcharge,
+                    "horario_diurno": f"{_fmt_time(r.normal_start)}-{_fmt_time(r.normal_end)}",
+                    "horario_nocturno": f"{_fmt_time(r.night_start)}-{_fmt_time(r.night_end)}",
+                }
+                for r in rates
+            ],
+        }
+        return ToolResult(
+            ToolStatus.OK,
+            summary,
+            table(
+                "Tarifas ETT",
+                ["Empresa", "€/h Normal", "€/h Nocturno", "Dieta", "Plus corto", "Horario diurno", "Horario nocturno"],
+                rows,
+            ),
+        )
+
+    return Tool(
+        "tarifas_tt",
+        "Consulta las tarifas contratadas con cada ETT (empresa de trabajo temporal): precio/hora normal y nocturno, "
+        "dieta y plus de contrato corto, con sus franjas horarias. Útil para estimar costes o resolver dudas de facturación.",
+        TarifasParams,
+        handler,
+        permission=Permission.TRABAJO_TEMPORAL_LEER,
+    )
+
+
+# ------------------------------------------------------------------ contactos ETT
+class ContactosEttParams(BaseModel):
+    empresa: str | None = Field(default=None, description="Nombre o parte del nombre de la ETT")
+
+
+def contactos_ett(deps: Deps) -> Tool:
+    async def handler(p: ContactosEttParams, ctx: ToolContext) -> ToolResult:
+        async with deps.db.session() as db:
+            stmt = select(TtCompany).order_by(TtCompany.name)
+            if p.empresa:
+                key = normalize_key(p.empresa)
+                stmt = stmt.where(TtCompany.name.like(f"%{p.empresa}%"))
+            companies = list((await db.scalars(stmt)).all())
+
+        if not companies:
+            return ToolResult(ToolStatus.NOT_FOUND, {"empresa": p.empresa, "nota": "Sin empresas ETT registradas."})
+
+        rows = [
+            [c.name, c.cif or "—", c.email or "—", c.phone or "—"]
+            for c in companies
+        ]
+        return ToolResult(
+            ToolStatus.OK,
+            {"empresas": [{"nombre": c.name, "cif": c.cif, "email": c.email, "telefono": c.phone} for c in companies]},
+            table("Contactos ETT", ["Empresa", "CIF", "Email", "Teléfono"], rows),
+        )
+
+    return Tool(
+        "contactos_ett",
+        "Datos de contacto de las empresas de trabajo temporal (ETT): nombre, CIF, email y teléfono. "
+        "Útil para resolver quién es el interlocutor de cada ETT.",
+        ContactosEttParams,
+        handler,
+        permission=Permission.TRABAJO_TEMPORAL_LEER,
+    )
+
+
+# ------------------------------------------------------------------ ETT activos hoy
+class EttHoyParams(BaseModel):
+    departamento: str | None = Field(default=None, description="Filtrar por departamento")
+    empresa: str | None = Field(default=None, description="Filtrar por empresa ETT")
+
+
+def ett_hoy(deps: Deps) -> Tool:
+    async def handler(p: EttHoyParams, ctx: ToolContext) -> ToolResult:
+        today = ctx.now.date()
+        async with deps.db.session() as db:
+            stmt = select(TtTimesheet).where(TtTimesheet.day == today)
+            if p.departamento:
+                key = normalize_key(p.departamento)
+                stmt = stmt.where(TtTimesheet.department_key.like(f"%{key}%"))
+            if p.empresa:
+                stmt = stmt.where(TtTimesheet.company.like(f"%{p.empresa}%"))
+            sheets = list((await db.scalars(stmt.order_by(TtTimesheet.department, TtTimesheet.worker_name))).all())
+
+        if not sheets:
+            return ToolResult(ToolStatus.OK, {"fecha": str(today), "total": 0, "nota": "Sin boletines ETT para hoy."})
+
+        by_dept: Counter[str] = Counter()
+        by_company: Counter[str] = Counter()
+        total_h = 0.0
+        for s in sheets:
+            by_dept[s.department or "Sin dato"] += 1
+            by_company[s.company or "Sin dato"] += 1
+            total_h += s.hours_total or 0
+
+        rows = [[s.worker_name or "—", s.company or "—", s.department or "—", s.start_time or "—", s.end_time or "—", s.hours_total or 0] for s in sheets]
+        return ToolResult(
+            ToolStatus.OK,
+            {
+                "fecha": str(today),
+                "total_trabajadores_ett": len(sheets),
+                "horas_totales": round(total_h, 1),
+                "por_departamento": dict(by_dept.most_common()),
+                "por_empresa": dict(by_company.most_common()),
+            },
+            table(
+                f"Trabajadores ETT hoy ({fmt_date(today)})",
+                ["Trabajador", "ETT", "Departamento", "Inicio", "Fin", "Horas"],
+                rows,
+            ),
+        )
+
+    return Tool(
+        "ett_hoy",
+        "Trabajadores de ETT con boletín para hoy: nombre, empresa, departamento y horario. "
+        "Muestra el total y el desglose por departamento y empresa.",
+        EttHoyParams,
+        handler,
+        permission=Permission.TRABAJO_TEMPORAL_LEER,
+    )
+
+
+# ------------------------------------------------------------------ boletines faltantes ETT
+class BoletinesFaltantesParams(Periodo):
+    empresa: str | None = None
+    departamento: str | None = None
+
+
+def boletines_faltantes(deps: Deps) -> Tool:
+    async def handler(p: BoletinesFaltantesParams, ctx: ToolContext) -> ToolResult:
+        today = ctx.now.date()
+        lo, hi = p.resolve(today.replace(day=1), default_days=0)
+        if not p.desde and not p.hasta:
+            hi = today
+        async with deps.db.session() as db:
+            workers = list(
+                (await db.scalars(select(TtWorker).where(TtWorker.visible.is_(True)).order_by(TtWorker.name))).all()
+            )
+            worker_ids_with_boletin: set[int] = set(
+                (
+                    await db.scalars(
+                        select(TtTimesheet.worker_id)
+                        .where(TtTimesheet.day.between(lo, hi), TtTimesheet.worker_id.isnot(None))
+                        .distinct()
+                    )
+                ).all()
+            )
+            fresh = await deps.freshness(db, "tt_boletines", "tt_trabajadores")
+        if p.empresa:
+            workers = [w for w in workers if normalize_key(p.empresa) in normalize_key(w.company or "")]
+        if p.departamento:
+            workers = [w for w in workers if normalize_key(p.departamento) in normalize_key(w.department or "")]
+        missing = [w for w in workers if w.sp_id not in worker_ids_with_boletin]
+        summary: dict[str, Any] = {
+            "desde": lo.isoformat(),
+            "hasta": hi.isoformat(),
+            "trabajadores_activos": len(workers),
+            "sin_boletin": len(missing),
+            "empresa": p.empresa or "todas",
+            "departamento": p.departamento or "todos",
+            **fresh,
+        }
+        if len(missing) <= MAX_ROWS_FOR_MODEL:
+            summary["trabajadores_sin_boletin"] = [
+                {"nombre": w.name, "empresa": w.company, "departamento": w.department} for w in missing
+            ]
+        return ToolResult(
+            ToolStatus.OK,
+            summary,
+            table(
+                f"ETT sin boletín ({lo.isoformat()} – {hi.isoformat()})",
+                ["Nombre", "Empresa", "Departamento"],
+                [[w.name, w.company, w.department] for w in missing],
+            ),
+        )
+
+    return Tool(
+        "boletines_faltantes_tt",
+        "Trabajadores de ETT visibles que no tienen ningún boletín de horas en el periodo indicado "
+        "(por defecto, el mes en curso). Responde «¿hay trabajadores ETT sin boletín este mes?».",
+        BoletinesFaltantesParams,
+        handler,
+        permission=Permission.TRABAJO_TEMPORAL_LEER,
+        audit_resource="trabajo_temporal",
+    )
+
+
+# ------------------------------------------------------------------ variación de coste ETT
+class VariacionCosteTtParams(BaseModel):
+    empresa: str | None = None
+    departamento: str | None = None
+    desde_ref: date | None = Field(
+        default=None,
+        description="Inicio del periodo de referencia (por defecto: inicio del mes anterior)",
+    )
+    hasta_ref: date | None = Field(
+        default=None,
+        description="Fin del periodo de referencia (por defecto: fin del mes anterior)",
+    )
+    desde_actual: date | None = Field(
+        default=None,
+        description="Inicio del periodo actual (por defecto: inicio del mes en curso)",
+    )
+    hasta_actual: date | None = Field(
+        default=None,
+        description="Fin del periodo actual (por defecto: hoy)",
+    )
+
+
+def variacion_coste(deps: Deps) -> Tool:
+    async def handler(p: VariacionCosteTtParams, ctx: ToolContext) -> ToolResult:
+        today = ctx.now.date()
+        lo_actual = p.desde_actual or today.replace(day=1)
+        hi_actual = p.hasta_actual or today
+        if not p.desde_ref and not p.hasta_ref:
+            last_of_prev = today.replace(day=1) - timedelta(days=1)
+            lo_ref: date = last_of_prev.replace(day=1)
+            hi_ref: date = last_of_prev
+        else:
+            prev_last = today.replace(day=1) - timedelta(days=1)
+            lo_ref = p.desde_ref or prev_last.replace(day=1)
+            hi_ref = p.hasta_ref or prev_last
+
+        async with deps.db.session() as db:
+
+            async def _fetch(lo: date, hi: date) -> list[TtTimesheet]:
+                stmt = select(TtTimesheet).where(TtTimesheet.day.between(lo, hi))
+                if p.departamento:
+                    stmt = stmt.where(TtTimesheet.department_key.like(f"%{normalize_key(p.departamento)}%"))
+                return list((await db.scalars(stmt)).all())
+
+            rows_ref = await _fetch(lo_ref, hi_ref)
+            rows_actual = await _fetch(lo_actual, hi_actual)
+            fresh = await deps.freshness(db, "tt_boletines")
+
+        if p.empresa:
+            key = normalize_key(p.empresa)
+            rows_ref = [r for r in rows_ref if key in normalize_key(r.company or "")]
+            rows_actual = [r for r in rows_actual if key in normalize_key(r.company or "")]
+
+        importe_ref = round(sum(r.amount or 0 for r in rows_ref), 2)
+        importe_actual = round(sum(r.amount or 0 for r in rows_actual), 2)
+        horas_ref = round(sum(r.hours_total or 0 for r in rows_ref), 2)
+        horas_actual = round(sum(r.hours_total or 0 for r in rows_actual), 2)
+
+        def _pct(before: float, after: float) -> str:
+            if before == 0:
+                return "N/A"
+            return f"{(after - before) / before * 100:+.1f}%"
+
+        delta_importe = round(importe_actual - importe_ref, 2)
+        delta_horas = round(horas_actual - horas_ref, 2)
+        delta_boletines = len(rows_actual) - len(rows_ref)
+
+        return ToolResult(
+            ToolStatus.OK,
+            {
+                "empresa": p.empresa or "todas",
+                "departamento": p.departamento or "todos",
+                "referencia": {
+                    "desde": lo_ref.isoformat(),
+                    "hasta": hi_ref.isoformat(),
+                    "boletines": len(rows_ref),
+                    "horas": horas_ref,
+                    "importe": importe_ref,
+                },
+                "actual": {
+                    "desde": lo_actual.isoformat(),
+                    "hasta": hi_actual.isoformat(),
+                    "boletines": len(rows_actual),
+                    "horas": horas_actual,
+                    "importe": importe_actual,
+                },
+                "variacion": {
+                    "importe": delta_importe,
+                    "importe_pct": _pct(importe_ref, importe_actual),
+                    "horas": delta_horas,
+                    "horas_pct": _pct(horas_ref, horas_actual),
+                    "boletines": delta_boletines,
+                },
+                **fresh,
+            },
+            table(
+                "Variación coste ETT",
+                ["Concepto", "Referencia", "Actual", "Variación"],
+                [
+                    ["Importe (€)", importe_ref, importe_actual, f"{_pct(importe_ref, importe_actual)} ({delta_importe:+.2f} €)"],
+                    ["Horas", horas_ref, horas_actual, f"{_pct(horas_ref, horas_actual)} ({delta_horas:+.2f} h)"],
+                    ["Boletines", len(rows_ref), len(rows_actual), f"{delta_boletines:+d}"],
+                ],
+            ),
+        )
+
+    return Tool(
+        "variacion_coste_tt",
+        "Compara coste, horas y boletines de ETT entre dos periodos. Por defecto compara el mes en curso con el "
+        "mes anterior. Responde «¿qué variación de coste de ETT hay respecto al mes pasado?».",
+        VariacionCosteTtParams,
+        handler,
+        permission=Permission.TRABAJO_TEMPORAL_LEER,
+        audit_resource="trabajo_temporal",
+    )
+
+
 def register(registry: ToolRegistry, deps: Deps) -> None:
-    for factory in (trabajadores, boletines, estimar_coste, anomalias, comunicaciones):
+    for factory in (
+        trabajadores,
+        boletines,
+        boletines_faltantes,
+        variacion_coste,
+        estimar_coste,
+        anomalias,
+        comunicaciones,
+        tarifas_tt,
+        contactos_ett,
+        ett_hoy,
+    ):
         registry.register(factory(deps))

@@ -20,6 +20,10 @@ const voiceToggle = document.getElementById("voiceToggle");
 const panel = document.getElementById("panel");
 
 const scene = new MiaScene(document.getElementById("canvas-root"));
+// Camera framing: face-level shot so the character looks frontal, not upward.
+// The head-tracking in scene._loop() will converge ~3° upward from here — natural.
+scene.camera.position.set(0, 1.62, 5.2);
+scene.target.set(0, 1.55, 0);
 const client = new MiaClient();
 const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
 let voiceEnabled = true;
@@ -220,6 +224,15 @@ async function submit(text) {
   busy = true;
   sendButton.disabled = true;
   clearTimeout(_wanderTimer);
+
+  // Animate the most recent presentation bubble out before the new query
+  const prevBubbles = conversation.querySelectorAll(".presentation-bubble.is-visible");
+  const prevBubble = prevBubbles[prevBubbles.length - 1] ?? null;
+  if (prevBubble) {
+    prevBubble.classList.remove("is-visible");
+    prevBubble.classList.add("is-leaving");
+  }
+
   stage.reset();
   addBubble("user", escapeHtml(text));
 

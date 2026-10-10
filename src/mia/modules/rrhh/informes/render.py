@@ -107,6 +107,38 @@ def to_xlsx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
     return buffer.getvalue()
 
 
+def _smart_col_widths(columns: list[str], rows: list[list[Any]], total: float) -> list[float]:
+    """Distribute column widths proportionally: text-heavy first column gets more space,
+    short numeric columns stay narrow."""
+    import re as _re  # noqa: PLC0415
+
+    n = len(columns)
+    if n <= 1:
+        return [total]
+    sample = rows[:80]
+    max_lens = [
+        max(len(str(columns[c])), max((len(str(r[c])) for r in sample if len(r) > c), default=0))
+        for c in range(n)
+    ]
+    # Numeric-looking columns cap at a shorter max
+    for c in range(1, n):
+        is_numeric = all(
+            _re.match(r"^[\d\s€%/,.\-—]+$", str(r[c])) for r in sample[:20] if len(r) > c and str(r[c]).strip()
+        )
+        if is_numeric:
+            max_lens[c] = min(max_lens[c], 12)
+    total_chars = sum(max_lens) or 1
+    raw = [total * length / total_chars for length in max_lens]
+    # First column minimum 25% of total, max 55%
+    raw[0] = max(raw[0], total * 0.25)
+    raw[0] = min(raw[0], total * 0.55)
+    # Rescale remaining to fill exactly
+    rest = total - raw[0]
+    rest_sum = sum(raw[1:]) or 1
+    raw[1:] = [v * rest / rest_sum for v in raw[1:]]
+    return raw
+
+
 # ------------------------------------------------------------------ PDF
 def _pdf_chart(spec: dict[str, Any], width: float) -> Any:
     from reportlab.graphics.charts.barcharts import HorizontalBarChart, VerticalBarChart  # noqa: PLC0415
@@ -280,10 +312,12 @@ def to_pdf(doc: Document, generated: datetime, logo: Path | None = None) -> byte
         parts: list[Any] = [Spacer(1, 0.05 * cm) if same_title else heading(block.title), Spacer(1, 0.25 * cm)]
         if block.kind == "kpis":
             items = list(block.data.items())
-            per_row = min(4, max(1, len(items)))
+            # 5 per row when there are many KPIs (executive reports); else 4.
+            per_row = 5 if len(items) > 8 else min(4, max(1, len(items)))
+            kpi_w = (width - 0.3 * cm * per_row) / per_row
             cards = [
                 [
-                    Table([[para(v, kpi_value)], [para(k, kpi_label)]], colWidths=[width / per_row - 0.3 * cm])
+                    Table([[para(v, kpi_value)], [para(k, kpi_label)]], colWidths=[kpi_w])
                     for k, v in items[i : i + per_row]
                 ]
                 for i in range(0, len(items), per_row)
@@ -295,8 +329,8 @@ def to_pdf(doc: Document, generated: datetime, logo: Path | None = None) -> byte
                     [
                         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                        ("TOPPADDING", (0, 0), (-1, -1), 4),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                        ("TOPPADDING", (0, 0), (-1, -1), 5),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                     ]
                 )
             )
@@ -307,7 +341,9 @@ def to_pdf(doc: Document, generated: datetime, logo: Path | None = None) -> byte
                             TableStyle(
                                 [
                                     ("BACKGROUND", (col_index, row_index), (col_index, row_index), hexc(LIGHT)),
-                                    ("BOX", (col_index, row_index), (col_index, row_index), 0.6, hexc(LINE)),
+                                    ("BOX", (col_index, row_index), (col_index, row_index), 0.8, hexc(LINE)),
+                                    ("TOPPADDING", (col_index, row_index), (col_index, row_index), 8),
+                                    ("BOTTOMPADDING", (col_index, row_index), (col_index, row_index), 8),
                                 ]
                             )
                         )
@@ -331,9 +367,15 @@ def to_pdf(doc: Document, generated: datetime, logo: Path | None = None) -> byte
         else:
             if spec := _chart_of(block):
                 parts += [_pdf_chart(spec, width), Spacer(1, 0.2 * cm)]
+            col_widths = _smart_col_widths(columns, rows, width)
+            first_col_style = ParagraphStyle("fc", parent=cell, fontName="Helvetica-Bold", textColor=hexc(NAVY))
+
+            def _data_row(row: list[Any]) -> list[Any]:
+                return [para(v, first_col_style if i == 0 else cell) for i, v in enumerate(row)]
+
             grid = Table(
-                [[para(c, head) for c in columns]] + [[para(v, cell) for v in row] for row in rows],
-                colWidths=[width / max(1, len(columns))] * len(columns),
+                [[para(c, head) for c in columns]] + [_data_row(row) for row in rows],
+                colWidths=col_widths,
                 repeatRows=1,
             )
             grid.setStyle(
@@ -343,10 +385,11 @@ def to_pdf(doc: Document, generated: datetime, logo: Path | None = None) -> byte
                         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, hexc(LIGHT)]),
                         ("LINEBELOW", (0, 1), (-1, -1), 0.3, hexc(LINE)),
                         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                        ("TOPPADDING", (0, 0), (-1, -1), 4),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                        ("TOPPADDING", (0, 0), (-1, -1), 5),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                        ("LINEAFTER", (0, 0), (0, -1), 0.5, hexc(LINE)),
                     ]
                 )
             )

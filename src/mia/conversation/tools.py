@@ -8,7 +8,9 @@ determinista, validado y auditado.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
+import os
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -19,6 +21,8 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from mia.auth import Permission, UserContext
+from mia.diagnostics import EventStage, EventStatus, current_trace
+from mia.diagnostics.trace import _current_call_id as _diag_call_id
 from mia.llm import ToolCall, ToolSchema
 from mia.observability import get_logger
 
@@ -43,6 +47,8 @@ class ToolContext:
     session_state: dict[str, Any] = field(default_factory=dict)
     user_message: str = ""
     """Mensaje del usuario en este turno (para acciones que exigen confirmación explícita)."""
+    attachment_service: Any | None = None
+    """AttachmentService inyectado cuando la funcionalidad está activa."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,8 +148,75 @@ class ToolRegistry:
     async def execute(self, call: ToolCall, ctx: ToolContext) -> ToolExecution:
         started = time.perf_counter()
         tool = self._tools.get(call.name)
-        result = await self._run(tool, call, ctx)
+        trace = current_trace()
+
+        try:
+            args = json.loads(call.arguments or "{}")
+        except json.JSONDecodeError:
+            args = {}
+
+        # Recopilar información de origen de la herramienta para el grafo de llamadas
+        source_file: str | None = None
+        source_module: str | None = None
+        source_function: str | None = None
+        if tool is not None:
+            source_module = getattr(tool.handler, "__module__", None)
+            source_function = getattr(tool.handler, "__qualname__", None)
+            try:
+                raw_path = inspect.getfile(tool.handler)
+                # Normalizar a ruta relativa desde src/
+                raw_path = raw_path.replace("\\", "/")
+                idx = raw_path.find("/src/")
+                source_file = raw_path[idx + 1:] if idx >= 0 else os.path.basename(raw_path)
+            except (TypeError, OSError):
+                pass
+
+        if trace is not None:
+            trace.emit(EventStage.TOOL_CALL_START, data={
+                "tool": call.name,
+                "args": args,
+                "call_id": call.call_id,
+                "source_file": source_file,
+                "source_module": source_module,
+                "source_function": source_function,
+            })
+
+        # Fijar el call_id en el ContextVar para que el código de dominio pueda linkear nodos SQL
+        _call_id_token = _diag_call_id.set(call.call_id) if trace is not None else None
+        try:
+            result = await self._run(tool, call, ctx)
+        finally:
+            if _call_id_token is not None:
+                _diag_call_id.reset(_call_id_token)
+
         elapsed = int((time.perf_counter() - started) * 1000)
+        is_error = result.status.value in ("error", "source_unavailable", "permission_denied")
+
+        if trace is not None:
+            trace.emit(
+                EventStage.TOOL_CALL_ERROR if is_error else EventStage.TOOL_CALL_COMPLETE,
+                status=EventStatus.ERROR if is_error else EventStatus.SUCCESS,
+                duration_ms=elapsed,
+                data={"tool": call.name, "status": result.status.value},
+            )
+            # Añadir nodo al grafo de ejecución
+            args_preview = ", ".join(
+                f"{k}={v}" for k, v in args.items() if v is not None and v is not False
+            )[:100]
+            trace.add_call_graph_node({
+                "id": f"tool:{call.name}:{call.call_id}",
+                "kind": "tool_call",
+                "label": f"{call.name}({args_preview})" if args_preview else call.name,
+                "file": source_file,
+                "module": source_module,
+                "function": source_function,
+                "args": args,
+                "call_id": call.call_id,
+                "duration_ms": elapsed,
+                "status": "error" if is_error else "ok",
+                "parent_id": "engine:root",
+            })
+
         log.info("tool.executed", tool=call.name, status=result.status.value, elapsed_ms=elapsed)
         return ToolExecution(call, result, elapsed, tool.audit_resource if tool else None)
 
@@ -173,7 +246,12 @@ class ToolRegistry:
 LAST_TABLE = "ultima_presentacion"
 
 
-def remember_table(state: dict[str, Any], presentation: dict[str, Any] | None, max_rows: int) -> None:
+def remember_table(
+    state: dict[str, Any],
+    presentation: dict[str, Any] | None,
+    max_rows: int,
+    summary: Any = None,
+) -> None:
     """Guarda el último resultado mostrado (tabla, panel, ficha 360…) para convertirlo en informe."""
     if not presentation or presentation.get("type") in {None, "download"}:
         return
@@ -182,6 +260,8 @@ def remember_table(state: dict[str, Any], presentation: dict[str, Any] | None, m
         stored["rows"] = list(stored.get("rows") or [])[:max_rows]
     for sub_table in stored.get("tables") or []:
         sub_table["rows"] = list(sub_table.get("rows") or [])[:max_rows]
+    if isinstance(summary, dict):
+        stored["__summary__"] = dict(summary)
     state[LAST_TABLE] = stored
 
 

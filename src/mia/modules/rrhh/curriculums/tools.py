@@ -38,7 +38,7 @@ def _candidate_view(c: Candidate) -> dict[str, Any]:
         "nombre": c.name,
         "departamento": c.department,
         "estado": c.status,
-        "fecha": fmt_date(c.applied_on),
+        "fecha": fmt_date(c.applied_on or (c.created_at.date() if c.created_at else None)),
         "idiomas": c.languages,
     }
 
@@ -68,25 +68,49 @@ def parecidos(deps: Deps) -> Tool:
             candidates = {c.sp_id: c for c in (await db.scalars(stmt)).all()}
             hits = await index.search(db, vector, allowed=set(candidates), limit=p.limite)
             fresh = await deps.freshness(db, "curriculums", "cv_docs")
-        if not hits:
-            return ToolResult(
-                ToolStatus.NOT_FOUND,
-                {"mensaje": "Ningún CV indexado encaja con la búsqueda y los filtros.", **fresh},
-            )
-        seen: set[str] = set()
+            if not hits:
+                return ToolResult(
+                    ToolStatus.NOT_FOUND,
+                    {"mensaje": "Ningún CV indexado encaja con la búsqueda y los filtros.", **fresh},
+                )
+            # Deduplicar por persona; recoger IDs de las candidaturas seleccionadas
+            seen_people: set[str] = set()
+            selected_ids: set[int] = set()
+            for h in hits:
+                c = candidates[h.candidate_id]
+                key = person_identity(c)
+                if key not in seen_people:
+                    seen_people.add(key)
+                    selected_ids.add(h.candidate_id)
+            docs: dict[int, int] = {
+                cid: did
+                for did, cid in (
+                    await db.execute(
+                        select(CvDocument.sp_id, CvDocument.candidate_id).where(
+                            CvDocument.candidate_id.in_(selected_ids)
+                        )
+                    )
+                ).all()
+            }
         results = []
-        for h in hits:  # una persona con varias candidaturas aparece una vez (fallo real: «dos CV» del mismo)
+        seen2: set[str] = set()
+        for h in hits:  # mantener el orden original de relevancia
             c = candidates[h.candidate_id]
             key = person_identity(c)
-            if key in seen:
+            if key in seen2:
                 continue
-            seen.add(key)
+            seen2.add(key)
             results.append({**_candidate_view(c), "evidencia": h.evidence})
+        cv_documents = [
+            document_entry("cv", docs[r["candidato_id"]], f"CV de {r['nombre']}")
+            for r in results
+            if r["candidato_id"] in docs
+        ]
         rows = [[r["nombre"], r["departamento"], r["estado"], r["fecha"], r["evidencia"][:160]] for r in results]
         return ToolResult(
             ToolStatus.OK,
             {"consulta": p.consulta, "coincidencias": results, "regla": RULE, **fresh},
-            table(f"CVs: {p.consulta}", ["Candidatura", "Departamento", "Estado", "Fecha", "Evidencia"], rows),
+            {**table(f"CVs: {p.consulta}", ["Candidatura", "Departamento", "Estado", "Fecha", "Evidencia"], rows), "documents": cv_documents},
         )
 
     return Tool(
@@ -104,7 +128,7 @@ def parecidos(deps: Deps) -> Tool:
 class CandidaturasParams(BaseModel):
     departamento: str | None = None
     estado: str | None = None
-    desde: date | None = Field(default=None, description="Recibidas desde AAAA-MM-DD")
+    desde: date | None = Field(default=None, description="Recibidas desde AAAA-MM-DD (por fecha de candidatura o, si no existe, por fecha de alta en el sistema)")
     hasta: date | None = Field(default=None, description="Recibidas hasta AAAA-MM-DD")
 
 
@@ -116,12 +140,21 @@ def candidaturas(deps: Deps) -> Tool:
                 stmt = stmt.where(Candidate.department_key.like(f"%{normalize_key(p.departamento)}%"))
             if p.estado:
                 stmt = stmt.where(Candidate.status.ilike(f"%{p.estado}%"))
-            if p.desde:
-                stmt = stmt.where(Candidate.applied_on >= p.desde)
-            if p.hasta:
-                stmt = stmt.where(Candidate.applied_on <= p.hasta)
-            rows = list((await db.scalars(stmt.order_by(Candidate.applied_on.desc()))).all())
+            rows = list((await db.scalars(stmt.order_by(Candidate.created_at.desc()))).all())
             fresh = await deps.freshness(db, "curriculums")
+
+        # Filtrar por fecha: applied_on si está relleno, si no created_at
+        if p.desde or p.hasta:
+            def _entry_date(c: Candidate) -> date | None:
+                if c.applied_on:
+                    return c.applied_on
+                return c.created_at.date() if c.created_at else None
+
+            if p.desde:
+                rows = [c for c in rows if (d := _entry_date(c)) and d >= p.desde]
+            if p.hasta:
+                rows = [c for c in rows if (d := _entry_date(c)) and d <= p.hasta]
+
         summary: dict[str, Any] = {
             "total": len(rows),
             "por_estado": dict(Counter(c.status or "Sin estado" for c in rows).most_common()),
@@ -136,13 +169,16 @@ def candidaturas(deps: Deps) -> Tool:
             table(
                 "Candidaturas",
                 ["Nombre", "Departamento", "Estado", "Fecha"],
-                [[c.name, c.department, c.status, fmt_date(c.applied_on)] for c in rows],
+                [[c.name, c.department, c.status, fmt_date(c.applied_on or (c.created_at.date() if c.created_at else None))] for c in rows],
             ),
         )
 
     return Tool(
         "candidaturas",
-        "Recuento y lista de candidaturas por departamento, estado o fechas.",
+        "Recuento y lista de candidaturas por departamento, estado o fechas. "
+        "El filtro de fecha usa la fecha de candidatura (campo Fecha de SP) y, si no está rellena, "
+        "la fecha de alta en el sistema (campo Created automático). "
+        "Responde «¿cuántas candidaturas nuevas hay este mes?».",
         CandidaturasParams,
         handler,
         permission=Permission.CURRICULUMS_LEER,
@@ -238,8 +274,13 @@ class Requisito(BaseModel):
     termino: str = Field(description="Requisito tal como lo pide el usuario: «inglés», «cocina japonesa», «carné B»")
     equivalentes: list[str] = Field(
         default_factory=list,
-        description="Formas en que puede aparecer escrito en un CV: sinónimos, traducciones, especialidades, "
-        "niveles (p. ej. cocina japonesa → japonesa, japanese, sushi, washoku, itamae, ramen). Añádelos siempre.",
+        description=(
+            "Formas en que puede aparecer escrito en un CV: sinónimos, traducciones, especialidades, niveles. "
+            "Ejemplos: inglés → english, inglés; cocina japonesa → japonesa, japanese, sushi, washoku, itamae. "
+            "IMPORTANTE: para cocinas nacionales («cocina italiana», «cocina japonesa») usa solo términos culinarios; "
+            "NO añadas el gentilicio del idioma (no uses «italiano» para «cocina italiana»: "
+            "buscaría también a candidatos cuyo único italiano es el idioma). Añade siempre los equivalentes relevantes."
+        ),
     )
 
 
@@ -295,11 +336,12 @@ def buscar(deps: Deps) -> Tool:
 
     return Tool(
         "buscar_candidatos",
-        "Busca candidaturas que cumplan uno o varios requisitos (idiomas, experiencia, especialidad, formación…). "
+        "Busca candidaturas que cumplan uno o varios requisitos (idiomas, experiencia, especialidad, formación, "
+        "disponibilidad para incorporación inmediata…). "
         "Comprueba cada requisito primero en los METADATOS de la candidatura (columnas de SharePoint) y, si no "
-        "está ahí, en el DOCUMENTO CV; dice dónde se cumple cada uno, con el fragmento que lo demuestra, y cuenta "
-        "candidaturas y personas únicas. Pasa CADA requisito pedido y sus equivalentes. Para un perfil descrito "
-        "en general, sin requisitos concretos, usa candidatos_parecidos.",
+        "está ahí, en el DOCUMENTO CV y comentarios; dice dónde se cumple cada uno, con el fragmento que lo "
+        "demuestra, y cuenta candidaturas y personas únicas. Pasa CADA requisito pedido y sus equivalentes. "
+        "Para un perfil descrito en general, sin requisitos concretos, usa candidatos_parecidos.",
         BuscarParams,
         handler,
         permission=Permission.CURRICULUMS_LEER,
@@ -380,7 +422,15 @@ def _result(  # noqa: PLR0917
             -(m.candidate.applied_on or date.min).toordinal(),
         )
     )
-    shown = (full + possible)[: p.mostrar]
+    # Una persona con varias candidaturas aparece una sola vez (la más reciente / con más metadatos).
+    _seen: set[str] = set()
+    _deduped: list[Match] = []
+    for _m in full + possible:
+        _k = person_identity(_m.candidate)
+        if _k not in _seen:
+            _seen.add(_k)
+            _deduped.append(_m)
+    shown = _deduped[: p.mostrar]
     per_requirement = {
         r.termino: dict(Counter(m.evidence[i].where for m in matches if m.evidence[i].where != "no"))
         for i, r in enumerate(p.requisitos)

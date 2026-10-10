@@ -1,0 +1,314 @@
+# Categoría: agregación
+# Suma, media, máximo, mínimo, mediana, totales por grupo.
+
+- prompt: "salario medio de la empresa"
+  domain: nominas
+  tags: [media, salario, total]
+
+- prompt: "salario medio por departamento"
+  domain: nominas
+  tags: [media, salario, departamento]
+
+- prompt: "media de días de ausencia por empleado este año"
+  domain: turnos
+  tags: [media, ausencias, empleado]
+
+- prompt: "media de antigüedad de los empleados"
+  domain: empleados
+  tags: [media, antigüedad]
+
+- prompt: "edad media de la plantilla"
+  domain: empleados
+  tags: [media, edad]
+
+- prompt: "edad media por departamento"
+  domain: empleados
+  tags: [media, edad, departamento]
+
+- prompt: "antigüedad media por puesto de trabajo"
+  domain: empleados
+  tags: [media, antigüedad, puesto]
+
+- prompt: "suma total de salarios brutos de la empresa este mes"
+  domain: nominas
+  tags: [suma, salario, total]
+
+- prompt: "coste salarial total por departamento"
+  domain: nominas
+  tags: [suma, salario, departamento]
+
+- prompt: "total de días de vacaciones pendientes en la empresa"
+  domain: vacaciones
+  tags: [suma, vacaciones, saldo, total]
+
+- prompt: "total de días de ausencia por departamento este año"
+  domain: turnos
+  tags: [suma, ausencias, departamento, año]
+
+- prompt: "media de días de vacaciones disfrutados por empleado"
+  domain: vacaciones
+  tags: [media, vacaciones, empleado]
+
+- prompt: "salario máximo en el departamento de IT"
+  domain: nominas
+  tags: [máximo, salario, departamento]
+
+- prompt: "salario mínimo en la empresa"
+  domain: nominas
+  tags: [mínimo, salario, total]
+
+- prompt: "salario mínimo y máximo por departamento"
+  domain: nominas
+  tags: [mínimo, máximo, salario, departamento]
+
+- prompt: "media de horas de turno por empleado"
+  domain: turnos
+  tags: [media, horas_turno]
+
+- prompt: "máximo de ausencias registradas por un empleado en un mes"
+  domain: turnos
+  tags: [máximo, ausencias, mes]
+
+- prompt: "media de solicitudes de vacaciones por mes"
+  domain: vacaciones
+  tags: [media, vacaciones, solicitudes, mes]
+
+- prompt: "total de complementos pagados por departamento"
+  domain: nominas
+  tags: [suma, complementos, departamento]
+
+- prompt: "media de IRPF retenido por empleado"
+  domain: nominas
+  tags: [media, irpf]
+
+- prompt: "total de cotización a la seguridad social por mes"
+  domain: nominas
+  tags: [suma, cotización, mes]
+
+- prompt: "media de días de baja por empleado en el último año"
+  domain: turnos
+  tags: [media, bajas, empleado]
+
+- prompt: "días totales de ausencia acumulados en 2024"
+  domain: turnos
+  tags: [suma, ausencias, 2024]
+
+- prompt: "antigüedad media de los empleados por centro de trabajo"
+  domain: empleados
+  tags: [media, antigüedad, centro]
+
+- prompt: "edad media de contratación histórica"
+  domain: empleados
+  tags: [media, edad_contratación]
+
+- prompt: "promedio de empleados por departamento"
+  domain: empleados
+  tags: [media, empleados, departamento]
+
+- prompt: "promedio salarial de los técnicos"
+  domain: nominas
+  tags: [media, salario, puesto_técnico]
+
+- prompt: "media de días de vacaciones aprobados por solicitud"
+  domain: vacaciones
+  tags: [media, vacaciones, aprobados]
+
+- prompt: "total de nóminas pagadas en el primer semestre"
+  domain: nominas
+  tags: [suma, nominas, semestre]
+
+- prompt: "coste salarial total anual estimado"
+  domain: nominas
+  tags: [suma, salario, año]
+
+- prompt: "media de ausencias por tipo en el último año"
+  domain: turnos
+  tags: [media, ausencias, tipo, año]
+
+- prompt: "total de días de vacaciones solicitados en agosto"
+  domain: vacaciones
+  tags: [suma, vacaciones, agosto]
+
+- prompt: "promedio de documentos por empleado"
+  domain: documentos
+  tags: [media, documentos, empleado]
+
+- prompt: "media de empleados incorporados por mes"
+  domain: empleados
+  tags: [media, altas, mes]
+
+- prompt: "suma de horas extras pagadas en el último trimestre"
+  domain: nominas
+  tags: [suma, horas_extras, trimestre]
+
+- prompt: "media de incremento salarial en los últimos 3 años"
+  domain: nominas
+  tags: [media, incremento, histórico]
+
+- prompt: "total de personas en situación de baja en cada mes del año"
+  domain: turnos
+  tags: [suma, bajas, mensual, año]
+
+- prompt: "días de vacaciones medios por empleado en cada departamento"
+  domain: vacaciones
+  tags: [media, vacaciones, departamento, per_capita]
+
+- prompt: "coste medio de una baja por departamento"
+  domain: turnos
+  tags: [media, coste_baja, departamento]
+
+- prompt: "máximo histórico de personas en baja simultánea"
+  domain: turnos
+  tags: [máximo, bajas_simultáneas, histórico]
+
+- prompt: "media de años de antigüedad de los empleados a tiempo parcial"
+  domain: empleados
+  tags: [media, antigüedad, jornada_parcial]
+
+- prompt: "salario medio de hombres versus mujeres en la empresa"
+  domain: nominas
+  tags: [media, salario, género]
+
+- prompt: "brecha salarial media en el departamento de ventas"
+  domain: nominas
+  tags: [media, brecha_salarial, departamento]
+
+- prompt: "total de días de permiso retribuido usados este año"
+  domain: turnos
+  tags: [suma, permisos, año]
+
+- prompt: "media de días entre solicitud y aprobación de vacaciones"
+  domain: vacaciones
+  tags: [media, tiempo_aprobación]
+
+- prompt: "suma de salarios brutos de los empleados dados de alta este año"
+  domain: nominas
+  tags: [suma, salario, altas_nuevas]
+
+- prompt: "media de ausencias de los empleados de más de 50 años"
+  domain: turnos
+  tags: [media, ausencias, mayores_50]
+
+- prompt: "máximo de vacaciones disfrutadas en un mes por un empleado"
+  domain: vacaciones
+  tags: [máximo, vacaciones, empleado, mes]
+
+- prompt: "media de empleados por turno en el departamento de producción"
+  domain: turnos
+  tags: [media, empleados, turno, producción]
+
+- prompt: "total de retenciones de IRPF del año"
+  domain: nominas
+  tags: [suma, irpf, año]
+
+- prompt: "promedio de correos recibidos por día"
+  domain: correo
+  tags: [media, correo, diario]
+
+- prompt: "media de edad de los empleados por tipo de contrato"
+  domain: empleados
+  tags: [media, edad, contrato]
+
+- prompt: "suma de complementos de turnicidad por departamento"
+  domain: nominas
+  tags: [suma, complemento_turnicidad, departamento]
+
+- prompt: "media de días trabajados por empleado este mes"
+  domain: turnos
+  tags: [media, días_trabajados, mes]
+
+- prompt: "total de horas teóricas planificadas vs reales en el mes"
+  domain: turnos
+  tags: [suma, horas, planificado_vs_real]
+
+- prompt: "media del porcentaje de jornada a tiempo parcial"
+  domain: empleados
+  tags: [media, porcentaje_jornada]
+
+- prompt: "máximo de salario bruto histórico en la empresa"
+  domain: nominas
+  tags: [máximo, salario, histórico]
+
+- prompt: "mínimo de ausencias en un departamento el año pasado"
+  domain: turnos
+  tags: [mínimo, ausencias, departamento, año]
+
+- prompt: "total de días de reducción de jornada disfrutados este año"
+  domain: empleados
+  tags: [suma, reducción_jornada, año]
+
+- prompt: "media de empleados nuevos por departamento cada año"
+  domain: empleados
+  tags: [media, altas, departamento, año]
+
+- prompt: "suma total de complementos variables pagados en 2024"
+  domain: nominas
+  tags: [suma, complementos_variables, 2024]
+
+- prompt: "antigüedad media de empleados en excedencia"
+  domain: empleados
+  tags: [media, antigüedad, excedencia]
+
+- prompt: "promedio salarial del departamento de logística"
+  domain: nominas
+  tags: [media, salario, logística]
+
+- prompt: "total de solicitudes de vacaciones en el año"
+  domain: vacaciones
+  tags: [suma, solicitudes, año]
+
+- prompt: "media de retención de IRPF por grupo de cotización"
+  domain: nominas
+  tags: [media, irpf, cotización]
+
+- prompt: "suma de salarios base más complementos de toda la empresa"
+  domain: nominas
+  tags: [suma, salario_total, empresa]
+
+- prompt: "media de días de ausencia en el primer y segundo semestre comparados"
+  domain: turnos
+  tags: [media, ausencias, semestre, comparación]
+
+- prompt: "total de vacaciones rechazadas este año"
+  domain: vacaciones
+  tags: [suma, vacaciones, rechazadas, año]
+
+- prompt: "media de empleados por nivel salarial"
+  domain: nominas
+  tags: [media, empleados, nivel_salarial]
+
+- prompt: "suma de días de excedencia voluntaria acumulados"
+  domain: empleados
+  tags: [suma, excedencia, histórico]
+
+- prompt: "máximo de complementos cobrados por un empleado en un mes"
+  domain: nominas
+  tags: [máximo, complementos, empleado, mes]
+
+- prompt: "media de altas y bajas mensuales en el año pasado"
+  domain: empleados
+  tags: [media, altas, bajas, mensual]
+
+- prompt: "total de cotización empresa del año actual"
+  domain: nominas
+  tags: [suma, cotización_empresa, año]
+
+- prompt: "media de la brecha entre salario mínimo y máximo por departamento"
+  domain: nominas
+  tags: [media, brecha, departamento]
+
+- prompt: "suma total de nóminas procesadas este ejercicio"
+  domain: nominas
+  tags: [suma, nominas, ejercicio]
+
+- prompt: "media de duración de ausencias por motivo"
+  domain: turnos
+  tags: [media, ausencias, duración, motivo]
+
+- prompt: "suma de días de permiso no retribuido usados este año"
+  domain: turnos
+  tags: [suma, permiso_no_retribuido, año]
+
+- prompt: "media salarial de los empleados de menos de 30 años"
+  domain: nominas
+  tags: [media, salario, jóvenes]

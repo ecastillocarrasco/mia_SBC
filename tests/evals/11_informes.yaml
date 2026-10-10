@@ -1,0 +1,258 @@
+# Categoría: informes
+# Generación de documentos compuestos (PDF/Excel/PowerPoint) a partir de datos.
+
+- prompt: "genera un informe de absentismo del último trimestre"
+  domain: informes
+  tags: [informe, absentismo, trimestre]
+
+- prompt: "crea un informe en PDF con los datos de Ana García"
+  domain: informes
+  tags: [informe, pdf, persona]
+
+- prompt: "quiero un informe de nóminas del departamento de IT en Excel"
+  domain: informes
+  tags: [informe, excel, nominas, departamento]
+
+- prompt: "genera un informe comparativo de absentismo entre departamentos"
+  domain: informes
+  tags: [informe, comparativa, absentismo]
+
+- prompt: "prepárame una presentación con los KPIs de RRHH de este trimestre"
+  domain: informes
+  tags: [informe, powerpoint, kpi]
+
+- prompt: "informe anual de plantilla por departamento"
+  domain: informes
+  tags: [informe, plantilla, anual]
+
+- prompt: "genera un informe de vacaciones pendientes de toda la empresa"
+  domain: informes
+  tags: [informe, vacaciones, empresa]
+
+- prompt: "informe de altas y bajas del año en PDF"
+  domain: informes
+  tags: [informe, pdf, altas, bajas]
+
+- prompt: "crea un informe de salarios por departamento en Excel"
+  domain: informes
+  tags: [informe, excel, salarios, departamento]
+
+- prompt: "genérame un informe ejecutivo del estado de RRHH"
+  domain: informes
+  tags: [informe, ejecutivo]
+
+- prompt: "informe de rotación de personal del último año"
+  domain: informes
+  tags: [informe, rotación, anual]
+
+- prompt: "quiero un informe detallado de la ficha 360 de Carlos Sánchez"
+  domain: informes
+  tags: [informe, ficha_360, persona]
+
+- prompt: "genera un informe de evolución salarial de los últimos 3 años"
+  domain: informes
+  tags: [informe, evolución, salarial]
+
+- prompt: "crea un dosier con el absentismo y las vacaciones de cada departamento"
+  domain: informes
+  tags: [informe, multidominio, departamento]
+
+- prompt: "informe mensual de cobertura de turnos"
+  domain: informes
+  tags: [informe, cobertura, mensual]
+
+- prompt: "genera el informe estándar de cierre de mes de RRHH"
+  domain: informes
+  tags: [informe, cierre_mes]
+
+- prompt: "prepárame un informe en PowerPoint para la reunión de dirección"
+  domain: informes
+  tags: [informe, powerpoint, dirección]
+
+- prompt: "informe de candidatos preseleccionados para el puesto de analista"
+  domain: informes
+  tags: [informe, curriculums, selección]
+
+- prompt: "genera un informe de la jubilación prevista en los próximos 2 años"
+  domain: informes
+  tags: [informe, jubilación, previsión]
+
+- prompt: "crea un informe con el ranking de absentismo por departamento"
+  domain: informes
+  tags: [informe, ranking, absentismo]
+
+- prompt: "informe de empleados con documentación pendiente de firmar"
+  domain: informes
+  tags: [informe, documentos, pendientes]
+
+- prompt: "genera un informe de brecha salarial de género"
+  domain: informes
+  tags: [informe, brecha_salarial, género]
+
+- prompt: "quiero un informe trimestral en PDF de la evolución de plantilla"
+  domain: informes
+  tags: [informe, pdf, trimestral, plantilla]
+
+- prompt: "crea un informe con el detalle de nóminas de todos los empleados de este mes"
+  domain: informes
+  tags: [informe, nominas, mes]
+
+- prompt: "genera un informe resumen de vacaciones por departamento en Excel"
+  domain: informes
+  tags: [informe, excel, vacaciones, departamento]
+
+- prompt: "informe de incidencias de turno del último semestre"
+  domain: informes
+  tags: [informe, incidencias, semestre]
+
+- prompt: "prepárame un informe comparativo de coste salarial año contra año"
+  domain: informes
+  tags: [informe, comparativa, coste_salarial]
+
+- prompt: "genera el informe mensual de indicadores de RRHH"
+  domain: informes
+  tags: [informe, indicadores, mensual]
+
+- prompt: "crea un informe de empleados próximos a cumplir años de antigüedad clave"
+  domain: informes
+  tags: [informe, aniversarios]
+
+- prompt: "informe anual de absentismo por motivo"
+  domain: informes
+  tags: [informe, absentismo, motivo, anual]
+
+- prompt: "genera un informe de seguimiento de contratos temporales próximos a vencer"
+  domain: informes
+  tags: [informe, contrato, vencimiento]
+
+- prompt: "crea un dosier de candidatos para el puesto de técnico de sistemas"
+  domain: informes
+  tags: [informe, curriculums, puesto]
+
+- prompt: "informe de empleados con reducción de jornada activa"
+  domain: informes
+  tags: [informe, reducción_jornada]
+
+- prompt: "genera un informe de excedencias vigentes"
+  domain: informes
+  tags: [informe, excedencia]
+
+- prompt: "quiero un informe del coste total de horas extras del año"
+  domain: informes
+  tags: [informe, horas_extras, anual]
+
+- prompt: "crea un informe en Excel de empleados por centro de trabajo"
+  domain: informes
+  tags: [informe, excel, centros]
+
+- prompt: "genera un informe de empresas de trabajo temporal activas"
+  domain: informes
+  tags: [informe, ett]
+
+- prompt: "informe de cumplimiento de formación obligatoria por empleado"
+  domain: informes
+  tags: [informe, formación]
+
+- prompt: "prepárame un informe de seguimiento de bajas de larga duración"
+  domain: informes
+  tags: [informe, bajas_largas]
+
+- prompt: "genera un informe de candidatos descartados en el último proceso"
+  domain: informes
+  tags: [informe, curriculums, descartados]
+
+- prompt: "crea un informe con el detalle de incrementos salariales aplicados este año"
+  domain: informes
+  tags: [informe, incrementos, anual]
+
+- prompt: "informe de empleados sin ausencias registradas en el año"
+  domain: informes
+  tags: [informe, ausencias, negación]
+
+- prompt: "genera un informe de la distribución de la plantilla por convenio"
+  domain: informes
+  tags: [informe, convenio, distribución]
+
+- prompt: "quiero un informe de evolución de la masa salarial en Excel"
+  domain: informes
+  tags: [informe, excel, masa_salarial]
+
+- prompt: "crea un informe de seguimiento de los documentos firmados este mes"
+  domain: informes
+  tags: [informe, documentos, mensual]
+
+- prompt: "genera un informe de absentismo segmentado por tipo de contrato"
+  domain: informes
+  tags: [informe, absentismo, contrato]
+
+- prompt: "informe trimestral de incorporaciones y bajas por departamento"
+  domain: informes
+  tags: [informe, trimestral, altas_bajas, departamento]
+
+- prompt: "prepárame un informe de riesgo de rotación por departamento"
+  domain: informes
+  tags: [informe, rotación, riesgo]
+
+- prompt: "genera un informe del estado de las solicitudes de vacaciones del mes"
+  domain: informes
+  tags: [informe, vacaciones, mensual]
+
+- prompt: "crea un informe de empleados con certificado de discapacidad y sus adaptaciones"
+  domain: informes
+  tags: [informe, discapacidad]
+
+- prompt: "genera un informe de absentismo justificado vs no justificado"
+  domain: informes
+  tags: [informe, absentismo, justificación]
+
+- prompt: "quiero un informe del grado de cumplimiento del calendario de vacaciones"
+  domain: informes
+  tags: [informe, vacaciones, cumplimiento]
+
+- prompt: "crea un informe de evolución de plantilla por centro de trabajo"
+  domain: informes
+  tags: [informe, plantilla, centros]
+
+- prompt: "genera un informe de empleados con más de un contrato sucesivo"
+  domain: informes
+  tags: [informe, contratos_sucesivos]
+
+- prompt: "prepárame un informe de nóminas con desglose de IRPF y seguridad social"
+  domain: informes
+  tags: [informe, nominas, desglose]
+
+- prompt: "quiero un informe de absentismo por franja horaria"
+  domain: informes
+  tags: [informe, absentismo, franja_horaria]
+
+- prompt: "genera un informe resumen para el comité de empresa"
+  domain: informes
+  tags: [informe, comité_empresa]
+
+- prompt: "crea un informe de empleados con horas extra acumuladas sin compensar"
+  domain: informes
+  tags: [informe, horas_extras, pendientes]
+
+- prompt: "informe de diversidad de género por categoría profesional"
+  domain: informes
+  tags: [informe, género, categoría]
+
+- prompt: "genera un informe con el detalle de bajas médicas por departamento"
+  domain: informes
+  tags: [informe, bajas_médicas, departamento]
+
+- prompt: "crea un informe de evolución de la jornada laboral media por año"
+  domain: informes
+  tags: [informe, jornada, histórico]
+
+- prompt: "genera un informe de empleados con vacaciones sin disfrutar a cierre de año"
+  domain: informes
+  tags: [informe, vacaciones, cierre_año]
+
+- prompt: "quiero un informe del impacto económico del absentismo este año"
+  domain: informes
+  tags: [informe, absentismo, impacto_económico]
+
+- prompt: "prepárame un informe de seguimiento de candidatos en proceso de selección"
+  domain: informes
+  tags: [informe, curriculums, proceso_selección]

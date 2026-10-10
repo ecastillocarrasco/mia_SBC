@@ -12,7 +12,7 @@ media, mediana, mínimo y máximo. Salvaguardas:
 from __future__ import annotations
 
 import asyncio
-from statistics import mean, median
+from statistics import mean, median, quantiles
 from typing import Any, Literal
 
 from pydantic import Field
@@ -33,7 +33,7 @@ from mia.modules.rrhh.content import MAX_BYTES, content_unavailable, pdf_lines
 from mia.modules.rrhh.nominas.parser import parse_payslip
 from mia.text import normalize_key
 
-MIN_GROUP = 5
+MIN_GROUP = 3
 """Personas mínimas por grupo para mostrar un importe agregado."""
 MAX_PEOPLE = 150
 MAX_RANKING = 10
@@ -60,22 +60,35 @@ def format_eur(value: float) -> str:
 
 
 def _stats(values: list[float]) -> dict[str, float]:
-    return {
+    out: dict[str, float] = {
+        "suma": round(sum(values), 2),
         "media": round(mean(values), 2),
         "mediana": round(median(values), 2),
         "minimo": round(min(values), 2),
         "maximo": round(max(values), 2),
     }
+    if len(values) >= 4:
+        q = quantiles(values, n=4)
+        out["percentil_25"] = round(q[0], 2)
+        out["percentil_75"] = round(q[2], 2)
+    return out
 
 
 async def _amounts(deps: Deps, slip_id: int, gate: asyncio.Semaphore) -> dict[str, float] | None:
     async with gate:
         try:
             content = await deps.sharepoint.download_item_file("Nominas", slip_id, MAX_BYTES)
-            parsed = parse_payslip(pdf_lines(content)).get("importes") or {}
+            full = parse_payslip(pdf_lines(content))
+            parsed = full.get("importes") or {}
         except Exception:  # un PDF ilegible no invalida el conjunto: se cuenta como no leído
             return None
-    return {k: parsed[k] for k in ("total_devengado", "liquido") if parsed.get(k)} or None
+    result = {k: parsed[k] for k in ("total_devengado", "liquido") if parsed.get(k)}
+    if ss_total := (full.get("coste_empresa") or {}).get("total_aportacion_empresa"):
+        devengado = parsed.get("total_devengado")
+        result["coste_empresa_ss"] = ss_total
+        if devengado:
+            result["coste_total_empresa"] = round(devengado + ss_total, 2)
+    return result or None
 
 
 def _group_summary(members: list[dict[str, float]], total: int) -> dict[str, Any]:
@@ -86,7 +99,11 @@ def _group_summary(members: list[dict[str, float]], total: int) -> dict[str, Any
             "importes": f"no se muestran: menos de {MIN_GROUP} nóminas leídas (protección de datos)",
         }
     out: dict[str, Any] = {"personas": total, "nominas_leidas": len(members)}
-    for key, label in (("liquido", "liquido"), ("total_devengado", "devengado")):
+    for key, label in (
+        ("liquido", "liquido"),
+        ("total_devengado", "devengado"),
+        ("coste_total_empresa", "coste_total_empresa"),
+    ):
         values = [m[key] for m in members if key in m]
         if len(values) >= MIN_GROUP:
             out[label] = _stats(values)
@@ -259,15 +276,19 @@ def estadisticas_salariales(deps: Deps) -> Tool:
         gate = asyncio.Semaphore(CONCURRENCY)
         results = await asyncio.gather(*(_amounts(deps, latest[e.person_key or ""].sp_id, gate) for e in sample))
         read = [(e, r) for e, r in zip(sample, results, strict=True) if r]
-        by = {"puesto": lambda e: e.position, "departamento": lambda e: e.department}.get(p.agrupar_por)
+        by_raw = {"puesto": lambda e: e.position, "departamento": lambda e: e.department}.get(p.agrupar_por)
         groups: dict[str, list[tuple[Employee, dict[str, float]]]] = {}
+        group_display: dict[str, str] = {}  # clave normalizada → nombre canónico de visualización
         for e, r in read:
-            groups.setdefault((by(e) if by else "Total") or "Sin dato", []).append((e, r))
+            raw = (by_raw(e) if by_raw else "Total") or "Sin dato"
+            key = normalize_key(raw) if by_raw else "total"
+            group_display.setdefault(key, raw)
+            groups.setdefault(key, []).append((e, r))
         totals: dict[str, int] = {}
         for e in people:
-            totals[(by(e) if by else "Total") or "Sin dato"] = (
-                totals.get((by(e) if by else "Total") or "Sin dato", 0) + 1
-            )
+            raw = (by_raw(e) if by_raw else "Total") or "Sin dato"
+            key = normalize_key(raw) if by_raw else "total"
+            totals[key] = totals.get(key, 0) + 1
         summary: dict[str, Any] = {
             "poblacion": population_label(p.incluir_inactivos),
             "criterios": {
@@ -280,10 +301,10 @@ def estadisticas_salariales(deps: Deps) -> Tool:
                 if v
             },
             "personas_del_grupo": len(people),
-            "con_nomina": len(latest),
-            "nominas_leidas": len(read),
-            "muestra_limitada": len(latest) > MAX_PEOPLE,
-            "grupos": {g: _group_summary([r for _, r in m], totals.get(g, len(m))) for g, m in sorted(groups.items())},
+            "grupos": {
+                group_display.get(g, g): _group_summary([r for _, r in m], totals.get(g, len(m)))
+                for g, m in sorted(groups.items())
+            },
             "regla": RULE,
         }
         rows = []
@@ -293,9 +314,11 @@ def estadisticas_salariales(deps: Deps) -> Tool:
                 [
                     name,
                     info["personas"],
-                    info["nominas_leidas"],
                     liquid.get("media"),
                     liquid.get("mediana"),
+                    liquid.get("suma"),
+                    liquid.get("percentil_25"),
+                    liquid.get("percentil_75"),
                     liquid.get("minimo"),
                     liquid.get("maximo"),
                 ]
@@ -305,16 +328,23 @@ def estadisticas_salariales(deps: Deps) -> Tool:
             summary,
             table(
                 "Líquido mensual (agregado)",
-                ["Grupo", "Personas", "Nóminas leídas", "Media", "Mediana", "Mínimo", "Máximo"],
+                ["Grupo", "Personas", "Media", "Mediana", "Total", "P25", "P75", "Mínimo", "Máximo"],
                 rows,
             ),
         )
 
     return Tool(
         "estadisticas_salariales",
-        "Salario medio, mediana, mínimo y máximo (líquido y devengado) de un grupo de la plantilla activa: por "
-        "puesto, departamento o ambos (p. ej. «salario medio de un cocinero», «líquido medio por departamento»). "
-        "Solo agregados: nunca el importe de una persona ni grupos de menos de 5. No digas los importes en voz alta.",
+        "Estadísticas salariales de un grupo de la plantilla activa (suma, media, mediana, mínimo, máximo, "
+        "percentiles 25 y 75) de líquido, devengado y coste total empresa (devengado + SS patronal): "
+        "por puesto, departamento o totales. "
+        "Responde «¿cuánto pagó la empresa en nóminas?», «¿cuál es el coste medio por empleado?», "
+        "«¿cuál es el percentil 25 en Cocina?» y «salario medio por departamento». "
+        "Para comparaciones interanuales (p. ej. «¿ha subido el salario medio de Pisos este año?»), "
+        "llámalo dos veces con distintos periodos y compara los resultados. "
+        "Para análisis trimestrales, llámalo por cada mes del trimestre. "
+        "Solo agregados: nunca el importe de una persona ni grupos de menos de 5. "
+        "No digas los importes en voz alta.",
         SalarialesParams,
         handler,
         permission=Permission.NOMINAS_IMPORTES,

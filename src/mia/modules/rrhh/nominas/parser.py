@@ -2,6 +2,7 @@
 
 Misma lógica que el sistema anterior: tabla resumen «REM. TOTAL … T. A DEDUCIR»,
 líquido a percibir e IRPF, con comprobación devengado − deducciones = líquido.
+Además extrae el desglose de conceptos salariales y la aportación de la empresa a la SS.
 """
 
 from __future__ import annotations
@@ -31,6 +32,32 @@ LIQUID = (
     re.compile(r"Neto\s+a\s+percibir.{0,40}?([0-9][0-9.]*,[0-9]{2})", re.IGNORECASE),
 )
 
+# ── conceptos salariales ──────────────────────────────────────────────────────
+_CONCEPTS_HEADER = re.compile(
+    r"CUANTIA\s+PRECIO.*?CONCEPTO.*?DEVENGOS",
+    re.IGNORECASE | re.DOTALL,
+)
+_CONCEPTS_END = re.compile(r"\bREM\.\s*TOTAL\b", re.IGNORECASE)
+# Devengos: líneas marcadas con * (el asterisco es del formato del proveedor)
+_DEVENGO = re.compile(r"\*([^\n\r*]+?)\s+(-?[0-9][0-9.]*,[0-9]{2})")
+# Deducciones: líneas que empiezan por Cotización, Descuento, Retención o Tribulación IRPF
+_DEDUCCION = re.compile(
+    r"((?:Cotizaci[oó]n|Descuento|Retenci[oó]n|Tribulaci[oó]n\s+I\.?R\.?P\.?F?\.?)"
+    r"[^\n\r]+)\s+(-?[0-9][0-9.]*,[0-9]{2})\s*(?:\n|\r|$)",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+# ── aportación empresa a la SS ────────────────────────────────────────────────
+_SS_START = re.compile(r"APORTACI[OÓ]N\s+EMPRESA", re.IGNORECASE)
+# Líneas con CONCEPTO  BASE  TIPO%  APORTACION — concepto greedy sin dígitos para capturar nombre completo
+_SS_LINE = re.compile(
+    r"([A-Za-záéíóúÁÉÍÓÚñÑüÜ][^0-9\n\r%]{3,60})\s+"
+    r"(-?[0-9][0-9.]*,[0-9]{2})\s+"
+    r"([0-9]{1,3}[,.]?[0-9]*)\s*%\s+"
+    r"(-?[0-9][0-9.]*,[0-9]{2})\s*(?:\n|\r|$)",
+    re.MULTILINE | re.IGNORECASE,
+)
+
 
 def amount_es(raw: str | None) -> float | None:
     """«1.234,56» → 1234.56"""
@@ -40,6 +67,52 @@ def amount_es(raw: str | None) -> float | None:
         return float(raw.replace(".", "").replace(",", "."))
     except ValueError:
         return None
+
+
+def parse_concepts(text: str) -> dict[str, Any]:
+    """Extrae el desglose de conceptos salariales (devengos y deducciones por línea)."""
+    header = _CONCEPTS_HEADER.search(text)
+    end = _CONCEPTS_END.search(text)
+    if not header or not end or header.end() >= end.start():
+        return {}
+    section = text[header.end() : end.start()]
+    devengos = [
+        {"concepto": m.group(1).strip(), "importe": amount_es(m.group(2))}
+        for m in _DEVENGO.finditer(section)
+        if m.group(1).strip()
+    ]
+    deducciones = [
+        {"concepto": m.group(1).strip(), "importe": amount_es(m.group(2))}
+        for m in _DEDUCCION.finditer(section)
+        if m.group(1).strip()
+    ]
+    if not devengos and not deducciones:
+        return {}
+    return {"devengos": devengos, "deducciones": deducciones}
+
+
+def parse_employer_ss(text: str) -> dict[str, Any]:
+    """Extrae la aportación de la empresa a la SS (bases, tipos y totales)."""
+    ss_start = _SS_START.search(text)
+    if not ss_start:
+        return {}
+    section = text[ss_start.end() :]
+    lines = []
+    for m in _SS_LINE.finditer(section):
+        try:
+            tipo = float(m.group(3).replace(",", "."))
+        except ValueError:
+            tipo = None
+        lines.append({
+            "concepto": m.group(1).strip(),
+            "base": amount_es(m.group(2)),
+            "tipo_pct": tipo,
+            "aportacion_empresa": amount_es(m.group(4)),
+        })
+    if not lines:
+        return {}
+    total = round(sum(ln["aportacion_empresa"] for ln in lines if ln["aportacion_empresa"]), 2)
+    return {"desglose": lines, "total_aportacion_empresa": total}
 
 
 def parse_payslip(text: str) -> dict[str, Any]:
@@ -73,9 +146,14 @@ def parse_payslip(text: str) -> dict[str, Any]:
     if None not in (out["total_devengado"], out["total_deducciones"], out["liquido"]):
         diff = round(out["total_devengado"] - out["total_deducciones"] - out["liquido"], 2)
         check = {"cuadra": abs(diff) <= 0.02, "diferencia": diff}
-    return {
+    result: dict[str, Any] = {
         "tipo": "paga_extra" if is_extra else "nomina",
         "importes": {k: v for k, v in out.items() if v is not None},
         "comprobacion": check,
         "lectura_completa": out["liquido"] is not None,
     }
+    if concepts := parse_concepts(joined):
+        result["conceptos"] = concepts
+    if ss := parse_employer_ss(joined):
+        result["coste_empresa"] = ss
+    return result

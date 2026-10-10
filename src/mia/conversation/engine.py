@@ -55,7 +55,9 @@ from mia.llm import (
     ToolCallRequested,
     WebSources,
 )
+from mia.diagnostics import EventStage, EventStatus, begin_trace, emit as diag_emit
 from mia.modules.finanzas import KEYWORDS as _FINANZAS_KEYWORDS
+from mia.presentation.intent import build_presentation_hint, classify_query
 from mia.observability import current_request_id, get_logger
 from mia.rules import rules_for_prompt
 
@@ -219,117 +221,217 @@ class ConversationEngine:
         self._max_tool_rounds = max_tool_rounds
         self._max_output_tokens = max_output_tokens
 
-    async def run(self, *, message: str, user: UserContext, session_id: str | None) -> AsyncIterator[TurnEvent]:
+    async def run(
+        self,
+        *,
+        message: str,
+        user: UserContext,
+        session_id: str | None,
+        attachment_ids: list[str] | None = None,
+        attachment_service: Any | None = None,
+    ) -> AsyncIterator[TurnEvent]:
         message = message.strip()[:MAX_MESSAGE_CHARS]
         request_id = current_request_id()
 
-        # 1) Transacción corta: sesión, historial y turno del usuario.
-        async with self._db.session() as db:
-            repo = ConversationRepository(db)
-            session = await repo.get_or_create(session_id, user.user_id)
-            history = await repo.recent_turns(session.id, self._history_turns)
-            await repo.add_turn(session_id=session.id, request_id=request_id, role="user", content=message)
-            turn = _TurnState(time.perf_counter(), session.id, dict(session.state or {}))
-
-        yield SessionEvent(session_id=turn.session_id)
-        yield AvatarEvent(state=AvatarState.PENSANDO.value)
-
-        messages = [
-            Message(role="user" if t.role == "user" else "assistant", content=t.content)
-            for t in history
-            if t.role in {"user", "assistant"}
-        ]
-        messages.append(Message(role="user", content=message))
-        now = datetime.now(self._tz)
-        mailbox = self._mailbox_for(user) or "" if self._mailbox_for else ""
-        selected_modules = select_modules(message, MODULE_KEYWORDS)
-        system = self.persona.system_prompt(
-            business_rules=rules_for_prompt(), capabilities=self._tools.capabilities_for(user)
-        )
-        context = self.persona.turn_context(
+        async with begin_trace(
+            query=message,
+            user_id=user.user_id,
             user_name=user.display_name,
-            now=now,
-            mailbox=mailbox,
-            focus=describe_focus(turn.state),
-            hint=(self.persona.hint_for(message, mailbox) + _module_hint(selected_modules)).strip(),
-        )
-        messages[-1] = Message(role="user", content=message + context)
-        ctx = ToolContext(user=user, request_id=request_id, now=now, session_state=turn.state, user_message=message)
+            session_id=session_id,
+            request_id=request_id,
+        ) as trace:
+            diag_emit(EventStage.REQUEST_RECEIVED, data={"query": message, "session_id": session_id})
 
-        status: Literal["ok", "error"] = "ok"
-        try:
-            final: FinalAnswer | None = None
-            async for event in self._reason(system, messages, ctx, turn, modules=selected_modules):
-                if isinstance(event, FinalAnswer):
-                    final = event
-                else:
-                    yield event
-            assert final is not None  # noqa: S101
-        except LLMError as exc:
-            log.error("conversation.llm_failed", error=str(exc))
-            status = "error"
-            final = FinalAnswer(self.persona.error_phrase, AvatarState.CONFUNDIDA.value, self.persona.error_phrase)
-            yield SpeechEvent(text=final.speech)
+            # 1) Transacción corta: sesión, historial y turno del usuario.
+            async with self._db.session() as db:
+                repo = ConversationRepository(db)
+                session = await repo.get_or_create(session_id, user.user_id)
+                history = await repo.recent_turns(session.id, self._history_turns)
+                await repo.add_turn(session_id=session.id, request_id=request_id, role="user", content=message)
+                turn = _TurnState(time.perf_counter(), session.id, dict(session.state or {}))
 
-        yield AvatarEvent(state=final.avatar_state)
-        result = TurnResult(
-            session_id=turn.session_id,
-            status=status,
-            answer=final.text,
-            speech=final.speech,
-            avatar_state=final.avatar_state,
-            presentations=[e.result.presentation for e in turn.executions if e.result.presentation],
-            web_sources=turn.web_sources,
-            summaries=[
-                {"tool": e.call.name, "summary": e.result.summary}
-                for e in turn.executions
-                if e.result.status.value == "ok" and isinstance(e.result.summary, dict)
-            ],
-            tools=[
-                {"name": e.call.name, "status": e.result.status.value, "elapsed_ms": e.elapsed_ms}
-                for e in turn.executions
-            ],
-            elapsed_ms=turn.elapsed_ms(),
-            usage=turn.usage,
-        )
+            diag_emit(EventStage.USER_CONTEXT, data={
+                "user_id": user.user_id,
+                "display_name": user.display_name,
+                "permissions": list(user.permissions),
+            })
+            diag_emit(EventStage.CONVERSATION_CONTEXT, data={
+                "session_id": turn.session_id,
+                "history_turns": len(history),
+                "session_state_keys": list(turn.state.keys()),
+            })
 
-        # 2) Transacción corta: respuesta, estado y auditoría.
-        async with self._db.session() as db:
-            repo = ConversationRepository(db)
-            session = await repo.get_or_create(turn.session_id, user.user_id)
-            session.state = turn.state
-            await repo.add_turn(
-                session_id=turn.session_id,
-                request_id=request_id,
-                role="assistant",
-                content=result.answer,
-                speech=result.speech,
-                avatar_state=result.avatar_state,
-                tool_calls=result.tools,
-                presentation={"items": result.presentations},
-                latency_ms=result.elapsed_ms,
+            yield SessionEvent(session_id=turn.session_id)
+            yield AvatarEvent(state=AvatarState.PENSANDO.value)
+
+            messages = [
+                Message(role="user" if t.role == "user" else "assistant", content=t.content)
+                for t in history
+                if t.role in {"user", "assistant"}
+            ]
+            messages.append(Message(role="user", content=message))
+            now = datetime.now(self._tz)
+            if trace is not None:
+                trace.record.now_local = now.isoformat()
+            mailbox = self._mailbox_for(user) or "" if self._mailbox_for else ""
+            selected_modules = select_modules(message, MODULE_KEYWORDS)
+            qa = classify_query(message)
+
+            diag_emit(EventStage.DOMAIN_DETECTION, data={"modules": list(selected_modules)})
+            diag_emit(
+                EventStage.PRESENTATION_INTENT_CLASSIFIED,
+                data={
+                    "intent": qa.presentation_intent.value,
+                    "depth": qa.response_depth.value,
+                    "comparison_requested": qa.comparison_requested,
+                    "analytics_requested": qa.analytics_requested,
+                    "temporal_scope": qa.temporal_scope,
+                },
             )
-            audit = AuditRepository(db)
-            for execution in turn.executions:
-                if execution.audit_resource:
-                    await audit.record(
-                        user_id=user.user_id,
-                        action=f"tool:{execution.call.name}",
-                        resource=execution.audit_resource,
-                        outcome=execution.result.status.value,
-                        request_id=request_id,
-                        detail={"arguments": json.loads(execution.call.arguments or "{}")},
-                    )
 
-        log.info(
-            "conversation.turn",
-            session_id=turn.session_id,
-            status=status,
-            elapsed_ms=result.elapsed_ms,
-            tools=[t["name"] for t in result.tools],
-            **{f"tokens_{k}": v for k, v in turn.usage.items()},
-        )
-        yield ResultEvent(result=result)
+            diag_emit(EventStage.PROMPT_BUILD_START)
+            system = self.persona.system_prompt(
+                business_rules=rules_for_prompt(), capabilities=self._tools.capabilities_for(user)
+            )
+            _pres_hint = build_presentation_hint(qa)
+            context = self.persona.turn_context(
+                user_name=user.display_name,
+                now=now,
+                mailbox=mailbox,
+                focus=describe_focus(turn.state),
+                hint=(
+                    self.persona.hint_for(message, mailbox)
+                    + _module_hint(selected_modules)
+                    + ("\n" + _pres_hint if _pres_hint else "")
+                ).strip(),
+            )
+            # Adjuntos: procesar IDs recibidos y actualizar session state
+            attachment_context = ""
+            if attachment_ids and attachment_service is not None:
+                from mia.attachments.model import AttachmentRef, get_active_refs, merge_refs, set_active_refs  # noqa: PLC0415
+                new_refs: list[AttachmentRef] = []
+                ctx_parts: list[str] = []
+                for aid in attachment_ids[:10]:
+                    record = attachment_service.get_for_user(aid, user.user_id)
+                    if record is not None:
+                        new_refs.append(attachment_service.to_ref(record))
+                        ctx_parts.append(attachment_service.build_context(aid, user.user_id))
+                if ctx_parts:
+                    existing = get_active_refs(turn.state)
+                    set_active_refs(turn.state, merge_refs(existing, new_refs))
+                    attachment_context = "\n\n## Archivos adjuntos en este mensaje\n" + "\n\n".join(ctx_parts)
+                    diag_emit(EventStage.ATTACHMENT_CONTEXT_INJECTED, data={
+                        "count": len(ctx_parts),
+                        "ids": attachment_ids[:10],
+                    })
+
+            messages[-1] = Message(role="user", content=message + context + attachment_context)
+            diag_emit(EventStage.PROMPT_BUILD_COMPLETE, data={
+                "system_chars": len(system),
+                "context_chars": len(context),
+                "attachment_context_chars": len(attachment_context),
+                "total_history_messages": len(messages),
+            })
+
+            ctx = ToolContext(
+                user=user,
+                request_id=request_id,
+                now=now,
+                session_state=turn.state,
+                user_message=message,
+                attachment_service=attachment_service,
+            )
+
+            status: Literal["ok", "error"] = "ok"
+            try:
+                final: FinalAnswer | None = None
+                async for event in self._reason(system, messages, ctx, turn, modules=selected_modules):
+                    if isinstance(event, FinalAnswer):
+                        final = event
+                    else:
+                        yield event
+                assert final is not None  # noqa: S101
+            except LLMError as exc:
+                log.error("conversation.llm_failed", error=str(exc))
+                diag_emit(EventStage.LLM_ERROR, status=EventStatus.ERROR, data={"error": str(exc)})
+                status = "error"
+                final = FinalAnswer(self.persona.error_phrase, AvatarState.CONFUNDIDA.value, self.persona.error_phrase)
+                yield SpeechEvent(text=final.speech)
+
+            yield AvatarEvent(state=final.avatar_state)
+            result = TurnResult(
+                session_id=turn.session_id,
+                status=status,
+                answer=final.text,
+                speech=final.speech,
+                avatar_state=final.avatar_state,
+                presentations=[e.result.presentation for e in turn.executions if e.result.presentation],
+                web_sources=turn.web_sources,
+                summaries=[
+                    {"tool": e.call.name, "summary": e.result.summary}
+                    for e in turn.executions
+                    if e.result.status.value == "ok" and isinstance(e.result.summary, dict)
+                ],
+                tools=[
+                    {"name": e.call.name, "status": e.result.status.value, "elapsed_ms": e.elapsed_ms}
+                    for e in turn.executions
+                ],
+                elapsed_ms=turn.elapsed_ms(),
+                usage=turn.usage,
+                presentation_intent=qa.presentation_intent.value,
+            )
+
+            # 2) Transacción corta: respuesta, estado y auditoría.
+            async with self._db.session() as db:
+                repo = ConversationRepository(db)
+                session = await repo.get_or_create(turn.session_id, user.user_id)
+                session.state = turn.state
+                await repo.add_turn(
+                    session_id=turn.session_id,
+                    request_id=request_id,
+                    role="assistant",
+                    content=result.answer,
+                    speech=result.speech,
+                    avatar_state=result.avatar_state,
+                    tool_calls=result.tools,
+                    presentation={"items": result.presentations},
+                    latency_ms=result.elapsed_ms,
+                )
+                audit = AuditRepository(db)
+                for execution in turn.executions:
+                    if execution.audit_resource:
+                        await audit.record(
+                            user_id=user.user_id,
+                            action=f"tool:{execution.call.name}",
+                            resource=execution.audit_resource,
+                            outcome=execution.result.status.value,
+                            request_id=request_id,
+                            detail={"arguments": json.loads(execution.call.arguments or "{}")},
+                        )
+
+            diag_emit(EventStage.RESPONSE_SENT, status=EventStatus.SUCCESS, data={
+                "status": status,
+                "elapsed_ms": result.elapsed_ms,
+                "tools_called": len(result.tools),
+                "tokens": result.usage,
+                "presentations": [p.get("type") for p in result.presentations if isinstance(p, dict) and p.get("type")],
+            })
+            if trace is not None:
+                trace.finish(
+                    answer=final.text,
+                    status=status,
+                    llm_model=self._llm.__class__.__name__,
+                )
+
+            log.info(
+                "conversation.turn",
+                session_id=turn.session_id,
+                status=status,
+                elapsed_ms=result.elapsed_ms,
+                tools=[t["name"] for t in result.tools],
+                **{f"tokens_{k}": v for k, v in turn.usage.items()},
+            )
+            yield ResultEvent(result=result)
 
     @staticmethod
     def _speak(sentences: list[str], turn: _TurnState) -> list[TurnEvent]:
@@ -348,12 +450,14 @@ class ConversationEngine:
         self, system: str, messages: list[Message], ctx: ToolContext, turn: _TurnState, *, modules: set[str]
     ) -> AsyncIterator[TurnEvent | FinalAnswer]:
         tools = self._tools.schemas_for(ctx.user, modules=modules)
+        diag_emit(EventStage.TOOL_SELECTION, data={"available": [t.name for t in tools]})
         filler_sent = False
         for round_index in range(self._max_tool_rounds + 1):
             over_budget = (time.perf_counter() - turn.started) > self._turn_budget
             allow_tools = bool(tools) and round_index < self._max_tool_rounds and not over_budget
             if over_budget and round_index:
                 log.warning("conversation.turn_budget_exceeded", elapsed_s=round(time.perf_counter() - turn.started, 1))
+                diag_emit(EventStage.WARNING, data={"reason": "turn_budget_exceeded", "elapsed_s": round(time.perf_counter() - turn.started, 1)})
             request = LLMRequest(
                 system=system,
                 messages=messages,
@@ -364,8 +468,14 @@ class ConversationEngine:
             extractor = SpeechExtractor()
             raw: list[str] = []
             calls: list[ToolCall] = []
+            llm_started = time.perf_counter()
+            first_token = False
+            diag_emit(EventStage.LLM_REQUEST, data={"round": round_index, "tools_offered": len(tools) if allow_tools else 0})
             async for event in self._llm.stream(request):
                 if isinstance(event, TextDelta):
+                    if not first_token:
+                        first_token = True
+                        diag_emit(EventStage.LLM_FIRST_TOKEN, duration_ms=int((time.perf_counter() - llm_started) * 1000))
                     raw.append(event.text)
                     for speech_event in self._speak(extractor.feed(event.text), turn):
                         yield speech_event
@@ -377,6 +487,18 @@ class ConversationEngine:
                     turn.usage["input"] += event.input_tokens
                     turn.usage["cached"] += event.cached_tokens
                     turn.usage["output"] += event.output_tokens
+                    diag_emit(
+                        EventStage.LLM_RESPONSE,
+                        status=EventStatus.SUCCESS,
+                        duration_ms=int((time.perf_counter() - llm_started) * 1000),
+                        data={
+                            "round": round_index,
+                            "input_tokens": event.input_tokens,
+                            "output_tokens": event.output_tokens,
+                            "cached_tokens": event.cached_tokens,
+                            "tool_calls_requested": len(calls),
+                        },
+                    )
 
             if not calls:
                 for speech_event in self._speak(extractor.finish(), turn):
@@ -395,7 +517,7 @@ class ConversationEngine:
             messages.append(Message(role="assistant", content="".join(raw), tool_calls=tuple(calls)))
             for execution in executions:
                 turn.state.update(execution.result.state_updates)
-                remember_table(turn.state, execution.result.presentation, self._max_report_rows)
+                remember_table(turn.state, execution.result.presentation, self._max_report_rows, execution.result.summary)
                 remember_population(turn.state, execution.result.state_updates.get("ultima_poblacion"))
                 remember_last_call(turn.state, execution)
                 messages.append(
@@ -412,9 +534,23 @@ class ConversationEngine:
     def tools(self) -> ToolRegistry:
         return self._tools
 
-    async def complete(self, *, message: str, user: UserContext, session_id: str | None) -> TurnResult:
+    async def complete(
+        self,
+        *,
+        message: str,
+        user: UserContext,
+        session_id: str | None,
+        attachment_ids: list[str] | None = None,
+        attachment_service: Any | None = None,
+    ) -> TurnResult:
         """Ejecuta el turno completo y devuelve solo el resultado final."""
-        async for event in self.run(message=message, user=user, session_id=session_id):
+        async for event in self.run(
+            message=message,
+            user=user,
+            session_id=session_id,
+            attachment_ids=attachment_ids,
+            attachment_service=attachment_service,
+        ):
             if isinstance(event, ResultEvent):
                 return event.result
         raise RuntimeError("El turno terminó sin resultado")  # pragma: no cover

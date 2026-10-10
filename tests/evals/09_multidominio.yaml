@@ -1,0 +1,274 @@
+# Categoría: multidominio
+# Consultas que cruzan dos o más dominios (empleados+vacaciones, nominas+turnos, etc.)
+
+- prompt: "dame los datos de Ana García junto con sus vacaciones y su última nómina"
+  domain: [empleados, vacaciones, nominas]
+  tags: [multidominio, persona, cruce]
+
+- prompt: "empleados del departamento de IT con sus días de ausencia y su salario medio"
+  domain: [empleados, turnos, nominas]
+  tags: [multidominio, departamento, cruce]
+
+- prompt: "relación entre antigüedad y salario de los empleados"
+  domain: [empleados, nominas]
+  tags: [multidominio, antigüedad, salario]
+
+- prompt: "ficha completa de Pedro: datos, turno, vacaciones y documentos"
+  domain: [empleados, turnos, vacaciones, documentos]
+  tags: [multidominio, ficha_360]
+
+- prompt: "empleados con muchas ausencias y bajo saldo de vacaciones"
+  domain: [turnos, vacaciones]
+  tags: [multidominio, ausencias, vacaciones]
+
+- prompt: "quién tiene más ausencias y además menor salario en su departamento"
+  domain: [turnos, nominas]
+  tags: [multidominio, ausencias, salario]
+
+- prompt: "empleados nuevos este año con su departamento y su primera nómina"
+  domain: [empleados, nominas]
+  tags: [multidominio, altas, nominas]
+
+- prompt: "comparar el absentismo y el salario medio entre departamentos"
+  domain: [turnos, nominas]
+  tags: [multidominio, comparativa, departamento]
+
+- prompt: "candidatos con CV que ya tienen contrato en la empresa"
+  domain: [curriculums, empleados]
+  tags: [multidominio, candidato, contratado]
+
+- prompt: "empleados que han solicitado vacaciones y tienen alguna ausencia reciente"
+  domain: [vacaciones, turnos]
+  tags: [multidominio, vacaciones, ausencias]
+
+- prompt: "resumen financiero y de turnos del departamento de producción"
+  domain: [nominas, turnos]
+  tags: [multidominio, departamento, resumen]
+
+- prompt: "empleados próximos a jubilarse y su salario actual"
+  domain: [empleados, nominas]
+  tags: [multidominio, jubilación, salario]
+
+- prompt: "correos recientes relacionados con las vacaciones de Marta"
+  domain: [correo, vacaciones]
+  tags: [multidominio, correo, vacaciones]
+
+- prompt: "documentos y nóminas disponibles de los empleados de IT"
+  domain: [documentos, nominas]
+  tags: [multidominio, documentos, departamento]
+
+- prompt: "quién tiene baja activa y a la vez vacaciones pendientes de aprobar"
+  domain: [turnos, vacaciones]
+  tags: [multidominio, baja, vacaciones]
+
+- prompt: "empleados con contrato temporal que han tenido más ausencias"
+  domain: [empleados, turnos]
+  tags: [multidominio, contrato, ausencias]
+
+- prompt: "relación entre departamento, antigüedad y nivel salarial"
+  domain: [empleados, nominas]
+  tags: [multidominio, departamento, antigüedad, salario]
+
+- prompt: "todos los datos disponibles de Carlos Sánchez"
+  domain: [empleados, vacaciones, nominas, turnos, documentos]
+  tags: [multidominio, ficha_360, todo]
+
+- prompt: "empleados en excedencia y su última nómina antes de salir"
+  domain: [empleados, nominas]
+  tags: [multidominio, excedencia, nominas]
+
+- prompt: "candidatos de CV con perfil similar a empleados que ya están en la empresa"
+  domain: [curriculums, empleados]
+  tags: [multidominio, candidato, perfil]
+
+- prompt: "empleados que trabajan en turno de noche y tienen salario complementado"
+  domain: [turnos, nominas]
+  tags: [multidominio, turno, salario]
+
+- prompt: "departamentos con más vacaciones acumuladas y menor rotación"
+  domain: [vacaciones, empleados]
+  tags: [multidominio, vacaciones, rotación]
+
+- prompt: "informe del empleado incluyendo turnos, vacaciones y nóminas del año"
+  domain: [turnos, vacaciones, nominas]
+  tags: [multidominio, informe_persona]
+
+- prompt: "relación entre ausencias y antigüedad por departamento"
+  domain: [turnos, empleados]
+  tags: [multidominio, ausencias, antigüedad, departamento]
+
+- prompt: "empleados ETT con más ausencias que la media de la empresa"
+  domain: [trabajo_temporal, turnos]
+  tags: [multidominio, ett, ausencias]
+
+- prompt: "quién ha solicitado vacaciones y también tiene correos pendientes de responder"
+  domain: [vacaciones, correo]
+  tags: [multidominio, vacaciones, correo]
+
+- prompt: "empleados con documentos pendientes y que están de baja"
+  domain: [documentos, turnos]
+  tags: [multidominio, documentos, baja]
+
+- prompt: "comparar absentismo, salario y antigüedad entre dos departamentos"
+  domain: [turnos, nominas, empleados]
+  tags: [multidominio, comparativa_multi]
+
+- prompt: "datos de contacto, turno actual y vacaciones pendientes de Laura"
+  domain: [empleados, turnos, vacaciones]
+  tags: [multidominio, persona, cruce]
+
+- prompt: "empleados con incremento salarial que también han reducido sus ausencias"
+  domain: [nominas, turnos]
+  tags: [multidominio, incremento, ausencias]
+
+- prompt: "ranking de departamentos combinando absentismo y coste salarial"
+  domain: [turnos, nominas]
+  tags: [multidominio, ranking, combinado]
+
+- prompt: "empleados recién incorporados con su primer turno asignado"
+  domain: [empleados, turnos]
+  tags: [multidominio, altas, turno]
+
+- prompt: "quién tiene mayor antigüedad y menor número de vacaciones disfrutadas"
+  domain: [empleados, vacaciones]
+  tags: [multidominio, antigüedad, vacaciones]
+
+- prompt: "informe cruzado de bajas médicas y coste salarial asociado"
+  domain: [turnos, nominas]
+  tags: [multidominio, bajas, coste]
+
+- prompt: "empleados con nómina alta pero muchas ausencias no justificadas"
+  domain: [nominas, turnos]
+  tags: [multidominio, salario, ausencias]
+
+- prompt: "empleados con vacaciones pendientes que trabajan en turno de noche"
+  domain: [vacaciones, turnos]
+  tags: [multidominio, vacaciones, turno]
+
+- prompt: "candidatos entrevistados que finalmente fueron contratados este año"
+  domain: [curriculums, empleados]
+  tags: [multidominio, selección, altas]
+
+- prompt: "empleados con contrato indefinido y salario por debajo de la media de su puesto"
+  domain: [empleados, nominas]
+  tags: [multidominio, contrato, salario]
+
+- prompt: "quién tiene más correos pendientes y también tiene vacaciones esta semana"
+  domain: [correo, vacaciones]
+  tags: [multidominio, correo, vacaciones]
+
+- prompt: "departamentos con mayor coste salarial y mayor absentismo a la vez"
+  domain: [nominas, turnos]
+  tags: [multidominio, coste, absentismo]
+
+- prompt: "empleados con documentos pendientes y próximos a jubilarse"
+  domain: [documentos, empleados]
+  tags: [multidominio, documentos, jubilación]
+
+- prompt: "quién tiene turno de noche, salario alto y poca antigüedad"
+  domain: [turnos, nominas, empleados]
+  tags: [multidominio, triple_cruce]
+
+- prompt: "empleados ETT con nómina procesada este mes"
+  domain: [trabajo_temporal, nominas]
+  tags: [multidominio, ett, nominas]
+
+- prompt: "candidatos con CV indexado y correo de seguimiento enviado"
+  domain: [curriculums, correo]
+  tags: [multidominio, candidato, correo]
+
+- prompt: "empleados con baja activa y nómina reducida por IT"
+  domain: [turnos, nominas]
+  tags: [multidominio, baja, nominas]
+
+- prompt: "relación entre departamento, turno y nivel de absentismo"
+  domain: [empleados, turnos]
+  tags: [multidominio, departamento, turno, absentismo]
+
+- prompt: "empleados con vacaciones aprobadas y documentos de viaje pendientes"
+  domain: [vacaciones, documentos]
+  tags: [multidominio, vacaciones, documentos]
+
+- prompt: "quién tiene mayor antigüedad, menor salario y más ausencias en su departamento"
+  domain: [empleados, nominas, turnos]
+  tags: [multidominio, triple_cruce, departamento]
+
+- prompt: "informe cruzado de candidatos contratados y su rendimiento en nómina"
+  domain: [curriculums, empleados, nominas]
+  tags: [multidominio, selección, nominas]
+
+- prompt: "empleados con jornada reducida y ausencias recurrentes"
+  domain: [empleados, turnos]
+  tags: [multidominio, jornada, ausencias]
+
+- prompt: "relación entre salario, antigüedad y departamento para el personal de IT"
+  domain: [nominas, empleados]
+  tags: [multidominio, salario, antigüedad, departamento]
+
+- prompt: "empleados con incremento salarial reciente y sin ausencias este año"
+  domain: [nominas, turnos]
+  tags: [multidominio, incremento, ausencias]
+
+- prompt: "quién solicitó vacaciones y tiene turno asignado ese mismo periodo"
+  domain: [vacaciones, turnos]
+  tags: [multidominio, conflicto_turno_vacaciones]
+
+- prompt: "empleados con nómina alta, poca antigüedad y sin ausencias"
+  domain: [nominas, empleados, turnos]
+  tags: [multidominio, triple_cruce]
+
+- prompt: "empleados con turno rotativo y vacaciones solicitadas para el próximo mes"
+  domain: [turnos, vacaciones]
+  tags: [multidominio, turno, vacaciones]
+
+- prompt: "candidatos con CV en inglés que ya trabajan en departamentos internacionales"
+  domain: [curriculums, empleados]
+  tags: [multidominio, idioma, departamento]
+
+- prompt: "empleados con nómina con complemento de idiomas y su departamento"
+  domain: [nominas, empleados]
+  tags: [multidominio, complemento, departamento]
+
+- prompt: "quién tiene correos sin responder y está también de baja"
+  domain: [correo, turnos]
+  tags: [multidominio, correo, baja]
+
+- prompt: "empleados con excedencia y documentos de reincorporación pendientes"
+  domain: [empleados, documentos]
+  tags: [multidominio, excedencia, documentos]
+
+- prompt: "relación entre absentismo, turno nocturno y antigüedad"
+  domain: [turnos, empleados]
+  tags: [multidominio, triple_cruce]
+
+- prompt: "empleados ETT con más antigüedad en la empresa que algunos indefinidos"
+  domain: [trabajo_temporal, empleados]
+  tags: [multidominio, ett, antigüedad]
+
+- prompt: "informe de empleados con alta reciente, su turno y su primer correo de bienvenida"
+  domain: [empleados, turnos, correo]
+  tags: [multidominio, onboarding]
+
+- prompt: "empleados con nómina revisada tras una ausencia de larga duración"
+  domain: [nominas, turnos]
+  tags: [multidominio, nominas, bajas_largas]
+
+- prompt: "quién tiene documentos caducados y además turno asignado esta semana"
+  domain: [documentos, turnos]
+  tags: [multidominio, documentos, turno]
+
+- prompt: "candidatos con CV y entrevista agendada por correo esta semana"
+  domain: [curriculums, correo]
+  tags: [multidominio, candidato, agenda]
+
+- prompt: "empleados con vacaciones denegadas y ausencias posteriores sin justificar"
+  domain: [vacaciones, turnos]
+  tags: [multidominio, vacaciones, ausencias]
+
+- prompt: "relación entre nivel salarial, departamento y número de ausencias"
+  domain: [nominas, empleados, turnos]
+  tags: [multidominio, triple_cruce]
+
+- prompt: "empleados con contrato ETT que han solicitado vacaciones este mes"
+  domain: [trabajo_temporal, vacaciones]
+  tags: [multidominio, ett, vacaciones]

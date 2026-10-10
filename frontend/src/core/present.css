@@ -12,8 +12,29 @@
 .mia-table thead { background: var(--mia-line, rgba(255, 255, 255, 0.08)); }
 .mia-table tbody tr:nth-child(even) { background: var(--mia-line, rgba(255, 255, 255, 0.04)); }
 .mia-table-note { font-size: 0.75rem; opacity: 0.65; padding: 6px 2px; }
-.mia-download { display: inline-block; padding: 8px 14px; border-radius: 10px; background: var(--mia-accent, #7cc6c3);
-  color: #0b222b; font-weight: 700; text-decoration: none; }
+.mia-download { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 10px;
+  background: var(--mia-accent, #7cc6c3); color: #0b222b; font-weight: 700; text-decoration: none;
+  transition: opacity .18s ease, transform .18s ease; }
+.mia-download:hover { opacity: .88; transform: translateY(-1px); }
+
+/* Inline URL link (inside table cells or key-value) */
+.mia-doc-link { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
+  font-size: 0.78rem; font-weight: 600; text-decoration: none; color: var(--mia-accent, #7cc6c3);
+  border: 1px solid currentColor; opacity: .9; transition: opacity .15s ease, background .15s ease; }
+.mia-doc-link:hover { opacity: 1; background: rgba(124, 198, 195, .10); }
+.mia-doc-link::after { content: " ↗"; font-size: .7em; opacity: .7; }
+
+/* Document card list */
+.mia-doc-list { display: grid; gap: 6px; margin-top: 8px; }
+.mia-doc-card { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 11px;
+  border: 1px solid var(--mia-line, rgba(255,255,255,.12)); text-decoration: none; color: inherit;
+  background: var(--mia-line, rgba(255,255,255,.05)); transition: border-color .18s ease, background .18s ease; }
+.mia-doc-card:hover { border-color: var(--mia-accent, #7cc6c3); background: rgba(124,198,195,.07); }
+.mia-doc-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mia-doc-body b { font-size: 0.87rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mia-doc-body small { font-size: 0.72rem; opacity: .62; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mia-doc-arrow { flex: 0 0 auto; font-size: 0.85rem; opacity: .5; transition: opacity .15s, transform .15s; }
+.mia-doc-card:hover .mia-doc-arrow { opacity: .9; transform: translate(2px, -2px); }
 .mia-sources { margin-top: 12px; display: grid; gap: 6px; }
 .mia-sources h4 { margin: 0 0 2px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.7; }
 .mia-source { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; text-decoration: none; color: inherit;

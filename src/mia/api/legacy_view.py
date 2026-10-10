@@ -235,9 +235,17 @@ def _is_scalar(v: Any) -> bool:
     return v is not None and v != "" and not isinstance(v, dict | list)
 
 
-def summary_view(summaries: list[dict[str, Any]]) -> dict[str, list[Any]]:
+def summary_view(
+    summaries: list[dict[str, Any]],
+    *,
+    suppress_comparison: bool = False,
+) -> dict[str, list[Any]]:
     """Del resumen de cada herramienta: tarjetas (cifras), comparativa (desgloses por tipo o por
-    departamento), lectura contextual (desgloses simples y notas) y observaciones (avisos)."""
+    departamento), lectura contextual (desgloses simples y notas) y observaciones (avisos).
+
+    suppress_comparison=True omite la generación automática de comparativas a partir de
+    dict-of-dicts en los resúmenes (indicado para consultas operativas directas).
+    """
     cards: list[dict[str, Any]] = []
     comparison: list[dict[str, Any]] = []
     charts: list[dict[str, Any]] = []
@@ -256,21 +264,23 @@ def summary_view(summaries: list[dict[str, Any]]) -> dict[str, list[Any]]:
             elif _is_scalar(value) and isinstance(value, int | float) and not isinstance(value, bool):
                 cards.append({"label": _label(key), "value": value})
             elif isinstance(value, dict) and value and all(isinstance(v, dict) for v in value.values()):
-                # {tipo: {personas, periodos, dias}} → comparativa: una fila por métrica, una columna por tipo.
-                metrics = list(dict.fromkeys(m for v in value.values() for m in v))
-                comparison += [
-                    {
-                        "metrica": _label(m) if key in GENERIC_KEYS else f"{_label(key)} · {_label(m)}",
-                        **{str(col): v.get(m) for col, v in value.items()},
-                    }
-                    for m in metrics
-                    if all(_is_scalar(v.get(m)) or v.get(m) is None for v in value.values())
-                ]
+                if not suppress_comparison:
+                    # {tipo: {personas, periodos, dias}} → comparativa: una fila por métrica, una columna por tipo.
+                    metrics = list(dict.fromkeys(m for v in value.values() for m in v))
+                    comparison += [
+                        {
+                            "metrica": _label(m) if key in GENERIC_KEYS else f"{_label(key)} · {_label(m)}",
+                            **{str(col): v.get(m) for col, v in value.items()},
+                        }
+                        for m in metrics
+                        if all(_is_scalar(v.get(m)) or v.get(m) is None for v in value.values())
+                    ]
             elif isinstance(value, dict) and value and all(_is_scalar(v) for v in value.values()):
-                if key.startswith(("por_", "grupos")) and (
-                    spec := chart_spec(_label(key), [_label(key), "Personas"], [[k, v] for k, v in value.items()])
-                ):
-                    charts.append(spec)
+                if "por_" in key or key.startswith("grupos"):
+                    _chart_lbl = _label(key[key.index("_por_") + 1:] if "_por_" in key and not key.startswith("por_") else key)
+                    spec = chart_spec(_chart_lbl, [_chart_lbl, "Personas"], [[k, v] for k, v in value.items()])
+                    if spec:
+                        charts.append(spec)
                 shown = list(value.items())[:12]
                 rest = "" if len(value) <= 12 else f" … y {len(value) - 12} más"
                 insights.append(f"{_label(key)}: " + " · ".join(f"{k} {_flat(v)}" for k, v in shown) + rest)
@@ -382,17 +392,45 @@ def _absorb(
                 actions.append({"type": "open_document", "url": body[key], "label": "Abrir documento"})
 
 
+def _merge_same_schema_tables(tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Combina tablas con esquema de columnas idéntico en una sola.
+
+    Cuando el LLM llama a la misma herramienta varias veces (p.ej. turnos_dia por departamento),
+    los resultados tienen el mismo esquema y deben mostrarse en una tabla unificada en lugar de
+    quedar una oculta como tarjeta de contexto.
+    """
+    if len(tables) <= 1:
+        return tables
+    ref_cols = tuple(c["label"] for c in tables[0]["columns"])
+    mergeable = [t for t in tables if tuple(c["label"] for c in t["columns"]) == ref_cols]
+    other = [t for t in tables if tuple(c["label"] for c in t["columns"]) != ref_cols]
+    if len(mergeable) <= 1:
+        return tables
+    all_rows = [row for t in mergeable for row in t["rows"]]
+    # Título: prefijo común antes del separador " — " (p.ej. "Turnos 07/10/2026 — Restaurante" → "Turnos 07/10/2026")
+    raw_titles = [t["title"] for t in mergeable]
+    base = raw_titles[0].split(" — ")[0]
+    shared_base = all(t.split(" — ")[0] == base for t in raw_titles)
+    merged_title = base if shared_base and base != raw_titles[0] else raw_titles[0]
+    merged = {**mergeable[0], "title": merged_title, "rows": all_rows, "total": len(all_rows)}
+    return [merged] + other
+
+
 def legacy_view(
-    presentations: list[dict[str, Any]], summaries: list[dict[str, Any]] | None = None
+    presentations: list[dict[str, Any]],
+    summaries: list[dict[str, Any]] | None = None,
+    *,
+    suppress_comparison: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """(data, actions) en el formato del 2D a partir de TODAS las presentaciones y resúmenes del turno."""
     data: dict[str, Any] = {}
     actions: list[dict[str, Any]] = []
     cards: list[dict[str, Any]] = []
     tables: list[dict[str, Any]] = []
-    extra = summary_view(summaries or [])
+    extra = summary_view(summaries or [], suppress_comparison=suppress_comparison)
     for p in presentations:
         _absorb(p, data, actions, cards, tables)
+    tables = _merge_same_schema_tables(tables)
     every_table = list(tables)
     if tables:
         # El 2D pinta una tabla por respuesta: la más completa; el resto se ofrece como tarjeta de contexto.

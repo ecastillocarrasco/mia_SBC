@@ -105,27 +105,30 @@ function isChronological(labels) {
 function renderBars(title, categoryLabel, rows, metric) {
   const entries = rows
     .map((row) => ({ label: String(row?.[0] ?? "—"), value: asNumber(row?.[1]) }))
-    .filter((entry) => entry.value !== null);
+    .filter((entry) => entry.value !== null && entry.value !== 0);
   if (entries.length < 2) return "";
 
   const max = Math.max(...entries.map((entry) => Math.abs(entry.value)), 1);
-  const visible = entries.length > 10
-    ? [...entries].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 10)
-    : entries;
+  if (max < 0.5) return "";
+  const visible = [...entries].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 12);
+  const grandTotal = entries.reduce((s, e) => s + Math.abs(e.value), 0);
+  const showPct = grandTotal > 0 && entries.length >= 2;
+  const total = entries.length;
 
   return `
     <section class="stat-chart stat-bars" aria-label="${esc(title)}">
       <header class="stat-chart-head">
         <div><span>Comparativa</span><strong>${esc(title)}</strong></div>
-        <small>${visible.length}${entries.length > visible.length ? ` de ${entries.length}` : ""} categorías</small>
+        <small>${visible.length}${total > visible.length ? ` de ${total}` : ""} elementos · ${esc(formatNumber(grandTotal))} total</small>
       </header>
       <div class="stat-bars-list">
-        ${visible.map((entry) => {
+        ${visible.map((entry, idx) => {
           const width = Math.max(4, Math.min(100, (Math.abs(entry.value) / max) * 100));
-          return `<div class="stat-bar-row">
+          const pct = showPct ? Math.round((Math.abs(entry.value) / grandTotal) * 100) : null;
+          return `<div class="stat-bar-row${idx === 0 ? " is-top" : ""}">
             <span class="stat-bar-label" title="${esc(entry.label)}">${esc(entry.label)}</span>
             <div class="stat-bar-track"><i style="--bar:${width}%"></i></div>
-            <b>${esc(formatNumber(entry.value))}</b>
+            <b>${esc(formatNumber(entry.value))}${pct !== null ? `<small>${pct}%</small>` : ""}</b>
           </div>`;
         }).join("")}
       </div>
@@ -138,6 +141,7 @@ function renderLine(title, rows, metric) {
   if (values.length < 3) return "";
   const min = Math.min(...values);
   const max = Math.max(...values);
+  if (max - min < 0.001 && max < 0.5) return "";
   const range = Math.max(max - min, 1);
   const points = values.map((value, index) => {
     const x = values.length === 1 ? 50 : (index / (values.length - 1)) * 100;
@@ -163,6 +167,61 @@ function renderLine(title, rows, metric) {
       </div>
       <footer><span>${esc(firstLabel)}</span><span>${esc(humanize(metric.column))}</span><span>${esc(lastLabel)}</span></footer>
     </section>`;
+}
+
+function renderTableDonut(title, categoryLabel, rows, metric) {
+  const palette = ["#d1a85c", "#83d0ca", "#e87959", "#90a7d4", "#b99bd6", "#7c9295", "#d6b88e"];
+  const positive = rows.filter((row) => (asNumber(row?.[1]) ?? 0) > 0);
+  if (positive.length < 2) return "";
+  const total = positive.reduce((sum, row) => sum + (asNumber(row?.[1]) ?? 0), 0);
+  if (!total) return "";
+
+  let offset = 0;
+  const slices = positive.map((row, index) => {
+    const value = asNumber(row?.[1]) ?? 0;
+    const start = (offset / total) * 100;
+    offset += value;
+    const end = (offset / total) * 100;
+    return `${palette[index % palette.length]} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+  }).join(",");
+
+  return `<section class="stat-chart stat-donut-card">
+    <header class="stat-chart-head">
+      <div><span>Distribución</span><strong>${esc(title)}</strong></div>
+      <small>${esc(humanize(metric.column))}</small>
+    </header>
+    <div class="stat-donut-layout">
+      <div class="stat-donut" style="background:conic-gradient(${slices})">
+        <span><b>${formatNumber(total)}</b><small>Total</small></span>
+      </div>
+      <div class="stat-donut-legend">
+        ${positive.map((row, index) => {
+          const v = asNumber(row?.[1]) ?? 0;
+          const pct = total > 0 ? Math.round((v / total) * 100) : 0;
+          return `<div>
+            <i style="--legend:${palette[index % palette.length]}"></i>
+            <span title="${esc(String(row?.[0] ?? ""))}">${esc(String(row?.[0] ?? ""))}</span>
+            <b>${esc(formatNumber(v))} <small>${pct}%</small></b>
+          </div>`;
+        }).join("")}
+      </div>
+    </div>
+  </section>`;
+}
+
+function tryAggregateMonthly(rows) {
+  const dateRx = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/;
+  const buckets = new Map();
+  for (const [label, value] of rows) {
+    const m = dateRx.exec(String(label ?? "").trim());
+    if (!m) return null;
+    const [, , mm, yy] = m;
+    const yyyy = yy.length === 2 ? `20${yy}` : yy;
+    const key = `${mm.padStart(2, "0")}/${yyyy}`;
+    buckets.set(key, (buckets.get(key) ?? 0) + (asNumber(value) ?? 0));
+  }
+  if (buckets.size < 2) return null;
+  return [...buckets.entries()].map(([k, v]) => [k, v]);
 }
 
 function renderKpiSummary(table, detected) {
@@ -207,24 +266,38 @@ export function renderStatisticalVisuals(presentations = [], { query = "", compa
   const tables = presentations.flatMap(flattenTables);
   const candidates = tables
     .map((table) => ({ table, detected: detectTableSeries(table) }))
-    .filter((item) => item.detected);
+    .filter((item) => item.detected && item.detected.rows.length >= 2);
 
   if (!candidates.length) return "";
-  if (!analyticsIntent(presentations, query) && !candidates.some(({ detected }) => detected.metrics.length >= 2)) return "";
+
+  // Sort: prefer tables with multiple metrics and more rows (richer data first)
+  candidates.sort((a, b) => {
+    const score = (c) => c.detected.metrics.length * 10 + Math.min(c.detected.rows.length, 20);
+    return score(b) - score(a);
+  });
 
   const blocks = [];
-  const maxTables = compact ? 1 : 2;
+  const maxTables = compact ? 1 : 3;
   const maxMetrics = compact ? 1 : 3;
 
   for (const { table, detected } of candidates.slice(0, maxTables)) {
     const metrics = detected.metrics.slice(0, maxMetrics);
     const labels = detected.rows.map((row) => String(row?.[detected.categoryIndex] ?? ""));
     const chronological = isChronological(labels);
+    const isSmallDistribution = !chronological && detected.rows.length >= 2 && detected.rows.length <= 8;
     const charts = metrics.map((metric) => {
-      const rows = normalizeRows(detected, metric);
+      let rows = normalizeRows(detected, metric);
       const title = metrics.length > 1 ? `${table.title} · ${humanize(metric.column)}` : table.title;
-      return chronological ? renderLine(title, rows, metric) : renderBars(title, detected.categoryLabel, rows, metric);
-    }).join("");
+      if (chronological && rows.length > 21) {
+        const agg = tryAggregateMonthly(rows);
+        if (agg && agg.length >= 2) rows = agg;
+      }
+      if (chronological) return renderLine(title, rows, metric);
+      if (isSmallDistribution) return renderTableDonut(title, detected.categoryLabel, rows, metric) || renderBars(title, detected.categoryLabel, rows, metric);
+      return renderBars(title, detected.categoryLabel, rows, metric);
+    }).filter(Boolean).join("");
+
+    if (!charts) continue;
 
     blocks.push(`<section class="statistical-visuals">
       ${renderKpiSummary(table, detected)}
@@ -579,8 +652,8 @@ export function buildStatisticalPresentation(presentations = [], { query = "", a
   if (html) {
     return {
       html,
-      dataFirst: analyticsIntent(presentations, query),
-      summary: "Te muestro la comparativa en formato visual y dejo el detalle completo disponible.",
+      dataFirst: true,
+      summary: "Te muestro el análisis en formato visual. El detalle completo está disponible abajo.",
       context: "",
       sourceMode: "details",
     };

@@ -224,8 +224,128 @@ def nominas_periodo(deps: Deps) -> Tool:
     )
 
 
+class AnomaliasNominasParams(CohortParams):
+    periodo: str = Field(description="Mes AAAA-MM a revisar")
+    departamento: str | None = None
+
+
+def anomalias_nominas(deps: Deps) -> Tool:
+    async def handler(p: AnomaliasNominasParams, ctx: ToolContext) -> ToolResult:
+        try:
+            year, month = (int(x) for x in p.periodo.split("-", 1))
+            date(year, month, 1)
+        except ValueError:
+            return ToolResult(ToolStatus.INVALID_ARGUMENTS, "El periodo debe ser AAAA-MM")
+        async with deps.db.session() as db:
+            dept = await resolve_department(db, p.departamento)
+            if dept.status is not ToolStatus.OK:
+                return department_problem(dept, p.departamento)
+            emp_stmt = select(Employee).where(Employee.active.is_(True))
+            if dept.key:
+                emp_stmt = emp_stmt.where(Employee.department_key == dept.key)
+            if wants_previous(p, ctx):
+                if (previous := previous_population(ctx, p.resultado)) is None:
+                    return no_population()
+                emp_stmt = emp_stmt.where(Employee.sp_id.in_(previous["empleado_ids"]))
+            employees = list((await db.scalars(emp_stmt)).all())
+            slips = list(
+                (await db.scalars(select(Payslip).where(Payslip.period == p.periodo))).all()
+            )
+            fresh = await deps.freshness(db, "nominas", "empleados")
+
+        # Construir índices
+        by_folder: dict[str, list[Payslip]] = {}
+        by_email: dict[str, list[Payslip]] = {}
+        for s in slips:
+            if s.person_key:
+                by_folder.setdefault(s.person_key, []).append(s)
+            elif s.employee_email:
+                by_email.setdefault(s.employee_email, []).append(s)
+
+        issues: list[dict[str, Any]] = []
+
+        # 1. Duplicados: más de una nómina ordinaria para la misma persona en el periodo
+        for emp in employees:
+            key = emp.person_key
+            matched = (by_folder.get(key or "") or []) + (by_email.get(emp.email or "") if not key else [])
+            ordinary = [s for s in matched if not s.special]
+            if len(ordinary) > 1:
+                issues.append({
+                    "tipo": "duplicado",
+                    "persona": emp.name,
+                    "departamento": emp.department,
+                    "nominas": len(ordinary),
+                    "detalle": "más de una nómina ordinaria en el mismo período",
+                })
+
+        # 2. Faltantes: empleados activos sin ninguna nómina en el periodo
+        missing_emp = []
+        for emp in employees:
+            key = emp.person_key
+            has = bool((by_folder.get(key or "")) or (by_email.get(emp.email or "") if not key else None))
+            if not has:
+                missing_emp.append(emp)
+
+        # 3. Huérfanos: nóminas sin correspondencia con ningún empleado activo
+        active_keys = {e.person_key for e in employees if e.person_key}
+        active_emails = {e.email for e in employees if e.email}
+        orphan_slips = [
+            s for s in slips
+            if (s.person_key and s.person_key not in active_keys)
+            or (not s.person_key and s.employee_email and s.employee_email not in active_emails)
+        ]
+
+        n_issues = len(issues) + len(missing_emp) + len(orphan_slips)
+        summary: dict[str, Any] = {
+            "periodo": p.periodo,
+            "departamento": dept.name or "toda la plantilla activa",
+            "plantilla_activa": len(employees),
+            "nominas_en_el_periodo": len(slips),
+            "total_anomalias": n_issues,
+            "duplicados": len(issues),
+            "faltantes": len(missing_emp),
+            "huerfanos": len(orphan_slips),
+            **fresh,
+        }
+        if issues:
+            summary["detalle_duplicados"] = issues[:20]
+        if missing_emp and len(missing_emp) <= MAX_ROWS_FOR_MODEL:
+            summary["personas_sin_nomina"] = [e.name for e in missing_emp]
+        if orphan_slips:
+            summary["detalle_huerfanos"] = [
+                {"archivo": s.file_name, "email": s.employee_email} for s in orphan_slips[:20]
+            ]
+
+        rows = (
+            [["Duplicado", i["persona"], i["departamento"], i["detalle"]] for i in issues]
+            + [["Faltante", e.name, e.department, "sin nómina en el periodo"] for e in missing_emp[:40]]
+            + [["Huérfano", s.file_name or "—", "—", s.employee_email or "sin email"] for s in orphan_slips[:20]]
+        )
+        return ToolResult(
+            ToolStatus.OK,
+            summary,
+            table(
+                f"Anomalías nóminas {p.periodo}",
+                ["Tipo", "Persona / Archivo", "Departamento", "Detalle"],
+                rows,
+            ),
+            population_state(f"con anomalía en {p.periodo}", missing_emp) if missing_emp else None,
+        )
+
+    return Tool(
+        "anomalias_nominas",
+        "Detecta anomalías en las nóminas de un mes: empleados sin nómina (faltantes), nóminas duplicadas "
+        "para la misma persona y nóminas sin correspondencia con un empleado activo (huérfanas). "
+        "Basado en metadatos, sin leer PDFs.",
+        AnomaliasNominasParams,
+        handler,
+        permission=Permission.NOMINAS_LEER,
+        audit_resource="nominas",
+    )
+
+
 def register(registry: ToolRegistry, deps: Deps) -> None:
-    for factory in (nominas_persona, nominas_periodo):
+    for factory in (nominas_persona, nominas_periodo, anomalias_nominas):
         registry.register(factory(deps))
     register_amounts(registry, deps)
 
@@ -279,7 +399,10 @@ def nomina_importes(deps: Deps) -> Tool:
 
     return Tool(
         "nomina_importes",
-        "Importes de una nómina (devengado, deducciones, líquido, IRPF) leídos del PDF en el momento.",
+        "Importes de una nómina leídos del PDF en el momento: devengado, deducciones, líquido, IRPF "
+        "(porcentaje e importe), conceptos salariales (salario base, pluses, complementos…) y coste "
+        "de empresa con SS. Responde «¿cuánto cobró X en julio?», «¿qué retención IRPF tiene?», "
+        "«¿qué conceptos tiene la nómina de X?».",
         ImportesParams,
         handler,
         permission=Permission.NOMINAS_IMPORTES,
@@ -290,6 +413,10 @@ def nomina_importes(deps: Deps) -> Tool:
 
 class EvolucionParams(PersonaParams):
     anio: int | None = Field(default=None, description="Año (por defecto, el actual)")
+    comparar_con_anio_anterior: bool = Field(
+        default=False,
+        description="True para incluir también el año anterior y mostrar la variación interanual",
+    )
 
 
 def evolucion_nominas(deps: Deps) -> Tool:
@@ -307,6 +434,15 @@ def evolucion_nominas(deps: Deps) -> Tool:
                     await db.scalars(select(Payslip).where(_belongs(e), Payslip.year == year).order_by(Payslip.period))
                 ).all()
             )
+            prev_slips: list[Payslip] = []
+            if p.comparar_con_anio_anterior:
+                prev_slips = list(
+                    (
+                        await db.scalars(
+                            select(Payslip).where(_belongs(e), Payslip.year == year - 1).order_by(Payslip.period)
+                        )
+                    ).all()
+                )
         if not slips:
             return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": f"No hay nóminas de {e.name} en {year}."})
         results = list(await asyncio.gather(*(_read_amounts(deps, s) for s in slips[:16])))
@@ -323,7 +459,7 @@ def evolucion_nominas(deps: Deps) -> Tool:
             for r in results
         ]
         ordinary = [r for r in results if not r.get("paga_especial") and r.get("importes", {}).get("liquido")]
-        summary = {
+        summary: dict[str, Any] = {
             "persona": e.name,
             "anio": year,
             "nominas": results,
@@ -335,11 +471,30 @@ def evolucion_nominas(deps: Deps) -> Tool:
             ),
             "regla": AMOUNTS_RULE,
         }
+        if p.comparar_con_anio_anterior and prev_slips:
+            prev_results = list(await asyncio.gather(*(_read_amounts(deps, s) for s in prev_slips[:16])))
+            prev_ord = [r for r in prev_results if not r.get("paga_especial") and r.get("importes", {}).get("liquido")]
+            prev_medio = round(sum(r["importes"]["liquido"] for r in prev_ord) / len(prev_ord), 2) if prev_ord else None
+            curr_medio = summary["liquido_medio_ordinario"]
+            variacion = None
+            if prev_medio and curr_medio:
+                variacion = round(curr_medio - prev_medio, 2)
+                variacion_pct = round((variacion / prev_medio) * 100, 2)
+            else:
+                variacion_pct = None
+            summary["comparacion_anio_anterior"] = {
+                "anio_anterior": year - 1,
+                "liquido_medio_ordinario_anterior": prev_medio,
+                "liquido_medio_ordinario_actual": curr_medio,
+                "variacion_euros": variacion,
+                "variacion_pct": variacion_pct,
+                "nominas_anio_anterior": prev_results,
+            }
         return ToolResult(
             ToolStatus.OK,
             summary,
             table(
-                f"Nóminas {year or 'histórico'} · {e.name}",
+                f"Nóminas {year} · {e.name}",
                 ["Periodo", "Concepto", "Especial", "Devengado", "Deducciones", "Líquido", "IRPF %"],
                 rows,
             ),
@@ -348,7 +503,9 @@ def evolucion_nominas(deps: Deps) -> Tool:
 
     return Tool(
         "evolucion_nominas",
-        "Evolución de los importes de las nóminas de una persona en un año (y comparaciones entre meses).",
+        "Evolución de los importes de las nóminas de una persona en un año (y comparaciones entre meses). "
+        "Con comparar_con_anio_anterior=True incluye también el año anterior y la variación interanual: "
+        "úsalo para «¿cuánto ha subido el sueldo de X respecto al año pasado?».",
         EvolucionParams,
         handler,
         permission=Permission.NOMINAS_IMPORTES,

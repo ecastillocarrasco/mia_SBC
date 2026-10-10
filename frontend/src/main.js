@@ -64,14 +64,14 @@ const camera =
 
 const CAMERA_BASE = {
   x: 0,
-  y: 1.12,
-  z: 5.15
+  y: 1.58,
+  z: 5.0
 }
 
 const cameraTarget =
   new THREE.Vector3(
     0,
-    1.05,
+    1.50,
     0
   )
 
@@ -85,7 +85,7 @@ const desiredCameraPosition =
 const desiredCameraTarget =
   new THREE.Vector3(
     0,
-    1.05,
+    1.50,
     0
   )
 
@@ -1251,7 +1251,7 @@ function applyResponsive3DProfile() {
     camera.fov = 52
 
     CAMERA_BASE.x = 0
-    CAMERA_BASE.y = 1.08
+    CAMERA_BASE.y = 1.42
     CAMERA_BASE.z = 7.45
 
   } else if (mobile) {
@@ -1259,7 +1259,7 @@ function applyResponsive3DProfile() {
     camera.fov = 49
 
     CAMERA_BASE.x = 0
-    CAMERA_BASE.y = 1.10
+    CAMERA_BASE.y = 1.46
     CAMERA_BASE.z = 7.15
 
   } else if (
@@ -1269,18 +1269,17 @@ function applyResponsive3DProfile() {
     camera.fov = 43
 
     CAMERA_BASE.x = 0
-    CAMERA_BASE.y = 1.14
+    CAMERA_BASE.y = 1.52
     CAMERA_BASE.z = 5.85
 
   } else {
 
-    // V16.7 · Encuadre de revisión de animaciones.
-    // Acercamos la cámara sin alterar escala, root, suelo ni animaciones.
+    // Encuadre a nivel de pecho-cara: mIA frontal, no de cuerpo entero.
     camera.fov = 40
 
     CAMERA_BASE.x = 0
-    CAMERA_BASE.y = 1.12
-    CAMERA_BASE.z = 5.15
+    CAMERA_BASE.y = 1.58
+    CAMERA_BASE.z = 5.0
   }
 
   camera.aspect =
@@ -1352,8 +1351,8 @@ function updateCameraTracking() {
   desiredCameraTarget.set(
     miaX * 0.38,
     isMobileViewport()
-      ? 1.02
-      : 1.05,
+      ? 1.38
+      : 1.50,
     miaZ * 0.18
   )
 

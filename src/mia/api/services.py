@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from mia.attachments.service import AttachmentService
 from mia.auth import IdentityProvider, build_identity_provider
 from mia.connectors.graph import GraphClient
 from mia.connectors.sharepoint import CertificateTokenProvider, SharePointClient
@@ -39,6 +40,7 @@ class Services:
     engine: ConversationEngine
     graph: GraphClient | None = None
     sharepoint: SharePointClient | None = None
+    attachment_service: AttachmentService | None = None
 
     @classmethod
     def build(
@@ -63,6 +65,14 @@ class Services:
             enabled=settings.domains.enabled,
         )
         finanzas.register(registry, None)
+
+        # Adjuntos: construir servicio e inyectar herramientas si está activo
+        attachment_svc: AttachmentService | None = None
+        if settings.attachments.enabled:
+            from mia.attachments.tools import register as register_attachment_tools  # noqa: PLC0415
+            attachment_svc = AttachmentService.build(settings, provider)
+            register_attachment_tools(registry, attachment_svc)
+
         engine = ConversationEngine(
             llm=provider,
             tools=registry,
@@ -84,9 +94,12 @@ class Services:
             engine=engine,
             graph=graph,
             sharepoint=sharepoint,
+            attachment_service=attachment_svc,
         )
 
     async def aclose(self) -> None:
+        if self.attachment_service is not None:
+            await self.attachment_service.aclose()
         await self.llm.aclose()
         await self.voice.aclose()
         if self.graph is not None:

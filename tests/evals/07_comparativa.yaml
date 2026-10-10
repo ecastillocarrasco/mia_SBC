@@ -1,0 +1,298 @@
+# Categoría: comparativa
+# A vs B, multi-grupo, antes vs después, periodos, demografía.
+
+- prompt: "compara el absentismo de IT con el de Logística"
+  domain: turnos
+  tags: [comparativa, departamento, absentismo]
+
+- prompt: "diferencia salarial entre el departamento de ventas y el de marketing"
+  domain: nominas
+  tags: [comparativa, salario, departamento]
+
+- prompt: "cómo se compara la antigüedad media de IT con la de RRHH"
+  domain: empleados
+  tags: [comparativa, antigüedad, departamento]
+
+- prompt: "compara el número de empleados de este año con el del año pasado"
+  domain: empleados
+  tags: [comparativa, plantilla, anual]
+
+- prompt: "diferencia en ausencias entre el primer y segundo semestre"
+  domain: turnos
+  tags: [comparativa, ausencias, semestre]
+
+- prompt: "salario medio de hombres vs mujeres"
+  domain: nominas
+  tags: [comparativa, salario, género]
+
+- prompt: "compara las vacaciones disfrutadas en 2023 vs 2024"
+  domain: vacaciones
+  tags: [comparativa, vacaciones, anual]
+
+- prompt: "cómo ha cambiado el absentismo respecto al año pasado"
+  domain: turnos
+  tags: [comparativa, absentismo, variación_anual]
+
+- prompt: "el departamento de producción tiene más ausencias que el de administración"
+  domain: turnos
+  tags: [comparativa, ausencias, departamento]
+
+- prompt: "compara la tasa de rotación de este año con la del anterior"
+  domain: empleados
+  tags: [comparativa, rotación, anual]
+
+- prompt: "cuál es la diferencia salarial entre un técnico y un analista"
+  domain: nominas
+  tags: [comparativa, salario, puesto]
+
+- prompt: "compara el gasto en nóminas del primer trimestre de este año con el del año pasado"
+  domain: nominas
+  tags: [comparativa, nóminas, trimestre]
+
+- prompt: "diferencia de edad media entre departamentos"
+  domain: empleados
+  tags: [comparativa, edad, departamento]
+
+- prompt: "cómo comparan los departamentos en términos de satisfacción de vacaciones"
+  domain: vacaciones
+  tags: [comparativa, vacaciones, satisfacción]
+
+- prompt: "compara el número de altas y bajas de este año"
+  domain: empleados
+  tags: [comparativa, altas, bajas]
+
+- prompt: "qué departamento tiene mejor tasa de cobertura de turno"
+  domain: turnos
+  tags: [comparativa, cobertura, departamento]
+
+- prompt: "diferencia en el índice de absentismo entre contratos temporales e indefinidos"
+  domain: turnos
+  tags: [comparativa, absentismo, tipo_contrato]
+
+- prompt: "compara las nóminas de Ana de enero y diciembre del año pasado"
+  domain: nominas
+  tags: [comparativa, nominas, persona, periodos]
+
+- prompt: "diferencia entre el absentismo de turno de noche y turno de día"
+  domain: turnos
+  tags: [comparativa, absentismo, turno]
+
+- prompt: "cómo ha evolucionado el salario medio de la empresa en los últimos 3 años"
+  domain: nominas
+  tags: [comparativa, salario, tendencia]
+
+- prompt: "compara las ausencias del departamento de IT en Q1 y Q3"
+  domain: turnos
+  tags: [comparativa, ausencias, trimestre, departamento]
+
+- prompt: "qué ha cambiado en la plantilla respecto al año pasado"
+  domain: empleados
+  tags: [comparativa, plantilla, variación]
+
+- prompt: "compara las solicitudes de vacaciones aprobadas vs rechazadas"
+  domain: vacaciones
+  tags: [comparativa, vacaciones, estado]
+
+- prompt: "diferencia entre el coste salarial del primer y segundo semestre"
+  domain: nominas
+  tags: [comparativa, coste, semestre]
+
+- prompt: "compara la edad media de los empleados de hace 5 años con la actual"
+  domain: empleados
+  tags: [comparativa, edad, tendencia]
+
+- prompt: "cómo se comparan los salarios medios por grupo de cotización"
+  domain: nominas
+  tags: [comparativa, salario, cotización]
+
+- prompt: "qué departamento ha mejorado más el absentismo este año"
+  domain: turnos
+  tags: [comparativa, absentismo, mejora, departamento]
+
+- prompt: "compara el número de contratos temporales de este año y el anterior"
+  domain: empleados
+  tags: [comparativa, contrato_temporal, anual]
+
+- prompt: "diferencia en días de vacaciones medios entre empleados seniors y juniors"
+  domain: vacaciones
+  tags: [comparativa, vacaciones, antigüedad]
+
+- prompt: "cómo compara el índice de absentismo de enero con el de julio"
+  domain: turnos
+  tags: [comparativa, absentismo, mensual]
+
+- prompt: "compara las incorporaciones de este año vs el promedio histórico"
+  domain: empleados
+  tags: [comparativa, altas, histórico]
+
+- prompt: "diferencia de plantilla entre el centro de Madrid y el de Barcelona"
+  domain: empleados
+  tags: [comparativa, plantilla, centros]
+
+- prompt: "compara el gasto salarial de hombres y mujeres por departamento"
+  domain: nominas
+  tags: [comparativa, salario, género, departamento]
+
+- prompt: "¿ha aumentado o disminuido el absentismo en los últimos 12 meses?"
+  domain: turnos
+  tags: [comparativa, absentismo, tendencia]
+
+- prompt: "diferencia entre el salario de un administrativo y un comercial"
+  domain: nominas
+  tags: [comparativa, salario, puesto]
+
+- prompt: "cómo se comparan las ausencias de empleados mayores de 50 años con el resto"
+  domain: turnos
+  tags: [comparativa, ausencias, edad]
+
+- prompt: "compara la tasa de retención de empleados este año vs el año pasado"
+  domain: empleados
+  tags: [comparativa, retención, anual]
+
+- prompt: "diferencia en el número de empleados a tiempo parcial hace 2 años y ahora"
+  domain: empleados
+  tags: [comparativa, jornada_parcial, histórico]
+
+- prompt: "compara el absentismo de empleados en período de prueba con el de indefinidos"
+  domain: turnos
+  tags: [comparativa, absentismo, periodo_prueba, indefinido]
+
+- prompt: "diferencia entre el presupuesto salarial del año y el gasto real"
+  domain: nominas
+  tags: [comparativa, presupuesto, real]
+
+- prompt: "compara el número de ausencias del departamento de IT entre 2023 y 2024"
+  domain: turnos
+  tags: [comparativa, ausencias, departamento, anual]
+
+- prompt: "¿qué departamento ha crecido más en plantilla en el último año?"
+  domain: empleados
+  tags: [comparativa, crecimiento, departamento]
+
+- prompt: "compara la distribución de contratos entre departamentos"
+  domain: empleados
+  tags: [comparativa, contratos, departamento]
+
+- prompt: "diferencia en días de baja entre el verano y el invierno"
+  domain: turnos
+  tags: [comparativa, bajas, estacional]
+
+- prompt: "compara el salario medio de operarios en turno de día vs noche"
+  domain: nominas
+  tags: [comparativa, salario, turno]
+
+- prompt: "¿ha mejorado la cobertura de turnos en producción este año?"
+  domain: turnos
+  tags: [comparativa, cobertura, producción, temporal]
+
+- prompt: "compara las vacaciones aprobadas este verano con el verano anterior"
+  domain: vacaciones
+  tags: [comparativa, vacaciones, verano, anual]
+
+- prompt: "diferencia en el número de bajas de larga duración entre departamentos"
+  domain: turnos
+  tags: [comparativa, bajas_largas, departamento]
+
+- prompt: "compara el incremento salarial de categorías altas vs bajas en el último año"
+  domain: nominas
+  tags: [comparativa, incremento, categoría]
+
+- prompt: "¿en qué departamento han mejorado más las vacaciones tomadas?"
+  domain: vacaciones
+  tags: [comparativa, vacaciones, mejora, departamento]
+
+- prompt: "diferencia de coste entre contratos indefinidos y temporales en promedio"
+  domain: nominas
+  tags: [comparativa, coste, tipo_contrato]
+
+- prompt: "compara la edad media de los empleados de IT con la del resto de la empresa"
+  domain: empleados
+  tags: [comparativa, edad, it_vs_resto]
+
+- prompt: "antes y después del convenio: ¿cambió el salario medio?"
+  domain: nominas
+  tags: [comparativa, salario, convenio]
+
+- prompt: "diferencia entre el absentismo del turno rotativo y el fijo"
+  domain: turnos
+  tags: [comparativa, absentismo, rotativo_vs_fijo]
+
+- prompt: "compara los KPIs de RRHH de este trimestre con el anterior"
+  domain: analitica
+  tags: [comparativa, kpi, trimestre]
+
+- prompt: "qué departamento ha tenido mayor reducción de absentismo este año"
+  domain: turnos
+  tags: [comparativa, reducción, absentismo, departamento]
+
+- prompt: "compara los datos de plantilla del primer y último mes del año"
+  domain: empleados
+  tags: [comparativa, plantilla, inicio_vs_fin]
+
+- prompt: "diferencia entre los días de vacaciones medios de empleados con >10 y <10 años"
+  domain: vacaciones
+  tags: [comparativa, vacaciones, antigüedad]
+
+- prompt: "compara la brecha salarial de género de hace 3 años con la actual"
+  domain: nominas
+  tags: [comparativa, brecha_salarial, evolución]
+
+- prompt: "cómo se comparan las tasas de absentismo de los 5 departamentos más grandes"
+  domain: turnos
+  tags: [comparativa, absentismo, top5_departamentos]
+
+- prompt: "diferencia en número de empleados entre inicio de año y ahora"
+  domain: empleados
+  tags: [comparativa, plantilla, inicio_año_vs_hoy]
+
+- prompt: "compara el coste de bajas por enfermedad en 2023 vs 2024"
+  domain: turnos
+  tags: [comparativa, coste_bajas, anual]
+
+- prompt: "¿ha mejorado el porcentaje de contratos indefinidos en los últimos años?"
+  domain: empleados
+  tags: [comparativa, indefinidos, tendencia]
+
+- prompt: "compara las ausencias de empleados de nuevas incorporaciones vs veteranos"
+  domain: turnos
+  tags: [comparativa, ausencias, nuevos_vs_veteranos]
+
+- prompt: "diferencia entre la masa salarial de 2024 y 2025"
+  domain: nominas
+  tags: [comparativa, masa_salarial, anual]
+
+- prompt: "compara las vacaciones solicitadas en Q1 vs Q2 de este año"
+  domain: vacaciones
+  tags: [comparativa, vacaciones, q1_vs_q2]
+
+- prompt: "¿qué turno tiene mayor tasa de absentismo, el de mañana o el de tarde?"
+  domain: turnos
+  tags: [comparativa, turno, absentismo]
+
+- prompt: "compara la distribución de ausencias de este año con la del año pasado"
+  domain: turnos
+  tags: [comparativa, distribución, ausencias, anual]
+
+- prompt: "diferencia en rotación entre empleados a tiempo parcial y completo"
+  domain: empleados
+  tags: [comparativa, rotación, jornada]
+
+- prompt: "compara el número de empleados por puesto hoy vs hace un año"
+  domain: empleados
+  tags: [comparativa, puesto, temporal]
+
+- prompt: "cómo compara la antigüedad de empleados incorporados antes y después de 2020"
+  domain: empleados
+  tags: [comparativa, antigüedad, antes_después_2020]
+
+- prompt: "diferencia en salario medio entre el departamento con más y menos empleados"
+  domain: nominas
+  tags: [comparativa, salario, extremos_departamento]
+
+- prompt: "compara el número de solicitudes de vacaciones entre departamentos"
+  domain: vacaciones
+  tags: [comparativa, solicitudes, departamento]
+
+- prompt: "¿ha crecido más el departamento de IT o el de ventas en el último año?"
+  domain: empleados
+  tags: [comparativa, crecimiento, it_vs_ventas]

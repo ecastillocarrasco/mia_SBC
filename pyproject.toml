@@ -30,6 +30,7 @@ dependencies = [
     "python-pptx>=1",
     "pypdfium2>=4",
     "pillow>=10",
+    "python-multipart>=0.0.9",
 ]
 
 [project.scripts]

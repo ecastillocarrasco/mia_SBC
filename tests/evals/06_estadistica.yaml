@@ -1,0 +1,310 @@
+# Categoría: estadística
+# Distribuciones, varianza, outliers, percentiles, correlaciones, histogramas.
+
+- prompt: "distribución de salarios en la empresa"
+  domain: nominas
+  tags: [distribución, salario]
+
+- prompt: "cómo se distribuyen los empleados por edad"
+  domain: empleados
+  tags: [distribución, edad]
+
+- prompt: "histograma de antigüedad de la plantilla"
+  domain: empleados
+  tags: [histograma, antigüedad]
+
+- prompt: "distribución de ausencias por motivo"
+  domain: turnos
+  tags: [distribución, ausencias, motivo]
+
+- prompt: "percentil 90 de salario bruto en la empresa"
+  domain: nominas
+  tags: [percentil, salario]
+
+- prompt: "varianza de salarios en el departamento de IT"
+  domain: nominas
+  tags: [varianza, salario, departamento]
+
+- prompt: "desviación típica de los días de ausencia"
+  domain: turnos
+  tags: [desviación_típica, ausencias]
+
+- prompt: "empleados con salario fuera del rango normal"
+  domain: nominas
+  tags: [outlier, salario]
+
+- prompt: "empleados con absentismo anómalo este año"
+  domain: turnos
+  tags: [outlier, absentismo]
+
+- prompt: "mediana salarial de la empresa"
+  domain: nominas
+  tags: [mediana, salario]
+
+- prompt: "mediana de días de vacaciones por departamento"
+  domain: vacaciones
+  tags: [mediana, vacaciones, departamento]
+
+- prompt: "distribución de empleados por franja de edad"
+  domain: empleados
+  tags: [distribución, edad, franja]
+
+- prompt: "dispersión salarial en el departamento de operaciones"
+  domain: nominas
+  tags: [dispersión, salario, departamento]
+
+- prompt: "¿hay empleados con salario estadísticamente atípico?"
+  domain: nominas
+  tags: [outlier, salario, pregunta]
+
+- prompt: "¿existe correlación entre antigüedad y salario?"
+  domain: nominas
+  tags: [correlación, antigüedad, salario]
+
+- prompt: "correlación entre días de ausencia y antigüedad"
+  domain: turnos
+  tags: [correlación, ausencias, antigüedad]
+
+- prompt: "distribución de la jornada laboral en la empresa"
+  domain: empleados
+  tags: [distribución, jornada]
+
+- prompt: "histograma de días de ausencia del año"
+  domain: turnos
+  tags: [histograma, ausencias, año]
+
+- prompt: "cuartiles de la distribución salarial"
+  domain: nominas
+  tags: [cuartiles, salario]
+
+- prompt: "análisis estadístico del absentismo de 2024"
+  domain: turnos
+  tags: [estadística, absentismo, 2024]
+
+- prompt: "¿el absentismo de este mes es anormalmente alto?"
+  domain: turnos
+  tags: [outlier, absentismo, mes]
+
+- prompt: "diferencia entre el salario más alto y el más bajo"
+  domain: nominas
+  tags: [rango, salario]
+
+- prompt: "coeficiente de variación de los salarios por departamento"
+  domain: nominas
+  tags: [cv, salario, departamento]
+
+- prompt: "análisis de la distribución de vacaciones pendientes"
+  domain: vacaciones
+  tags: [distribución, vacaciones, pendientes]
+
+- prompt: "¿hay departamentos con ausencias estadísticamente altas?"
+  domain: turnos
+  tags: [outlier, ausencias, departamento]
+
+- prompt: "frecuencia de ausencias por día de la semana"
+  domain: turnos
+  tags: [frecuencia, ausencias, día_semana]
+
+- prompt: "distribución de ausencias por mes del año"
+  domain: turnos
+  tags: [distribución, ausencias, mensual]
+
+- prompt: "¿qué meses tienen más vacaciones solicitadas históricamente?"
+  domain: vacaciones
+  tags: [distribución, vacaciones, mensual]
+
+- prompt: "estacionalidad del absentismo en los últimos 3 años"
+  domain: turnos
+  tags: [estacionalidad, absentismo]
+
+- prompt: "percentil 75 de antigüedad de los empleados"
+  domain: empleados
+  tags: [percentil, antigüedad]
+
+- prompt: "análisis estadístico de los salarios del departamento de finanzas"
+  domain: nominas
+  tags: [estadística, salario, finanzas]
+
+- prompt: "desviación estándar de las ausencias por empleado"
+  domain: turnos
+  tags: [desviación, ausencias, empleado]
+
+- prompt: "distribución de días de vacaciones disfrutados"
+  domain: vacaciones
+  tags: [distribución, vacaciones, disfrutados]
+
+- prompt: "¿hay empleados que nunca se han ausentado?"
+  domain: turnos
+  tags: [cero_ausencias, empleado]
+
+- prompt: "empleados con ausencias por encima del percentil 95"
+  domain: turnos
+  tags: [percentil, ausencias, alto]
+
+- prompt: "índice de absentismo global de la empresa"
+  domain: turnos
+  tags: [índice, absentismo, global]
+
+- prompt: "índice de rotación de personal del último año"
+  domain: empleados
+  tags: [índice, rotación]
+
+- prompt: "tasa de cobertura de vacantes en el último año"
+  domain: empleados
+  tags: [tasa, cobertura_vacantes]
+
+- prompt: "análisis de frecuencia de bajas por enfermedad"
+  domain: turnos
+  tags: [frecuencia, bajas_enfermedad]
+
+- prompt: "histograma de días de vacaciones pendientes"
+  domain: vacaciones
+  tags: [histograma, vacaciones, pendientes]
+
+- prompt: "distribución de empleados por tipo de contrato"
+  domain: empleados
+  tags: [distribución, contrato]
+
+- prompt: "¿el salario de Juan es alto o bajo respecto a su puesto?"
+  domain: nominas
+  tags: [percentil, salario, persona, contexto]
+
+- prompt: "cómo se distribuyen los contratos temporales por departamento"
+  domain: empleados
+  tags: [distribución, contrato_temporal, departamento]
+
+- prompt: "análisis de la dispersión de salarios entre hombres y mujeres"
+  domain: nominas
+  tags: [dispersión, salario, género]
+
+- prompt: "tendencia estadística de altas y bajas en los últimos 5 años"
+  domain: empleados
+  tags: [tendencia, altas, bajas, histórico]
+
+- prompt: "¿existe alguna relación entre el departamento y el absentismo?"
+  domain: turnos
+  tags: [correlación, departamento, absentismo]
+
+- prompt: "distribución de la edad de contratación en la empresa"
+  domain: empleados
+  tags: [distribución, edad_contratación]
+
+- prompt: "frecuencia de incidencias de turno por hora del día"
+  domain: turnos
+  tags: [frecuencia, incidencias, hora]
+
+- prompt: "análisis estadístico de los complementos salariales"
+  domain: nominas
+  tags: [estadística, complementos]
+
+- prompt: "¿hay meses con número anormalmente alto de bajas?"
+  domain: turnos
+  tags: [outlier, bajas, mensual]
+
+- prompt: "correlación entre tamaño de departamento y absentismo"
+  domain: turnos
+  tags: [correlación, tamaño_departamento, absentismo]
+
+- prompt: "percentil de salario de María López en su categoría"
+  domain: nominas
+  tags: [percentil, salario, persona, categoría]
+
+- prompt: "distribución de solicitudes de vacaciones por mes"
+  domain: vacaciones
+  tags: [distribución, solicitudes, mensual]
+
+- prompt: "rango intercuartílico de los salarios"
+  domain: nominas
+  tags: [iqr, salario]
+
+- prompt: "análisis de la variabilidad del absentismo entre departamentos"
+  domain: turnos
+  tags: [variabilidad, absentismo, departamento]
+
+- prompt: "¿qué porcentaje de empleados tiene salario por encima de la media?"
+  domain: nominas
+  tags: [porcentaje, salario, media]
+
+- prompt: "frecuencia de ausencias de más de 5 días seguidos"
+  domain: turnos
+  tags: [frecuencia, ausencias_largas]
+
+- prompt: "histograma del IRPF retenido en las nóminas"
+  domain: nominas
+  tags: [histograma, irpf]
+
+- prompt: "distribución de empleados por número de hijos declarados"
+  domain: nominas
+  tags: [distribución, cargas_familiares]
+
+- prompt: "análisis estadístico del tiempo de permanencia antes de la baja"
+  domain: empleados
+  tags: [estadística, permanencia, bajas]
+
+- prompt: "cómo varía el absentismo a lo largo del mes"
+  domain: turnos
+  tags: [variación, absentismo, intramensual]
+
+- prompt: "¿hay correlación entre el tipo de turno y las ausencias?"
+  domain: turnos
+  tags: [correlación, turno, ausencias]
+
+- prompt: "análisis de outliers en el consumo de vacaciones"
+  domain: vacaciones
+  tags: [outlier, vacaciones]
+
+- prompt: "distribución del tiempo medio de aprobación de vacaciones"
+  domain: vacaciones
+  tags: [distribución, tiempo_aprobación]
+
+- prompt: "¿qué percentil de antigüedad representa el departamento de IT?"
+  domain: empleados
+  tags: [percentil, antigüedad, departamento]
+
+- prompt: "frecuencia de cambios de puesto en los últimos 5 años"
+  domain: empleados
+  tags: [frecuencia, cambios_puesto]
+
+- prompt: "análisis de la concentración del gasto salarial"
+  domain: nominas
+  tags: [concentración, salario, lorenz]
+
+- prompt: "¿la dispersión salarial ha aumentado en los últimos 3 años?"
+  domain: nominas
+  tags: [tendencia, dispersión, salario]
+
+- prompt: "curva de distribución de edades por departamento"
+  domain: empleados
+  tags: [curva, distribución, edad, departamento]
+
+- prompt: "análisis estadístico de las horas extras por departamento"
+  domain: turnos
+  tags: [estadística, horas_extras, departamento]
+
+- prompt: "¿qué tan uniforme es la distribución de ausencias entre empleados?"
+  domain: turnos
+  tags: [uniformidad, ausencias]
+
+- prompt: "percentiles 25, 50, 75 del salario por departamento"
+  domain: nominas
+  tags: [percentiles, salario, departamento]
+
+- prompt: "¿el número de ausencias de Ana es estadísticamente alto?"
+  domain: turnos
+  tags: [outlier, ausencias, persona]
+
+- prompt: "análisis de frecuencia de tipos de ausencia en el último año"
+  domain: turnos
+  tags: [frecuencia, tipo_ausencia, año]
+
+- prompt: "distribución de jornadas anuales reales vs teóricas"
+  domain: turnos
+  tags: [distribución, jornada, real_vs_teórico]
+
+- prompt: "correlación entre el salario y los días de ausencia"
+  domain: nominas
+  tags: [correlación, salario, ausencias]
+
+- prompt: "análisis estadístico del saldo de vacaciones al cierre del año"
+  domain: vacaciones
+  tags: [estadística, vacaciones, cierre_año]

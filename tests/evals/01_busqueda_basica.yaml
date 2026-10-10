@@ -1,0 +1,323 @@
+# Categoría: búsqueda básica
+# Consultas directas de empleados, información de persona concreta, listados simples.
+# domain: empleados | turnos | vacaciones | nominas | documentos | correo
+
+- prompt: "dame los datos de Ana García"
+  domain: empleados
+  tags: [persona, búsqueda_directa]
+
+- prompt: "quién es Pedro Martínez"
+  domain: empleados
+  tags: [persona, búsqueda_directa]
+
+- prompt: "busca a María López en la empresa"
+  domain: empleados
+  tags: [persona, búsqueda_directa]
+
+- prompt: "información sobre el empleado con NIE X1234567A"
+  domain: empleados
+  tags: [persona, identificador]
+
+- prompt: "ficha de Carlos Sánchez"
+  domain: empleados
+  tags: [persona, ficha]
+
+- prompt: "muéstrame los empleados del departamento de IT"
+  domain: empleados
+  tags: [departamento, listado]
+
+- prompt: "qué empleados hay en Recursos Humanos"
+  domain: empleados
+  tags: [departamento, listado]
+
+- prompt: "lista todos los trabajadores de Logística"
+  domain: empleados
+  tags: [departamento, listado]
+
+- prompt: "empleados del departamento de Finanzas"
+  domain: empleados
+  tags: [departamento, listado]
+
+- prompt: "¿cuántas personas trabajan en Marketing?"
+  domain: empleados
+  tags: [departamento, conteo]
+
+- prompt: "empleados con el puesto de técnico"
+  domain: empleados
+  tags: [puesto, listado]
+
+- prompt: "quiénes son los jefes de área"
+  domain: empleados
+  tags: [puesto, listado]
+
+- prompt: "listado de directores"
+  domain: empleados
+  tags: [puesto, listado]
+
+- prompt: "administrativos de la empresa"
+  domain: empleados
+  tags: [puesto, listado]
+
+- prompt: "empleados con contrato indefinido"
+  domain: empleados
+  tags: [contrato, listado]
+
+- prompt: "trabajadores con contrato temporal"
+  domain: empleados
+  tags: [contrato, listado]
+
+- prompt: "empleados a tiempo parcial"
+  domain: empleados
+  tags: [jornada, listado]
+
+- prompt: "plantilla a jornada completa"
+  domain: empleados
+  tags: [jornada, listado]
+
+- prompt: "cuántos empleados tiene la empresa"
+  domain: empleados
+  tags: [total, conteo]
+
+- prompt: "total de trabajadores en plantilla"
+  domain: empleados
+  tags: [total, conteo]
+
+- prompt: "cuánta gente hay en la empresa"
+  domain: empleados
+  tags: [total, conteo]
+
+- prompt: "tamaño de la plantilla actual"
+  domain: empleados
+  tags: [total, conteo]
+
+- prompt: "muéstrame las vacaciones de Laura Fernández"
+  domain: vacaciones
+  tags: [persona, vacaciones]
+
+- prompt: "días de vacaciones que le quedan a Juan"
+  domain: vacaciones
+  tags: [persona, vacaciones, saldo]
+
+- prompt: "cuántos días de vacaciones tiene disponibles Marta"
+  domain: vacaciones
+  tags: [persona, vacaciones, saldo]
+
+- prompt: "solicitudes de vacaciones pendientes de aprobación"
+  domain: vacaciones
+  tags: [solicitudes, pendientes]
+
+- prompt: "vacaciones aprobadas para este mes"
+  domain: vacaciones
+  tags: [vacaciones, aprobadas, temporal]
+
+- prompt: "calendario de vacaciones del equipo"
+  domain: vacaciones
+  tags: [equipo, calendario]
+
+- prompt: "turno de trabajo de esta semana de Antonio"
+  domain: turnos
+  tags: [persona, turnos]
+
+- prompt: "horario de hoy de Carmen"
+  domain: turnos
+  tags: [persona, turnos, hoy]
+
+- prompt: "ausencias de esta semana"
+  domain: turnos
+  tags: [ausencias, temporal]
+
+- prompt: "incidencias de turno del mes pasado"
+  domain: turnos
+  tags: [turnos, incidencias]
+
+- prompt: "quién trabaja el turno de noche"
+  domain: turnos
+  tags: [turno_noche, listado]
+
+- prompt: "empleados en turno de tarde"
+  domain: turnos
+  tags: [turno_tarde, listado]
+
+- prompt: "nómina de enero de Roberto"
+  domain: nominas
+  tags: [persona, nominas]
+
+- prompt: "cuánto cobró Pedro el mes pasado"
+  domain: nominas
+  tags: [persona, nominas, importe]
+
+- prompt: "salario bruto de Ana García"
+  domain: nominas
+  tags: [persona, nominas, salario]
+
+- prompt: "nóminas de este año de María"
+  domain: nominas
+  tags: [persona, nominas, año]
+
+- prompt: "documentos disponibles de Carlos"
+  domain: documentos
+  tags: [persona, documentos]
+
+- prompt: "contrato de trabajo de Laura"
+  domain: documentos
+  tags: [persona, documentos, contrato]
+
+- prompt: "últimas nóminas descargables de Juan"
+  domain: documentos
+  tags: [persona, documentos, nominas]
+
+- prompt: "résumé de Marta Pérez"
+  domain: curriculums
+  tags: [persona, curriculum]
+
+- prompt: "CV de Antonio García"
+  domain: curriculums
+  tags: [persona, curriculum]
+
+- prompt: "currículum de Carmen Rodríguez"
+  domain: curriculums
+  tags: [persona, curriculum]
+
+- prompt: "mis últimos correos"
+  domain: correo
+  tags: [correo, recientes]
+
+- prompt: "emails de hoy"
+  domain: correo
+  tags: [correo, hoy]
+
+- prompt: "correos sin leer"
+  domain: correo
+  tags: [correo, no_leídos]
+
+- prompt: "bandeja de entrada"
+  domain: correo
+  tags: [correo, inbox]
+
+- prompt: "emails de la semana pasada"
+  domain: correo
+  tags: [correo, temporal]
+
+- prompt: "empleados dados de alta este mes"
+  domain: empleados
+  tags: [altas, temporal]
+
+- prompt: "nuevas incorporaciones del trimestre"
+  domain: empleados
+  tags: [altas, temporal]
+
+- prompt: "bajas registradas este año"
+  domain: empleados
+  tags: [bajas, temporal]
+
+- prompt: "empleados próximos a jubilarse"
+  domain: empleados
+  tags: [jubilación, previsión]
+
+- prompt: "trabajadores con más antigüedad"
+  domain: empleados
+  tags: [antigüedad, ranking]
+
+- prompt: "empleado más antiguo de la empresa"
+  domain: empleados
+  tags: [antigüedad, extremo]
+
+- prompt: "quién lleva más tiempo en la empresa"
+  domain: empleados
+  tags: [antigüedad, extremo]
+
+- prompt: "empleados en periodo de prueba"
+  domain: empleados
+  tags: [periodo_prueba, listado]
+
+- prompt: "trabajadores que cumplen años este mes"
+  domain: empleados
+  tags: [cumpleaños, temporal]
+
+- prompt: "datos personales de José Ramírez"
+  domain: empleados
+  tags: [persona, datos_personales]
+
+- prompt: "teléfono y email de Ana"
+  domain: empleados
+  tags: [persona, contacto]
+
+- prompt: "categoría profesional de Luis"
+  domain: empleados
+  tags: [persona, categoría]
+
+- prompt: "grupo de cotización de Sofía"
+  domain: empleados
+  tags: [persona, cotización]
+
+- prompt: "empresa de trabajo temporal que cubre a Ramón"
+  domain: trabajo_temporal
+  tags: [ett, persona]
+
+- prompt: "trabajadores cedidos por ETT actualmente"
+  domain: trabajo_temporal
+  tags: [ett, listado]
+
+- prompt: "contratas activas en este momento"
+  domain: trabajo_temporal
+  tags: [contratas, listado]
+
+- prompt: "centros de trabajo disponibles"
+  domain: empleados
+  tags: [centros, listado]
+
+- prompt: "empleados del centro de Madrid"
+  domain: empleados
+  tags: [centro, listado]
+
+- prompt: "trabajadores en la sede de Barcelona"
+  domain: empleados
+  tags: [centro, listado]
+
+- prompt: "convenio colectivo aplicable a Ana"
+  domain: empleados
+  tags: [persona, convenio]
+
+- prompt: "nivel salarial de Roberto"
+  domain: nominas
+  tags: [persona, nivel_salarial]
+
+- prompt: "información de la empresa"
+  domain: empleados
+  tags: [empresa, info]
+
+- prompt: "departamentos existentes en la compañía"
+  domain: empleados
+  tags: [departamentos, listado]
+
+- prompt: "todos los puestos de trabajo de la empresa"
+  domain: empleados
+  tags: [puestos, listado]
+
+- prompt: "resumen de mi perfil"
+  domain: empleados
+  tags: [yo, perfil]
+
+- prompt: "mis datos de empleado"
+  domain: empleados
+  tags: [yo, perfil]
+
+- prompt: "mis vacaciones"
+  domain: vacaciones
+  tags: [yo, vacaciones]
+
+- prompt: "mi nómina del mes pasado"
+  domain: nominas
+  tags: [yo, nominas]
+
+- prompt: "mis documentos"
+  domain: documentos
+  tags: [yo, documentos]
+
+- prompt: "mi horario esta semana"
+  domain: turnos
+  tags: [yo, turnos]
+
+- prompt: "mis ausencias del mes"
+  domain: turnos
+  tags: [yo, ausencias]

@@ -364,6 +364,100 @@ def reincorporacion(deps: Deps) -> Tool:
     )
 
 
+# ------------------------------------------------------------------ conflictos (VAC-003)
+class ConflictosParams(PersonaParams, Periodo):
+    pass
+
+
+def conflictos_vacaciones(deps: Deps) -> Tool:
+    async def handler(p: ConflictosParams, ctx: ToolContext) -> ToolResult:
+        today = ctx.now.date()
+        start, end = p.resolve(today, default_days=6)
+        async with deps.db.session() as db:
+            match = await resolve_person(db, p)
+            if match.employee is None:
+                return person_problem(match, p.nombre)
+            e = match.employee
+            if not e.department_key:
+                return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": f"{e.name} no tiene departamento asignado."})
+
+            # Compañeros del departamento con vacaciones aceptadas en el período
+            stmt = select(Vacation).where(
+                Vacation.department_key == e.department_key,
+                Vacation.start_date <= end,
+                Vacation.end_date >= start,
+            )
+            rows = list((await db.scalars(stmt.order_by(Vacation.start_date))).all())
+            rows = await confirmed_vacations(db, rows)
+            if e.email:
+                rows = [v for v in rows if v.employee_email != e.email]
+
+            # Total activos en el departamento
+            dept_total = await db.scalar(
+                select(func.count(Employee.sp_id)).where(
+                    Employee.department_key == e.department_key,
+                    Employee.active.is_(True),
+                )
+            )
+            # Saldo de vacaciones de la persona
+            balance_row = await db.scalar(
+                select(VacationBalance).where(
+                    VacationBalance.year == start.year,
+                    VacationBalance.employee_email == e.email,
+                )
+            ) if e.email else None
+            fresh = await deps.freshness(db, "vacaciones")
+
+        days_requested = (end - start).days + 1
+        compañeros = [
+            {
+                "persona": v.employee_name,
+                "desde": fmt_date(v.start_date),
+                "hasta": fmt_date(v.end_date),
+                "dias": v.total_days,
+                "tipo": v.request_type,
+            }
+            for v in rows
+        ]
+        summary: dict[str, Any] = {
+            "persona": e.name,
+            "departamento": e.department,
+            "periodo_solicitado": {"desde": start.isoformat(), "hasta": end.isoformat(), "dias": days_requested},
+            "companeros_ausentes": len(compañeros),
+            "total_activos_departamento": dept_total,
+            "detalle_ausencias": compañeros,
+            "saldo_vacaciones": balance_row.current_balance if balance_row else None,
+            "nota": (
+                "El sistema no gestiona reglas de plantilla mínima: indica cuántos compañeros estarán fuera "
+                "pero no puede determinar automáticamente si la solicitud sería aprobada."
+            ),
+            **fresh,
+        }
+        rows_table = [[c["persona"], c["desde"], c["hasta"], c["dias"], c["tipo"]] for c in compañeros]
+        return ToolResult(
+            ToolStatus.OK,
+            summary,
+            table(
+                f"Ausencias en {e.department} ({fmt_date(start)} – {fmt_date(end)})",
+                ["Persona", "Desde", "Hasta", "Días", "Tipo"],
+                rows_table,
+            ),
+            state_updates=focus_person(e),
+        )
+
+    return Tool(
+        "conflictos_vacaciones",
+        "Comprueba quién del mismo departamento que una persona estará de vacaciones o ausente en un período "
+        "concreto (semana que viene, del 1 al 15 de agosto…). Muestra las ausencias ya aceptadas del "
+        "departamento y el saldo disponible de la persona. Úsalo para «¿puede X coger vacaciones esa semana "
+        "sin solapamientos?» o «¿hay conflictos si Ana Torres se va de vacaciones la próxima semana?».",
+        ConflictosParams,
+        handler,
+        permission=Permission.VACACIONES_LEER,
+        audit_resource="vacaciones",
+    )
+
+
 def register(registry: ToolRegistry, deps: Deps) -> None:
-    for factory in (solicitudes, saldos, reincorporacion):
+    for factory in (solicitudes, saldos, reincorporacion, conflictos_vacaciones):
         registry.register(factory(deps))

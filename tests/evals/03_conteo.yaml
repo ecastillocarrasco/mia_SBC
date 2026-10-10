@@ -1,0 +1,310 @@
+# Categoría: conteo
+# Consultas que requieren contar registros, calcular totales o frecuencias.
+
+- prompt: "cuántos empleados hay en total"
+  domain: empleados
+  tags: [conteo, total]
+
+- prompt: "cuántas personas trabajan en IT"
+  domain: empleados
+  tags: [conteo, departamento]
+
+- prompt: "número de empleados por departamento"
+  domain: empleados
+  tags: [conteo, departamento, agrupado]
+
+- prompt: "cuántos contratos temporales hay actualmente"
+  domain: empleados
+  tags: [conteo, contrato]
+
+- prompt: "total de empleados a tiempo parcial"
+  domain: empleados
+  tags: [conteo, jornada]
+
+- prompt: "cuántas mujeres hay en la empresa"
+  domain: empleados
+  tags: [conteo, género]
+
+- prompt: "número de hombres y mujeres por departamento"
+  domain: empleados
+  tags: [conteo, género, departamento]
+
+- prompt: "cuántos empleados se dieron de alta este año"
+  domain: empleados
+  tags: [conteo, altas, año]
+
+- prompt: "número de bajas en el último trimestre"
+  domain: empleados
+  tags: [conteo, bajas, trimestre]
+
+- prompt: "cuántas ausencias hay registradas este mes"
+  domain: turnos
+  tags: [conteo, ausencias, mes]
+
+- prompt: "número de días de ausencia totales del departamento de ventas"
+  domain: turnos
+  tags: [conteo, ausencias, departamento]
+
+- prompt: "cuántos empleados tienen baja activa ahora mismo"
+  domain: turnos
+  tags: [conteo, baja_activa]
+
+- prompt: "total de solicitudes de vacaciones recibidas este mes"
+  domain: vacaciones
+  tags: [conteo, vacaciones, solicitudes]
+
+- prompt: "cuántas solicitudes de vacaciones están pendientes de aprobar"
+  domain: vacaciones
+  tags: [conteo, vacaciones, pendientes]
+
+- prompt: "número de vacaciones aprobadas en agosto"
+  domain: vacaciones
+  tags: [conteo, vacaciones, mes]
+
+- prompt: "cuántos empleados tienen vacaciones pendientes de disfrutar"
+  domain: vacaciones
+  tags: [conteo, vacaciones, saldo]
+
+- prompt: "número de nóminas procesadas este mes"
+  domain: nominas
+  tags: [conteo, nominas]
+
+- prompt: "cuántos documentos hay disponibles en total"
+  domain: documentos
+  tags: [conteo, documentos]
+
+- prompt: "número de currículums indexados"
+  domain: curriculums
+  tags: [conteo, curriculums]
+
+- prompt: "cuántos empleados trabajan en turno de noche"
+  domain: turnos
+  tags: [conteo, turno_noche]
+
+- prompt: "número de trabajadores por turno"
+  domain: turnos
+  tags: [conteo, turno, agrupado]
+
+- prompt: "cuántos empleados hay por cada grupo de cotización"
+  domain: empleados
+  tags: [conteo, cotización, agrupado]
+
+- prompt: "número de empleados por categoría profesional"
+  domain: empleados
+  tags: [conteo, categoría, agrupado]
+
+- prompt: "cuántos contratos vencen este mes"
+  domain: empleados
+  tags: [conteo, contrato, vencimiento]
+
+- prompt: "número de trabajadores próximos a jubilarse en los próximos 2 años"
+  domain: empleados
+  tags: [conteo, jubilación]
+
+- prompt: "cuántos empleados cumplirán 10 años este año"
+  domain: empleados
+  tags: [conteo, antigüedad, aniversario]
+
+- prompt: "número de altas y bajas por mes en el último año"
+  domain: empleados
+  tags: [conteo, altas, bajas, mensual]
+
+- prompt: "cuántas ausencias por enfermedad en comparación con el año pasado"
+  domain: turnos
+  tags: [conteo, ausencias, comparación]
+
+- prompt: "número de días de vacaciones disfrutados por departamento este año"
+  domain: vacaciones
+  tags: [conteo, vacaciones, departamento]
+
+- prompt: "cuántos empleados no han disfrutado ninguna vacación este año"
+  domain: vacaciones
+  tags: [conteo, vacaciones, negación]
+
+- prompt: "número de trabajadores con más de 30 días de vacaciones pendientes"
+  domain: vacaciones
+  tags: [conteo, vacaciones, umbral]
+
+- prompt: "cuántas nóminas tienen complementos variables"
+  domain: nominas
+  tags: [conteo, nominas, complementos]
+
+- prompt: "número de empleados por rango de salario"
+  domain: nominas
+  tags: [conteo, nominas, rango]
+
+- prompt: "cuántos emails sin leer tengo"
+  domain: correo
+  tags: [conteo, correo]
+
+- prompt: "número de correos recibidos esta semana"
+  domain: correo
+  tags: [conteo, correo, semana]
+
+- prompt: "cuántos documentos hay de tipo contrato"
+  domain: documentos
+  tags: [conteo, documentos, tipo]
+
+- prompt: "número de empleados por puesto de trabajo"
+  domain: empleados
+  tags: [conteo, puesto, agrupado]
+
+- prompt: "cuántos puestos de trabajo distintos existen"
+  domain: empleados
+  tags: [conteo, puestos, distinct]
+
+- prompt: "número de departamentos activos"
+  domain: empleados
+  tags: [conteo, departamentos]
+
+- prompt: "cuántos centros de trabajo tiene la empresa"
+  domain: empleados
+  tags: [conteo, centros]
+
+- prompt: "número de empleados por centro de trabajo"
+  domain: empleados
+  tags: [conteo, centros, agrupado]
+
+- prompt: "cuántos empleados tienen contrato de formación"
+  domain: empleados
+  tags: [conteo, contrato_formación]
+
+- prompt: "número de empleados por convenio colectivo"
+  domain: empleados
+  tags: [conteo, convenio, agrupado]
+
+- prompt: "cuántas ausencias no justificadas hay este mes"
+  domain: turnos
+  tags: [conteo, ausencias, no_justificadas]
+
+- prompt: "número de incidencias de turno por departamento"
+  domain: turnos
+  tags: [conteo, incidencias, departamento]
+
+- prompt: "cuántos empleados tienen reducción de jornada activa"
+  domain: empleados
+  tags: [conteo, reducción_jornada]
+
+- prompt: "número de empleados en excedencia"
+  domain: empleados
+  tags: [conteo, excedencia]
+
+- prompt: "cuántos candidatos tenemos en base de datos"
+  domain: curriculums
+  tags: [conteo, candidatos]
+
+- prompt: "número de solicitudes de vacaciones por estado"
+  domain: vacaciones
+  tags: [conteo, vacaciones, estado, agrupado]
+
+- prompt: "cuántas personas hay con el mismo puesto que Ana"
+  domain: empleados
+  tags: [conteo, puesto, comparación]
+
+- prompt: "número de empleados incorporados por año desde 2018"
+  domain: empleados
+  tags: [conteo, altas, histórico, año]
+
+- prompt: "cuántos empleados trabajan en cada turno por departamento"
+  domain: turnos
+  tags: [conteo, turno, departamento, agrupado]
+
+- prompt: "número de días de ausencia por motivo en el último semestre"
+  domain: turnos
+  tags: [conteo, ausencias, motivo, semestre]
+
+- prompt: "cuántos empleados hay con antigüedad entre 1 y 5 años"
+  domain: empleados
+  tags: [conteo, antigüedad, rango]
+
+- prompt: "número de empleados activos frente a bajas"
+  domain: empleados
+  tags: [conteo, estado, comparación]
+
+- prompt: "cuántos trabajadores cedidos por ETT hay ahora"
+  domain: trabajo_temporal
+  tags: [conteo, ett]
+
+- prompt: "número de empleados por empresa de trabajo temporal"
+  domain: trabajo_temporal
+  tags: [conteo, ett, agrupado]
+
+- prompt: "cuántos empleados tienen nivel de estudios universitario"
+  domain: empleados
+  tags: [conteo, estudios]
+
+- prompt: "número de trabajadores con idiomas adicionales en su perfil"
+  domain: empleados
+  tags: [conteo, idiomas]
+
+- prompt: "cuántas ausencias de maternidad se han registrado este año"
+  domain: turnos
+  tags: [conteo, maternidad]
+
+- prompt: "número de empleados que superan los 50 años"
+  domain: empleados
+  tags: [conteo, edad]
+
+- prompt: "cuántos empleados tienen entre 25 y 35 años"
+  domain: empleados
+  tags: [conteo, edad, rango]
+
+- prompt: "número de empleados a tiempo parcial por departamento"
+  domain: empleados
+  tags: [conteo, jornada, departamento]
+
+- prompt: "cuántos contratos vencen en los próximos 3 meses"
+  domain: empleados
+  tags: [conteo, contrato, próximos_3_meses]
+
+- prompt: "número de nóminas de diciembre del año pasado"
+  domain: nominas
+  tags: [conteo, nominas, diciembre]
+
+- prompt: "cuántos documentos nuevos se han generado este mes"
+  domain: documentos
+  tags: [conteo, documentos, nuevos]
+
+- prompt: "número de empleados por nivel salarial"
+  domain: nominas
+  tags: [conteo, nominas, nivel, agrupado]
+
+- prompt: "cuántos empleados tienen complemento de transporte"
+  domain: nominas
+  tags: [conteo, nominas, complemento]
+
+- prompt: "número de personas que trabajan en Logística en turno de noche"
+  domain: turnos
+  tags: [conteo, departamento, turno_noche]
+
+- prompt: "cuántas solicitudes de vacaciones se aprobaron el mes pasado"
+  domain: vacaciones
+  tags: [conteo, vacaciones, aprobadas, mes]
+
+- prompt: "número de empleados nuevos versus los que hay más de 10 años"
+  domain: empleados
+  tags: [conteo, antigüedad, comparación]
+
+- prompt: "cuántos empleados no tienen vacaciones pendientes"
+  domain: vacaciones
+  tags: [conteo, vacaciones, saldo_cero]
+
+- prompt: "número de trabajadores con jornada reducida por cuidado de hijos"
+  domain: empleados
+  tags: [conteo, reducción_jornada, motivo]
+
+- prompt: "cuántas personas se han incorporado a la empresa en 2025"
+  domain: empleados
+  tags: [conteo, altas, 2025]
+
+- prompt: "número de ausencias de más de 5 días consecutivos este año"
+  domain: turnos
+  tags: [conteo, ausencias, larga_duración]
+
+- prompt: "cuántos empleados tienen algún documento pendiente de firma"
+  domain: documentos
+  tags: [conteo, documentos, pendientes]
+
+- prompt: "número de empleados por tipo de jornada laboral"
+  domain: empleados
+  tags: [conteo, jornada, tipo, agrupado]

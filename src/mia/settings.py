@@ -54,8 +54,8 @@ class LLMSettings(BaseModel):
     """En Azure OpenAI: ``https://<recurso>.openai.azure.com/openai/v1``."""
     timeout_seconds: float = 45.0
     max_output_tokens: int = 1200
-    max_tool_rounds: int = 4
-    turn_budget_seconds: float = 75.0
+    max_tool_rounds: int = 8
+    turn_budget_seconds: float = 120.0
     """Tiempo máximo de un turno antes de dejar de llamar a herramientas y contestar con lo que haya (evita los
     «timed out» de las consultas encadenadas)."""
     web_search: bool = True
@@ -168,6 +168,19 @@ class CurriculumSettings(BaseModel):
     max_file_mb: int = 15
 
 
+class AttachmentSettings(BaseModel):
+    enabled: bool = False
+    """Activa la funcionalidad de adjuntos (``MIA_ATTACHMENTS__ENABLED=true``)."""
+    max_files: int = 10
+    max_file_mb: int = 25
+    retention_hours: int = 24
+    temp_path: Path = Path("data/attachments")
+    vision_enabled: bool = True
+    """Permite usar Vision del LLM para imágenes y PDFs escaneados."""
+    temp_rag_enabled: bool = False
+    """Chunking + recuperación semántica para documentos grandes (futuro)."""
+
+
 class ReportSettings(BaseModel):
     directory: Path = Path("informes")
     logo_path: Path | None = None
@@ -187,6 +200,19 @@ class ObservabilitySettings(BaseModel):
     log_level: str = "INFO"
     log_json: bool = True
     applicationinsights_connection_string: SecretStr | None = None
+
+
+class DiagnosticsSettings(BaseModel):
+    enabled: bool = False
+    """Activa captura de trazas, endpoints y panel (``MIA_DIAGNOSTICS__ENABLED=true``)."""
+    retention_hours: int = 24
+    """Horas que se conservan las trazas en memoria (``MIA_DIAGNOSTICS__RETENTION_HOURS``)."""
+    max_traces: int = 5000
+    """Máximo de trazas en memoria (``MIA_DIAGNOSTICS__MAX_TRACES``)."""
+    mask_pii: bool = False
+    """Enmascara nombres/IDs/correos en las trazas (``MIA_DIAGNOSTICS__MASK_PII``)."""
+    admin_users: list[str] = Field(default_factory=list)
+    """Usuarios adicionales autorizados al panel, por user_id o email."""
 
 
 class Settings(BaseSettings):
@@ -213,7 +239,7 @@ class Settings(BaseSettings):
     timezone: str = "Europe/Madrid"
     database_url: str = "postgresql+asyncpg://mia:mia@localhost:5432/mia"
     cors_origins: list[str] = Field(default_factory=lambda: ["http://127.0.0.1:5173", "http://localhost:5173"])
-    history_turns: int = 12
+    history_turns: int = 20
 
     llm: LLMSettings = Field(default_factory=LLMSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
@@ -225,7 +251,9 @@ class Settings(BaseSettings):
     mail: MailSettings = Field(default_factory=MailSettings)
     curriculums: CurriculumSettings = Field(default_factory=CurriculumSettings)
     reports: ReportSettings = Field(default_factory=ReportSettings)
+    attachments: AttachmentSettings = Field(default_factory=AttachmentSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
+    diagnostics: DiagnosticsSettings = Field(default_factory=DiagnosticsSettings)
 
     @model_validator(mode="after")
     def _fail_closed_in_production(self) -> Settings:

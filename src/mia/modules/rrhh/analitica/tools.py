@@ -527,11 +527,241 @@ def calidad(deps: Deps) -> Tool:
 
     return Tool(
         "calidad_datos",
-        "Calidad de los datos de la plantilla activa: campos que faltan, personas sin "
-        "saldo o sin turnos y candidaturas repetidas.",
+        "Detecta problemas de calidad de datos en el sistema: empleados activos sin email, sin DNI, "
+        "sin departamento, sin puesto, sin fecha de nacimiento, sin saldo de vacaciones o sin ningún "
+        "turno publicado; y candidaturas con email repetido. Úsalo ante «¿hay algún problema de calidad "
+        "de datos?» o «¿qué datos incompletos hay en el sistema?».",
         SinParametros,
         handler,
         permission=Permission.ADMINISTRAR,
+    )
+
+
+# ------------------------------------------------------------------ tendencia de ausencias
+class TendenciaAusenciasParams(BaseModel):
+    anio: int | None = Field(default=None, description="Año del análisis (por defecto el actual)")
+    departamento: str | None = Field(default=None, description="Filtrar por departamento")
+    tipo: str | None = Field(
+        default=None,
+        description="Tipo concreto: 'Baja/IT', 'Vacaciones', 'Permiso', 'Asuntos propios'. Sin valor: todos.",
+    )
+
+
+def tendencia_ausencias(deps: Deps) -> Tool:
+    async def handler(p: TendenciaAusenciasParams, ctx: ToolContext) -> ToolResult:
+        year = p.anio or ctx.now.year
+        lo, hi = date(year, 1, 1), date(year, 12, 31)
+        async with deps.db.session() as db:
+            dept = await resolve_department(db, p.departamento)
+            if dept.status is not ToolStatus.OK:
+                return department_problem(dept, p.departamento)
+            stmt = select(ShiftDay).where(
+                ShiftDay.day.between(lo, hi),
+                ShiftDay.kind.notin_([ShiftKind.TRABAJO, ShiftKind.DESCANSO]),
+            )
+            if dept.key:
+                stmt = stmt.where(ShiftDay.department_key.like(f"%{dept.key}%"))
+            if p.tipo:
+                stmt = stmt.where(ShiftDay.kind == p.tipo)
+            days_data = list((await db.scalars(stmt)).all())
+
+        months_es = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+        by_month_kind: dict[int, Counter[str]] = defaultdict(Counter)
+        by_month_people: dict[int, set[str]] = defaultdict(set)
+        for d in days_data:
+            by_month_kind[d.day.month][d.kind] += 1
+            if d.person_key:
+                by_month_people[d.day.month].add(d.person_key)
+
+        kinds = sorted({d.kind for d in days_data}, key=lambda k: (k != ShiftKind.BAJA, k))
+        monthly = [
+            {
+                "mes": months_es[m - 1],
+                "total_dias": sum(by_month_kind[m].values()),
+                "personas": len(by_month_people[m]),
+                **{k: by_month_kind[m].get(k, 0) for k in kinds},
+            }
+            for m in range(1, 13)
+        ]
+        total_days = sum(r["total_dias"] for r in monthly)
+        peak = max(monthly, key=lambda r: r["total_dias"], default=None)
+        summary = {
+            "anio": year,
+            "ambito": dept.name or "toda la plantilla",
+            "tipo_filtrado": p.tipo or "todos",
+            "total_dias_ausencia": total_days,
+            "mes_de_mayor_absentismo": peak["mes"] if peak and peak["total_dias"] > 0 else None,
+            "por_mes": monthly,
+        }
+        cols = ["Mes", "Total días", "Personas"] + list(kinds)
+        rows = [[r["mes"], r["total_dias"], r["personas"]] + [r.get(k, 0) for k in kinds] for r in monthly]
+        return ToolResult(ToolStatus.OK, summary, table(f"Tendencia de ausencias {year}", cols, rows))
+
+    return Tool(
+        "tendencia_ausencias",
+        "Tendencia mensual de ausencias en un año (por defecto el actual): días totales y desglose por tipo "
+        "(bajas, vacaciones, permisos, asuntos propios) mes a mes, con el número de personas afectadas. "
+        "Útil para identificar picos de absentismo y patrones estacionales.",
+        TendenciaAusenciasParams,
+        handler,
+        permission=Permission.TURNOS_LEER,
+    )
+
+
+# ------------------------------------------------------------------ ranking de absentismo individual
+class RankingAbsentismoParams(BaseModel):
+    anio: int | None = Field(default=None, description="Año (por defecto el actual)")
+    departamento: str | None = Field(default=None, description="Limitar a un departamento")
+    tipo: str | None = Field(
+        default=None,
+        description="Tipo de ausencia: 'Baja/IT', 'Vacaciones', 'Permiso', 'Asuntos propios'. Sin valor: todos.",
+    )
+    limite: int = Field(default=20, ge=1, le=100, description="Máximo de personas en el ranking (por defecto 20)")
+
+
+def ranking_absentismo(deps: Deps) -> Tool:
+    async def handler(p: RankingAbsentismoParams, ctx: ToolContext) -> ToolResult:
+        year = p.anio or ctx.now.year
+        lo, hi = date(year, 1, 1), date(year, 12, 31)
+        async with deps.db.session() as db:
+            dept = await resolve_department(db, p.departamento)
+            if dept.status is not ToolStatus.OK:
+                return department_problem(dept, p.departamento)
+            stmt = select(ShiftDay).where(
+                ShiftDay.day.between(lo, hi),
+                ShiftDay.kind.notin_([ShiftKind.TRABAJO, ShiftKind.DESCANSO]),
+            )
+            if dept.key:
+                stmt = stmt.where(ShiftDay.department_key.like(f"%{dept.key}%"))
+            if p.tipo:
+                stmt = stmt.where(ShiftDay.kind == p.tipo)
+            days_data = list((await db.scalars(stmt)).all())
+
+        by_person: dict[str, dict[str, Any]] = defaultdict(lambda: {"nombre": None, "departamento": None, "dias": 0, "periodos": set(), "tipos": Counter()})
+        for d in days_data:
+            key = d.person_key or d.employee_name or "desconocido"
+            rec = by_person[key]
+            rec["nombre"] = rec["nombre"] or d.employee_name
+            rec["departamento"] = rec["departamento"] or d.department
+            rec["dias"] += 1
+            rec["tipos"][d.kind] += 1
+
+        ranking = sorted(by_person.values(), key=lambda r: r["dias"], reverse=True)[: p.limite]
+        rows = [
+            [
+                r["nombre"] or "—",
+                r["departamento"] or "—",
+                r["dias"],
+                ", ".join(f"{k}:{v}" for k, v in r["tipos"].most_common()),
+            ]
+            for r in ranking
+        ]
+        return ToolResult(
+            ToolStatus.OK,
+            {
+                "anio": year,
+                "tipo_filtrado": p.tipo or "todos",
+                "ambito": dept.name or "toda la plantilla",
+                "total_personas_con_ausencia": len(by_person),
+                "ranking": [{"nombre": r["nombre"], "departamento": r["departamento"], "dias_ausencia": r["dias"]} for r in ranking],
+            },
+            table(
+                f"Ranking absentismo {year}",
+                ["Persona", "Departamento", "Días de ausencia", "Desglose por tipo"],
+                rows,
+            ),
+        )
+
+    return Tool(
+        "ranking_absentismo",
+        "Ranking de las personas con más días de ausencia en un año: bajas, vacaciones, permisos y "
+        "asuntos propios ordenados de mayor a menor. Útil para identificar patrones individuales de "
+        "absentismo. Filtrable por departamento y tipo de ausencia.",
+        RankingAbsentismoParams,
+        handler,
+        permission=Permission.TURNOS_LEER,
+    )
+
+
+# ------------------------------------------------------------------ próximos a jubilación
+_EDAD_JUBILACION = 67
+"""Edad legal de jubilación ordinaria en España (2027+)."""
+
+
+class JubilacionParams(BaseModel):
+    horizonte_anios: int = Field(
+        default=5,
+        ge=1,
+        le=15,
+        description="Años de antelación a la jubilación para considerar «próximo» (por defecto 5)",
+    )
+    departamento: str | None = Field(default=None, description="Filtrar por departamento")
+
+
+def proximos_jubilacion(deps: Deps) -> Tool:
+    async def handler(p: JubilacionParams, ctx: ToolContext) -> ToolResult:
+        from mia.modules.rrhh.empleados.tools import age  # noqa: PLC0415
+
+        today = ctx.now.date()
+        threshold = _EDAD_JUBILACION - p.horizonte_anios  # edad mínima para aparecer en la lista
+        async with deps.db.session() as db:
+            dept = await resolve_department(db, p.departamento)
+            if dept.status is not ToolStatus.OK:
+                return department_problem(dept, p.departamento)
+            stmt = select(Employee).where(Employee.active.is_(True), Employee.birth_date.is_not(None))
+            if dept.key:
+                stmt = stmt.where(Employee.department_key == dept.key)
+            staff = list((await db.scalars(stmt)).all())
+
+        proximos = []
+        for e in staff:
+            current_age = age(e.birth_date, today)
+            if current_age is None or current_age < threshold:
+                continue
+            anos_para_jubilacion = max(0, _EDAD_JUBILACION - current_age)
+            proximos.append(
+                {
+                    "nombre": e.name,
+                    "departamento": e.department,
+                    "puesto": e.position,
+                    "edad_actual": current_age,
+                    "anos_para_jubilacion": anos_para_jubilacion,
+                    "anio_jubilacion_aproximado": today.year + anos_para_jubilacion,
+                }
+            )
+        proximos.sort(key=lambda x: x["anos_para_jubilacion"])
+        return ToolResult(
+            ToolStatus.OK,
+            {
+                "ambito": p.departamento or "toda la empresa",
+                "horizonte_anios": p.horizonte_anios,
+                "edad_jubilacion_referencia": _EDAD_JUBILACION,
+                "total": len(proximos),
+                "personas": proximos,
+                "nota": (
+                    "Edad de jubilación ordinaria de referencia: 67 años (España). "
+                    "Puede variar según años cotizados; consulta RRHH para casos individuales."
+                ),
+            },
+            table(
+                f"Próximos a jubilación (horizonte {p.horizonte_anios} años)",
+                ["Nombre", "Departamento", "Puesto", "Edad actual", "Años para jubilación", "Año aprox."],
+                [
+                    [p["nombre"], p["departamento"], p["puesto"], p["edad_actual"],
+                     p["anos_para_jubilacion"], p["anio_jubilacion_aproximado"]]
+                    for p in proximos
+                ],
+            ),
+        )
+
+    return Tool(
+        "proximos_jubilacion",
+        "Lista de empleados activos próximos a la jubilación ordinaria (referencia: 67 años en España). "
+        "Por defecto muestra quienes se jubilarán en los próximos 5 años, ordenados de más a menos urgente. "
+        "Úsalo para «¿qué empleados están próximos a jubilarse?» o «¿quién se jubila antes de 2030?».",
+        JubilacionParams,
+        handler,
+        permission=Permission.EMPLEADOS_LEER,
     )
 
 
@@ -539,9 +769,11 @@ def register(registry: ToolRegistry, deps: Deps) -> None:
     from mia.modules.rrhh.analitica.consultas import consulta_cruzada  # noqa: PLC0415
     from mia.modules.rrhh.analitica.cruces import datos_de_personas  # noqa: PLC0415
     from mia.modules.rrhh.analitica.departamento import ficha_departamento  # noqa: PLC0415
+    from mia.modules.rrhh.analitica.universal import register as _reg_universal  # noqa: PLC0415
 
     registry.register(datos_de_personas(deps))
     registry.register(consulta_cruzada(deps))
     registry.register(ficha_departamento(deps))
-    for factory in (panel, comparar, cobertura, analitica_vacaciones, altas, calidad):
+    for factory in (panel, comparar, cobertura, analitica_vacaciones, tendencia_ausencias, ranking_absentismo, altas, calidad, proximos_jubilacion):
         registry.register(factory(deps))
+    _reg_universal(registry, deps)

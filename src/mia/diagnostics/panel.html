@@ -1,0 +1,880 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mIA Diagnostics</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface2: #21262d;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --accent: #58a6ff;
+  --green: #3fb950;
+  --red: #f85149;
+  --yellow: #d29922;
+  --orange: #e3b341;
+  --purple: #bc8cff;
+  --cyan: #39d353;
+  --running-color: #58a6ff;
+  --success-color: #3fb950;
+  --error-color: #f85149;
+  --warning-color: #d29922;
+  --info-color: #8b949e;
+  font-size: 13px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+/* HEADER */
+#header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; gap: 24px; height: 50px; flex-shrink: 0; }
+#header h1 { font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: 0.02em; white-space: nowrap; }
+#header h1 span { color: var(--accent); }
+.status-pills { display: flex; gap: 8px; flex-wrap: wrap; overflow: hidden; }
+.pill { display: flex; align-items: center; gap: 5px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 11px; white-space: nowrap; }
+.pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+.pill-dot.green { background: var(--green); }
+.pill-dot.red { background: var(--red); }
+.pill-dot.blue { background: var(--accent); }
+.pill-dot.yellow { background: var(--yellow); }
+.pill label { color: var(--text-muted); margin-right: 2px; }
+.pill value { color: var(--text); font-weight: 500; }
+
+/* MAIN LAYOUT */
+#main { display: flex; flex: 1; overflow: hidden; }
+
+/* SIDEBAR */
+#sidebar { width: 300px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+#sidebar-header { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+#sidebar-header h2 { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.live-badge { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--green); font-weight: 600; }
+.live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+#trace-list { flex: 1; overflow-y: auto; }
+.trace-item { padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; position: relative; }
+.trace-item:hover { background: var(--surface2); }
+.trace-item.active { background: rgba(88, 166, 255, 0.08); border-left: 2px solid var(--accent); }
+.trace-item .ti-query { font-size: 12px; color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; margin-bottom: 4px; }
+.trace-item .ti-meta { display: flex; align-items: center; gap: 8px; }
+.trace-item .ti-time { font-size: 10px; color: var(--text-muted); }
+.trace-item .ti-domain { font-size: 10px; color: var(--purple); }
+.trace-item .ti-elapsed { font-size: 10px; color: var(--text-muted); margin-left: auto; }
+.status-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; padding: 1px 5px; border-radius: 4px; font-weight: 500; }
+.status-badge.running { background: rgba(88,166,255,0.15); color: var(--accent); }
+.status-badge.completed { background: rgba(63,185,80,0.15); color: var(--green); }
+.status-badge.error { background: rgba(248,81,73,0.15); color: var(--red); }
+
+/* CONTENT AREA */
+#content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+#overview { padding: 20px; overflow-y: auto; flex: 1; }
+#overview h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+.metric-card .mc-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+.metric-card .mc-value { font-size: 22px; font-weight: 700; color: var(--text); }
+.metric-card .mc-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* TRACE DETAIL */
+#trace-detail { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+#trace-detail.visible { display: flex; }
+#detail-header { padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+#detail-header .dh-id { font-size: 11px; color: var(--text-muted); font-family: monospace; margin-bottom: 4px; }
+#detail-header .dh-query { font-size: 15px; font-weight: 600; color: var(--text); }
+#detail-header .dh-meta { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+#detail-header .dh-meta span { font-size: 11px; color: var(--text-muted); }
+#detail-header .dh-meta strong { color: var(--text); }
+
+/* TABS */
+#tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--surface); overflow-x: auto; flex-shrink: 0; }
+.tab { padding: 10px 16px; font-size: 12px; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; transition: all 0.1s; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* TAB PANELS */
+#tab-panels { flex: 1; overflow-y: auto; padding: 16px 20px; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* SECTION */
+.section { margin-bottom: 20px; }
+.section h3 { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.kv-grid { display: grid; grid-template-columns: 180px 1fr; gap: 6px 12px; align-items: start; }
+.kv-key { font-size: 12px; color: var(--text-muted); }
+.kv-val { font-size: 12px; color: var(--text); word-break: break-all; }
+.kv-val.mono { font-family: monospace; }
+.kv-val.accent { color: var(--accent); }
+.kv-val.green { color: var(--green); }
+.kv-val.red { color: var(--red); }
+
+/* TIMELINE */
+#timeline-list { list-style: none; position: relative; }
+#timeline-list::before { content: ''; position: absolute; left: 12px; top: 0; bottom: 0; width: 1px; background: var(--border); }
+.tl-item { display: flex; align-items: flex-start; gap: 12px; padding: 6px 0; position: relative; }
+.tl-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 3px; flex-shrink: 0; z-index: 1; border: 1.5px solid var(--bg); }
+.tl-dot.info { background: var(--text-muted); }
+.tl-dot.success { background: var(--green); }
+.tl-dot.error { background: var(--red); }
+.tl-dot.warning { background: var(--yellow); }
+.tl-dot.running { background: var(--accent); animation: pulse 1.5s infinite; }
+.tl-body { flex: 1; }
+.tl-stage { font-size: 11px; font-weight: 600; color: var(--text); }
+.tl-ts { font-size: 10px; color: var(--text-muted); margin-left: 6px; }
+.tl-dur { font-size: 10px; color: var(--accent); margin-left: 6px; }
+.tl-data { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-family: monospace; white-space: pre-wrap; max-height: 80px; overflow: hidden; cursor: pointer; }
+.tl-data.expanded { max-height: none; }
+
+/* PIPELINE DIAGRAM */
+#pipeline { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 8px 0; }
+.pipe-node { display: flex; align-items: center; justify-content: space-between; width: 320px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 14px; cursor: pointer; transition: all 0.15s; }
+.pipe-node:hover { border-color: var(--accent); }
+.pipe-node.success { border-color: rgba(63,185,80,0.4); }
+.pipe-node.error { border-color: rgba(248,81,73,0.4); }
+.pipe-node.running { border-color: var(--accent); background: rgba(88,166,255,0.06); }
+.pipe-node.skipped { opacity: 0.4; }
+.pipe-node .pn-label { font-size: 12px; font-weight: 600; }
+.pipe-node .pn-status { font-size: 10px; }
+.pipe-node .pn-status.success { color: var(--green); }
+.pipe-node .pn-status.error { color: var(--red); }
+.pipe-node .pn-status.running { color: var(--accent); }
+.pipe-node .pn-status.skipped { color: var(--text-muted); }
+.pipe-connector { width: 1px; height: 16px; background: var(--border); margin: 0 auto; }
+.pipe-branch { display: flex; gap: 8px; align-items: flex-start; width: 320px; }
+.pipe-branch-line { border-top: 1px dashed var(--border); flex: 1; margin-top: 18px; }
+
+/* TOOL TABLE */
+.tool-table { width: 100%; border-collapse: collapse; }
+.tool-table th { font-size: 11px; color: var(--text-muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; text-transform: uppercase; letter-spacing: 0.06em; }
+.tool-table td { font-size: 12px; padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.tool-table tr:last-child td { border-bottom: none; }
+.tool-table .td-mono { font-family: monospace; }
+
+/* WATERFALL */
+.waterfall { display: flex; flex-direction: column; gap: 6px; }
+.wf-row { display: flex; align-items: center; gap: 8px; }
+.wf-label { width: 180px; font-size: 11px; color: var(--text-muted); text-align: right; flex-shrink: 0; }
+.wf-bar-wrap { flex: 1; background: var(--surface2); border-radius: 3px; overflow: hidden; height: 16px; }
+.wf-bar { height: 100%; background: var(--accent); border-radius: 3px; min-width: 2px; }
+.wf-ms { width: 60px; font-size: 11px; color: var(--text); text-align: right; flex-shrink: 0; }
+.wf-bar.llm { background: var(--purple); }
+.wf-bar.tool { background: var(--green); }
+.wf-bar.analytics { background: var(--orange); }
+.wf-bar.prompt { background: var(--cyan); }
+.wf-bar.total { background: var(--accent); }
+
+/* PROMPT VIEWER */
+.prompt-section { margin-bottom: 14px; }
+.prompt-section h4 { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+.prompt-section h4 button { font-size: 10px; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 4px; padding: 2px 6px; cursor: pointer; margin-left: auto; }
+.prompt-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; font-family: monospace; font-size: 11px; line-height: 1.6; color: var(--text); white-space: pre-wrap; max-height: 240px; overflow-y: auto; word-break: break-word; }
+
+/* ISSUE CARDS */
+.issue-card { background: rgba(248,81,73,0.08); border: 1px solid rgba(248,81,73,0.3); border-radius: 8px; padding: 12px; margin-bottom: 8px; }
+.issue-card.warning { background: rgba(210,153,34,0.08); border-color: rgba(210,153,34,0.3); }
+.issue-card .ic-type { font-size: 11px; font-weight: 700; color: var(--red); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.issue-card.warning .ic-type { color: var(--yellow); }
+.issue-card .ic-msg { font-size: 12px; color: var(--text); }
+
+/* LLM TABLE */
+.llm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.llm-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.llm-card h4 { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.token-bar-wrap { display: flex; gap: 4px; margin-bottom: 4px; border-radius: 4px; overflow: hidden; height: 8px; }
+.token-bar { height: 100%; min-width: 2px; }
+.token-bar.input { background: var(--accent); }
+.token-bar.output { background: var(--green); }
+.token-bar.cached { background: var(--purple); }
+
+/* JSON RAW */
+#raw-json { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-family: monospace; font-size: 11px; white-space: pre-wrap; overflow-y: auto; max-height: 70vh; color: var(--text); word-break: break-word; }
+.btn-copy { font-size: 11px; color: var(--accent); background: none; border: 1px solid var(--accent); border-radius: 5px; padding: 4px 10px; cursor: pointer; transition: background 0.1s; }
+.btn-copy:hover { background: rgba(88,166,255,0.1); }
+
+/* LABEL BUTTONS */
+.label-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.label-btn { font-size: 11px; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text-muted); cursor: pointer; transition: all 0.1s; }
+.label-btn:hover { border-color: var(--accent); color: var(--text); }
+.label-btn.active-correct { border-color: var(--green); color: var(--green); background: rgba(63,185,80,0.1); }
+.label-btn.active-incorrect { border-color: var(--red); color: var(--red); background: rgba(248,81,73,0.1); }
+.label-btn.active-needs_review { border-color: var(--yellow); color: var(--yellow); background: rgba(210,153,34,0.1); }
+.label-btn.active-regression { border-color: var(--purple); color: var(--purple); background: rgba(188,140,255,0.1); }
+#notes-textarea { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; padding: 8px 10px; margin-top: 8px; resize: vertical; min-height: 60px; font-family: inherit; }
+#save-label-btn { margin-top: 8px; font-size: 12px; padding: 6px 14px; border-radius: 6px; background: var(--accent); color: #000; border: none; cursor: pointer; font-weight: 600; }
+
+/* SCROLLBAR */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #444c56; }
+
+/* EMPTY STATE */
+.empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+.empty-state h3 { font-size: 15px; font-weight: 500; margin-bottom: 8px; }
+.empty-state p { font-size: 12px; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div id="header">
+  <h1>mIA <span>Diagnostics</span></h1>
+  <div class="status-pills" id="status-pills">
+    <div class="pill"><span class="pill-dot" id="dot-diag"></span><label>Diagnostics</label><value id="val-diag">—</value></div>
+    <div class="pill"><span class="pill-dot" id="dot-env"></span><label>Env</label><value id="val-env">—</value></div>
+    <div class="pill"><span class="pill-dot" id="dot-llm"></span><label>LLM</label><value id="val-llm">—</value></div>
+    <div class="pill"><label>Active</label><value id="val-active">0</value></div>
+    <div class="pill"><label>Traces</label><value id="val-total">0</value></div>
+    <div class="pill"><label>Avg Latency</label><value id="val-latency">—</value></div>
+    <div class="pill"><label>Error Rate</label><value id="val-errrate">—</value></div>
+    <div class="pill"><label>Subscribers</label><value id="val-subs">0</value></div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <h2>Recent Traces</h2>
+      <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+    </div>
+    <div id="trace-list">
+      <div class="empty-state"><h3>No traces yet</h3><p>Send a query to mIA to see traces appear here.</p></div>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div id="content">
+
+    <!-- OVERVIEW (when no trace selected) -->
+    <div id="overview">
+      <h2>Intelligence Observatory</h2>
+      <div class="metric-grid" id="metrics-grid">
+        <div class="metric-card"><div class="mc-label">Requests (1h)</div><div class="mc-value" id="m-requests">—</div></div>
+        <div class="metric-card"><div class="mc-label">Success Rate</div><div class="mc-value" id="m-success">—</div></div>
+        <div class="metric-card"><div class="mc-label">Avg Latency</div><div class="mc-value" id="m-avg-lat">—</div></div>
+        <div class="metric-card"><div class="mc-label">P95 Latency</div><div class="mc-value" id="m-p95-lat">—</div></div>
+        <div class="metric-card"><div class="mc-label">Avg Tokens</div><div class="mc-value" id="m-tokens">—</div></div>
+        <div class="metric-card"><div class="mc-label">Avg Tools/req</div><div class="mc-value" id="m-tools">—</div></div>
+        <div class="metric-card"><div class="mc-label">Capability Gaps</div><div class="mc-value" id="m-capgaps">—</div></div>
+        <div class="metric-card"><div class="mc-label">Errors</div><div class="mc-value" id="m-errors" style="color:var(--red)">—</div></div>
+      </div>
+      <div id="domain-breakdown" style="display:none">
+        <div class="section"><h3>By Domain</h3><div id="domain-chart"></div></div>
+      </div>
+    </div>
+
+    <!-- TRACE DETAIL (when a trace is selected) -->
+    <div id="trace-detail">
+      <div id="detail-header">
+        <div class="dh-id" id="dh-id"></div>
+        <div class="dh-query" id="dh-query"></div>
+        <div class="dh-meta" id="dh-meta"></div>
+      </div>
+      <div id="tabs">
+        <div class="tab active" data-tab="overview-tab">Overview</div>
+        <div class="tab" data-tab="timeline-tab">Timeline</div>
+        <div class="tab" data-tab="pipeline-tab">Pipeline</div>
+        <div class="tab" data-tab="query-tab">Query</div>
+        <div class="tab" data-tab="context-tab">Context</div>
+        <div class="tab" data-tab="tools-tab">Tools</div>
+        <div class="tab" data-tab="llm-tab">LLM</div>
+        <div class="tab" data-tab="performance-tab">Performance</div>
+        <div class="tab" data-tab="callgraph-tab">Call Graph</div>
+        <div class="tab" data-tab="errors-tab">Issues</div>
+        <div class="tab" data-tab="label-tab">Label</div>
+        <div class="tab" data-tab="raw-tab">Raw</div>
+      </div>
+      <div id="tab-panels">
+        <div class="tab-panel active" id="overview-tab"></div>
+        <div class="tab-panel" id="timeline-tab"></div>
+        <div class="tab-panel" id="pipeline-tab"></div>
+        <div class="tab-panel" id="query-tab"></div>
+        <div class="tab-panel" id="context-tab"></div>
+        <div class="tab-panel" id="tools-tab"></div>
+        <div class="tab-panel" id="llm-tab"></div>
+        <div class="tab-panel" id="performance-tab"></div>
+        <div class="tab-panel" id="callgraph-tab"></div>
+        <div class="tab-panel" id="errors-tab"></div>
+        <div class="tab-panel" id="label-tab"></div>
+        <div class="tab-panel" id="raw-tab"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const BASE = '/api/admin/diagnostics';
+let _traces = {};           // trace_id → summary
+let _activeTrace = null;    // trace_id currently shown
+let _fullTrace = null;      // full trace data (with events)
+let _sseSource = null;
+let _refreshTimer = null;
+
+// ── SSE LIVE CONNECTION ────────────────────────────────────────────────────
+
+function connectSSE() {
+  if (_sseSource) { _sseSource.close(); }
+  _sseSource = new EventSource(`${BASE}/live`);
+  _sseSource.addEventListener('diagnostic', e => {
+    try {
+      const data = JSON.parse(e.data);
+      handleLiveEvent(data);
+    } catch {}
+  });
+  _sseSource.onerror = () => {
+    setTimeout(connectSSE, 5000);
+  };
+}
+
+function handleLiveEvent(data) {
+  if (data.type === 'trace_start') {
+    _traces[data.trace_id] = data;
+    renderSidebar();
+  } else if (data.type === 'trace_complete') {
+    _traces[data.trace_id] = { ..._traces[data.trace_id], ...data };
+    renderSidebar();
+    if (_activeTrace === data.trace_id) {
+      loadTrace(data.trace_id);
+    }
+  } else if (data.type === 'event' && data.trace_id) {
+    if (!_traces[data.trace_id]) { _traces[data.trace_id] = { trace_id: data.trace_id, status: 'running' }; }
+    renderSidebar();
+    if (_activeTrace === data.trace_id && _fullTrace) {
+      _fullTrace.events = _fullTrace.events || [];
+      _fullTrace.events.push(data);
+      renderTimeline(_fullTrace.events);
+    }
+  }
+}
+
+// ── PERIODIC REFRESH ──────────────────────────────────────────────────────
+
+async function refreshAll() {
+  try {
+    const [status, traces, metrics] = await Promise.all([
+      fetch(`${BASE}/status`).then(r => r.ok ? r.json() : null),
+      fetch(`${BASE}/traces?limit=50`).then(r => r.ok ? r.json() : []),
+      fetch(`${BASE}/metrics`).then(r => r.ok ? r.json() : null),
+    ]);
+    if (status) updateHeader(status);
+    if (traces) {
+      traces.forEach(t => { _traces[t.trace_id] = { ..._traces[t.trace_id], ...t }; });
+      renderSidebar();
+    }
+    if (metrics) updateMetrics(metrics);
+  } catch {}
+}
+
+function updateHeader(s) {
+  const dot = (id, cls) => { const d = document.getElementById(id); if (d) { d.className = 'pill-dot ' + cls; } };
+  const val = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+  dot('dot-diag', 'green'); val('val-diag', 'ON');
+  dot('dot-env', s.environment === 'production' ? 'red' : 'blue'); val('val-env', s.environment || '—');
+  dot('dot-llm', 'green'); val('val-llm', s.llm_model || '—');
+  val('val-active', s.running_traces ?? '0');
+  val('val-total', s.total_traces ?? '0');
+  val('val-latency', s.avg_latency_ms != null ? s.avg_latency_ms + 'ms' : '—');
+  val('val-errrate', s.error_rate != null ? (s.error_rate * 100).toFixed(1) + '%' : '—');
+  val('val-subs', s.subscribers ?? '0');
+}
+
+function updateMetrics(m) {
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v ?? '—'; };
+  set('m-requests', m.total_requests);
+  set('m-success', m.success_rate != null ? (m.success_rate * 100).toFixed(1) + '%' : '—');
+  set('m-avg-lat', m.avg_latency_ms != null ? m.avg_latency_ms + 'ms' : '—');
+  set('m-p95-lat', m.p95_latency_ms != null ? m.p95_latency_ms + 'ms' : '—');
+  set('m-tokens', m.avg_tokens ?? '—');
+  set('m-tools', m.avg_tools_per_request ?? '—');
+  set('m-capgaps', m.capability_gaps ?? '0');
+  set('m-errors', m.errors ?? '0');
+  if (m.by_domain && Object.keys(m.by_domain).length > 0) {
+    const chart = document.getElementById('domain-chart');
+    const total = Object.values(m.by_domain).reduce((a,b) => a+b, 0);
+    chart.innerHTML = Object.entries(m.by_domain).sort((a,b)=>b[1]-a[1]).map(([d,n]) => `
+      <div class="wf-row">
+        <div class="wf-label">${esc(d)}</div>
+        <div class="wf-bar-wrap"><div class="wf-bar" style="width:${Math.max(2,(n/total)*100)}%"></div></div>
+        <div class="wf-ms">${n}</div>
+      </div>`).join('');
+    document.getElementById('domain-breakdown').style.display = 'block';
+  }
+}
+
+// ── SIDEBAR ───────────────────────────────────────────────────────────────
+
+function renderSidebar() {
+  const list = document.getElementById('trace-list');
+  const sorted = Object.values(_traces).sort((a,b) => (b.started_at||'').localeCompare(a.started_at||''));
+  if (!sorted.length) {
+    list.innerHTML = '<div class="empty-state"><h3>No traces yet</h3><p>Send a query to mIA.</p></div>';
+    return;
+  }
+  list.innerHTML = sorted.map(t => `
+    <div class="trace-item ${_activeTrace === t.trace_id ? 'active' : ''}" data-id="${esc(t.trace_id)}" onclick="selectTrace('${esc(t.trace_id)}')">
+      <div class="ti-query" title="${esc(t.query||'')}">${esc((t.query||'—').substring(0,60))}</div>
+      <div class="ti-meta">
+        <span class="ti-time">${fmtTime(t.started_at)}</span>
+        <span class="ti-domain">${esc(t.domain||'—')}</span>
+        <span class="status-badge ${t.status||'info'}">${t.status||'—'}</span>
+        <span class="ti-elapsed">${t.elapsed_ms != null ? t.elapsed_ms + 'ms' : ''}</span>
+      </div>
+    </div>`).join('');
+}
+
+// ── TRACE SELECTION ──────────────────────────────────────────────────────
+
+async function selectTrace(id) {
+  _activeTrace = id;
+  renderSidebar();
+  document.getElementById('overview').style.display = 'none';
+  document.getElementById('trace-detail').classList.add('visible');
+  await loadTrace(id);
+}
+
+async function loadTrace(id) {
+  try {
+    const trace = await fetch(`${BASE}/traces/${id}`).then(r => r.json());
+    _fullTrace = trace;
+    renderDetail(trace);
+  } catch (e) {
+    console.error('load trace error', e);
+  }
+}
+
+function renderDetail(t) {
+  // Header
+  document.getElementById('dh-id').textContent = t.trace_id || '';
+  document.getElementById('dh-query').textContent = t.query || '';
+  const badge = `<span class="status-badge ${t.status}">${t.status}</span>`;
+  document.getElementById('dh-meta').innerHTML = [
+    badge,
+    t.elapsed_ms != null ? `<span>Duration: <strong>${t.elapsed_ms}ms</strong></span>` : '',
+    t.domain ? `<span>Domain: <strong style="color:var(--purple)">${esc(t.domain)}</strong></span>` : '',
+    t.llm_rounds ? `<span>LLM Rounds: <strong>${t.llm_rounds}</strong></span>` : '',
+    t.tools_called?.length ? `<span>Tools: <strong>${t.tools_called.length}</strong></span>` : '',
+    t.error_count ? `<span style="color:var(--red)">Errors: <strong>${t.error_count}</strong></span>` : '',
+  ].filter(Boolean).join('');
+
+  // Overview tab
+  const assess = t.assessment || {};
+  document.getElementById('overview-tab').innerHTML = `
+    <div class="section"><h3>Trace Overview</h3>
+      <div class="kv-grid">
+        <div class="kv-key">Trace ID</div><div class="kv-val mono">${esc(t.trace_id)}</div>
+        <div class="kv-key">Session ID</div><div class="kv-val mono">${esc(t.session_id||'—')}</div>
+        <div class="kv-key">Request ID</div><div class="kv-val mono">${esc(t.request_id||'—')}</div>
+        <div class="kv-key">User</div><div class="kv-val">${esc(t.user_name||t.user_id||'—')}</div>
+        <div class="kv-key">Started</div><div class="kv-val">${esc(t.started_at||'—')}</div>
+        <div class="kv-key">Completed</div><div class="kv-val">${esc(t.completed_at||'—')}</div>
+        <div class="kv-key">Duration</div><div class="kv-val">${t.elapsed_ms != null ? t.elapsed_ms + ' ms' : '—'}</div>
+        <div class="kv-key">Status</div><div class="kv-val">${t.status||'—'}</div>
+        <div class="kv-key">Domain</div><div class="kv-val accent">${esc(t.domain||'—')}</div>
+        <div class="kv-key">Modules</div><div class="kv-val">${(t.modules||[]).join(', ')||'—'}</div>
+        <div class="kv-key">Tools Called</div><div class="kv-val">${(t.tools_called||[]).join(', ')||'—'}</div>
+        <div class="kv-key">Tool Errors</div><div class="kv-val ${t.tool_errors?'red':''}">${t.tool_errors||0}</div>
+        <div class="kv-key">LLM Rounds</div><div class="kv-val">${t.llm_rounds||0}</div>
+        <div class="kv-key">LLM Model</div><div class="kv-val">${esc(t.llm_model||'—')}</div>
+        <div class="kv-key">Input Tokens</div><div class="kv-val">${t.tokens_input||0}</div>
+        <div class="kv-key">Output Tokens</div><div class="kv-val">${t.tokens_output||0}</div>
+        <div class="kv-key">Cached Tokens</div><div class="kv-val">${t.tokens_cached||0}</div>
+        <div class="kv-key">Errors</div><div class="kv-val ${t.error_count?'red':''}">${t.error_count||0}</div>
+        <div class="kv-key">Warnings</div><div class="kv-val ${t.warning_count?'yellow':''}">${t.warning_count||0}</div>
+        <div class="kv-key">Label</div><div class="kv-val">${esc(t.label||'—')}</div>
+      </div>
+    </div>
+    ${assess.possible_issues?.length ? `
+    <div class="section"><h3>Diagnostic Assessment</h3>
+      <div class="kv-grid" style="margin-bottom:10px">
+        <div class="kv-key">Capability Gap</div><div class="kv-val ${assess.capability_gap?'red':'green'}">${assess.capability_gap?'⚠ YES':'✓ NO'}</div>
+        <div class="kv-key">Data Gap</div><div class="kv-val ${assess.data_gap?'red':'green'}">${assess.data_gap?'⚠ YES':'✓ NO'}</div>
+        <div class="kv-key">Data Available</div><div class="kv-val ${assess.data_available?'green':''}">${assess.data_available?'✓ YES':'—'}</div>
+        <div class="kv-key">Primary Issue</div><div class="kv-val red">${esc(assess.primary_issue||'NONE')}</div>
+      </div>
+      ${assess.possible_issues.map(i => `
+        <div class="issue-card ${i.type.includes('WARNING')?'warning':''}">
+          <div class="ic-type">${esc(i.type)}</div>
+          <div class="ic-msg">${esc(i.message)}</div>
+        </div>`).join('')}
+    </div>` : ''}`;
+
+  // Timeline tab
+  renderTimeline(t.events || []);
+
+  // Pipeline tab
+  renderPipeline(t);
+
+  // Query tab
+  const qData = findEventData(t.events, 'REQUEST_RECEIVED');
+  document.getElementById('query-tab').innerHTML = `
+    <div class="section"><h3>Query</h3>
+      <div class="kv-grid">
+        <div class="kv-key">Original query</div><div class="kv-val">${esc(t.query||'—')}</div>
+      </div>
+    </div>
+    <div class="section"><h3>Domain & Intent Detection</h3>
+      <div class="kv-grid">
+        <div class="kv-key">Domain(s)</div><div class="kv-val accent">${esc(t.domain||'—')}</div>
+        <div class="kv-key">Modules</div><div class="kv-val">${(t.modules||[]).join(', ')||'—'}</div>
+        <div class="kv-key">Intent</div><div class="kv-val">${esc(t.intent||'—')}</div>
+      </div>
+    </div>`;
+
+  // Context tab
+  const ctxData = findEventData(t.events, 'CONVERSATION_CONTEXT') || {};
+  const userCtxData = findEventData(t.events, 'USER_CONTEXT') || {};
+  document.getElementById('context-tab').innerHTML = `
+    <div class="section"><h3>User Context</h3>
+      <div class="kv-grid">
+        <div class="kv-key">User ID</div><div class="kv-val mono">${esc(userCtxData.user_id||t.user_id||'—')}</div>
+        <div class="kv-key">Display Name</div><div class="kv-val">${esc(userCtxData.display_name||t.user_name||'—')}</div>
+        <div class="kv-key">Permissions</div><div class="kv-val">${(userCtxData.permissions||[]).join(', ')||'—'}</div>
+      </div>
+    </div>
+    <div class="section"><h3>Conversation Context</h3>
+      <div class="kv-grid">
+        <div class="kv-key">Session ID</div><div class="kv-val mono">${esc(t.session_id||'—')}</div>
+        <div class="kv-key">History Turns</div><div class="kv-val">${esc(ctxData.history_turns??'—')}</div>
+        <div class="kv-key">Session State Keys</div><div class="kv-val">${(ctxData.session_state_keys||[]).join(', ')||'—'}</div>
+      </div>
+    </div>`;
+
+  // Tools tab
+  const toolEvents = (t.events||[]).filter(e => e.stage === 'TOOL_CALL_START' || e.stage === 'TOOL_CALL_COMPLETE' || e.stage === 'TOOL_CALL_ERROR');
+  const toolsMap = {};
+  toolEvents.forEach(e => {
+    const name = e.data?.tool || e.data?.name || '?';
+    if (!toolsMap[name]) toolsMap[name] = { start: null, end: null, error: false };
+    if (e.stage === 'TOOL_CALL_START') toolsMap[name].start = e;
+    else if (e.stage === 'TOOL_CALL_COMPLETE') toolsMap[name].end = e;
+    else if (e.stage === 'TOOL_CALL_ERROR') { toolsMap[name].end = e; toolsMap[name].error = true; }
+  });
+  document.getElementById('tools-tab').innerHTML = Object.keys(toolsMap).length ? `
+    <div class="section"><h3>Tools Executed (${Object.keys(toolsMap).length})</h3>
+      <table class="tool-table">
+        <thead><tr><th>Tool</th><th>Status</th><th>Duration</th><th>Parameters</th></tr></thead>
+        <tbody>${Object.entries(toolsMap).map(([name, info]) => {
+          const endData = info.end?.data || {};
+          const startData = info.start?.data || {};
+          return `<tr>
+            <td><strong>${esc(name)}</strong></td>
+            <td><span class="status-badge ${info.error?'error':'completed'}">${endData.status||'—'}</span></td>
+            <td>${info.end?.duration_ms != null ? info.end.duration_ms + 'ms' : '—'}</td>
+            <td class="td-mono" style="max-width:300px;word-break:break-word;font-size:10px">${esc(JSON.stringify(startData.args||startData.parameters||{})).substring(0,200)}</td>
+          </tr>`;}).join('')}
+        </tbody>
+      </table>
+    </div>` : '<div class="empty-state"><h3>No tools were called</h3></div>';
+
+  // LLM tab
+  const llmReqEvents = (t.events||[]).filter(e => e.stage === 'LLM_REQUEST');
+  const llmRespEvents = (t.events||[]).filter(e => e.stage === 'LLM_RESPONSE');
+  const llmErrEvents = (t.events||[]).filter(e => e.stage === 'LLM_ERROR');
+  const totalIn = llmRespEvents.reduce((s,e) => s + (e.data?.input_tokens||0), 0);
+  const totalOut = llmRespEvents.reduce((s,e) => s + (e.data?.output_tokens||0), 0);
+  const totalCached = llmRespEvents.reduce((s,e) => s + (e.data?.cached_tokens||0), 0);
+  const totalTok = totalIn + totalOut;
+  document.getElementById('llm-tab').innerHTML = `
+    <div class="llm-grid">
+      <div class="llm-card"><h4>Model</h4>
+        <div class="kv-grid">
+          <div class="kv-key">Model</div><div class="kv-val">${esc(t.llm_model||'—')}</div>
+          <div class="kv-key">Rounds</div><div class="kv-val">${t.llm_rounds||0}</div>
+          <div class="kv-key">Errors</div><div class="kv-val ${llmErrEvents.length?'red':''}">${llmErrEvents.length}</div>
+        </div>
+      </div>
+      <div class="llm-card"><h4>Token Usage</h4>
+        ${totalTok ? `<div class="token-bar-wrap">
+          <div class="token-bar input" style="width:${(totalIn/totalTok*100).toFixed(0)}%"></div>
+          <div class="token-bar output" style="width:${(totalOut/totalTok*100).toFixed(0)}%"></div>
+          <div class="token-bar cached" style="width:${(totalCached/totalTok*100).toFixed(0)}%"></div>
+        </div>` : ''}
+        <div class="kv-grid" style="margin-top:8px">
+          <div class="kv-key">Input</div><div class="kv-val accent">${totalIn}</div>
+          <div class="kv-key">Output</div><div class="kv-val green">${totalOut}</div>
+          <div class="kv-key">Cached</div><div class="kv-val" style="color:var(--purple)">${totalCached}</div>
+          <div class="kv-key">Total</div><div class="kv-val"><strong>${totalTok}</strong></div>
+        </div>
+        <div style="margin-top:8px;font-size:10px;color:var(--text-muted)">Cost: unavailable (no price config)</div>
+      </div>
+    </div>
+    ${t.final_answer ? `<div class="section" style="margin-top:16px"><h3>Final Answer</h3>
+      <div class="prompt-box">${esc(t.final_answer)}</div></div>` : ''}`;
+
+  // Performance tab
+  renderPerformance(t);
+
+  // Call Graph tab
+  renderCallGraph(t);
+
+  // Issues tab
+  const issues = t.issues || [];
+  const errors = (t.events||[]).filter(e => ['ERROR','EXCEPTION','LLM_ERROR','TOOL_CALL_ERROR'].includes(e.stage));
+  const semanticAnalysis = (t.assessment || {}).semantic_analysis;
+  document.getElementById('errors-tab').innerHTML = `
+    ${semanticAnalysis ? `
+    <div class="section" style="border:1px solid var(--yellow);border-radius:8px;padding:12px;margin-bottom:8px">
+      <h3 style="color:var(--yellow);margin-bottom:10px">⚠ Semantic Constraint Analysis</h3>
+      <div class="kv-grid">
+        <div class="kv-key">USER MEANING</div><div class="kv-val" style="color:var(--accent)">"${esc(semanticAnalysis.user_meaning||'')}"</div>
+        <div class="kv-key">EXPECTED SEMANTICS</div><div class="kv-val" style="color:var(--green)">${esc(semanticAnalysis.expected_semantics||'—')}</div>
+        <div class="kv-key">ACTUAL TOOL</div><div class="kv-val mono">${esc(semanticAnalysis.actual_tool||'—')}</div>
+        <div class="kv-key">ACTUAL ARGS</div><div class="kv-val mono">${esc((semanticAnalysis.actual_args||[]).join(', ')||'—')}</div>
+        <div class="kv-key">MISSING CONSTRAINT</div><div class="kv-val" style="color:var(--red)">${esc(semanticAnalysis.missing_constraint||'—')}</div>
+        <div class="kv-key">ROOT CAUSE</div><div class="kv-val" style="color:var(--red);font-weight:600">${esc(semanticAnalysis.possible_root_cause||'—')}</div>
+      </div>
+      ${semanticAnalysis.expected_behavior ? `<div style="margin-top:8px;font-size:11px;color:var(--text-muted)">Expected: ${esc(semanticAnalysis.expected_behavior)}</div>` : ''}
+    </div>` : ''}
+    ${issues.length ? `<div class="section"><h3>Detected Issues (${issues.length})</h3>
+      ${issues.map(i => `<div class="issue-card ${i.type.includes('WARNING')?'warning':i.type==='TEMPORAL_CONSTRAINT_DROPPED'?'warning':''}">
+        <div class="ic-type">${esc(i.type)}</div>
+        <div class="ic-msg">${esc(i.message)}</div>
+        ${Object.keys(i.details||{}).length ? `<div style="margin-top:4px;font-size:10px;color:var(--text-muted);font-family:monospace;white-space:pre-wrap;word-break:break-all">${esc(JSON.stringify(i.details, null, 2))}</div>` : ''}
+      </div>`).join('')}
+    </div>` : ''}
+    ${errors.length ? `<div class="section"><h3>Error Events (${errors.length})</h3>
+      <ul id="timeline-list" style="margin-left:12px">
+        ${errors.map(e => `<li class="tl-item">
+          <div class="tl-dot error"></div>
+          <div class="tl-body">
+            <span class="tl-stage">${esc(e.stage)}</span>
+            <span class="tl-ts">${fmtTime(e.timestamp)}</span>
+            <div class="tl-data">${esc(JSON.stringify(e.data||{}))}</div>
+          </div>
+        </li>`).join('')}
+      </ul>
+    </div>` : ''}
+    ${!semanticAnalysis && !issues.length && !errors.length ? '<div class="empty-state"><h3>No issues detected ✓</h3></div>' : ''}`;
+
+  // Label tab
+  document.getElementById('label-tab').innerHTML = `
+    <div class="section"><h3>Label This Trace (Golden Dataset)</h3>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Use labels to build a golden evaluation dataset. Labels are stored locally in the diagnostics store and require human approval before any automated use.</p>
+      <div class="label-btns">
+        ${['correct','incorrect','needs_review','regression'].map(l => `
+          <button class="label-btn ${t.label===l?'active-'+l:''}" onclick="setLabel('${l}')">${l.replace('_',' ')}</button>
+        `).join('')}
+      </div>
+      <textarea id="notes-textarea" placeholder="Developer notes…">${esc(t.developer_notes||'')}</textarea>
+      <button id="save-label-btn" onclick="saveLabel()">Save Label</button>
+      <div id="label-feedback" style="margin-top:8px;font-size:12px;color:var(--green);display:none">✓ Saved</div>
+    </div>`;
+
+  // Raw tab
+  document.getElementById('raw-tab').innerHTML = `
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn-copy" onclick="copyJSON()">Copy JSON</button>
+      <button class="btn-copy" onclick="downloadJSON()">Download JSON</button>
+    </div>
+    <pre id="raw-json">${esc(JSON.stringify(t, null, 2))}</pre>`;
+}
+
+function renderCallGraph(t) {
+  const panel = document.getElementById('callgraph-tab');
+  const nodes = t.call_graph || [];
+  if (!nodes.length) {
+    panel.innerHTML = '<div class="empty-state"><h3>No call graph data</h3><p>Enable diagnostics and run a query with tool calls to see the execution tree here.</p></div>';
+    return;
+  }
+  const byId = {};
+  const engineRoot = {
+    id: 'engine:root', kind: 'engine',
+    label: 'ConversationEngine.run() → _reason()',
+    file: 'src/mia/conversation/engine.py',
+    duration_ms: t.elapsed_ms, status: t.status === 'error' ? 'error' : 'ok',
+  };
+  byId['engine:root'] = { node: engineRoot, children: [] };
+  nodes.forEach(n => { byId[n.id] = { node: n, children: [] }; });
+  nodes.forEach(n => {
+    const pid = n.parent_id || 'engine:root';
+    if (byId[pid]) byId[pid].children.push(n.id);
+    else byId['engine:root'].children.push(n.id);
+  });
+  function renderNode(id, depth) {
+    const entry = byId[id];
+    if (!entry) return '';
+    const { node, children } = entry;
+    const icon = node.kind === 'sql' ? '⬡' : node.kind === 'engine' ? '⚙' : '⚡';
+    const col = node.status === 'error' ? 'var(--red)' : node.kind === 'sql' ? 'var(--accent)' : node.kind === 'engine' ? 'var(--purple)' : 'var(--green)';
+    const dur = node.duration_ms != null ? `<span style="color:var(--text-muted);margin-left:8px;font-size:10px">${node.duration_ms}ms</span>` : '';
+    const file = node.file ? `<span style="color:var(--text-muted);font-size:10px;margin-left:8px">${esc(node.file)}</span>` : '';
+    let detail = '';
+    if (node.kind === 'tool_call' && node.args) {
+      const pairs = Object.entries(node.args).filter(([,v]) => v !== null && v !== false && v !== '');
+      if (pairs.length) detail = `<div style="font-size:10px;color:var(--text-muted);font-family:monospace;margin:2px 0 4px 22px">${pairs.map(([k,v]) => `${k}=${JSON.stringify(v)}`).join(', ')}</div>`;
+    } else if (node.kind === 'sql') {
+      const rows = node.row_count != null ? ` → ${node.row_count} rows` : '';
+      const filters = node.filters ? esc(JSON.stringify(node.filters)) : '';
+      detail = `<div style="font-size:10px;color:var(--text-muted);font-family:monospace;margin:2px 0 4px 22px">${filters}${rows}</div>`;
+    }
+    const childHtml = children.map(cid => `<div style="border-left:1px solid var(--border);margin-left:12px;padding-left:12px">${renderNode(cid, depth+1)}</div>`).join('');
+    return `<div style="padding:3px 0"><div style="display:flex;align-items:center;gap:4px"><span style="color:${col}">${icon}</span><span style="font-weight:500;color:${col}">${esc(node.label)}</span>${dur}${file}</div>${detail}${childHtml}</div>`;
+  }
+  panel.innerHTML = `<div class="section"><h3>Execution Call Graph</h3><div style="font-family:monospace;font-size:12px;line-height:1.6">${renderNode('engine:root', 0)}</div></div>`;
+}
+
+function renderTimeline(events) {
+  const panel = document.getElementById('timeline-tab');
+  if (!events?.length) { panel.innerHTML = '<div class="empty-state"><h3>No events yet</h3></div>'; return; }
+  panel.innerHTML = `<ul id="timeline-list">${events.map(e => {
+    const dotCls = {success:'success',error:'error',warning:'warning',running:'running'}[e.status]||'info';
+    const hasData = e.data && Object.keys(e.data).length > 0;
+    const dataStr = hasData ? JSON.stringify(e.data) : '';
+    return `<li class="tl-item">
+      <div class="tl-dot ${dotCls}"></div>
+      <div class="tl-body">
+        <span class="tl-stage">${esc(e.stage)}</span>
+        <span class="tl-ts">${fmtTime(e.timestamp)}</span>
+        ${e.duration_ms != null ? `<span class="tl-dur">${e.duration_ms}ms</span>` : ''}
+        ${hasData ? `<div class="tl-data" onclick="this.classList.toggle('expanded')">${esc(dataStr)}</div>` : ''}
+      </div>
+    </li>`;}).join('')}</ul>`;
+}
+
+function renderPipeline(t) {
+  const stages = t.events ? t.events.map(e => e.stage) : [];
+  const nodeStatus = (stage) => {
+    if (!stages.length) return 'skipped';
+    if (stages.includes(stage + '_ERROR') || stages.includes('ERROR')) return 'error';
+    if (stages.some(s => s.startsWith(stage))) return 'success';
+    return 'skipped';
+  };
+  const nodes = [
+    { label: 'Request Received', key: 'REQUEST_RECEIVED' },
+    { label: 'User Context', key: 'USER_CONTEXT' },
+    { label: 'Domain Detection', key: 'DOMAIN_DETECTION' },
+    { label: 'Prompt Build', key: 'PROMPT_BUILD' },
+    { label: 'LLM Request', key: 'LLM_REQUEST' },
+    { label: 'Tool Execution', key: 'TOOL_CALL' },
+    { label: 'Presentation', key: 'PRESENTATION' },
+    { label: 'Response Sent', key: 'RESPONSE_SENT' },
+  ];
+  const html = nodes.map((n, i) => {
+    const st = stages.includes(n.key) ? 'success' :
+               stages.some(s => s.startsWith(n.key)) ? 'success' :
+               stages.includes(n.key + '_ERROR') ? 'error' : 'skipped';
+    const icon = { success: '✓', error: '✗', skipped: '○', running: '●' }[st] || '○';
+    return (i ? '<div class="pipe-connector"></div>' : '') +
+      `<div class="pipe-node ${st}">
+        <span class="pn-label">${esc(n.label)}</span>
+        <span class="pn-status ${st}">${icon}</span>
+      </div>`;
+  }).join('');
+  document.getElementById('pipeline-tab').innerHTML = `<div id="pipeline">${html}</div>`;
+}
+
+function renderPerformance(t) {
+  if (!t.elapsed_ms) { document.getElementById('performance-tab').innerHTML = '<div class="empty-state"><h3>No timing data yet</h3></div>'; return; }
+  const events = t.events || [];
+  const dur = (stage) => {
+    const e = events.find(ev => ev.stage === stage && ev.duration_ms != null);
+    return e ? e.duration_ms : null;
+  };
+  const allLLM = events.filter(e => e.stage === 'LLM_RESPONSE');
+  const llmTotalMs = allLLM.reduce((s,e) => s + (e.duration_ms||0), 0);
+  const allTools = events.filter(e => e.stage === 'TOOL_CALL_COMPLETE' || e.stage === 'TOOL_CALL_ERROR');
+  const toolsTotalMs = allTools.reduce((s,e) => s + (e.duration_ms||0), 0);
+  const promptMs = dur('PROMPT_BUILD_COMPLETE');
+  const total = t.elapsed_ms;
+  const rows = [
+    { label: 'Total Turn', ms: total, cls: 'total' },
+    { label: 'LLM (all rounds)', ms: llmTotalMs || null, cls: 'llm' },
+    { label: 'Tools (combined)', ms: toolsTotalMs || null, cls: 'tool' },
+    { label: 'Prompt Build', ms: promptMs, cls: 'prompt' },
+  ].filter(r => r.ms != null);
+  const maxMs = Math.max(...rows.map(r => r.ms));
+  document.getElementById('performance-tab').innerHTML = `
+    <div class="section"><h3>Time Breakdown</h3>
+      <div class="waterfall">
+        ${rows.map(r => `<div class="wf-row">
+          <div class="wf-label">${esc(r.label)}</div>
+          <div class="wf-bar-wrap"><div class="wf-bar ${r.cls}" style="width:${Math.max(2,(r.ms/maxMs)*100).toFixed(1)}%"></div></div>
+          <div class="wf-ms">${r.ms} ms</div>
+        </div>`).join('')}
+      </div>
+    </div>
+    ${llmTotalMs && total ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">
+      LLM share: ${(llmTotalMs/total*100).toFixed(1)}%
+    </div>` : ''}`;
+}
+
+// ── LABEL ─────────────────────────────────────────────────────────────────
+
+function setLabel(label) {
+  document.querySelectorAll('.label-btn').forEach(b => b.className = 'label-btn');
+  const btn = [...document.querySelectorAll('.label-btn')].find(b => b.textContent.trim().replace(' ','_') === label);
+  if (btn) btn.className = `label-btn active-${label}`;
+  if (_fullTrace) _fullTrace._pendingLabel = label;
+}
+
+async function saveLabel() {
+  const label = _fullTrace?._pendingLabel || _fullTrace?.label;
+  const notes = document.getElementById('notes-textarea')?.value || '';
+  if (!label || !_activeTrace) return;
+  try {
+    await fetch(`${BASE}/traces/${_activeTrace}/label`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label, notes }),
+    });
+    const fb = document.getElementById('label-feedback');
+    if (fb) { fb.style.display = 'block'; setTimeout(() => fb.style.display = 'none', 2000); }
+    if (_fullTrace) { _fullTrace.label = label; _fullTrace.developer_notes = notes; }
+  } catch (e) { console.error('label error', e); }
+}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  try { const d = new Date(iso); return d.toLocaleTimeString('es', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3,'0'); } catch { return iso.substring(11,23)||iso; }
+}
+
+function findEventData(events, stage) {
+  const e = (events||[]).find(ev => ev.stage === stage);
+  return e ? e.data : null;
+}
+
+function copyJSON() {
+  const raw = document.getElementById('raw-json');
+  if (raw) navigator.clipboard.writeText(raw.textContent);
+}
+
+function downloadJSON() {
+  if (!_fullTrace) return;
+  const blob = new Blob([JSON.stringify(_fullTrace, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `trace-${_activeTrace}.json`;
+  a.click();
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    const panel = document.getElementById(tab.dataset.tab);
+    if (panel) panel.classList.add('active');
+  });
+});
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+
+connectSSE();
+refreshAll();
+setInterval(refreshAll, 15000);
+</script>
+</body>
+</html>

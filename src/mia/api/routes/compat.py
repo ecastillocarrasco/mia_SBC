@@ -44,11 +44,22 @@ router = APIRouter(tags=["compatibilidad"], include_in_schema=False)
 class LegacyChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     context: dict[str, Any] = Field(default_factory=dict)
+    attachment_ids: list[str] | None = Field(default=None, max_length=10)
 
     @property
     def session_id(self) -> str | None:
         value = self.context.get("session_id")
         return str(value)[:32] if isinstance(value, str) and value else None
+
+    @property
+    def resolved_attachment_ids(self) -> list[str] | None:
+        """Acepta attachment_ids desde el campo directo o desde context (compat con frontend)."""
+        if self.attachment_ids:
+            return self.attachment_ids
+        ctx_ids = self.context.get("attachment_ids")
+        if isinstance(ctx_ids, list):
+            return [str(i) for i in ctx_ids[:10]]
+        return None
 
 
 class LegacyVoiceRequest(BaseModel):
@@ -56,8 +67,12 @@ class LegacyVoiceRequest(BaseModel):
     locale: str | None = None
 
 
+_SUPPRESS_INTENTS = frozenset({"operational_lookup", "direct_lookup", "list"})
+
+
 def legacy_payload(result: TurnResult) -> dict[str, Any]:
-    data, actions = legacy_view(result.presentations, result.summaries)
+    suppress = result.presentation_intent in _SUPPRESS_INTENTS
+    data, actions = legacy_view(result.presentations, result.summaries, suppress_comparison=suppress)
     if result.web_sources:
         data["web_sources"] = [
             {**s, "domain": urlsplit(s["url"]).netloc.removeprefix("www.")} for s in result.web_sources
@@ -86,16 +101,28 @@ def _legacy_stream_event(event: BaseModel) -> dict[str, Any] | None:
     return None
 
 
+def _legacy_att_kwargs(body: LegacyChatRequest, services: ServicesDep) -> dict[str, Any]:
+    if services.settings.attachments.enabled and body.resolved_attachment_ids:
+        return {"attachment_ids": body.resolved_attachment_ids, "attachment_service": services.attachment_service}
+    return {}
+
+
 @router.post("/api/mia/chat")
 @router.post("/api/mia/v4/chat")
 async def legacy_chat(body: LegacyChatRequest, services: ServicesDep, user: UserDep) -> dict[str, Any]:
-    result = await services.engine.complete(message=body.message, user=user, session_id=body.session_id)
+    result = await services.engine.complete(
+        message=body.message, user=user, session_id=body.session_id, **_legacy_att_kwargs(body, services)
+    )
     return legacy_payload(result)
 
 
 @router.post("/api/mia/chat/stream")
 async def legacy_chat_stream(body: LegacyChatRequest, services: ServicesDep, user: UserDep) -> StreamingResponse:
-    events = await prime(services.engine.run(message=body.message, user=user, session_id=body.session_id))
+    events = await prime(
+        services.engine.run(
+            message=body.message, user=user, session_id=body.session_id, **_legacy_att_kwargs(body, services)
+        )
+    )
     return StreamingResponse(to_ndjson(events, _legacy_stream_event), media_type="application/x-ndjson")
 
 

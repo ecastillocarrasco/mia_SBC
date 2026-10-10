@@ -1,0 +1,306 @@
+# Categoría: ranking
+# Consultas de ordenación, top N, extremos, posiciones relativas.
+
+- prompt: "los 10 empleados con más antigüedad"
+  domain: empleados
+  tags: [ranking, antigüedad, top10]
+
+- prompt: "los 5 departamentos con mayor número de empleados"
+  domain: empleados
+  tags: [ranking, departamento, top5]
+
+- prompt: "quién tiene más días de vacaciones pendientes"
+  domain: vacaciones
+  tags: [ranking, vacaciones, top1]
+
+- prompt: "top 10 empleados con más ausencias este año"
+  domain: turnos
+  tags: [ranking, ausencias, top10]
+
+- prompt: "los 5 departamentos con mayor tasa de absentismo"
+  domain: turnos
+  tags: [ranking, absentismo, top5]
+
+- prompt: "los 3 empleados con mayor salario bruto"
+  domain: nominas
+  tags: [ranking, salario, top3]
+
+- prompt: "departamentos ordenados por número de empleados de mayor a menor"
+  domain: empleados
+  tags: [ranking, departamento, orden]
+
+- prompt: "ranking de departamentos por tasa de absentismo"
+  domain: turnos
+  tags: [ranking, absentismo, departamento]
+
+- prompt: "empleados ordenados por antigüedad descendente"
+  domain: empleados
+  tags: [ranking, antigüedad, orden]
+
+- prompt: "los puestos mejor remunerados de la empresa"
+  domain: nominas
+  tags: [ranking, puesto, salario]
+
+- prompt: "el departamento con más ausencias el mes pasado"
+  domain: turnos
+  tags: [ranking, ausencias, departamento, top1]
+
+- prompt: "el empleado con más días de baja este año"
+  domain: turnos
+  tags: [ranking, bajas, top1]
+
+- prompt: "los 10 empleados más jóvenes de la empresa"
+  domain: empleados
+  tags: [ranking, edad, jóvenes, top10]
+
+- prompt: "los 5 empleados de mayor edad"
+  domain: empleados
+  tags: [ranking, edad, mayores, top5]
+
+- prompt: "ranking de puestos por número de personas"
+  domain: empleados
+  tags: [ranking, puesto, ocupación]
+
+- prompt: "los 3 departamentos con mayor rotación de personal"
+  domain: empleados
+  tags: [ranking, rotación, top3]
+
+- prompt: "empleados con más horas extras acumuladas"
+  domain: turnos
+  tags: [ranking, horas_extras]
+
+- prompt: "qué departamento consume más días de vacaciones por empleado"
+  domain: vacaciones
+  tags: [ranking, vacaciones, departamento, per_capita]
+
+- prompt: "ranking de empleados por saldo de vacaciones pendiente"
+  domain: vacaciones
+  tags: [ranking, vacaciones, saldo]
+
+- prompt: "los 5 empleados con mayor número de solicitudes de vacaciones"
+  domain: vacaciones
+  tags: [ranking, vacaciones, solicitudes, top5]
+
+- prompt: "departamentos ordenados por salario medio de mayor a menor"
+  domain: nominas
+  tags: [ranking, salario, departamento, media]
+
+- prompt: "quién gana más en el departamento de IT"
+  domain: nominas
+  tags: [ranking, salario, departamento, top1]
+
+- prompt: "los 10 empleados con menor salario"
+  domain: nominas
+  tags: [ranking, salario, menor, top10]
+
+- prompt: "puestos ordenados por retribución media descendente"
+  domain: nominas
+  tags: [ranking, puesto, salario, media]
+
+- prompt: "el departamento con mayor salario medio"
+  domain: nominas
+  tags: [ranking, salario, departamento, top1]
+
+- prompt: "el departamento con menor salario medio"
+  domain: nominas
+  tags: [ranking, salario, departamento, bottom1]
+
+- prompt: "top 5 categorías con mayor absentismo"
+  domain: turnos
+  tags: [ranking, categoría, absentismo, top5]
+
+- prompt: "los puestos con más rotación en los últimos 2 años"
+  domain: empleados
+  tags: [ranking, puesto, rotación]
+
+- prompt: "ranking de centros de trabajo por número de empleados"
+  domain: empleados
+  tags: [ranking, centros, empleados]
+
+- prompt: "las 3 ETT que más trabajadores aportan"
+  domain: trabajo_temporal
+  tags: [ranking, ett, top3]
+
+- prompt: "empleados con más tiempo de excedencia acumulada"
+  domain: empleados
+  tags: [ranking, excedencia]
+
+- prompt: "los 10 candidatos con más experiencia relevante para el puesto de analista"
+  domain: curriculums
+  tags: [ranking, candidatos, experiencia, top10]
+
+- prompt: "currículums más recientes indexados"
+  domain: curriculums
+  tags: [ranking, curriculums, recientes]
+
+- prompt: "los 5 empleados que menos vacaciones han disfrutado este año"
+  domain: vacaciones
+  tags: [ranking, vacaciones, menor, top5]
+
+- prompt: "departamentos con menor cobertura de turnos este mes"
+  domain: turnos
+  tags: [ranking, cobertura, departamento]
+
+- prompt: "los 10 empleados con más incidencias de turno"
+  domain: turnos
+  tags: [ranking, incidencias, top10]
+
+- prompt: "ranking de empleados por días de baja en el último año"
+  domain: turnos
+  tags: [ranking, bajas, año]
+
+- prompt: "qué empleado tiene el récord de antigüedad en la empresa"
+  domain: empleados
+  tags: [ranking, antigüedad, top1]
+
+- prompt: "los 3 puestos con mayor diferencia salarial entre personas"
+  domain: nominas
+  tags: [ranking, puesto, dispersión_salarial]
+
+- prompt: "empleados ordenados por fecha de alta más reciente"
+  domain: empleados
+  tags: [ranking, altas, orden]
+
+- prompt: "las 5 personas con mayor salario neto"
+  domain: nominas
+  tags: [ranking, salario_neto, top5]
+
+- prompt: "departamentos ordenados de mayor a menor tasa de cobertura"
+  domain: turnos
+  tags: [ranking, cobertura, departamento]
+
+- prompt: "el puesto con más personas a tiempo parcial"
+  domain: empleados
+  tags: [ranking, puesto, jornada_parcial]
+
+- prompt: "top 3 departamentos con más contrataciones temporales"
+  domain: empleados
+  tags: [ranking, contrato_temporal, departamento, top3]
+
+- prompt: "empleados con mayor número de contratos sucesivos"
+  domain: empleados
+  tags: [ranking, contratos]
+
+- prompt: "las 5 ausencias más largas del año"
+  domain: turnos
+  tags: [ranking, ausencias, duración, top5]
+
+- prompt: "ranking de puestos por días de ausencia media"
+  domain: turnos
+  tags: [ranking, puesto, ausencias, media]
+
+- prompt: "los 10 empleados con más complementos en nómina"
+  domain: nominas
+  tags: [ranking, complementos, top10]
+
+- prompt: "departamentos con mayor porcentaje de contratos indefinidos"
+  domain: empleados
+  tags: [ranking, departamento, contrato_indefinido, porcentaje]
+
+- prompt: "los 5 empleados con más documentos pendientes"
+  domain: documentos
+  tags: [ranking, documentos, pendientes, top5]
+
+- prompt: "la semana con más ausencias del año"
+  domain: turnos
+  tags: [ranking, ausencias, semana]
+
+- prompt: "el mes con más contrataciones en la historia de la empresa"
+  domain: empleados
+  tags: [ranking, altas, mes, histórico]
+
+- prompt: "top 5 motivos de ausencia más frecuentes"
+  domain: turnos
+  tags: [ranking, ausencias, motivo, top5]
+
+- prompt: "los 5 departamentos que más vacaciones gastan por persona"
+  domain: vacaciones
+  tags: [ranking, vacaciones, departamento, per_capita, top5]
+
+- prompt: "empleados con mayor complemento de productividad en el último año"
+  domain: nominas
+  tags: [ranking, complemento_productividad]
+
+- prompt: "ranking de empleados por número de ausencias cortas este año"
+  domain: turnos
+  tags: [ranking, ausencias_cortas, empleado]
+
+- prompt: "los 3 centros de trabajo con más incidencias"
+  domain: turnos
+  tags: [ranking, centros, incidencias, top3]
+
+- prompt: "empleados con más días de permiso retribuido"
+  domain: turnos
+  tags: [ranking, permisos]
+
+- prompt: "qué puesto tiene mayor brecha salarial de género"
+  domain: nominas
+  tags: [ranking, puesto, brecha_salarial]
+
+- prompt: "los 10 candidatos más recientes en base de datos"
+  domain: curriculums
+  tags: [ranking, candidatos, recientes, top10]
+
+- prompt: "departamentos ordenados por edad media de empleados"
+  domain: empleados
+  tags: [ranking, departamento, edad_media]
+
+- prompt: "los 5 empleados con menor IRPF"
+  domain: nominas
+  tags: [ranking, irpf, menor, top5]
+
+- prompt: "ranking de departamentos por incremento salarial medio en el último año"
+  domain: nominas
+  tags: [ranking, departamento, incremento_salarial]
+
+- prompt: "top 5 puestos más demandados en los últimos CVs recibidos"
+  domain: curriculums
+  tags: [ranking, puestos, demandados, top5]
+
+- prompt: "los empleados que más correos reciben al día"
+  domain: correo
+  tags: [ranking, correo, volumen]
+
+- prompt: "departamento con más días de vacaciones disfrutados en verano"
+  domain: vacaciones
+  tags: [ranking, departamento, vacaciones_verano]
+
+- prompt: "los 5 trabajadores con el salario más estable en los últimos 3 años"
+  domain: nominas
+  tags: [ranking, estabilidad_salarial, top5]
+
+- prompt: "ranking de empleados por número de ausencias en el último trimestre"
+  domain: turnos
+  tags: [ranking, ausencias, trimestre]
+
+- prompt: "top 10 empleados por salario bruto en el departamento de IT"
+  domain: nominas
+  tags: [ranking, salario, departamento_it, top10]
+
+- prompt: "puestos con mayor número de empleados en el departamento de operaciones"
+  domain: empleados
+  tags: [ranking, puesto, departamento_operaciones]
+
+- prompt: "los 3 departamentos con mayor ratio de empleados sobre plantilla total"
+  domain: empleados
+  tags: [ranking, departamento, ratio, top3]
+
+- prompt: "empleados con más de 20 ausencias acumuladas en su historial"
+  domain: turnos
+  tags: [ranking, ausencias, historial]
+
+- prompt: "ranking de departamentos por salario medio incluidas pagas extra"
+  domain: nominas
+  tags: [ranking, departamento, salario_total]
+
+- prompt: "los 10 empleados con mayor salario bruto anual estimado"
+  domain: nominas
+  tags: [ranking, salario_anual, top10]
+
+- prompt: "qué departamento tiene la antigüedad media más alta"
+  domain: empleados
+  tags: [ranking, departamento, antigüedad_media]
+
+- prompt: "los 5 empleados con más documentos en su expediente"
+  domain: documentos
+  tags: [ranking, empleado, documentos, top5]

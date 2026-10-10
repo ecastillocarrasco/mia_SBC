@@ -13,10 +13,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from mia import __version__
 from mia.api.errors import install_error_handlers
 from mia.api.middleware import RequestContextMiddleware
-from mia.api.routes import admin, chat, compat, documents, health, mail, reports, voice
+import mia.diagnostics as diagnostics
+from mia.api.routes import admin, attachments, chat, compat, documents, health, mail, reports, voice
 from mia.api.routes.frontend import mount_frontend
 from mia.api.services import Services
 from mia.data.schema import schema_problem
+from mia.diagnostics.routes import router as diagnostics_router
+from mia.diagnostics.store import DiagnosticsStore
+from mia.diagnostics.streaming import LiveBroadcaster
 from mia.observability import configure_logging, get_logger
 from mia.observability.telemetry import configure_telemetry
 from mia.settings import Settings, VoiceProviderName, get_settings
@@ -42,6 +46,20 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.services = services or Services.build(settings)
+
+        # Diagnóstico — solo si está habilitado
+        diag_store: DiagnosticsStore | None = None
+        if settings.diagnostics.enabled:
+            diag_store = DiagnosticsStore(settings.diagnostics)
+            broadcaster = LiveBroadcaster()
+            diagnostics.setup(diag_store, broadcaster, mask_pii=settings.diagnostics.mask_pii)
+            diag_store.start_cleanup()
+            log.info("diagnostics.enabled", max_traces=settings.diagnostics.max_traces)
+
+        if settings.attachments.enabled and app.state.services.attachment_service is not None:
+            app.state.services.attachment_service.start_cleanup()
+            log.info("attachments.enabled", max_file_mb=settings.attachments.max_file_mb)
+
         warm = asyncio.create_task(_warm_voice(app.state.services))
         log.info("app.started", version=__version__, environment=settings.environment.value)
         if problem := await schema_problem(app.state.services.db):
@@ -52,6 +70,8 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
             warm.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await warm
+            if diag_store:
+                await diag_store.aclose()
             await app.state.services.aclose()
 
     app = FastAPI(title="mIA", version=__version__, lifespan=lifespan)
@@ -59,7 +79,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
     )
     install_error_handlers(app)
@@ -70,8 +90,10 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
         reports.router,
         documents.router,
         admin.router,
+        diagnostics_router,
         compat.router,
         mail.router,
+        attachments.router,
     ):
         app.include_router(router)
     mount_frontend(app, settings.frontend)

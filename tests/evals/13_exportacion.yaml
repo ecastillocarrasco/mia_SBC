@@ -1,0 +1,231 @@
+# Categoría: exportación
+# Descarga/envío de datos o documentos en un formato concreto.
+
+- prompt: "descárgame la nómina de enero de Pedro"
+  domain: documentos
+  tags: [exportación, nomina, descarga]
+
+- prompt: "exporta la lista de empleados a Excel"
+  domain: empleados
+  tags: [exportación, excel, listado]
+
+- prompt: "envíame el contrato de Laura por correo"
+  domain: [documentos, correo]
+  tags: [exportación, correo, contrato]
+
+- prompt: "descarga en PDF el informe de absentismo"
+  domain: informes
+  tags: [exportación, pdf, informe]
+
+- prompt: "exporta a Excel la comparativa de salarios por departamento"
+  domain: [nominas, informes]
+  tags: [exportación, excel, comparativa]
+
+- prompt: "mándame por correo el informe de vacaciones pendientes"
+  domain: [informes, correo]
+  tags: [exportación, correo, informe]
+
+- prompt: "descárgame todas mis nóminas del año"
+  domain: documentos
+  tags: [exportación, nominas, yo]
+
+- prompt: "exporta el listado de altas y bajas a un archivo Excel"
+  domain: empleados
+  tags: [exportación, excel, altas_bajas]
+
+- prompt: "quiero descargar el CV de la candidata en PDF"
+  domain: curriculums
+  tags: [exportación, pdf, curriculum]
+
+- prompt: "envía el informe ejecutivo a mi correo"
+  domain: [informes, correo]
+  tags: [exportación, correo, ejecutivo]
+
+- prompt: "descárgame el certificado de empresa de Juan"
+  domain: documentos
+  tags: [exportación, certificado, persona]
+
+- prompt: "exporta a PowerPoint la presentación de KPIs del trimestre"
+  domain: informes
+  tags: [exportación, powerpoint, kpi]
+
+- prompt: "quiero el Excel con los datos de todos los empleados del departamento de IT"
+  domain: [empleados, informes]
+  tags: [exportación, excel, departamento]
+
+- prompt: "descárgame mi contrato de trabajo"
+  domain: documentos
+  tags: [exportación, contrato, yo]
+
+- prompt: "mándale a Recursos Humanos el informe de rotación por email"
+  domain: [informes, correo]
+  tags: [exportación, correo, destinatario]
+
+- prompt: "exporta la ficha completa de Ana García a PDF"
+  domain: [informes, empleados]
+  tags: [exportación, pdf, ficha_360]
+
+- prompt: "descarga el listado de vacaciones pendientes en Excel"
+  domain: [vacaciones, informes]
+  tags: [exportación, excel, vacaciones]
+
+- prompt: "envíame por correo mi última nómina"
+  domain: [documentos, correo]
+  tags: [exportación, correo, yo, nomina]
+
+- prompt: "quiero el informe de absentismo en formato Excel, no PDF"
+  domain: informes
+  tags: [exportación, excel, formato_específico]
+
+- prompt: "descárgame los documentos pendientes de firma de todos los empleados"
+  domain: documentos
+  tags: [exportación, documentos, pendientes]
+
+- prompt: "exporta a CSV el listado de ausencias del año"
+  domain: turnos
+  tags: [exportación, csv, ausencias]
+
+- prompt: "quiero descargar el informe de nóminas en Excel con una hoja por departamento"
+  domain: [nominas, informes]
+  tags: [exportación, excel, multi_hoja]
+
+- prompt: "envíame el currículum del candidato preseleccionado"
+  domain: [curriculums, correo]
+  tags: [exportación, correo, curriculum]
+
+- prompt: "descarga el histórico de vacaciones de Carlos en PDF"
+  domain: [vacaciones, informes]
+  tags: [exportación, pdf, histórico]
+
+- prompt: "quiero el Excel con las nóminas de todo el año de María"
+  domain: [nominas, documentos]
+  tags: [exportación, excel, persona, anual]
+
+- prompt: "mándame el informe comparativo de absentismo por email"
+  domain: [informes, correo]
+  tags: [exportación, correo, comparativa]
+
+- prompt: "descárgame el certificado de retenciones del IRPF de este año"
+  domain: documentos
+  tags: [exportación, certificado, irpf]
+
+- prompt: "exporta a PDF la ficha de todos los empleados del departamento de ventas"
+  domain: [informes, empleados]
+  tags: [exportación, pdf, departamento]
+
+- prompt: "quiero descargar el informe ejecutivo en PowerPoint para la junta"
+  domain: informes
+  tags: [exportación, powerpoint, junta]
+
+- prompt: "envía por correo la nómina de este mes a cada empleado"
+  domain: [nominas, correo]
+  tags: [exportación, correo, masivo]
+
+- prompt: "descárgame el Excel con el ranking de absentismo por departamento"
+  domain: [turnos, informes]
+  tags: [exportación, excel, ranking]
+
+- prompt: "quiero el PDF con mi certificado de vida laboral"
+  domain: documentos
+  tags: [exportación, pdf, vida_laboral, yo]
+
+- prompt: "exporta a Excel la lista de empleados próximos a jubilarse"
+  domain: [empleados, informes]
+  tags: [exportación, excel, jubilación]
+
+- prompt: "mándame el informe de KPIs del trimestre en PDF por correo"
+  domain: [informes, correo]
+  tags: [exportación, pdf, correo, kpi]
+
+- prompt: "descarga los documentos de todos los candidatos entrevistados"
+  domain: curriculums
+  tags: [exportación, documentos, candidatos]
+
+- prompt: "quiero el Excel de vacaciones aprobadas y rechazadas por mes"
+  domain: [vacaciones, informes]
+  tags: [exportación, excel, estado, mensual]
+
+- prompt: "exporta el histórico salarial de Ana a PDF"
+  domain: [nominas, informes]
+  tags: [exportación, pdf, histórico, persona]
+
+- prompt: "envíame por correo el listado de empleados dados de alta este mes"
+  domain: [empleados, correo]
+  tags: [exportación, correo, altas]
+
+- prompt: "descárgame en Excel el detalle de incidencias de turno del trimestre"
+  domain: [turnos, informes]
+  tags: [exportación, excel, incidencias]
+
+- prompt: "exporta a PDF el certificado de retenciones de todos los empleados"
+  domain: documentos
+  tags: [exportación, pdf, retenciones, masivo]
+
+- prompt: "quiero descargar el histórico de turnos de Carmen en Excel"
+  domain: [turnos, informes]
+  tags: [exportación, excel, histórico, persona]
+
+- prompt: "envíame por correo el resumen de absentismo semanal"
+  domain: [turnos, correo]
+  tags: [exportación, correo, semanal]
+
+- prompt: "descárgame el informe de brecha salarial en PDF"
+  domain: [informes, nominas]
+  tags: [exportación, pdf, brecha_salarial]
+
+- prompt: "exporta a Excel el listado completo de candidatos preseleccionados"
+  domain: curriculums
+  tags: [exportación, excel, candidatos]
+
+- prompt: "quiero el archivo con todas las nóminas del departamento de ventas en Excel"
+  domain: [nominas, informes]
+  tags: [exportación, excel, departamento]
+
+- prompt: "descárgame el informe de rotación de personal en PowerPoint"
+  domain: informes
+  tags: [exportación, powerpoint, rotación]
+
+- prompt: "exporta a Excel el calendario de turnos del próximo mes"
+  domain: [turnos, informes]
+  tags: [exportación, excel, calendario]
+
+- prompt: "mándame por correo el listado de empleados con contrato a punto de vencer"
+  domain: [empleados, correo]
+  tags: [exportación, correo, vencimiento]
+
+- prompt: "descarga en PDF el justificante de las vacaciones aprobadas de Laura"
+  domain: [vacaciones, documentos]
+  tags: [exportación, pdf, justificante]
+
+- prompt: "exporta el informe de KPIs a Excel con gráficos incluidos"
+  domain: informes
+  tags: [exportación, excel, kpi, gráficos]
+
+- prompt: "quiero descargar el expediente completo de Carlos en un único PDF"
+  domain: [documentos, informes]
+  tags: [exportación, pdf, expediente_completo]
+
+- prompt: "exporta a Excel el histórico de incrementos salariales de los últimos 5 años"
+  domain: [nominas, informes]
+  tags: [exportación, excel, histórico]
+
+- prompt: "mándame por correo la ficha 360 de Ana García en PDF"
+  domain: [informes, correo]
+  tags: [exportación, pdf, correo, ficha_360]
+
+- prompt: "descárgame el informe de cobertura de turnos del mes en Excel"
+  domain: [turnos, informes]
+  tags: [exportación, excel, cobertura]
+
+- prompt: "quiero el PDF con el resumen de vacaciones de todo mi equipo"
+  domain: [vacaciones, informes]
+  tags: [exportación, pdf, equipo]
+
+- prompt: "exporta la lista de empleados con discapacidad certificada a Excel"
+  domain: [empleados, informes]
+  tags: [exportación, excel, discapacidad]
+
+- prompt: "descárgame en PDF el informe de diversidad de género por departamento"
+  domain: [informes, empleados]
+  tags: [exportación, pdf, género, departamento]
+

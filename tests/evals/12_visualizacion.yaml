@@ -1,0 +1,258 @@
+# Categoría: visualización
+# Solicitudes explícitas de gráfico o selección implícita de tipo de gráfico.
+
+- prompt: "muéstrame un gráfico de empleados por departamento"
+  domain: empleados
+  tags: [visualización, bar, departamento]
+
+- prompt: "grafica la evolución del absentismo del último año"
+  domain: turnos
+  tags: [visualización, line, serie_temporal]
+
+- prompt: "quiero ver en un gráfico circular la distribución de contratos"
+  domain: empleados
+  tags: [visualización, donut, contrato]
+
+- prompt: "haz un gráfico comparando el salario medio por departamento"
+  domain: nominas
+  tags: [visualización, bar, comparativa]
+
+- prompt: "visualiza la tendencia de altas y bajas de los últimos 12 meses"
+  domain: empleados
+  tags: [visualización, line, multi_serie]
+
+- prompt: "gráfico de barras agrupadas de absentismo y salario por departamento"
+  domain: [turnos, nominas]
+  tags: [visualización, grouped_bar]
+
+- prompt: "muéstrame un histograma de los salarios de la empresa"
+  domain: nominas
+  tags: [visualización, histogram, salario]
+
+- prompt: "gráfico de dispersión entre antigüedad y salario"
+  domain: [empleados, nominas]
+  tags: [visualización, scatter, correlación]
+
+- prompt: "haz un gráfico de área con la evolución de las vacaciones disfrutadas"
+  domain: vacaciones
+  tags: [visualización, area, serie_temporal]
+
+- prompt: "quiero ver un ranking visual de los departamentos por absentismo"
+  domain: turnos
+  tags: [visualización, horizontal_bar, ranking]
+
+- prompt: "gráfico de la distribución de empleados por edad"
+  domain: empleados
+  tags: [visualización, histogram, edad]
+
+- prompt: "visualiza la composición de la plantilla por tipo de contrato"
+  domain: empleados
+  tags: [visualización, donut, composición]
+
+- prompt: "muéstrame en un gráfico de barras los 10 departamentos con más empleados"
+  domain: empleados
+  tags: [visualización, horizontal_bar, top10]
+
+- prompt: "gráfico de la evolución de nóminas mes a mes"
+  domain: nominas
+  tags: [visualización, line, mensual]
+
+- prompt: "representa gráficamente la comparación de absentismo entre IT y Logística"
+  domain: turnos
+  tags: [visualización, bar, comparativa]
+
+- prompt: "quiero un gráfico apilado de vacaciones disfrutadas por departamento"
+  domain: vacaciones
+  tags: [visualización, stacked_bar, departamento]
+
+- prompt: "muéstrame visualmente la correlación entre departamento y absentismo"
+  domain: turnos
+  tags: [visualización, scatter, correlación]
+
+- prompt: "gráfico de la tendencia de salarios de los últimos 5 años"
+  domain: nominas
+  tags: [visualización, line, histórico]
+
+- prompt: "visualiza en un gráfico circular quién tiene más ausencias por motivo"
+  domain: turnos
+  tags: [visualización, donut, motivo]
+
+- prompt: "gráfico comparativo de plantilla este año vs el año pasado"
+  domain: empleados
+  tags: [visualización, grouped_bar, anual]
+
+- prompt: "muéstrame la distribución de vacaciones pendientes en un histograma"
+  domain: vacaciones
+  tags: [visualización, histogram, saldo]
+
+- prompt: "gráfico de barras horizontales con el ranking de absentismo por puesto"
+  domain: turnos
+  tags: [visualización, horizontal_bar, puesto]
+
+- prompt: "visualiza el crecimiento de la plantilla mes a mes este año"
+  domain: empleados
+  tags: [visualización, line, mensual]
+
+- prompt: "gráfico de dispersión de salario vs años de antigüedad por empleado"
+  domain: [nominas, empleados]
+  tags: [visualización, scatter]
+
+- prompt: "representa en un gráfico de área la evolución del coste salarial"
+  domain: nominas
+  tags: [visualización, area, coste]
+
+- prompt: "quiero ver la composición de la plantilla por género en un donut"
+  domain: empleados
+  tags: [visualización, donut, género]
+
+- prompt: "gráfico de barras agrupadas comparando vacaciones y ausencias por departamento"
+  domain: [vacaciones, turnos]
+  tags: [visualización, grouped_bar]
+
+- prompt: "muéstrame un gráfico con la tendencia de contratación de los últimos 3 años"
+  domain: empleados
+  tags: [visualización, line, contratación]
+
+- prompt: "visualiza el histograma de antigüedad de la plantilla"
+  domain: empleados
+  tags: [visualización, histogram, antigüedad]
+
+- prompt: "gráfico de la evolución del absentismo por trimestre"
+  domain: turnos
+  tags: [visualización, line, trimestral]
+
+- prompt: "muéstrame un gráfico de barras con el número de contratos por tipo"
+  domain: empleados
+  tags: [visualización, bar, contrato]
+
+- prompt: "quiero visualizar la cobertura de turnos por departamento"
+  domain: turnos
+  tags: [visualización, bar, cobertura]
+
+- prompt: "gráfico de la evolución de la plantilla desglosada por sexo"
+  domain: empleados
+  tags: [visualización, line, multi_serie, género]
+
+- prompt: "visualiza en un gráfico circular las solicitudes de vacaciones por estado"
+  domain: vacaciones
+  tags: [visualización, donut, estado]
+
+- prompt: "gráfico comparando el salario medio de hombres y mujeres por departamento"
+  domain: nominas
+  tags: [visualización, grouped_bar, género, departamento]
+
+- prompt: "muéstrame un gráfico de líneas con la evolución del número de bajas"
+  domain: turnos
+  tags: [visualización, line, bajas]
+
+- prompt: "quiero ver un gráfico con la distribución de empleados por nivel salarial"
+  domain: nominas
+  tags: [visualización, histogram, nivel_salarial]
+
+- prompt: "gráfico de barras con el top 5 de puestos mejor pagados"
+  domain: nominas
+  tags: [visualización, horizontal_bar, top5]
+
+- prompt: "visualiza la relación entre departamento y antigüedad media"
+  domain: empleados
+  tags: [visualización, bar, antigüedad]
+
+- prompt: "gráfico de área con el saldo acumulado de vacaciones a lo largo del año"
+  domain: vacaciones
+  tags: [visualización, area, saldo]
+
+- prompt: "muéstrame en un gráfico la proporción de contratos indefinidos vs temporales"
+  domain: empleados
+  tags: [visualización, donut, contrato]
+
+- prompt: "gráfico de dispersión entre salario y número de ausencias"
+  domain: [nominas, turnos]
+  tags: [visualización, scatter]
+
+- prompt: "visualiza el número de altas y bajas mes a mes en un gráfico de líneas"
+  domain: empleados
+  tags: [visualización, line, altas_bajas]
+
+- prompt: "gráfico de barras agrupadas con antigüedad y salario por departamento"
+  domain: [empleados, nominas]
+  tags: [visualización, grouped_bar]
+
+- prompt: "muéstrame un gráfico de la distribución de edad de los candidatos"
+  domain: curriculums
+  tags: [visualización, histogram, edad, candidatos]
+
+- prompt: "visualiza en un gráfico de barras horizontales el absentismo por centro de trabajo"
+  domain: turnos
+  tags: [visualización, horizontal_bar, centro]
+
+- prompt: "gráfico con la evolución de la masa salarial trimestre a trimestre"
+  domain: nominas
+  tags: [visualización, line, trimestral]
+
+- prompt: "quiero ver gráficamente cuántos empleados hay por rango de edad"
+  domain: empleados
+  tags: [visualización, histogram, rango_edad]
+
+- prompt: "gráfico comparando ausencias de este año y el anterior por mes"
+  domain: turnos
+  tags: [visualización, grouped_bar, anual]
+
+- prompt: "muéstrame un gráfico con el reparto de empleados por grupo de cotización"
+  domain: empleados
+  tags: [visualización, donut, cotización]
+
+- prompt: "gráfico de la evolución del número de solicitudes de vacaciones por mes"
+  domain: vacaciones
+  tags: [visualización, line, solicitudes]
+
+- prompt: "visualiza la comparación de absentismo por tipo de contrato"
+  domain: turnos
+  tags: [visualización, bar, contrato]
+
+- prompt: "gráfico de barras con el número de documentos pendientes por departamento"
+  domain: documentos
+  tags: [visualización, bar, documentos, departamento]
+
+- prompt: "muéstrame un gráfico de la distribución salarial por grupo profesional"
+  domain: nominas
+  tags: [visualización, histogram, grupo_profesional]
+
+- prompt: "quiero visualizar el porcentaje de empleados con jornada reducida"
+  domain: empleados
+  tags: [visualización, donut, jornada_reducida]
+
+- prompt: "gráfico de líneas con la evolución del absentismo justificado y no justificado"
+  domain: turnos
+  tags: [visualización, line, multi_serie, justificación]
+
+- prompt: "visualiza el ranking de centros de trabajo por antigüedad media"
+  domain: empleados
+  tags: [visualización, horizontal_bar, centros]
+
+- prompt: "gráfico comparando el número de ausencias del turno de día y de noche"
+  domain: turnos
+  tags: [visualización, grouped_bar, turno]
+
+- prompt: "muéstrame un gráfico de la evolución de solicitudes de vacaciones aprobadas vs rechazadas"
+  domain: vacaciones
+  tags: [visualización, line, multi_serie, estado]
+
+- prompt: "visualiza el salario medio por categoría profesional en un gráfico de barras"
+  domain: nominas
+  tags: [visualización, bar, categoría]
+
+- prompt: "gráfico de la proporción de empleados por franja de antigüedad"
+  domain: empleados
+  tags: [visualización, donut, antigüedad]
+
+- prompt: "quiero un gráfico de dispersión entre edad y días de ausencia"
+  domain: [empleados, turnos]
+  tags: [visualización, scatter, edad_ausencias]
+
+- prompt: "muéstrame en un gráfico de área la evolución de la masa salarial anual"
+  domain: nominas
+  tags: [visualización, area, masa_salarial]
+
+- prompt: "gráfico de barras horizontales con los departamentos por coste de horas extra"
+  domain: nominas
+  tags: [visualización, horizontal_bar, horas_extras]

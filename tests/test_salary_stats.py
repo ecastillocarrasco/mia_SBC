@@ -75,7 +75,11 @@ async def test_average_salary_of_a_position(registry: ToolRegistry) -> None:
     result = await call(registry, puesto="cocinero")
     group = result.summary["grupos"]["Total"]
     assert group["personas"] == 6 and group["nominas_leidas"] == 6
-    assert group["liquido"] == {"media": 1583.33, "mediana": 1550.0, "minimo": 1400.0, "maximo": 1800.0}
+    liq = group["liquido"]
+    assert liq["media"] == 1583.33 and liq["mediana"] == 1550.0
+    assert liq["minimo"] == 1400.0 and liq["maximo"] == 1800.0
+    assert liq["suma"] > liq["maximo"]  # suma > máximo individual implica que hay más de uno
+    assert "percentil_25" in liq and "percentil_75" in liq
     assert result.summary["poblacion"].startswith("plantilla activa")
 
 

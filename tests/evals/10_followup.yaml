@@ -1,0 +1,313 @@
+# Categoría: follow-up / estado conversacional
+# Turno 2 depende del contexto (foco de persona/tabla) establecido en el turno 1.
+# "previous" describe lo que se preguntó antes; "prompt" es la consulta de seguimiento.
+
+- previous: "dame los datos de Ana García"
+  prompt: "¿y sus vacaciones?"
+  domain: vacaciones
+  tags: [followup, foco_persona]
+
+- previous: "muéstrame los empleados del departamento de IT"
+  prompt: "¿cuántos son?"
+  domain: empleados
+  tags: [followup, foco_tabla, conteo]
+
+- previous: "empleados con más de 5 años de antigüedad"
+  prompt: "¿y de esos cuántos están en IT?"
+  domain: empleados
+  tags: [followup, refinar_filtro]
+
+- previous: "dame la nómina de enero de Pedro"
+  prompt: "¿y la de febrero?"
+  domain: nominas
+  tags: [followup, foco_persona, temporal]
+
+- previous: "compara el absentismo de IT con el de Logística"
+  prompt: "¿y con el de Ventas?"
+  domain: turnos
+  tags: [followup, ampliar_comparativa]
+
+- previous: "los 10 empleados con más antigüedad"
+  prompt: "ordénalos ahora por salario"
+  domain: [empleados, nominas]
+  tags: [followup, reordenar]
+
+- previous: "empleados del departamento de ventas"
+  prompt: "¿cuáles de ellos tienen contrato temporal?"
+  domain: empleados
+  tags: [followup, refinar_filtro]
+
+- previous: "vacaciones pendientes de aprobar"
+  prompt: "apruébalas todas"
+  domain: vacaciones
+  tags: [followup, acción]
+
+- previous: "dame la ficha de Marta López"
+  prompt: "¿qué turno tiene esta semana?"
+  domain: turnos
+  tags: [followup, foco_persona]
+
+- previous: "salario medio por departamento"
+  prompt: "¿cuál es el más alto?"
+  domain: nominas
+  tags: [followup, extremo_sobre_resultado]
+
+- previous: "empleados con ausencias este mes"
+  prompt: "¿y el mes pasado?"
+  domain: turnos
+  tags: [followup, cambiar_periodo]
+
+- previous: "los 5 departamentos con más empleados"
+  prompt: "muéstralo en un gráfico"
+  domain: empleados
+  tags: [followup, visualización]
+
+- previous: "quién tiene más días de vacaciones pendientes"
+  prompt: "¿y el que menos tiene?"
+  domain: vacaciones
+  tags: [followup, extremo_opuesto]
+
+- previous: "dame los datos de Carlos Sánchez"
+  prompt: "descárgame su última nómina"
+  domain: [empleados, documentos]
+  tags: [followup, foco_persona, exportación]
+
+- previous: "empleados dados de alta este año"
+  prompt: "sepáralos por mes"
+  domain: empleados
+  tags: [followup, reagrupar]
+
+- previous: "ausencias del departamento de producción"
+  prompt: "desglósalas por tipo de ausencia"
+  domain: turnos
+  tags: [followup, desglosar]
+
+- previous: "comparar salario medio de IT y RRHH"
+  prompt: "¿y la antigüedad media?"
+  domain: [nominas, empleados]
+  tags: [followup, añadir_métrica]
+
+- previous: "los empleados con contrato temporal"
+  prompt: "¿cuántos llevan más de un año así?"
+  domain: empleados
+  tags: [followup, refinar_filtro, temporal]
+
+- previous: "dame la ficha de Ana García"
+  prompt: "genera un informe con todos sus datos"
+  domain: [empleados, informes]
+  tags: [followup, foco_persona, informe]
+
+- previous: "vacaciones solicitadas en agosto"
+  prompt: "¿quién las solicitó?"
+  domain: vacaciones
+  tags: [followup, detalle_sobre_resultado]
+
+- previous: "ranking de departamentos por absentismo"
+  prompt: "quita de la lista los departamentos con menos de 10 empleados"
+  domain: turnos
+  tags: [followup, refinar_filtro, tamaño]
+
+- previous: "empleados próximos a jubilarse"
+  prompt: "¿en qué departamentos están?"
+  domain: empleados
+  tags: [followup, agrupar_resultado]
+
+- previous: "nóminas de este año de Roberto"
+  prompt: "¿cuál fue la más alta?"
+  domain: nominas
+  tags: [followup, extremo_sobre_resultado]
+
+- previous: "el departamento con más ausencias el mes pasado"
+  prompt: "¿y a qué se debieron esas ausencias?"
+  domain: turnos
+  tags: [followup, detalle_motivo]
+
+- previous: "empleados con salario por encima de la media"
+  prompt: "¿cuántos de ellos son mujeres?"
+  domain: [nominas, empleados]
+  tags: [followup, refinar_filtro, género]
+
+- previous: "las vacaciones de Laura Fernández"
+  prompt: "aprueba la de julio"
+  domain: vacaciones
+  tags: [followup, acción, específico]
+
+- previous: "empleados con más de 10 ausencias este año"
+  prompt: "¿cuáles están también de baja ahora mismo?"
+  domain: turnos
+  tags: [followup, refinar_filtro, estado]
+
+- previous: "los 5 empleados con mayor salario"
+  prompt: "¿en qué departamentos trabajan?"
+  domain: [nominas, empleados]
+  tags: [followup, agrupar_resultado]
+
+- previous: "compara las vacaciones de 2023 y 2024"
+  prompt: "¿y cómo va 2025?"
+  domain: vacaciones
+  tags: [followup, extender_periodo]
+
+- previous: "documentos pendientes de Juan Pérez"
+  prompt: "envíaselos por correo"
+  domain: [documentos, correo]
+  tags: [followup, acción, foco_persona]
+
+- previous: "empleados del departamento de Logística"
+  prompt: "¿y cuál es su antigüedad media?"
+  domain: empleados
+  tags: [followup, foco_tabla, agregación]
+
+- previous: "la nómina de marzo de Laura"
+  prompt: "compárala con la de febrero"
+  domain: nominas
+  tags: [followup, comparativa, foco_persona]
+
+- previous: "los empleados con más ausencias este año"
+  prompt: "¿cuántos días de media tiene cada uno?"
+  domain: turnos
+  tags: [followup, agregación_sobre_resultado]
+
+- previous: "ranking de departamentos por salario medio"
+  prompt: "¿y por antigüedad media?"
+  domain: [nominas, empleados]
+  tags: [followup, cambiar_métrica]
+
+- previous: "vacaciones pendientes de aprobar de este mes"
+  prompt: "rechaza la de Pedro"
+  domain: vacaciones
+  tags: [followup, acción, específico]
+
+- previous: "empleados próximos a jubilarse"
+  prompt: "¿cuántos años de antigüedad tienen de media?"
+  domain: empleados
+  tags: [followup, agregación_sobre_resultado]
+
+- previous: "el departamento con mayor absentismo"
+  prompt: "¿quiénes son los empleados con más ausencias ahí?"
+  domain: turnos
+  tags: [followup, detalle_sobre_resultado]
+
+- previous: "dame la ficha de Roberto"
+  prompt: "¿cuántos días de baja ha tenido este año?"
+  domain: turnos
+  tags: [followup, foco_persona]
+
+- previous: "los 10 empleados con mayor salario"
+  prompt: "¿cuál es su antigüedad media?"
+  domain: [nominas, empleados]
+  tags: [followup, agregación_sobre_resultado]
+
+- previous: "compara el salario medio de IT y Ventas"
+  prompt: "hazlo también para el departamento de Logística"
+  domain: nominas
+  tags: [followup, ampliar_comparativa]
+
+- previous: "empleados con contrato temporal en producción"
+  prompt: "¿cuáles llevan más de 6 meses así?"
+  domain: empleados
+  tags: [followup, refinar_filtro, temporal]
+
+- previous: "vacaciones de Marta este año"
+  prompt: "¿cuántos días le quedan por disfrutar?"
+  domain: vacaciones
+  tags: [followup, foco_persona, saldo]
+
+- previous: "informe de absentismo del trimestre"
+  prompt: "mándamelo por correo"
+  domain: [informes, correo]
+  tags: [followup, exportación]
+
+- previous: "empleados con salario por debajo de la media"
+  prompt: "¿en qué departamentos están concentrados?"
+  domain: [nominas, empleados]
+  tags: [followup, agrupar_resultado]
+
+- previous: "las ausencias del departamento de IT este mes"
+  prompt: "compáralas con las del mes pasado"
+  domain: turnos
+  tags: [followup, comparativa, temporal]
+
+- previous: "candidatos con experiencia en Python"
+  prompt: "¿cuáles ya han sido entrevistados?"
+  domain: curriculums
+  tags: [followup, refinar_filtro]
+
+- previous: "el empleado con más antigüedad"
+  prompt: "¿cuál es su salario actual?"
+  domain: [empleados, nominas]
+  tags: [followup, detalle_sobre_resultado]
+
+- previous: "vacaciones solicitadas para agosto"
+  prompt: "¿cuántas están ya aprobadas?"
+  domain: vacaciones
+  tags: [followup, refinar_filtro, estado]
+
+- previous: "los departamentos con más de 20 empleados"
+  prompt: "ordénalos por absentismo"
+  domain: [empleados, turnos]
+  tags: [followup, reordenar]
+
+- previous: "compara las vacaciones de IT y Ventas"
+  prompt: "¿cuál de los dos tiene más saldo pendiente?"
+  domain: vacaciones
+  tags: [followup, extremo_sobre_comparativa]
+
+- previous: "empleados con más de 10 años de antigüedad"
+  prompt: "quita a los que están en el departamento de IT"
+  domain: empleados
+  tags: [followup, refinar_filtro, negación]
+
+- previous: "el ranking de salarios por departamento"
+  prompt: "¿y si lo normalizamos por antigüedad?"
+  domain: [nominas, empleados]
+  tags: [followup, ajustar_métrica]
+
+- previous: "dame la ficha de Laura Fernández"
+  prompt: "¿tiene algún documento pendiente de firmar?"
+  domain: documentos
+  tags: [followup, foco_persona]
+
+- previous: "empleados con ausencias por enfermedad este año"
+  prompt: "¿cuántos días de media dura cada ausencia?"
+  domain: turnos
+  tags: [followup, agregación_sobre_resultado]
+
+- previous: "informe de absentismo del departamento de producción"
+  prompt: "ahora en formato Excel"
+  domain: informes
+  tags: [followup, cambiar_formato]
+
+- previous: "los 5 empleados con menor salario"
+  prompt: "¿qué puesto tienen?"
+  domain: [nominas, empleados]
+  tags: [followup, detalle_sobre_resultado]
+
+- previous: "vacaciones pendientes de todo el departamento de ventas"
+  prompt: "¿quién tiene el saldo más alto?"
+  domain: vacaciones
+  tags: [followup, extremo_sobre_resultado]
+
+- previous: "empleados dados de alta el mes pasado"
+  prompt: "¿en qué departamento están la mayoría?"
+  domain: empleados
+  tags: [followup, agrupar_resultado]
+
+- previous: "el informe de absentismo del trimestre"
+  prompt: "ahora hazlo solo para el departamento de producción"
+  domain: [informes, turnos]
+  tags: [followup, refinar_alcance]
+
+- previous: "las 5 ETT que más trabajadores aportan"
+  prompt: "¿cuántos de esos tienen ya más de un año aquí?"
+  domain: [trabajo_temporal, empleados]
+  tags: [followup, refinar_filtro, temporal]
+
+- previous: "empleados con salario por encima de la media en IT"
+  prompt: "muéstralos en un gráfico"
+  domain: nominas
+  tags: [followup, visualización]
+
+- previous: "documentos pendientes de firma de toda la empresa"
+  prompt: "¿cuántos son del departamento de ventas?"
+  domain: documentos
+  tags: [followup, refinar_filtro, departamento]

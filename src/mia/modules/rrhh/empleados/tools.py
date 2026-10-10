@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.auth import Permission
@@ -472,6 +472,294 @@ def estructura(deps: Deps) -> Tool:
     )
 
 
+# ------------------------------------------------------------------ perfil de edad
+class PerfilEdadParams(BaseModel):
+    departamento: str | None = Field(default=None, description="Limitar al departamento indicado")
+
+
+def perfil_edad(deps: Deps) -> Tool:
+    async def handler(p: PerfilEdadParams, ctx: ToolContext) -> ToolResult:
+        today = ctx.now.date()
+        async with deps.db.session() as db:
+            stmt = select(Employee).where(Employee.active.is_(True))
+            if p.departamento:
+                dept = await resolve_department(db, p.departamento)
+                if dept.status is not ToolStatus.OK:
+                    return department_problem(dept, p.departamento)
+                stmt = stmt.where(Employee.department_key == dept.key)
+            staff = list((await db.scalars(stmt)).all())
+
+        ages = [(age(e.birth_date, today), e.name, e.department) for e in staff]
+        with_age = [(a, name, dpt) for a, name, dpt in ages if a is not None]
+
+        if not with_age:
+            return ToolResult(ToolStatus.NOT_FOUND, {"nota": "Ningún empleado activo tiene fecha de nacimiento registrada."})
+
+        RANGES = [("<25", 0, 25), ("25–34", 25, 35), ("35–44", 35, 45), ("45–54", 45, 55), ("55–64", 55, 65), ("65+", 65, 200)]
+        dist = {label: sum(1 for a, _, _ in with_age if lo <= a < hi) for label, lo, hi in RANGES}
+        sorted_by_age = sorted(with_age, key=lambda x: x[0])
+        avg = round(sum(a for a, _, _ in with_age) / len(with_age), 1)
+
+        summary = {
+            "total_plantilla": len(staff),
+            "con_fecha_nacimiento": len(with_age),
+            "sin_fecha_nacimiento": len(staff) - len(with_age),
+            "edad_media": avg,
+            "empleado_mas_joven": sorted_by_age[0][1],
+            "edad_mas_joven": sorted_by_age[0][0],
+            "empleado_mas_veterano": sorted_by_age[-1][1],
+            "edad_mas_veterano": sorted_by_age[-1][0],
+        }
+        rows = [
+            [label, dist[label], f"{dist[label] / len(with_age):.0%}"]
+            for label, lo, hi in RANGES
+            if dist[label] > 0
+        ]
+        return ToolResult(
+            ToolStatus.OK,
+            summary,
+            table("Perfil de edad de la plantilla", ["Rango de edad", "Personas", "Porcentaje"], rows),
+        )
+
+    return Tool(
+        "perfil_edad",
+        "Pirámide de edades de la plantilla activa: distribución por rangos, edad media, empleado más "
+        "joven y más veterano. Opcional: filtrar por departamento.",
+        PerfilEdadParams,
+        handler,
+        permission=Permission.EMPLEADOS_LEER,
+    )
+
+
+# ------------------------------------------------------------------ cumpleaños
+class CumpleanosParams(BaseModel):
+    dias: int = Field(default=30, ge=1, le=365, description="Días hacia adelante a consultar (por defecto 30)")
+    departamento: str | None = Field(default=None, description="Limitar al departamento indicado")
+
+
+def cumpleanos(deps: Deps) -> Tool:
+    async def handler(p: CumpleanosParams, ctx: ToolContext) -> ToolResult:
+        today = ctx.now.date()
+        hi = today + timedelta(days=p.dias)
+        async with deps.db.session() as db:
+            stmt = select(Employee).where(Employee.active.is_(True), Employee.birth_date.is_not(None))
+            if p.departamento:
+                dept = await resolve_department(db, p.departamento)
+                if dept.status is not ToolStatus.OK:
+                    return department_problem(dept, p.departamento)
+                stmt = stmt.where(Employee.department_key == dept.key)
+            staff = list((await db.scalars(stmt)).all())
+
+        upcoming: list[tuple[Any, ...]] = []
+        for e in staff:
+            bd = e.birth_date  # type: ignore[assignment]
+            for yr in (today.year, today.year + 1):
+                try:
+                    candidate = bd.replace(year=yr)
+                except ValueError:
+                    candidate = bd.replace(year=yr, day=28)  # 29 feb en año no bisiesto
+                if today <= candidate <= hi:
+                    upcoming.append((candidate, e.name, e.department, candidate.year - bd.year))
+                    break
+
+        upcoming.sort()
+        rows = [[fmt_date(d), name, dpt or "—", f"{a} años"] for d, name, dpt, a in upcoming]
+        return ToolResult(
+            ToolStatus.OK,
+            {
+                "periodo": f"{fmt_date(today)} – {fmt_date(hi)}",
+                "total": len(upcoming),
+                "cumpleanos": [
+                    {"fecha": str(d), "nombre": name, "departamento": dpt, "edad": a}
+                    for d, name, dpt, a in upcoming
+                ],
+            },
+            table(
+                f"Cumpleaños próximos ({p.dias} días)",
+                ["Fecha", "Nombre", "Departamento", "Cumple"],
+                rows,
+            ),
+        )
+
+    return Tool(
+        "cumpleanos",
+        "Cumpleaños próximos de la plantilla activa en los próximos N días (por defecto 30). "
+        "Muestra fecha, nombre, departamento y qué edad cumple. Útil para preparar felicitaciones.",
+        CumpleanosParams,
+        handler,
+        permission=Permission.EMPLEADOS_LEER,
+    )
+
+
+# ------------------------------------------------------------------ estructura de responsables
+class ResponsablesParams(BaseModel):
+    manager: str | None = Field(default=None, description="Nombre del responsable cuyo equipo ver")
+    empleado_id: int | None = Field(default=None, description="ID de persona para ver a quién reporta")
+    nombre: str | None = Field(default=None, description="Nombre de persona para ver a quién reporta")
+    departamento: str | None = Field(default=None, description="Ver estructura de responsables de un departamento")
+
+
+def responsables(deps: Deps) -> Tool:
+    async def handler(p: ResponsablesParams, ctx: ToolContext) -> ToolResult:
+        async with deps.db.session() as db:
+            # ── Consulta de responsable de una persona ─────────────────────────
+            if p.empleado_id or (p.nombre or "").strip():
+                match = await resolve_person(db, PersonaParams(empleado_id=p.empleado_id, nombre=p.nombre))
+                if match.employee is None:
+                    return person_problem(match, p.nombre)
+                e = match.employee
+                if not e.manager_name:
+                    return ToolResult(
+                        ToolStatus.OK,
+                        {"persona": e.name, "responsable": None, "nota": "No tiene responsable registrado."},
+                    )
+                # Equipo completo del mismo responsable
+                team = list(
+                    (
+                        await db.scalars(
+                            select(Employee).where(
+                                Employee.active.is_(True),
+                                Employee.manager_name == e.manager_name,
+                            )
+                        )
+                    ).all()
+                )
+                rows = [
+                    [t.name, t.department or "—", t.position or "—"]
+                    for t in sorted(team, key=lambda x: x.name)
+                ]
+                return ToolResult(
+                    ToolStatus.OK,
+                    {
+                        "persona": e.name,
+                        "departamento": e.department,
+                        "responsable": e.manager_name,
+                        "email_responsable": e.manager_email,
+                        "personas_a_cargo_del_responsable": len(team),
+                    },
+                    table(f"Equipo de {e.manager_name}", ["Nombre", "Departamento", "Puesto"], rows),
+                    focus_person(e),
+                )
+
+            # ── Equipo de un manager por nombre ────────────────────────────────
+            if p.manager:
+                manager_key = normalize_key(p.manager)
+                stmt = select(Employee).where(Employee.active.is_(True))
+                if p.departamento:
+                    dept = await resolve_department(db, p.departamento)
+                    if dept.status is not ToolStatus.OK:
+                        return department_problem(dept, p.departamento)
+                    stmt = stmt.where(Employee.department_key == dept.key)
+                all_staff = list((await db.scalars(stmt)).all())
+                team = [e for e in all_staff if normalize_key(e.manager_name) == manager_key]
+                if not team:
+                    return ToolResult(ToolStatus.NOT_FOUND, {"manager": p.manager, "nota": "Sin personas a cargo."})
+                mgr = team[0].manager_name
+                rows = [
+                    [t.name, t.department or "—", t.position or "—"]
+                    for t in sorted(team, key=lambda x: x.name)
+                ]
+                return ToolResult(
+                    ToolStatus.OK,
+                    {"responsable": mgr, "personas_a_cargo": len(team)},
+                    table(f"Equipo de {mgr}", ["Nombre", "Departamento", "Puesto"], rows),
+                )
+
+            # ── Vista global / por departamento ───────────────────────────────
+            stmt = select(Employee).where(Employee.active.is_(True))
+            if p.departamento:
+                dept = await resolve_department(db, p.departamento)
+                if dept.status is not ToolStatus.OK:
+                    return department_problem(dept, p.departamento)
+                stmt = stmt.where(Employee.department_key == dept.key)
+            all_staff = list((await db.scalars(stmt)).all())
+
+            from collections import Counter as _C  # noqa: PLC0415
+
+            by_mgr: _C[str] = _C(e.manager_name for e in all_staff if e.manager_name)
+            without = sum(1 for e in all_staff if not e.manager_name)
+            rows = [[name, cnt] for name, cnt in by_mgr.most_common()]
+            return ToolResult(
+                ToolStatus.OK,
+                {
+                    "total_responsables": len(by_mgr),
+                    "empleados_sin_responsable": without,
+                    "por_responsable": dict(by_mgr.most_common()),
+                },
+                table("Personas a cargo por responsable", ["Responsable", "Personas a cargo"], rows),
+            )
+
+    return Tool(
+        "responsables",
+        "Estructura jerárquica de la plantilla: quién es el responsable de una persona, el equipo completo "
+        "de un manager, o el ranking de managers por tamaño de equipo. Sin parámetros: vista global.",
+        ResponsablesParams,
+        handler,
+        permission=Permission.EMPLEADOS_LEER,
+    )
+
+
+# ------------------------------------------------------------------ contactos de organización (OrgUnit)
+class ContactosOrgParams(BaseModel):
+    departamento: str | None = Field(default=None, description="Departamento o sección (opcional: sin valor, todos)")
+
+
+def contactos_organizacion(deps: Deps) -> Tool:
+    async def handler(p: ContactosOrgParams, ctx: ToolContext) -> ToolResult:
+        async with deps.db.session() as db:
+            stmt = select(OrgUnit).order_by(OrgUnit.department, OrgUnit.section)
+            if p.departamento:
+                dept = await resolve_department(db, p.departamento)
+                if dept.status is not ToolStatus.OK:
+                    return department_problem(dept, p.departamento)
+                stmt = stmt.where(OrgUnit.department_key == dept.key)
+            units = list((await db.scalars(stmt)).all())
+
+        if not units:
+            return ToolResult(ToolStatus.NOT_FOUND, {"nota": "Sin unidades organizativas registradas."})
+
+        rows = []
+        for u in units:
+            mgr_names = []
+            if u.managers:
+                try:
+                    mgr_list = u.managers if isinstance(u.managers, list) else []
+                    mgr_names = [m.get("Title") or m.get("name") or str(m) for m in mgr_list if m]
+                except Exception:
+                    pass
+            rows.append([
+                u.department or "—",
+                u.section or "—",
+                u.section_mail or "—",
+                ", ".join(mgr_names) if mgr_names else "—",
+            ])
+
+        return ToolResult(
+            ToolStatus.OK,
+            {
+                "unidades": [
+                    {
+                        "departamento": u.department,
+                        "seccion": u.section,
+                        "email_seccion": u.section_mail,
+                        "emails_departamento": u.department_mails,
+                    }
+                    for u in units
+                ]
+            },
+            table("Contactos por departamento y sección", ["Departamento", "Sección", "Email sección", "Responsables"], rows),
+        )
+
+    return Tool(
+        "contactos_organizacion",
+        "Emails y responsables de cada departamento y sección de la organización. "
+        "Responde a «¿cuál es el email de Cocina?», «¿quién gestiona la sección de Recepción?».",
+        ContactosOrgParams,
+        handler,
+        permission=Permission.EMPLEADOS_LEER,
+    )
+
+
 def register(registry: ToolRegistry, deps: Deps) -> None:
-    for factory in (buscar, ficha, plantilla, estructura):
+    for factory in (buscar, ficha, plantilla, estructura, perfil_edad, cumpleanos, responsables, contactos_organizacion):
         registry.register(factory(deps))

@@ -1,0 +1,318 @@
+# Categoría: temporal
+# Resolución de periodos en lenguaje natural: relativos, nombrados, rangos explícitos.
+
+- prompt: "empleados dados de alta la semana pasada"
+  domain: empleados
+  tags: [temporal, relativo, semana_pasada]
+
+- prompt: "ausencias registradas ayer"
+  domain: turnos
+  tags: [temporal, relativo, ayer]
+
+- prompt: "vacaciones solicitadas hoy"
+  domain: vacaciones
+  tags: [temporal, relativo, hoy]
+
+- prompt: "nóminas de los últimos 3 meses"
+  domain: nominas
+  tags: [temporal, relativo, últimos_n_meses]
+
+- prompt: "ausencias de los últimos 6 meses"
+  domain: turnos
+  tags: [temporal, relativo, últimos_n_meses]
+
+- prompt: "empleados incorporados en los últimos 30 días"
+  domain: empleados
+  tags: [temporal, relativo, últimos_n_días]
+
+- prompt: "vacaciones del segundo trimestre de este año"
+  domain: vacaciones
+  tags: [temporal, nombrado, q2]
+
+- prompt: "resumen de absentismo de Q1 2025"
+  domain: turnos
+  tags: [temporal, nombrado, q1_2025]
+
+- prompt: "salarios de este año hasta la fecha"
+  domain: nominas
+  tags: [temporal, ytd]
+
+- prompt: "ausencias acumuladas en lo que llevamos de año"
+  domain: turnos
+  tags: [temporal, ytd]
+
+- prompt: "empleados dados de alta en verano del año pasado"
+  domain: empleados
+  tags: [temporal, nombrado, verano]
+
+- prompt: "vacaciones disfrutadas durante las navidades"
+  domain: vacaciones
+  tags: [temporal, nombrado, navidad]
+
+- prompt: "ausencias registradas entre enero y marzo de 2024"
+  domain: turnos
+  tags: [temporal, rango_explícito]
+
+- prompt: "nóminas desde enero hasta junio de este año"
+  domain: nominas
+  tags: [temporal, rango_explícito]
+
+- prompt: "vacaciones solicitadas desde el 1 de julio hasta el 15 de agosto"
+  domain: vacaciones
+  tags: [temporal, rango_explícito, fechas]
+
+- prompt: "empleados que llevan más de un año en la empresa"
+  domain: empleados
+  tags: [temporal, relativo, más_de_un_año]
+
+- prompt: "ausencias del mes pasado"
+  domain: turnos
+  tags: [temporal, relativo, mes_pasado]
+
+- prompt: "nómina del mes anterior"
+  domain: nominas
+  tags: [temporal, relativo, mes_pasado]
+
+- prompt: "vacaciones del próximo mes"
+  domain: vacaciones
+  tags: [temporal, relativo, mes_siguiente]
+
+- prompt: "altas previstas para el próximo trimestre"
+  domain: empleados
+  tags: [temporal, relativo, futuro]
+
+- prompt: "ausencias de esta semana comparadas con la anterior"
+  domain: turnos
+  tags: [temporal, semana_actual_vs_anterior]
+
+- prompt: "empleados que cumplen años este trimestre"
+  domain: empleados
+  tags: [temporal, trimestre_actual]
+
+- prompt: "nóminas del cuarto trimestre del año pasado"
+  domain: nominas
+  tags: [temporal, nombrado, q4_año_pasado]
+
+- prompt: "vacaciones pendientes para antes de fin de año"
+  domain: vacaciones
+  tags: [temporal, relativo, fin_de_año]
+
+- prompt: "ausencias del primer semestre de este año"
+  domain: turnos
+  tags: [temporal, nombrado, h1]
+
+- prompt: "resumen de altas en el ejercicio fiscal actual"
+  domain: empleados
+  tags: [temporal, ejercicio_fiscal]
+
+- prompt: "vacaciones disfrutadas el año pasado por estas fechas"
+  domain: vacaciones
+  tags: [temporal, comparación_interanual]
+
+- prompt: "empleados incorporados hace exactamente un año"
+  domain: empleados
+  tags: [temporal, aniversario]
+
+- prompt: "ausencias de los últimos 15 días"
+  domain: turnos
+  tags: [temporal, relativo, últimos_n_días]
+
+- prompt: "nóminas de hace dos años"
+  domain: nominas
+  tags: [temporal, relativo, hace_n_años]
+
+- prompt: "vacaciones del mes de agosto de cualquier año"
+  domain: vacaciones
+  tags: [temporal, nombrado, mes_específico]
+
+- prompt: "ausencias registradas este fin de semana"
+  domain: turnos
+  tags: [temporal, nombrado, fin_de_semana]
+
+- prompt: "empleados dados de baja en los últimos 2 años"
+  domain: empleados
+  tags: [temporal, relativo, últimos_n_años]
+
+- prompt: "vacaciones solicitadas para Semana Santa"
+  domain: vacaciones
+  tags: [temporal, nombrado, semana_santa]
+
+- prompt: "resumen de nóminas del ejercicio anterior completo"
+  domain: nominas
+  tags: [temporal, ejercicio_anterior]
+
+- prompt: "ausencias del tercer trimestre de 2023"
+  domain: turnos
+  tags: [temporal, nombrado, q3_2023]
+
+- prompt: "empleados que se incorporaron antes de 2015"
+  domain: empleados
+  tags: [temporal, relativo, antes_de]
+
+- prompt: "vacaciones pendientes desde hace más de 6 meses"
+  domain: vacaciones
+  tags: [temporal, relativo, pendiente_desde]
+
+- prompt: "ausencias de las últimas 2 semanas"
+  domain: turnos
+  tags: [temporal, relativo, últimas_n_semanas]
+
+- prompt: "nóminas correspondientes a este trimestre fiscal"
+  domain: nominas
+  tags: [temporal, trimestre_fiscal]
+
+- prompt: "empleados con antigüedad desde el año 2000 hasta 2010"
+  domain: empleados
+  tags: [temporal, rango_explícito, años]
+
+- prompt: "vacaciones de este mismo mes el año pasado"
+  domain: vacaciones
+  tags: [temporal, comparación_interanual, mismo_mes]
+
+- prompt: "ausencias durante el estado de alarma en 2020"
+  domain: turnos
+  tags: [temporal, periodo_histórico]
+
+- prompt: "nóminas de los tres últimos años"
+  domain: nominas
+  tags: [temporal, relativo, últimos_n_años]
+
+- prompt: "empleados dados de alta este mismo día pero hace un año"
+  domain: empleados
+  tags: [temporal, mismo_día_año_pasado]
+
+- prompt: "vacaciones del puente de diciembre"
+  domain: vacaciones
+  tags: [temporal, nombrado, puente]
+
+- prompt: "ausencias registradas anteayer"
+  domain: turnos
+  tags: [temporal, relativo, anteayer]
+
+- prompt: "nóminas de la quincena pasada"
+  domain: nominas
+  tags: [temporal, relativo, quincena]
+
+- prompt: "empleados incorporados en el ejercicio 2022"
+  domain: empleados
+  tags: [temporal, ejercicio, año_específico]
+
+- prompt: "ausencias comparadas mes a mes durante todo el año"
+  domain: turnos
+  tags: [temporal, serie_mensual, año_completo]
+
+- prompt: "vacaciones acumuladas desde enero hasta hoy"
+  domain: vacaciones
+  tags: [temporal, ytd, hasta_hoy]
+
+- prompt: "empleados activos a fecha de cierre del ejercicio anterior"
+  domain: empleados
+  tags: [temporal, fecha_de_corte]
+
+- prompt: "nóminas correspondientes al último día laborable del mes"
+  domain: nominas
+  tags: [temporal, último_día_laborable]
+
+- prompt: "ausencias registradas en lo que va de semana"
+  domain: turnos
+  tags: [temporal, wtd]
+
+- prompt: "vacaciones que vencen antes de que acabe el año"
+  domain: vacaciones
+  tags: [temporal, vencimiento, fin_de_año]
+
+- prompt: "evolución mensual de las nóminas durante el último año"
+  domain: nominas
+  tags: [temporal, serie_mensual]
+
+- prompt: "ausencias registradas durante el puente de mayo de este año"
+  domain: turnos
+  tags: [temporal, nombrado, puente_mayo]
+
+- prompt: "empleados que llevan menos de 6 meses en la empresa"
+  domain: empleados
+  tags: [temporal, relativo, menos_de]
+
+- prompt: "vacaciones de los últimos 2 años por trimestre"
+  domain: vacaciones
+  tags: [temporal, serie_trimestral, últimos_n_años]
+
+- prompt: "ausencias registradas el día de hoy hace un mes"
+  domain: turnos
+  tags: [temporal, hace_un_mes_mismo_día]
+
+- prompt: "empleados incorporados este mismo trimestre el año pasado"
+  domain: empleados
+  tags: [temporal, comparación_interanual, trimestre]
+
+- prompt: "vacaciones solicitadas en el último día hábil del mes"
+  domain: vacaciones
+  tags: [temporal, último_día_hábil]
+
+- prompt: "ausencias del año en curso hasta hoy"
+  domain: turnos
+  tags: [temporal, ytd, hasta_hoy]
+
+- prompt: "nóminas de cada trimestre de este año comparadas"
+  domain: nominas
+  tags: [temporal, serie_trimestral, año_actual]
+
+- prompt: "empleados que llevan toda la década en la empresa"
+  domain: empleados
+  tags: [temporal, relativo, década]
+
+- prompt: "ausencias registradas durante el último puente festivo"
+  domain: turnos
+  tags: [temporal, nombrado, puente_festivo]
+
+- prompt: "vacaciones pendientes de disfrutar antes del 31 de diciembre"
+  domain: vacaciones
+  tags: [temporal, fecha_límite]
+
+- prompt: "nóminas correspondientes al ejercicio fiscal pasado"
+  domain: nominas
+  tags: [temporal, ejercicio_fiscal_pasado]
+
+- prompt: "empleados dados de baja en lo que va de trimestre"
+  domain: empleados
+  tags: [temporal, qtd]
+
+- prompt: "ausencias ocurridas durante la última ola de calor del verano"
+  domain: turnos
+  tags: [temporal, periodo_específico]
+
+- prompt: "vacaciones de la primera quincena de agosto"
+  domain: vacaciones
+  tags: [temporal, quincena]
+
+- prompt: "nóminas desde el inicio del año fiscal hasta ahora"
+  domain: nominas
+  tags: [temporal, fiscal_ytd]
+
+- prompt: "empleados incorporados en el último día del mes pasado"
+  domain: empleados
+  tags: [temporal, último_día_mes_pasado]
+
+- prompt: "ausencias previstas para la próxima semana"
+  domain: turnos
+  tags: [temporal, futuro, próxima_semana]
+
+- prompt: "vacaciones ya aprobadas para el mes que viene"
+  domain: vacaciones
+  tags: [temporal, futuro, mes_siguiente]
+
+- prompt: "nóminas de los últimos 18 meses"
+  domain: nominas
+  tags: [temporal, relativo, últimos_n_meses]
+
+- prompt: "empleados con antigüedad a fecha de hoy"
+  domain: empleados
+  tags: [temporal, a_fecha_de_hoy]
+
+- prompt: "ausencias comparando esta quincena con la anterior"
+  domain: turnos
+  tags: [temporal, quincena_actual_vs_anterior]
+
+- prompt: "vacaciones acumuladas desde el inicio de la relación laboral"
+  domain: vacaciones
+  tags: [temporal, histórico_completo]
