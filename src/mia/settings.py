@@ -221,6 +221,16 @@ class ObservabilitySettings(BaseModel):
     applicationinsights_connection_string: SecretStr | None = None
 
 
+class JobsSettings(BaseModel):
+    enabled: bool = False
+    """Activa el worker en segundo plano de informes masivos (``MIA_JOBS__ENABLED=true``)."""
+    poll_interval_seconds: float = 5.0
+    """Espera entre sondeos cuando no hay trabajos pendientes (``MIA_JOBS__POLL_INTERVAL_SECONDS``)."""
+    lease_seconds: int = 300
+    """Tiempo máximo que un worker retiene un trabajo antes de que otro pueda reclamarlo tras un
+    bloqueo/caída (``MIA_JOBS__LEASE_SECONDS``)."""
+
+
 class DiagnosticsSettings(BaseModel):
     enabled: bool = False
     """Activa captura de trazas, endpoints y panel (``MIA_DIAGNOSTICS__ENABLED=true``)."""
@@ -274,6 +284,7 @@ class Settings(BaseSettings):
     privacy_gateway: PrivacyGatewaySettings = Field(default_factory=PrivacyGatewaySettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     diagnostics: DiagnosticsSettings = Field(default_factory=DiagnosticsSettings)
+    jobs: JobsSettings = Field(default_factory=JobsSettings)
 
     @model_validator(mode="after")
     def _fail_closed_in_production(self) -> Settings:

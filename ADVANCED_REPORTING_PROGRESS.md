@@ -262,6 +262,105 @@ octubre (el mes en curso) en vez de agosto — sin ningún coste salarial por de
 incidencia), todas en verde, 0 fallos. Build de frontend no afectado (ningún archivo de `frontend/`
 tocado). No se ha modificado Fase G, el Job Manager, ni los mundos 3D/HG/sincronización de datos.
 
+## 16. Fase G — primera integración real: Job Manager + `analisis_economico_nominas`
+
+Construido sobre el motor genérico de la sección 12 (sin tocarlo): worker persistente real, ejecutor
+que conecta `analisis_economico_nominas`/`generar_informe` con el Job Manager, y endpoints
+autenticados. Archivos nuevos/modificados: `src/mia/settings.py` (`JobsSettings`), `src/mia/main.py`
+(arranque/cierre del worker en el `lifespan`, igual que diagnósticos/adjuntos), `src/mia/reporting/worker.py`
+(`ReportJobWorker`, genérico por `kind`), `src/mia/modules/rrhh/informes/jobs.py` (el ejecutor concreto
+de informes económicos de nóminas), `src/mia/api/routes/jobs.py` (`POST /api/jobs/informe-economico`,
+`GET /api/jobs/{id}`, `DELETE /api/jobs/{id}`), `tests/test_job_manager_economic_integration.py` (27
+pruebas).
+
+### Verificación punto por punto de lo exigido explícitamente antes de cerrar la fase
+
+1. **Arranque real + recuperación tras reinicio — VERIFICADO**: `test_real_app_startup_processes_jobs_and_recovers_after_a_simulated_restart`
+   usa `create_app()` + su `lifespan` real (el mismo procedimiento de despliegue, con
+   `MIA_JOBS__ENABLED=true` únicamente en la propia prueba), fuerza un trabajo a `running` con un lease
+   de 1 s, lo deja expirar, y arranca una SEGUNDA instancia de la app contra el MISMO fichero de base de
+   datos (simulando el proceso caído y reiniciado). El segundo arranque reclama el trabajo huérfano de
+   verdad (vía `reap_stale_leases()` al iniciar el worker) y lo lleva a un estado terminal válido.
+2. **Varios workers sin duplicados — VERIFICADO**: `test_concurrent_workers_never_execute_the_same_job_twice`
+   ejecuta 4 trabajos reales alternando dos instancias de `ReportJobWorker`; los 4 completan con 4
+   `report_id` distintos, ninguno compartido. La seguridad de la carrera en `claim_next` (el `UPDATE ...
+   WHERE status='queued'` atómico) ya estaba probada con dos procesos reales en
+   `tests/test_job_manager.py::test_two_workers_claiming_concurrently_never_get_the_same_job`.
+3. **Reevaluación de permisos — VERIFICADO lo verificable; LIMITACIÓN ARQUITECTÓNICA documentada, no
+   oculta**: el ejecutor vuelve a comprobar el permiso `NOMINAS_IMPORTES` EN EJECUCIÓN (no solo en el
+   envío) contra los roles capturados en `_auth` en el momento del envío —
+   `test_payroll_job_still_enforces_the_nominas_permission_at_execution_time` prueba que un trabajo cuyo
+   snapshot de roles no incluye ese permiso falla, nunca completa con datos económicos. Lo que NO es
+   posible sin añadir infraestructura nueva (fuera del alcance de esta ronda): este proyecto no tiene
+   ningún directorio de usuarios al que volver a consultar roles en vivo — los tres `IdentityProvider`
+   existentes (`Dev`/`EasyAuth`/`EntraId`) solo autentican a partir de una petición HTTP real, que un
+   worker en segundo plano no tiene. Riesgo real y acotado: si a un usuario se le revoca
+   `NOMINAS_IMPORTES` en la ventana entre el envío y la ejecución (normalmente segundos; como máximo, la
+   profundidad de la cola), el trabajo ya encolado se ejecuta con el permiso que tenía al enviarlo. Un
+   usuario que NUNCA tuvo el permiso no puede obtenerlo por esta vía (el envío ya lo exige vía `NominasDep`,
+   y la ejecución lo vuelve a exigir de forma independiente).
+4. **Idempotencia aislada por usuario — VERIFICADO**: `test_idempotency_is_isolated_per_user_not_shared_by_hash_coincidence`
+   prueba que dos usuarios con los mismos parámetros de negocio obtienen claves de idempotencia (y por
+   tanto trabajos e informes) distintos — la clave incluye siempre `user_id` (`src/mia/api/routes/jobs.py`).
+5. **Sin datos salariales en los mensajes de error/logs — VERIFICADO**: `test_failure_messages_never_contain_salary_amounts`
+   fuerza un fallo real (departamento inexistente) y comprueba que el mensaje persistido —el mismo texto
+   que viajaría a los logs vía `log.exception`— no contiene ningún patrón de importe. Los mensajes de
+   error de `analisis_economico_nominas` son siempre estructurales (periodo no reconocido, departamento
+   inexistente, sin datos…), nunca cifras.
+6. **Cancelación cooperativa y liberación de recursos — VERIFICADO, con la misma limitación ya
+   documentada en el código**: `test_cancellation_requested_before_execution_is_honored_not_silently_run`
+   prueba que un trabajo marcado para cancelar antes de ejecutarse nunca llega a correr el análisis
+   económico. `test_heartbeat_task_is_cancelled_cleanly_after_execution` prueba que la tarea de
+   heartbeat que mantiene vivo el lease durante una ejecución larga se cancela limpiamente al terminar
+   (éxito o fallo), sin quedar huérfana. Limitación deliberada, documentada en el propio
+   `mia.reporting.worker.ReportJobWorker._heartbeat_loop`: NO se interrumpe un trabajo a mitad de la
+   llamada a `analisis_economico_nominas` (una operación atómica del motor analítico ya validado, que
+   esta fase no modifica) — la cancelación cooperativa solo se comprueba antes de empezar a ejecutar.
+7. **Migración 0008 — RE-VERIFICADA contra una base de datos real** en esta misma ronda (no solo
+   recordada de una verificación anterior): `alembic upgrade head` sobre un SQLite nuevo, inspección de
+   columnas/FK/índices reales, INSERT/SELECT de una fila real, y `alembic downgrade -1` elimina la tabla
+   limpiamente.
+8. **Rendimiento y ausencia de truncamiento silencioso — VERIFICADO al volumen practicable en una
+   prueba unitaria; el umbral de protección real no se repite por coste de tiempo**:
+   `test_large_multi_month_volume_has_no_silent_truncation` resuelve 3 meses × 3 departamentos (hasta 10
+   personas) sin perder ningún mes ni departamento, en milisegundos (muy por debajo de
+   `TIMEOUT_SECONDS=280`). El mecanismo que protege volúmenes verdaderamente grandes
+   (`LARGE_VOLUME_WARNING=1000` en `analisis_economico.py`, y el truncamiento explícito con aviso de
+   `annex_block()` en el modelo documental) es anterior a esta fase, ya validado, y esta ronda no lo
+   modifica ni lo repite con >1000 nóminas sintéticas por el coste de generarlas en una prueba.
+9. **Descarga solo para el propietario — VERIFICADO de extremo a extremo**:
+   `test_report_download_is_only_available_to_the_job_owner` encadena un trabajo completado de verdad
+   con el endpoint YA EXISTENTE `GET /api/reports/{report_id}` — el propietario descarga (200), otro
+   usuario no (404) — sin duplicar esa lógica de propiedad en la nueva capa de endpoints de trabajos.
+10. **Activación controlada en pruebas, nunca en producción — VERIFICADO**: `MIA_JOBS__ENABLED` es
+    `false` por defecto (`JobsSettings.enabled`, igual que diagnósticos/adjuntos); se activa
+    explícitamente solo dentro de `test_real_app_startup_processes_jobs_and_recovers_after_a_simulated_restart`
+    (vía `make_settings(..., jobs={"enabled": True, ...})`), nunca en ningún fichero de configuración de
+    despliegue ni variable de entorno real de este repositorio.
+
+### Limitaciones reales pendientes (no ocultas, para que ninguna sesión futura las asuma resueltas)
+
+- **Sin límites duros de CPU/memoria**: solo existen el timeout por lease (`lease_seconds`), el límite de
+  filas ya existente (`ReportSettings.max_rows`) y el aviso de volumen de `analisis_economico_nominas`
+  (`LARGE_VOLUME_WARNING`). Un límite duro real necesita aislamiento a nivel de proceso/contenedor
+  (cgroups), no solo código Python — documentado como limitación real desde la sección 12, sin cambios.
+- **Revocación de permisos durante la cola**: ver punto 3 arriba — riesgo acotado, no eliminado, sin
+  directorio de usuarios al que consultar en vivo.
+- **Cancelación no preemptiva**: ver punto 6 arriba — solo se comprueba antes de empezar a ejecutar, no
+  interrumpe una llamada ya en curso al motor analítico.
+- **Un único worker por proceso** en este incremento (el diseño de `claim_next` ya soporta varios
+  procesos/instancias sin cambios si en el futuro hace falta escalar horizontalmente).
+
+**Pendiente para fases futuras (no de esta ronda)**: endpoints de job para otros dominios (turnos,
+vacaciones) — el worker y el Job Manager ya son genéricos por `kind`, solo falta registrar su propio
+ejecutor cuando se necesite. La conexión general del `ReportPlanner` al pipeline conversacional completo
+(selección automática de herramienta por dominio, no solo el guard puntual de la sección 15) queda,
+según indicó el usuario, para la Fase F.
+
+**Resultado de la suite completa**: todas las pruebas en verde (834 previas + los tests nuevos de esta
+ronda). Ningún archivo de `frontend/` ni del Job Manager genérico (sección 12) modificado. No se ha
+tocado sincronización ni caché de negocio.
+
 ## 10. Cierre de Fases D y E (ronda de continuación tras el cierre de la validación de nóminas)
 
 **Fase D — verificado, no reconstruido**: los 8 tipos de bloque que pedía esta ronda (KPI, Table,
