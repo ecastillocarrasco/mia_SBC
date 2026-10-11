@@ -1,0 +1,366 @@
+id,dominio,fuente,categoria,subcategoria,dificultad,pregunta,estado,score,evidencia,limitacion,funcionalidad_necesaria
+1,sistema,core,capacidades,descubrimiento,baja,¿Qué puedes hacer?,✅ SOPORTADA,1.0,sistema/tools.py::capacidades,,
+2,sistema,core,capacidades,descubrimiento,baja,¿Para qué sirves?,✅ SOPORTADA,1.0,sistema/tools.py::capacidades,,
+3,sistema,core,capacidades,descubrimiento,baja,¿Qué consultas tienes disponibles ahora mismo?,✅ SOPORTADA,1.0,sistema/tools.py::capacidades,,
+4,sistema,core,capacidades,descubrimiento,baja,¿Qué está todavía pendiente o sin activar?,✅ SOPORTADA,1.0,sistema/tools.py::capacidades + pending_domains,,
+5,sistema,core,identidad,conversacional,baja,¿Cómo te llamas?,✅ SOPORTADA,1.0,persona.py::Persona.name=mIA,,
+6,sistema,core,identidad,conversacional,baja,¿Quién eres y qué haces en Sunset Beach Club?,✅ SOPORTADA,1.0,persona.py::system_prompt,,
+7,sistema,core,resultados,operaciones,media,Ordena el último resultado por nombre,✅ SOPORTADA,1.0,sistema/resultados.py::operar_resultado(operacion=ordenar),,
+8,sistema,core,resultados,operaciones,baja,¿Cuántos hay en la última tabla?,✅ SOPORTADA,1.0,sistema/resultados.py::operar_resultado(operacion=contar),,
+9,sistema,core,resultados,operaciones,media,Filtra los de la última lista que sean de Pisos,✅ SOPORTADA,1.0,sistema/resultados.py::operar_resultado(operacion=filtrar),,
+10,sistema,core,resultados,operaciones,media,Agrupa el resultado anterior por departamento,✅ SOPORTADA,1.0,sistema/resultados.py::operar_resultado(operacion=agrupar),,
+11,sistema,core,resultados,cruce,alta,De los de baja y los de vacaciones ¿quiénes coinciden?,✅ SOPORTADA,1.0,sistema/resultados.py::cruzar_resultados(operacion=interseccion),,
+12,sistema,core,resultados,cruce,alta,Dame los que están en el primer resultado pero no en el segundo,✅ SOPORTADA,1.0,sistema/resultados.py::cruzar_resultados(operacion=diferencia),,
+13,sistema,core,resultados,cruce,alta,Úneme los dos últimos grupos de personas,✅ SOPORTADA,1.0,sistema/resultados.py::cruzar_resultados(operacion=union),,
+14,sistema,core,conocimiento_general,conversacional,baja,¿Cuánto es el 15% de 3.200?,✅ SOPORTADA,1.0,persona.py::preguntas generales sin tool,,
+15,sistema,core,conocimiento_general,conversacional,baja,Tradúceme 'buenos días' al inglés,✅ SOPORTADA,1.0,persona.py::preguntas generales sin tool,,
+16,sistema,core,conocimiento_general,conversacional,baja,¿Cuántos días de vacaciones corresponden por ley en España?,✅ SOPORTADA,1.0,persona.py::preguntas generales sin tool,,
+17,sistema,core,conocimiento_general,conversacional,baja,¿Qué es una baja por contingencia común?,✅ SOPORTADA,1.0,persona.py::preguntas generales sin tool,,
+18,sistema,core,conocimiento_general,web,media,¿Qué tiempo hace hoy en Málaga?,✅ SOPORTADA,1.0,persona.py::búsqueda web,,
+19,sistema,core,conocimiento_general,conversacional,baja,¿Cuál es el salario mínimo interprofesional este año?,✅ SOPORTADA,1.0,persona.py::preguntas generales / web,,
+20,sistema,core,conocimiento_general,conversacional,baja,Escríbeme un email de bienvenida para un nuevo empleado,✅ SOPORTADA,1.0,persona.py::preguntas generales sin tool,,
+21,sistema,core,memoria,conversacional,media,¿Recuerdas lo que hablamos hace un rato sobre turnos?,🟡 PARCIALMENTE,0.5,engine.py::12 últimos turnos en DB,Solo 12 turnos de historial (MAX_HISTORY=12),Historial conversacional ampliado
+22,sistema,core,capacidades,administración,alta,¿Hay algún problema de calidad de datos en el sistema?,🟡 PARCIALMENTE,0.5,analitica/tools.py::calidad_datos,Requiere Permission.ADMINISTRAR,Permiso ADMINISTRAR
+23,sistema,core,resultados,operaciones,media,Muéstrame solo las columnas nombre y departamento del resultado anterior,✅ SOPORTADA,1.0,sistema/resultados.py::operar_resultado(operacion=columnas),,
+24,sistema,core,resultados,operaciones,media,Dame los 10 primeros del resultado anterior,✅ SOPORTADA,1.0,sistema/resultados.py::operar_resultado(operacion=primeros),,
+25,sistema,core,resultados,operaciones,media,Ordena de menor a mayor el último resultado por horas,✅ SOPORTADA,1.0,sistema/resultados.py::operar_resultado(descendente=false),,
+26,empleados,sharepoint:Empleados,plantilla,recuento,baja,¿Cuántos empleados activos hay en plantilla?,✅ SOPORTADA,1.0,empleados/tools.py::plantilla,,
+27,empleados,sharepoint:Empleados,plantilla,recuento,baja,¿Cuántos empleados hay en total incluyendo inactivos?,✅ SOPORTADA,1.0,empleados/tools.py::plantilla(estado=todos),,
+28,empleados,sharepoint:Empleados,plantilla,listado,baja,Muéstrame la plantilla activa de Cocina,✅ SOPORTADA,1.0,empleados/tools.py::plantilla(departamento=Cocina),,
+29,empleados,sharepoint:Empleados,plantilla,recuento,baja,¿Cuántos empleados hay en Pisos?,✅ SOPORTADA,1.0,empleados/tools.py::plantilla(departamento=Pisos),,
+30,empleados,sharepoint:Empleados,plantilla,agregación,baja,¿Cuántos empleados hay por departamento?,✅ SOPORTADA,1.0,empleados/tools.py::plantilla(agrupar_por=departamento),,
+31,empleados,sharepoint:Empleados,plantilla,agregación,baja,¿Cuántos empleados hay por puesto?,✅ SOPORTADA,1.0,empleados/tools.py::plantilla(agrupar_por=puesto),,
+32,empleados,sharepoint:Empleados,plantilla,agregación,media,¿Cuántos empleados hay por nacionalidad?,✅ SOPORTADA,1.0,empleados/tools.py::plantilla(agrupar_por=nacionalidad),,
+33,empleados,sharepoint:Empleados,búsqueda,ficha,baja,Búscame a María González,✅ SOPORTADA,1.0,empleados/tools.py::buscar_empleado,,
+34,empleados,sharepoint:Empleados,búsqueda,ficha,baja,¿Existe alguien que se llame Pedro Martín?,✅ SOPORTADA,1.0,empleados/tools.py::buscar_empleado,,
+35,empleados,sharepoint:Empleados,búsqueda,ficha,baja,Dame la ficha completa de Juan Pérez,✅ SOPORTADA,1.0,empleados/tools.py::ficha_empleado,,
+36,empleados,sharepoint:Empleados,búsqueda,ficha,baja,¿Qué puesto ocupa Ana Flores?,✅ SOPORTADA,1.0,empleados/tools.py::buscar_empleado / ficha_empleado,,
+37,empleados,sharepoint:Empleados,búsqueda,ficha,baja,¿En qué departamento trabaja Carlos López?,✅ SOPORTADA,1.0,empleados/tools.py::buscar_empleado,,
+38,empleados,sharepoint:Empleados,búsqueda,contacto,baja,¿Cuál es el email de Laura García?,✅ SOPORTADA,1.0,empleados/tools.py::ficha_empleado,,
+39,empleados,sharepoint:Empleados,organización,responsables,baja,¿Quién es el responsable del departamento de Recepción?,✅ SOPORTADA,1.0,empleados/tools.py::responsables,,
+40,empleados,sharepoint:Empleados,organización,responsables,baja,¿Cuántos responsables hay en Animación?,✅ SOPORTADA,1.0,empleados/tools.py::responsables,,
+41,empleados,sharepoint:Empleados,organización,estructura,baja,Dame la estructura de departamentos de la empresa,✅ SOPORTADA,1.0,empleados/tools.py::estructura_departamentos,,
+42,empleados,sharepoint:Empleados,organización,estructura,baja,¿Cuáles son todos los departamentos?,✅ SOPORTADA,1.0,empleados/tools.py::estructura_departamentos,,
+43,empleados,sharepoint:Empleados,organización,estructura,media,Muéstrame el organigrama de la empresa,✅ SOPORTADA,1.0,empleados/tools.py::estructura_departamentos,,
+44,empleados,sharepoint:Empleados,edad,demografía,media,¿Qué edad media tiene la plantilla?,✅ SOPORTADA,1.0,empleados/tools.py::perfil_edad,,
+45,empleados,sharepoint:Empleados,edad,demografía,media,¿Cómo está distribuida la plantilla por franjas de edad?,✅ SOPORTADA,1.0,empleados/tools.py::perfil_edad,,
+46,empleados,sharepoint:Empleados,edad,demografía,media,¿Cuántos empleados tienen más de 50 años?,✅ SOPORTADA,1.0,empleados/tools.py::perfil_edad / analitica/consultas.py::consulta_cruzada,,
+47,empleados,sharepoint:Empleados,cumpleaños,fechas,baja,¿Quién cumple años esta semana?,✅ SOPORTADA,1.0,empleados/tools.py::cumpleanos,,
+48,empleados,sharepoint:Empleados,cumpleaños,fechas,baja,¿Quién cumple años en diciembre?,✅ SOPORTADA,1.0,empleados/tools.py::cumpleanos,,
+49,empleados,sharepoint:Empleados,cumpleaños,fechas,baja,¿Hay alguien que cumpla años hoy?,✅ SOPORTADA,1.0,empleados/tools.py::cumpleanos,,
+50,empleados,sharepoint:Empleados,contacto,directorio,baja,Dame los contactos del departamento de Mantenimiento,✅ SOPORTADA,1.0,empleados/tools.py::contactos_organizacion,,
+51,empleados,sharepoint:Empleados,contacto,directorio,baja,¿Cuáles son las extensiones del departamento de Animación?,✅ SOPORTADA,1.0,empleados/tools.py::contactos_organizacion,,
+52,empleados,sharepoint:Empleados,altas,movimientos,media,¿Cuántos trabajadores se han dado de alta este mes?,✅ SOPORTADA,1.0,analitica/tools.py::altas_empleados,,
+53,empleados,sharepoint:Empleados,altas,movimientos,media,¿Quién se ha incorporado a la empresa en los últimos 30 días?,✅ SOPORTADA,1.0,analitica/tools.py::altas_empleados,,
+54,empleados,sharepoint:Empleados,plantilla,recuento,baja,¿Cuántos cocineros hay en la empresa?,✅ SOPORTADA,1.0,empleados/tools.py::plantilla(puesto=cocinero),,
+55,empleados,sharepoint:Empleados,plantilla,listado,baja,¿Qué empleados hay inactivos en Recepción?,✅ SOPORTADA,1.0,empleados/tools.py::plantilla(estado=inactivos),,
+56,empleados,sharepoint:Empleados,búsqueda,ficha,baja,¿Quién es el responsable directo de Ana Torres?,✅ SOPORTADA,1.0,empleados/tools.py::ficha_empleado (manager_name),,
+57,empleados,sharepoint:Empleados,edad,demografía,media,¿Cuántos empleados tienen más de 45 años?,✅ SOPORTADA,1.0,empleados/tools.py::perfil_edad,,
+58,empleados,sharepoint:Empleados,búsqueda,ficha,media,¿Está activo el empleado con código E00123?,✅ SOPORTADA,1.0,empleados/tools.py::buscar_empleado (employee_code),,
+59,empleados,sharepoint:Empleados,demografía,género,baja,¿Cuántas mujeres trabajan en Pisos?,🔴 NO SOPORTADA,0.0,hr.py::Employee (sin campo género),No hay campo género/sexo en el modelo Employee,Campo género en Employee + consulta filtrada
+60,empleados,sharepoint:Empleados,antigüedad,contrato,media,¿Cuántos años lleva en la empresa Juan García?,🔴 NO SOPORTADA,0.0,hr.py::Employee (sin hire_date),No hay campo hire_date en Employee,Campo hire_date en Employee
+61,empleados,sharepoint:Empleados,contrato,tipo,baja,¿Qué tipo de contrato tiene María Pérez?,🔴 NO SOPORTADA,0.0,hr.py::Employee (sin contract_type),No hay campo tipo contrato en Employee,Campo contract_type en Employee
+62,empleados,sharepoint:Empleados,contrato,jornada,baja,¿Qué empleados tienen contrato a tiempo parcial?,🔴 NO SOPORTADA,0.0,hr.py::Employee (sin campo jornada),No hay campo jornada/horas contrato,Campo jornada_contrato en Employee
+63,empleados,sharepoint:Empleados,antigüedad,recuento,media,¿Cuántas personas tienen más de 5 años de antigüedad?,🔴 NO SOPORTADA,0.0,hr.py::Employee (sin hire_date),No hay hire_date en Employee,Campo hire_date en Employee
+64,empleados,sharepoint:Empleados,diversidad,datos_sensibles,alta,¿Cuántos empleados tienen certificado de discapacidad?,🔴 NO SOPORTADA,0.0,hr.py::Employee (sin campo discapacidad),No hay campo discapacidad,Módulo diversidad con datos sensibles
+65,empleados,sharepoint:Empleados,contrato,vencimiento,alta,¿Cuándo vence el contrato de Pedro García?,🔴 NO SOPORTADA,0.0,hr.py::Employee (sin fecha_fin_contrato),No hay campo fecha fin contrato,Campo fecha_fin_contrato en Employee
+66,empleados,sharepoint:Empleados,plantilla,comparación,media,Compara la edad media entre Cocina y Recepción,✅ SOPORTADA,1.0,analitica/tools.py::comparar_departamentos / perfil_edad,,
+67,empleados,sharepoint:Empleados,búsqueda,listado,baja,¿Hay alguien con apellido García en Mantenimiento?,✅ SOPORTADA,1.0,empleados/tools.py::buscar_empleado,,
+68,empleados,sharepoint:Empleados,contacto,directorio,baja,Dame los datos de contacto del departamento de RRHH,✅ SOPORTADA,1.0,empleados/tools.py::contactos_organizacion,,
+69,empleados,sharepoint:Empleados,plantilla,recuento,baja,¿Cuántos empleados hay en total en la empresa?,✅ SOPORTADA,1.0,empleados/tools.py::plantilla,,
+70,empleados,sharepoint:Empleados,vacaciones,saldo,media,¿Quién tiene días de asuntos propios disponibles este año?,🟡 PARCIALMENTE,0.5,vacaciones/tools.py::saldo_vacaciones,Los asuntos propios están en Vacaciones pero el saldo específico puede no estar separado,Saldo desagregado por tipo
+71,turnos,sharepoint:Turnos,publicados,persona,baja,¿Qué turno hace Pedro García la semana que viene?,✅ SOPORTADA,1.0,turnos/tools.py::turnos_persona,,
+72,turnos,sharepoint:Turnos,publicados,día,baja,¿Quién trabaja mañana en Cocina?,✅ SOPORTADA,1.0,turnos/tools.py::turnos_dia,,
+73,turnos,sharepoint:Turnos,publicados,franja,baja,¿Quién trabaja de noche hoy en Pisos?,✅ SOPORTADA,1.0,turnos/tools.py::turnos_dia(franja=noche),,
+74,turnos,sharepoint:Turnos,publicados,franja,baja,¿Quién está de turno de tarde en Recepción esta tarde?,✅ SOPORTADA,1.0,turnos/tools.py::turnos_dia(franja=tarde),,
+75,turnos,sharepoint:Turnos,publicados,día,baja,¿Quién trabaja el lunes que viene en Mantenimiento?,✅ SOPORTADA,1.0,turnos/tools.py::turnos_dia,,
+76,turnos,sharepoint:Turnos,publicados,franja,media,¿Cuántas personas trabajan en turno de noche mañana?,✅ SOPORTADA,1.0,turnos/tools.py::turnos_dia(franja=noche),,
+77,turnos,sharepoint:Turnos,publicados,hora,media,¿Quién empieza a trabajar a las 8:00 el martes en Mantenimiento?,✅ SOPORTADA,1.0,turnos/tools.py::turnos_dia(empieza_a=08:00),,
+78,turnos,sharepoint:Turnos,publicados,presencia,media,¿Quién está trabajando ahora mismo a las 15:30?,✅ SOPORTADA,1.0,turnos/tools.py::turnos_dia(hora=15:30),,
+79,turnos,sharepoint:Turnos,publicados,descanso,baja,¿Qué empleados descansan hoy en Animación?,✅ SOPORTADA,1.0,turnos/tools.py::ausencias / turnos_dia,,
+80,turnos,sharepoint:Turnos,ausencias,baja,baja,¿Quién está de baja ahora mismo?,✅ SOPORTADA,1.0,turnos/tools.py::ausencias(tipos=baja),,
+81,turnos,sharepoint:Turnos,ausencias,permisos,baja,¿Quién está de permiso hoy?,✅ SOPORTADA,1.0,turnos/tools.py::ausencias(tipos=permiso),,
+82,turnos,sharepoint:Turnos,ausencias,recuento,baja,¿Cuántas personas están de baja en Cocina?,✅ SOPORTADA,1.0,turnos/tools.py::ausencias(tipos=baja,departamento=Cocina),,
+83,turnos,sharepoint:Turnos,ausencias,duración,media,¿Cuántos días lleva de baja Ana Torres?,✅ SOPORTADA,1.0,turnos/tools.py::ausencias (dias_hasta_hoy),,
+84,turnos,sharepoint:Turnos,ausencias,listado,media,¿Quién lleva más de 30 días de baja?,✅ SOPORTADA,1.0,turnos/tools.py::ausencias(ordenar_por=dias),,
+85,turnos,sharepoint:Turnos,reincorporaciones,fechas,baja,¿Quién se reincorpora esta semana?,✅ SOPORTADA,1.0,turnos/tools.py::reincorporaciones,,
+86,turnos,sharepoint:Turnos,reincorporaciones,fechas,baja,¿Quién vuelve de baja el lunes que viene?,✅ SOPORTADA,1.0,turnos/tools.py::reincorporaciones,,
+87,turnos,sharepoint:Turnos,horas,cálculo,media,¿Cuántas horas ha trabajado Ana Torres este mes?,✅ SOPORTADA,1.0,turnos/tools.py::horas_trabajadas,,
+88,turnos,sharepoint:Turnos,compañeros,coincidencia,media,¿Con quién coincide Juan García el jueves?,✅ SOPORTADA,1.0,turnos/companeros.py::companeros_de_turno,,
+89,turnos,sharepoint:Turnos,compañeros,coincidencia,media,¿Qué compañeros tiene Ana en su turno del viernes?,✅ SOPORTADA,1.0,turnos/companeros.py::companeros_de_turno,,
+90,turnos,sharepoint:Calendarios,catálogo,tipos,baja,¿Qué tipos de turno hay definidos en Recepción?,✅ SOPORTADA,1.0,turnos/historico.py::catalogo_tipos_turno,,
+91,turnos,sharepoint:Calendarios,catálogo,horario,baja,¿Cuál es el horario del turno T2 en Cocina?,✅ SOPORTADA,1.0,turnos/historico.py::catalogo_tipos_turno,,
+92,turnos,sharepoint:Calendarios,plantillas,reglas,media,¿Qué plantilla de turno tiene Pedro Martín desde julio?,✅ SOPORTADA,1.0,turnos/historico.py::plantillas_turno,,
+93,turnos,sharepoint:Calendarios,comentarios,semana,baja,¿Hay algún comentario de la semana en Pisos?,✅ SOPORTADA,1.0,turnos/historico.py::comentarios_semana_turno,,
+94,turnos,sharepoint:Calendarios,histórico,horas_reales,media,¿Cuántas horas reales trabajó Cocina en agosto?,✅ SOPORTADA,1.0,turnos/historico.py::metricas_turnos,,
+95,turnos,sharepoint:Calendarios,histórico,horas_reales,media,¿Cuántos turnos nocturnos hizo Ana Torres en septiembre?,✅ SOPORTADA,1.0,turnos/historico.py::metricas_turnos,,
+96,turnos,sharepoint:Calendarios,auditoría,discrepancias,alta,¿Qué diferencia hay entre el turno publicado y el real de Juan García hoy?,✅ SOPORTADA,1.0,turnos/historico.py::auditoria_publicacion_turnos,,
+97,turnos,sharepoint:Calendarios,auditoría,discrepancias,alta,¿Hay discrepancias entre lo planificado y lo real en Pisos?,✅ SOPORTADA,1.0,turnos/historico.py::auditoria_publicacion_turnos,,
+98,turnos,sharepoint:Calendarios,histórico,año_pasado,media,¿Qué turnos reales tuvo Pedro en octubre del año pasado?,✅ SOPORTADA,1.0,turnos/historico.py::turnos_historico,,
+99,turnos,sharepoint:Calendarios,disponibilidad,día,media,¿Cómo está la disponibilidad real de Pisos hoy cruzando calendario y vacaciones?,✅ SOPORTADA,1.0,turnos/historico.py::disponibilidad_dia,,
+100,turnos,sharepoint:Turnos,ausencias,tendencia,media,¿Cuál es la tendencia de bajas en los últimos 3 meses?,✅ SOPORTADA,1.0,analitica/tools.py::tendencia_ausencias,,
+101,turnos,sharepoint:Turnos,cobertura,semanal,media,¿Qué cobertura tiene Recepción la semana que viene?,✅ SOPORTADA,1.0,analitica/tools.py::cobertura_semanal,,
+102,turnos,sharepoint:Turnos,absentismo,ranking,media,¿Cuántos días de ausencia hay esta semana por departamento?,✅ SOPORTADA,1.0,analitica/tools.py::ranking_absentismo / panel_rrhh,,
+103,turnos,sharepoint:Turnos,absentismo,ranking,media,¿Qué departamentos tienen más absentismo?,✅ SOPORTADA,1.0,analitica/tools.py::ranking_absentismo,,
+104,turnos,sharepoint:Calendarios,histórico,métricas,media,¿Cuántas horas nocturnas acumula Pisos en el trimestre?,✅ SOPORTADA,1.0,turnos/historico.py::metricas_turnos,,
+105,turnos,sharepoint:Turnos,sin_turno,recuento,media,¿Cuántos empleados no tienen ningún turno publicado esta semana?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada(sin_turno_publicado),,
+106,turnos,sharepoint:Turnos,ausencias,recuento,media,¿Cuántas bajas hay por departamento hoy?,✅ SOPORTADA,1.0,turnos/tools.py::ausencias(agrupar) / analitica,,
+107,turnos,sharepoint:Calendarios,histórico,métricas,alta,¿Quién hizo más horas en Cocina el mes pasado?,✅ SOPORTADA,1.0,turnos/historico.py::metricas_turnos (ordenar por horas),,
+108,turnos,no_implementado,fichajes,registro,alta,¿A qué hora llegó Juan García esta mañana?,🔴 NO SOPORTADA,0.0,Sin fuente de fichajes,No hay sistema de control de presencia/fichaje,Integración con sistema de fichajes
+109,turnos,no_implementado,horas_extras,registro,alta,¿Cuántas horas extras hizo Mantenimiento este trimestre?,🔴 NO SOPORTADA,0.0,Sin campo horas extras,No hay diferenciación entre horas ordinarias y extras,Módulo de horas extras
+110,turnos,sharepoint:Calendarios,histórico,turnos_partidos,media,¿Hay algún empleado con turno partido en Cocina esta semana?,✅ SOPORTADA,1.0,turnos/historico.py::metricas_turnos (split_shift),,
+111,turnos,sharepoint:Turnos,ausencias,bajas_largas,media,¿Hay bajas largas de más de 90 días en la empresa?,✅ SOPORTADA,1.0,turnos/tools.py::ausencias(ordenar_por=dias),,
+112,turnos,sharepoint:Turnos,ausencias,recuento,baja,¿Cuántas personas están de vacaciones esta semana?,✅ SOPORTADA,1.0,turnos/tools.py::ausencias(tipos=vacaciones),,
+113,vacaciones,sharepoint:Vacaciones,solicitudes,estado,baja,¿Quién está de vacaciones hoy?,✅ SOPORTADA,1.0,vacaciones/tools.py::vacaciones(estado=aceptadas),,
+114,vacaciones,sharepoint:Vacaciones,solicitudes,estado,baja,¿Cuántas personas tienen vacaciones aprobadas en agosto?,✅ SOPORTADA,1.0,vacaciones/tools.py::vacaciones / analitica_vacaciones,,
+115,vacaciones,sharepoint:Vacaciones,solicitudes,pendientes,baja,¿Qué solicitudes de vacaciones están pendientes de aprobación?,✅ SOPORTADA,1.0,vacaciones/tools.py::vacaciones(estado=pendientes),,
+116,vacaciones,sharepoint:Vacaciones,solicitudes,rechazadas,baja,¿Qué solicitudes de vacaciones han sido rechazadas este año?,✅ SOPORTADA,1.0,vacaciones/tools.py::vacaciones(estado=rechazadas),,
+117,vacaciones,sharepoint:Vacaciones,saldo,persona,baja,¿Cuántos días de vacaciones le quedan a Ana Torres?,✅ SOPORTADA,1.0,vacaciones/tools.py::saldo_vacaciones,,
+118,vacaciones,sharepoint:Vacaciones,saldo,negativos,media,¿Qué empleados tienen saldo de vacaciones negativo?,✅ SOPORTADA,1.0,vacaciones/tools.py::saldo_vacaciones(solo_negativos=true),,
+119,vacaciones,sharepoint:Vacaciones,saldo,ranking,media,¿Quién tiene menos días de vacaciones disponibles?,✅ SOPORTADA,1.0,vacaciones/tools.py::saldo_vacaciones(ordenar=menor),,
+120,vacaciones,sharepoint:Vacaciones,saldo,departamento,media,¿Qué saldo de vacaciones tiene el departamento de Pisos de media?,✅ SOPORTADA,1.0,vacaciones/tools.py::saldo_vacaciones / analitica_vacaciones,,
+121,vacaciones,sharepoint:Vacaciones,solicitudes,tipo,media,¿Cuántos días de asuntos propios ha disfrutado Juan García este año?,✅ SOPORTADA,1.0,vacaciones/tools.py::vacaciones(tipo=asuntos_propios),,
+122,vacaciones,sharepoint:Vacaciones,saldo,ranking,media,¿Qué empleados tienen más de 10 días pendientes de disfrutar?,✅ SOPORTADA,1.0,vacaciones/tools.py::saldo_vacaciones(solo_disponibles=true),,
+123,vacaciones,sharepoint:Vacaciones,reincorporación,fechas,baja,¿Cuándo vuelve María López de vacaciones?,✅ SOPORTADA,1.0,vacaciones/tools.py::reincorporacion,,
+124,vacaciones,sharepoint:Vacaciones,reincorporación,semana,baja,¿Quién se reincorpora de vacaciones esta semana?,✅ SOPORTADA,1.0,vacaciones/tools.py::reincorporacion,,
+125,vacaciones,sharepoint:Vacaciones,analítica,distribución,media,¿Cuál es el período de vacaciones más frecuente?,✅ SOPORTADA,1.0,analitica/tools.py::analitica_vacaciones,,
+126,vacaciones,sharepoint:Vacaciones,analítica,distribución,media,¿Cuántos empleados disfrutan de vacaciones en julio?,✅ SOPORTADA,1.0,analitica/tools.py::analitica_vacaciones,,
+127,vacaciones,sharepoint:Vacaciones,saldo,cero,media,¿Qué empleados tienen el saldo de vacaciones a cero?,✅ SOPORTADA,1.0,vacaciones/tools.py::saldo_vacaciones,,
+128,vacaciones,sharepoint:Vacaciones,solicitudes,navidades,media,¿Qué empleados tienen solicitudes de vacaciones para Navidades?,✅ SOPORTADA,1.0,vacaciones/tools.py::vacaciones (periodo diciembre),,
+129,vacaciones,sharepoint:Vacaciones,saldo,recuento,media,¿Cuántos empleados tienen más de 20 días de vacaciones disponibles?,✅ SOPORTADA,1.0,vacaciones/tools.py::saldo_vacaciones(solo_disponibles=true),,
+130,vacaciones,sharepoint:Vacaciones,solicitudes,semana,baja,¿Hay alguna solicitud de asuntos propios esta semana?,✅ SOPORTADA,1.0,vacaciones/tools.py::vacaciones(tipo=asuntos_propios),,
+131,vacaciones,sharepoint:Vacaciones,analítica,picos,media,¿Hay picos de vacaciones en agosto en Pisos?,✅ SOPORTADA,1.0,analitica/tools.py::analitica_vacaciones,,
+132,vacaciones,sharepoint:Vacaciones,solicitudes,recuento,baja,¿Cuántas solicitudes de vacaciones hay en total este año?,✅ SOPORTADA,1.0,vacaciones/tools.py::vacaciones,,
+133,vacaciones,sharepoint:Vacaciones,solicitudes,persona,baja,¿Ha cogido Ana Torres vacaciones en los últimos 6 meses?,✅ SOPORTADA,1.0,vacaciones/tools.py::vacaciones (persona + periodo),,
+134,vacaciones,sharepoint:Vacaciones,saldo,porcentaje,media,¿Qué porcentaje de la plantilla está de vacaciones este mes?,✅ SOPORTADA,1.0,analitica/tools.py::analitica_vacaciones / panel_rrhh,,
+135,vacaciones,no_implementado,planificación,conflictos,alta,¿Puede Juan García coger vacaciones la semana que viene sin solapamientos?,🟡 PARCIALMENTE,0.5,vacaciones/tools.py::saldo_vacaciones,No valida solapamientos ni períodos bloqueados,Validación de disponibilidad y reglas de planificación
+136,vacaciones,sharepoint:Vacaciones,saldo,departamento,media,¿Cuántos días hay de media en las solicitudes de asuntos propios?,✅ SOPORTADA,1.0,vacaciones/tools.py::vacaciones(tipo=asuntos_propios),,
+137,vacaciones,no_implementado,permisos,días_especiales,alta,¿Tiene Juan García días de permiso por matrimonio disponibles?,🔴 NO SOPORTADA,0.0,vacaciones/tools.py (sin tipos especiales de permiso),Solo vacaciones y asuntos propios; permisos especiales no están modelados,Tipos de permiso especial (matrimonio; maternidad; etc.)
+138,vacaciones,sharepoint:Vacaciones,saldo,límite,media,¿Hay empleados con saldo de vacaciones por debajo de 5 días?,✅ SOPORTADA,1.0,vacaciones/tools.py::saldo_vacaciones,,
+139,vacaciones,sharepoint:Vacaciones,saldo,ranking,media,¿Cuántos días le quedan de vacaciones al departamento de Recepción en total?,✅ SOPORTADA,1.0,vacaciones/tools.py::saldo_vacaciones (suma departamento),,
+140,vacaciones,sharepoint:Vacaciones,solicitudes,aprobadas,baja,¿Cuántas personas están de vacaciones en agosto en Cocina?,✅ SOPORTADA,1.0,vacaciones/tools.py::vacaciones / analitica_vacaciones,,
+141,nominas,sharepoint:Nominas,listado,persona,baja,¿Cuántas nóminas tiene registradas Ana Torres?,✅ SOPORTADA,1.0,nominas/tools.py::nominas_persona (NOMINAS_LEER),,
+142,nominas,sharepoint:Nominas,listado,persona,baja,¿Cuáles son los períodos de nómina disponibles de Pedro García?,✅ SOPORTADA,1.0,nominas/tools.py::nominas_persona,,
+143,nominas,sharepoint:Nominas,listado,periodo,media,¿Qué empleados tienen nóminas del mes de agosto?,✅ SOPORTADA,1.0,nominas/tools.py::nominas_periodo,,
+144,nominas,sharepoint:Nominas,listado,recuento,baja,¿Cuántas nóminas hay registradas en total en el sistema?,✅ SOPORTADA,1.0,nominas/tools.py::nominas_periodo,,
+145,nominas,sharepoint:Nominas,faltantes,periodo,media,¿Qué empleados no tienen nómina de septiembre?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada(sin_nomina_del_periodo),,
+146,nominas,sharepoint:Nominas,pendientes,lectura,media,¿Cuántas nóminas sin leer hay en total?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada(nominas_sin_leer) / ficha_departamento,,
+147,nominas,sharepoint:Nominas,listado,especiales,media,¿Hay alguna nómina especial (extra) en diciembre?,✅ SOPORTADA,1.0,nominas/tools.py::nominas_periodo (special=true),,
+148,nominas,sharepoint:Nominas,importes,persona,media,¿Cuánto cobró Ana Torres en julio?,🟡 PARCIALMENTE,0.5,nominas/tools.py::nomina_importes,Requiere content_enabled=True y SharePoint descarga PDF,content_enabled=True + SharePoint configurado
+149,nominas,sharepoint:Nominas,importes,persona,media,¿Cuál es el líquido de la última nómina de Pedro Martín?,🟡 PARCIALMENTE,0.5,nominas/tools.py::nomina_importes,Requiere content_enabled=True y SharePoint descarga PDF,content_enabled=True + SharePoint configurado
+150,nominas,sharepoint:Nominas,estadísticas,departamento,alta,¿Cuál es el salario medio en el departamento de Pisos?,🟡 PARCIALMENTE,0.5,nominas/estadisticas.py::estadisticas_salariales,Requiere NOMINAS_IMPORTES + content_enabled + SP; mínimo 5 personas,NOMINAS_IMPORTES + content_enabled
+151,nominas,sharepoint:Nominas,estadísticas,puesto,alta,¿Cuál es el salario medio de un cocinero?,🟡 PARCIALMENTE,0.5,nominas/estadisticas.py::estadisticas_salariales(puesto=cocinero),Requiere NOMINAS_IMPORTES + content_enabled,NOMINAS_IMPORTES + content_enabled
+152,nominas,sharepoint:Nominas,ranking,departamento,alta,¿Quién cobra más en el departamento de Recepción?,🟡 PARCIALMENTE,0.5,nominas/estadisticas.py::ranking_salarial,Requiere NOMINAS_IMPORTES + content_enabled + SP,NOMINAS_IMPORTES + content_enabled
+153,nominas,sharepoint:Nominas,evolución,persona,alta,¿Cuánto ha subido el sueldo de Ana Torres desde el año pasado?,🟡 PARCIALMENTE,0.5,nominas/tools.py::evolucion_nominas,Requiere NOMINAS_IMPORTES + content_enabled,NOMINAS_IMPORTES + content_enabled
+154,nominas,sharepoint:Nominas,estadísticas,global,alta,¿Cuál es la nómina más alta en la empresa?,🟡 PARCIALMENTE,0.5,nominas/estadisticas.py::ranking_salarial,Requiere NOMINAS_IMPORTES + content_enabled; grupos mín 5,NOMINAS_IMPORTES + content_enabled
+155,nominas,sharepoint:Nominas,importes,periodo,alta,Dame la nómina de septiembre de Ana Torres,🟡 PARCIALMENTE,0.5,nominas/tools.py::nomina_importes,Requiere content_enabled=True y SharePoint,content_enabled=True + SharePoint configurado
+156,nominas,sharepoint:Nominas,estadísticas,agrupación,alta,¿Cuánto cobró de media Recepción en el segundo trimestre?,🟡 PARCIALMENTE,0.5,nominas/estadisticas.py::estadisticas_salariales,Requiere NOMINAS_IMPORTES + content_enabled,NOMINAS_IMPORTES + content_enabled
+157,nominas,sharepoint:Nominas,ranking,lista,alta,Los 5 que más cobran en Pisos,🟡 PARCIALMENTE,0.5,nominas/estadisticas.py::ranking_salarial(cuantos=5),Requiere NOMINAS_IMPORTES + content_enabled,NOMINAS_IMPORTES + content_enabled
+158,nominas,sharepoint:Nominas,estadísticas,mediana,alta,¿Cuál es la mediana salarial de los camareros de pisos?,🟡 PARCIALMENTE,0.5,nominas/estadisticas.py::estadisticas_salariales(puesto=camarera pisos),Requiere NOMINAS_IMPORTES + content_enabled,NOMINAS_IMPORTES + content_enabled
+159,nominas,sharepoint:Nominas,evolución,departamento,alta,¿Ha subido el salario medio de Pisos este año respecto al anterior?,🟡 PARCIALMENTE,0.5,nominas/estadisticas.py::estadisticas_salariales (dos periodos),Requiere NOMINAS_IMPORTES + content_enabled,NOMINAS_IMPORTES + content_enabled
+160,nominas,sharepoint:Nominas,estadísticas,desglose,alta,¿Cuánto cobró la empresa de nóminas en total el mes pasado?,🔴 NO SOPORTADA,0.0,nominas/estadisticas.py (sin suma global),Estadísticas solo por grupos (mín 5 personas); no hay suma total empresa,Suma total de nóminas sin restricción de grupo
+161,nominas,no_implementado,conceptos,desglose,alta,¿Qué conceptos salariales tiene la nómina de Pedro García?,🔴 NO SOPORTADA,0.0,nominas/parser.py (solo total_devengado y liquido),El parser solo extrae total_devengado y liquido; no hay desglose de conceptos,Parser de conceptos de nómina
+162,nominas,no_implementado,conceptos,IRPF,alta,¿Cuánto es la retención de IRPF de Ana Torres?,🔴 NO SOPORTADA,0.0,nominas/parser.py (sin campo IRPF),No hay campo IRPF en el resultado del parser,Parser con extracción de IRPF y SS
+163,nominas,no_implementado,análisis,percentil,alta,¿Cuál es el percentil 25 salarial en Cocina?,🔴 NO SOPORTADA,0.0,nominas/estadisticas.py (solo media/mediana/min/max),No hay percentiles; solo _stats() calcula media/mediana/min/max,Cálculo de percentiles salariales
+164,nominas,no_implementado,análisis,coste_empresa,alta,¿Cuánto cuesta de media cada empleado al mes al coste total empresa?,🔴 NO SOPORTADA,0.0,Sin datos de SS empresa ni costes adicionales,Solo líquido y devengado; no hay coste empresa con SS,Módulo de coste total de personal
+165,nominas,sharepoint:Nominas,listado,lectura,baja,¿Cuántas nóminas pendientes de leer tiene Recepción?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada(nominas_sin_leer),,
+166,nominas,sharepoint:Nominas,listado,periodo,baja,¿Cuáles son los períodos de nómina disponibles en el sistema?,✅ SOPORTADA,1.0,nominas/tools.py::nominas_periodo,,
+167,nominas,sharepoint:Nominas,listado,persona,baja,¿Juan García tiene la paga de verano registrada?,✅ SOPORTADA,1.0,nominas/tools.py::nominas_persona (special),,
+168,nominas,sharepoint:Nominas,listado,pendientes,media,¿Qué nóminas sin leer tiene Juan García?,✅ SOPORTADA,1.0,nominas/tools.py::nominas_persona (campo read),,
+169,nominas,sharepoint:Nominas,listado,periodo,media,¿Cuál fue la última nómina emitida en el sistema?,✅ SOPORTADA,1.0,nominas/tools.py::nominas_periodo (más reciente),,
+170,nominas,no_implementado,anomalías,detección,alta,¿Hay alguna anomalía en las nóminas de este mes?,🔴 NO SOPORTADA,0.0,Sin herramienta de detección de anomalías en nóminas,No hay anomalias_nominas equivalente a anomalias_tt,Herramienta de detección de anomalías en nóminas
+171,correo,graph:correo,bandeja,sin_leer,baja,¿Cuántos correos sin leer tengo?,🟡 PARCIALMENTE,0.5,correo/tools.py::correos_sin_leer,Requiere Graph API configurada + mailbox resuelto,Graph API + mailbox configurados
+172,correo,graph:correo,bandeja,sin_leer,baja,¿Cuáles son mis últimos correos no leídos?,🟡 PARCIALMENTE,0.5,correo/tools.py::correos_sin_leer,Requiere Graph API + mailbox,Graph API + mailbox configurados
+173,correo,graph:correo,bandeja,sin_leer,baja,¿Tengo correos nuevos?,🟡 PARCIALMENTE,0.5,correo/tools.py::correos_sin_leer,Requiere Graph API + mailbox,Graph API + mailbox configurados
+174,correo,graph:correo,búsqueda,asunto,baja,¿Hay algún correo sobre el tema de vacaciones?,🟡 PARCIALMENTE,0.5,correo/tools.py::buscar_correos(asunto=vacaciones),Requiere Graph API + mailbox,Graph API + mailbox configurados
+175,correo,graph:correo,búsqueda,remitente,baja,Busca correos de Pedro Martínez,🟡 PARCIALMENTE,0.5,correo/tools.py::buscar_correos(remitente=Pedro Martínez),Requiere Graph API + mailbox,Graph API + mailbox configurados
+176,correo,graph:correo,búsqueda,general,baja,Muéstrame los 5 últimos correos recibidos,🟡 PARCIALMENTE,0.5,correo/tools.py::buscar_correos,Requiere Graph API + mailbox,Graph API + mailbox configurados
+177,correo,graph:correo,lectura,apertura,baja,Abre el primer correo sin leer,🟡 PARCIALMENTE,0.5,correo/tools.py::correos_sin_leer + leer_correo,Requiere Graph API + mailbox,Graph API + mailbox configurados
+178,correo,graph:correo,lectura,contenido,baja,Lee el correo c1,🟡 PARCIALMENTE,0.5,correo/tools.py::leer_correo,Requiere Graph API + mailbox,Graph API + mailbox configurados
+179,correo,graph:correo,lectura,resumen,media,Resume el último correo recibido,🟡 PARCIALMENTE,0.5,correo/tools.py::buscar_correos + leer_correo,Requiere Graph API + mailbox,Graph API + mailbox configurados
+180,correo,graph:correo,lectura,resumen,media,Dame un resumen de los 10 últimos correos,🟡 PARCIALMENTE,0.5,correo/tools.py::buscar_correos + leer_correo,Requiere Graph API + mailbox,Graph API + mailbox configurados
+181,correo,graph:correo,búsqueda,tema,media,¿Hay correos sobre la auditoría de datos?,🟡 PARCIALMENTE,0.5,correo/tools.py::buscar_correos,Requiere Graph API + mailbox,Graph API + mailbox configurados
+182,correo,graph:correo,borradores,preparar,media,Prepara una respuesta al correo c1 indicando que lo atenderemos,🟡 PARCIALMENTE,0.5,correo/tools.py::preparar_respuesta,Requiere Graph API + mailbox; crea borrador no envía,Graph API + mailbox configurados
+183,correo,graph:correo,borradores,listado,baja,¿Cuántos borradores tengo guardados?,🟡 PARCIALMENTE,0.5,correo/tools.py::borradores_guardados,Requiere Graph API + mailbox,Graph API + mailbox configurados
+184,correo,graph:correo,borradores,modificar,media,Modifica el borrador b1 para añadir 'Saludos' al final,🟡 PARCIALMENTE,0.5,correo/tools.py::modificar_borrador,Requiere Graph API + mailbox,Graph API + mailbox configurados
+185,correo,graph:correo,borradores,descartar,baja,Descarta el borrador b2,🟡 PARCIALMENTE,0.5,correo/tools.py::descartar_borrador,Requiere Graph API + mailbox,Graph API + mailbox configurados
+186,correo,graph:correo,envío,confirmación,alta,Confirmo envía el borrador b1,🟡 PARCIALMENTE,0.5,correo/tools.py::enviar_borrador,Requiere Graph API + mailbox + send_enabled=True + confirmación explícita,send_enabled=True + Graph API + confirmación
+187,correo,graph:correo,búsqueda,período,media,Muéstrame los correos recibidos esta semana,🟡 PARCIALMENTE,0.5,correo/tools.py::buscar_correos,Requiere Graph API + mailbox,Graph API + mailbox configurados
+188,correo,graph:correo,búsqueda,sin_leer,media,¿Hay algún correo sin leer de ayer?,🟡 PARCIALMENTE,0.5,correo/tools.py::correos_sin_leer,Requiere Graph API + mailbox,Graph API + mailbox configurados
+189,correo,graph:correo,búsqueda,tema,baja,¿Hay correos sobre bajas médicas?,🟡 PARCIALMENTE,0.5,correo/tools.py::buscar_correos,Requiere Graph API + mailbox,Graph API + mailbox configurados
+190,correo,no_implementado,acciones,marcar,baja,Marca el correo c1 como leído,🔴 NO SOPORTADA,0.0,correo/tools.py (sin herramienta marcar leído),No hay herramienta para marcar correos como leídos,Tool marcar_leido en correo
+191,correo,no_implementado,recordatorios,programación,alta,Envíame un recordatorio sobre la reunión del viernes,🔴 NO SOPORTADA,0.0,guard.py + persona.py (promesas bloqueadas),mIA no puede crear recordatorios ni programar envíos futuros,Integración con calendario/recordatorios
+192,correo,graph:correo,búsqueda,adjuntos,media,Busca correos con adjuntos sobre nóminas,🟡 PARCIALMENTE,0.5,correo/tools.py::buscar_correos,Requiere Graph API + mailbox; filtro adjuntos básico,Graph API + mailbox configurados
+193,correo,graph:correo,lectura,fecha,media,¿Cuándo fue el último correo de Pedro García?,🟡 PARCIALMENTE,0.5,correo/tools.py::buscar_correos,Requiere Graph API + mailbox,Graph API + mailbox configurados
+194,correo,graph:correo,búsqueda,tema,baja,¿Hay correos del departamento de Pisos?,🟡 PARCIALMENTE,0.5,correo/tools.py::buscar_correos,Requiere Graph API + mailbox,Graph API + mailbox configurados
+195,correo,graph:correo,lectura,contenido,media,¿De qué trata el correo de Ana Torres sobre la reunión?,🟡 PARCIALMENTE,0.5,correo/tools.py::buscar_correos + leer_correo,Requiere Graph API + mailbox,Graph API + mailbox configurados
+196,correo,graph:correo,búsqueda,urgente,media,¿Hay algún correo urgente sin leer?,🟡 PARCIALMENTE,0.5,correo/tools.py::buscar_correos,Requiere Graph API + mailbox; no hay filtro importancia,Graph API + mailbox configurados
+197,documentos,sharepoint:DocumentosFirmados,persona,listado,baja,¿Qué documentos tiene firmados Ana Torres?,✅ SOPORTADA,1.0,documentos/tools.py::documentos_persona,,
+198,documentos,sharepoint:DocumentosFirmados,persona,tipo,baja,¿Tiene Pedro García el contrato firmado?,✅ SOPORTADA,1.0,documentos/tools.py::documentos_persona(tipo=contrato),,
+199,documentos,sharepoint:DocumentosFirmados,persona,año,baja,¿En qué año firmó María López el contrato?,✅ SOPORTADA,1.0,documentos/tools.py::documentos_persona(tipo=contrato),,
+200,documentos,sharepoint:DocumentosFirmados,faltantes,tipo,media,¿Quién no tiene el contrato firmado?,✅ SOPORTADA,1.0,documentos/tools.py::documentos_faltantes(tipo=contrato),,
+201,documentos,sharepoint:DocumentosFirmados,faltantes,tipo,media,¿Quién no tiene ningún documento de protección de datos?,✅ SOPORTADA,1.0,documentos/tools.py::documentos_faltantes(tipo=proteccion datos),,
+202,documentos,sharepoint:DocumentosFirmados,faltantes,departamento,media,¿Qué empleados de Cocina no tienen el reconocimiento médico firmado?,✅ SOPORTADA,1.0,documentos/tools.py::documentos_faltantes(departamento=Cocina,tipo=reconocimiento),,
+203,documentos,sharepoint:DocumentosFirmados,faltantes,global,media,¿Cuántos empleados de Pisos no tienen firmado algún documento obligatorio?,✅ SOPORTADA,1.0,documentos/tools.py::documentos_faltantes(departamento=Pisos),,
+204,documentos,sharepoint:DocumentosFirmados,maestros,tipos,baja,¿Qué tipos de documentos son obligatorios para toda la plantilla?,✅ SOPORTADA,1.0,documentos/tools.py::maestros_documentales,,
+205,documentos,sharepoint:DocumentosFirmados,maestros,autorización,media,¿Cuáles son los tipos de documentos que requieren autorización?,✅ SOPORTADA,1.0,documentos/tools.py::maestros_documentales,,
+206,documentos,sharepoint:DocumentosFirmados,maestros,diferencias,media,¿Hay diferencias entre los tipos documentales de RRHH y el portal?,✅ SOPORTADA,1.0,documentos/tools.py::maestros_documentales,,
+207,documentos,sharepoint:DocumentosFirmados,cobertura,porcentaje,media,¿Qué porcentaje de la plantilla tiene el contrato firmado?,✅ SOPORTADA,1.0,documentos/tools.py::cobertura_documental,,
+208,documentos,sharepoint:DocumentosFirmados,cobertura,global,media,¿Qué cobertura documental tiene la empresa?,✅ SOPORTADA,1.0,documentos/tools.py::cobertura_documental,,
+209,documentos,sharepoint:DocumentosFirmados,cobertura,departamento,media,¿Qué tipo de documento tiene menos cobertura en Recepción?,✅ SOPORTADA,1.0,documentos/tools.py::cobertura_documental(departamento=Recepción),,
+210,documentos,sharepoint:DocumentosFirmados,cobertura,menor,media,¿Cuál es el documento con menor cobertura en la empresa?,✅ SOPORTADA,1.0,documentos/tools.py::cobertura_documental,,
+211,documentos,sharepoint:DocumentosFirmados,persona,recuento,baja,¿Cuántos documentos de cada tipo tiene firmados Juan García?,✅ SOPORTADA,1.0,documentos/tools.py::documentos_persona,,
+212,documentos,sharepoint:DocumentosFirmados,faltantes,prevención,media,¿Cuántos empleados no tienen documentación de prevención de riesgos?,✅ SOPORTADA,1.0,documentos/tools.py::documentos_faltantes(tipo=prevención),,
+213,documentos,sharepoint:DocumentosFirmados,persona,enlace,baja,Dame el enlace al contrato de Pedro García,✅ SOPORTADA,1.0,documentos/tools.py::documentos_persona (campo enlace /api/documents/...),,
+214,documentos,sharepoint:DocumentosFirmados,persona,listado,media,¿Cuántos documentos de formación tiene Ana Torres firmados?,✅ SOPORTADA,1.0,documentos/tools.py::documentos_persona(tipo=formación),,
+215,documentos,sharepoint:DocumentosFirmados,faltantes,comunicación,media,¿Hay empleados sin documento de comunicación firmado en Mantenimiento?,✅ SOPORTADA,1.0,documentos/tools.py::documentos_faltantes(tipo=comunicación,departamento=Mantenimiento),,
+216,documentos,sharepoint:DocumentosFirmados,cobertura,año,media,¿Qué cobertura documental hay del año 2024?,✅ SOPORTADA,1.0,documentos/tools.py::cobertura_documental(anio=2024),,
+217,documentos,sharepoint:DocumentosFirmados,lectura,contenido,alta,Lee el contrato de Ana Torres,🟡 PARCIALMENTE,0.5,documentos/tools.py::leer_documento,Requiere DOCUMENTOS_CONTENIDO + content_enabled + SP,DOCUMENTOS_CONTENIDO + content_enabled + SharePoint
+218,documentos,sharepoint:DocumentosFirmados,lectura,contenido,alta,¿Qué dice el acuerdo de confidencialidad de Pedro García?,🟡 PARCIALMENTE,0.5,documentos/tools.py::leer_documento,Requiere DOCUMENTOS_CONTENIDO + content_enabled + SP,DOCUMENTOS_CONTENIDO + content_enabled + SharePoint
+219,documentos,no_implementado,vencimiento,fecha,alta,¿Cuándo expira el reconocimiento médico de Pedro García?,🔴 NO SOPORTADA,0.0,hr.py::SignedDocument (sin campo fecha_expiración),No hay campo de fecha de expiración en documentos firmados,Campo fecha_expiración en SignedDocument
+220,documentos,sharepoint:DocumentosFirmados,faltantes,plantilla,media,¿Hay empleados sin ningún documento en el sistema?,✅ SOPORTADA,1.0,documentos/tools.py::documentos_faltantes,,
+221,documentos,sharepoint:DocumentosFirmados,persona,verificación,media,¿Tiene Ana Torres todos los documentos obligatorios?,✅ SOPORTADA,1.0,documentos/tools.py::documentos_persona + documentos_faltantes,,
+222,documentos,sharepoint:DocumentosFirmados,maestros,recuento,baja,¿Cuántos tipos de documentos hay en el maestro?,✅ SOPORTADA,1.0,documentos/tools.py::maestros_documentales,,
+223,documentos,sharepoint:DocumentosFirmados,cobertura,año,media,¿Cuántas prórrogas contractuales se han firmado este año?,✅ SOPORTADA,1.0,documentos/tools.py::documentos_persona / faltantes (tipo=Prórroga),,
+224,documentos,sharepoint:DocumentosFirmados,persona,verificación,baja,¿Ha firmado Juan García el documento de normativa interna?,✅ SOPORTADA,1.0,documentos/tools.py::documentos_persona(tipo=normativa),,
+225,curriculums,sharepoint:Candidaturas,búsqueda,puesto,baja,¿Hay candidatos para el puesto de recepcionista?,✅ SOPORTADA,1.0,curriculums/tools.py::buscar_candidatos(puesto=recepcionista),,
+226,curriculums,sharepoint:Candidaturas,búsqueda,puesto,baja,¿Hay CVs de cocineros en el sistema?,✅ SOPORTADA,1.0,curriculums/tools.py::buscar_candidatos(puesto=cocinero),,
+227,curriculums,sharepoint:Candidaturas,búsqueda,experiencia,media,Busca candidatos con experiencia en hoteles,✅ SOPORTADA,1.0,curriculums/tools.py::buscar_candidatos(query=hotel),,
+228,curriculums,sharepoint:Candidaturas,búsqueda,idiomas,media,¿Hay candidatos que hablen inglés y francés?,✅ SOPORTADA,1.0,curriculums/tools.py::buscar_candidatos(idiomas=[inglés;francés]),,
+229,curriculums,sharepoint:Candidaturas,candidaturas,recuento,baja,¿Cuántas candidaturas hay en total?,✅ SOPORTADA,1.0,curriculums/tools.py::candidaturas,,
+230,curriculums,sharepoint:Candidaturas,búsqueda,puesto,media,Muéstrame los candidatos al puesto de jefe de recepción,✅ SOPORTADA,1.0,curriculums/tools.py::buscar_candidatos,,
+231,curriculums,sharepoint:Candidaturas,similares,vector,alta,¿Hay candidatos parecidos a Ana Torres?,✅ SOPORTADA,1.0,curriculums/tools.py::candidatos_parecidos,,
+232,curriculums,sharepoint:Candidaturas,similares,vector,alta,Busca candidatos similares al perfil de Pedro García empleado,✅ SOPORTADA,1.0,curriculums/tools.py::candidatos_parecidos,,
+233,curriculums,sharepoint:Candidaturas,ficha,perfil,baja,Dame la ficha de la candidata María Sánchez,✅ SOPORTADA,1.0,curriculums/tools.py::ficha_candidato,,
+234,curriculums,sharepoint:Candidaturas,ficha,CV,media,¿Tiene CV el candidato Juan Pérez?,✅ SOPORTADA,1.0,curriculums/tools.py::ficha_candidato (texto CV),,
+235,curriculums,sharepoint:Candidaturas+sharepoint:Empleados,cruce,plantilla,alta,¿Alguno de los candidatos a recepcionista ya trabaja aquí?,✅ SOPORTADA,1.0,curriculums/tools.py::candidatos_y_plantilla,,
+236,curriculums,sharepoint:Candidaturas,candidaturas,departamento,media,¿Cuántas candidaturas hay para Pisos?,✅ SOPORTADA,1.0,curriculums/tools.py::candidaturas,,
+237,curriculums,sharepoint:Candidaturas,búsqueda,titulación,media,¿Hay candidatos con titulación en turismo?,✅ SOPORTADA,1.0,curriculums/tools.py::buscar_candidatos(titulacion=turismo),,
+238,curriculums,sharepoint:Candidaturas,búsqueda,experiencia,media,Dame los candidatos que tengan experiencia en catering,✅ SOPORTADA,1.0,curriculums/tools.py::buscar_candidatos,,
+239,curriculums,sharepoint:Candidaturas,ficha,CV,media,Muéstrame el CV completo de Ana García candidata,✅ SOPORTADA,1.0,curriculums/tools.py::ficha_candidato(nombre=Ana García),,
+240,curriculums,sharepoint:Candidaturas,búsqueda,certificación,media,¿Hay candidatos con certificación en HACCP?,✅ SOPORTADA,1.0,curriculums/tools.py::buscar_candidatos(query=HACCP),,
+241,curriculums,sharepoint:Candidaturas,búsqueda,gestión,media,¿Cuántos candidatos tienen experiencia en gestión de equipos?,✅ SOPORTADA,1.0,curriculums/tools.py::buscar_candidatos,,
+242,curriculums,sharepoint:Candidaturas,similares,número,alta,Dame los 5 candidatos más similares al perfil de cocinero,✅ SOPORTADA,1.0,curriculums/tools.py::candidatos_parecidos / buscar_candidatos(mostrar=5),,
+243,curriculums,sharepoint:Candidaturas,búsqueda,puesto_múltiple,media,Necesito un cocinero con mínimo 3 años de experiencia,✅ SOPORTADA,1.0,curriculums/tools.py::buscar_candidatos(experiencia+puesto),,
+244,curriculums,sharepoint:Candidaturas,búsqueda,sistema,media,¿Qué candidatos tienen experiencia en sistemas PMS?,✅ SOPORTADA,1.0,curriculums/tools.py::buscar_candidatos(query=PMS),,
+245,curriculums,sharepoint:Candidaturas,candidaturas,puesto,media,¿Cuántos candidatos hay por puesto?,✅ SOPORTADA,1.0,curriculums/tools.py::candidaturas,,
+246,curriculums,sharepoint:Candidaturas,búsqueda,idiomas,media,¿Hay candidatos con carnet de manipulador de alimentos?,✅ SOPORTADA,1.0,curriculums/tools.py::buscar_candidatos,,
+247,curriculums,sharepoint:Candidaturas,candidaturas,personas_únicas,baja,¿Cuántos candidatos únicos hay en el sistema?,✅ SOPORTADA,1.0,curriculums/tools.py::candidaturas (personas_unicas),,
+248,curriculums,sharepoint:Candidaturas,búsqueda,disponibilidad,media,¿Hay candidatos con disponibilidad para inmediata incorporación?,🟡 PARCIALMENTE,0.5,curriculums/tools.py::buscar_candidatos,Depende de si disponibilidad está en metadatos de Candidaturas,Metadato disponibilidad en Candidaturas
+249,curriculums,no_implementado,diversidad,discapacidad,alta,¿Hay candidatos con discapacidad reconocida?,🔴 NO SOPORTADA,0.0,curriculums (sin campo discapacidad),No hay campo discapacidad en modelo de candidatura,Campo discapacidad en Candidaturas
+250,curriculums,no_implementado,ranking,idoneidad,alta,Ordena los candidatos de mejor a peor para el puesto de jefe de sala,🔴 NO SOPORTADA,0.0,curriculums/tools.py (SEL-001 prohíbe ranking idoneidad),SEL-001 prohíbe ranking por idoneidad - nunca se descartan candidatos,Por diseño; SEL-001 es una regla de negocio
+251,curriculums,no_implementado,ranking,selección,alta,¿Puede mIA seleccionar automáticamente los mejores candidatos?,🔴 NO SOPORTADA,0.0,curriculums/tools.py (SEL-001 prohíbe ranking idoneidad),SEL-001 es una regla de negocio diseñada así,Por diseño; SEL-001 es una regla de negocio
+252,curriculums,sharepoint:Candidaturas,búsqueda,localización,media,¿Hay candidatos de Valencia?,✅ SOPORTADA,1.0,curriculums/tools.py::buscar_candidatos(query=Valencia),,
+253,curriculums,sharepoint:Candidaturas,búsqueda,n_candidatos,media,Necesito 3 camareras de pisos ¿qué candidatas hay?,✅ SOPORTADA,1.0,curriculums/tools.py::buscar_candidatos(puesto=camarera pisos,mostrar=3),,
+254,curriculums,sharepoint:Candidaturas,búsqueda,formación,media,¿Qué formación tienen los candidatos a cocinero?,✅ SOPORTADA,1.0,curriculums/tools.py::buscar_candidatos / ficha_candidato,,
+255,curriculums,sharepoint:Candidaturas,candidaturas,fecha,media,¿Cuántas candidaturas nuevas hay este mes?,🟡 PARCIALMENTE,0.5,curriculums/tools.py::candidaturas,Depende de campo fecha_candidatura en metadatos SP,Metadato fecha_candidatura en Candidaturas
+256,analitica,core+múltiple,panel,global,baja,Dame el panel de RRHH,✅ SOPORTADA,1.0,analitica/tools.py::panel_rrhh,,
+257,analitica,core+múltiple,panel,estado,baja,¿Cómo está la empresa hoy?,✅ SOPORTADA,1.0,analitica/tools.py::panel_rrhh,,
+258,analitica,core+múltiple,departamento,360,media,¿Cómo está el departamento de Cocina?,✅ SOPORTADA,1.0,analitica/departamento.py::ficha_departamento,,
+259,analitica,core+múltiple,departamento,360,media,Dame una ficha 360 de Pisos,✅ SOPORTADA,1.0,analitica/departamento.py::ficha_departamento,,
+260,analitica,core+múltiple,comparación,absentismo,media,Compara Cocina y Recepción en cuanto a absentismo,✅ SOPORTADA,1.0,analitica/tools.py::comparar_departamentos,,
+261,analitica,core+múltiple,comparación,global,media,¿Qué departamento tiene más bajas hoy?,✅ SOPORTADA,1.0,analitica/tools.py::panel_rrhh / comparar_departamentos,,
+262,analitica,core+múltiple,cobertura,semanal,media,¿Qué cobertura de turnos tiene Pisos esta semana?,✅ SOPORTADA,1.0,analitica/tools.py::cobertura_semanal,,
+263,analitica,sharepoint:Vacaciones,vacaciones,distribución,media,¿Cuántas personas de vacaciones hay en agosto por departamento?,✅ SOPORTADA,1.0,analitica/tools.py::analitica_vacaciones,,
+264,analitica,core+múltiple,tendencia,ausencias,media,¿Cuál es la tendencia de ausencias en los últimos 3 meses?,✅ SOPORTADA,1.0,analitica/tools.py::tendencia_ausencias,,
+265,analitica,core+múltiple,absentismo,ranking,media,¿Cuál es el índice de absentismo por departamento?,✅ SOPORTADA,1.0,analitica/tools.py::ranking_absentismo,,
+266,analitica,core+múltiple,cruzada,multi_criterio,alta,¿Cuántos empleados de Cocina están de vacaciones y tienen saldo negativo?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada,,
+267,analitica,core+múltiple,cruzada,multi_criterio,alta,¿Qué empleados de turno de tarde también están de baja mañana?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada,,
+268,analitica,core+múltiple,cruzada,cumpleaños,media,¿Quién cumple años este mes en Recepción?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada / cumpleanos,,
+269,analitica,core+múltiple,cruzada,nóminas,alta,¿Hay empleados de Pisos sin la nómina de agosto?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada(sin_nomina_del_periodo),,
+270,analitica,core+múltiple,cruzada,saldo,alta,¿Cuántos empleados de Mantenimiento tienen saldo de vacaciones negativo?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada,,
+271,analitica,core+múltiple,cruzada,edad,alta,Dame los empleados de Recepción mayores de 40 años que trabajan de noche,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada(edad_entre + trabaja),,
+272,analitica,core+múltiple,cruzada,documentos,alta,¿Qué personas con documentos pendientes tienen vacaciones esta semana?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada(sin_documento + de_vacaciones),,
+273,analitica,core+múltiple,cruzada,negación,alta,¿Hay alguien sin turno publicado y sin baja ni vacaciones para mañana?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada(sin_turno_publicado negar de_baja),,
+274,analitica,core+múltiple,datos_personas,cross,alta,Dame datos de turno de todos los empleados de baja ahora,✅ SOPORTADA,1.0,analitica/cruces.py::datos_de_personas,,
+275,analitica,core+múltiple,datos_personas,cross,media,¿Qué puesto tiene cada empleado que está de vacaciones esta semana?,✅ SOPORTADA,1.0,analitica/cruces.py::datos_de_personas,,
+276,analitica,core+múltiple,cruzada,agrupación,alta,¿Cuántos empleados de cada puesto están de baja hoy?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada(agrupar_por=puesto,de_baja),,
+277,analitica,core+múltiple,cruzada,franja_edad,alta,¿Cuántas personas de cada franja de edad están en Cocina?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada(agrupar_por=franja_de_edad),,
+278,analitica,core+múltiple,cruzada,saldo_negativo_baja,alta,¿Cuántas personas de baja de más de 30 días tienen saldo negativo de vacaciones?,✅ SOPORTADA,1.0,sistema/resultados.py::cruzar_resultados / consulta_cruzada,,
+279,analitica,core+múltiple,tendencia,evolución,media,¿Cuál es la evolución del absentismo en los últimos 6 meses?,✅ SOPORTADA,1.0,analitica/tools.py::tendencia_ausencias,,
+280,analitica,core+múltiple,cruzada,responsable,alta,¿Qué empleados supervisa María García y están de baja esta semana?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada(responsable=María García + de_baja),,
+281,analitica,no_implementado,género,estadística,alta,¿Qué porcentaje de la plantilla activa son mujeres?,🔴 NO SOPORTADA,0.0,hr.py::Employee (sin campo género),No hay campo género en Employee,Campo género en Employee
+282,analitica,no_implementado,antigüedad,correlación,alta,¿Hay correlación entre antigüedad y absentismo?,🔴 NO SOPORTADA,0.0,Sin hire_date + sin análisis estadístico avanzado,No hay hire_date en Employee ni módulo predictivo conectado al conversacional,Campo hire_date + módulo predictivo
+283,analitica,no_implementado,eficiencia,productividad,alta,¿Cuál es el departamento más eficiente productivamente?,🔴 NO SOPORTADA,0.0,Sin datos de productividad,No hay métricas de productividad o ventas por empleado,Integración con datos operativos/ventas
+284,analitica,no_implementado,contrato,jubilación,alta,¿Qué empleados están próximos a la jubilación?,🔴 NO SOPORTADA,0.0,hr.py::Employee (sin fecha_nacimiento_jubilacion),No hay cálculo de edad de jubilación automático,Campo hire_date + edad + cálculo jubilación
+285,analitica,core+múltiple,gráfico,plantilla,media,Genera un gráfico de empleados por departamento,✅ SOPORTADA,1.0,empleados/tools.py::plantilla(agrupar_por=departamento) + presentación automática frontend,,
+286,analitica,core+múltiple,cobertura,ranking,media,¿Qué departamentos tienen mejor cobertura semanal?,✅ SOPORTADA,1.0,analitica/tools.py::cobertura_semanal,,
+287,analitica,core+múltiple,cruzada,multi_dominio,alta,¿Cuántos empleados de Pisos con nóminas sin leer tienen también saldo negativo?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada(nominas_sin_leer + saldo_menor_que),,
+288,analitica,core+múltiple,cruzada,documentos_baja,alta,¿Empleados de baja con documentos pendientes en Pisos?,✅ SOPORTADA,1.0,analitica/consultas.py::consulta_cruzada(de_baja + sin_documento),,
+289,analitica,core+múltiple,altas,tendencia,media,¿Cuántas altas ha habido en los últimos 3 meses?,✅ SOPORTADA,1.0,analitica/tools.py::altas_empleados,,
+290,analitica,core+múltiple,panel,comparación,media,Dame el estado actual comparado de todos los departamentos,✅ SOPORTADA,1.0,analitica/tools.py::comparar_departamentos / panel_rrhh,,
+291,trabajo_temporal,sharepoint:ETT,trabajadores,hoy,baja,¿Cuántos trabajadores de ETT hay hoy?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::ett_hoy,,
+292,trabajo_temporal,sharepoint:ETT,trabajadores,departamento,baja,¿Qué trabajadores de ETT están asignados a Cocina hoy?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::ett_hoy / trabajadores_tt,,
+293,trabajo_temporal,sharepoint:ETT,trabajadores,listado,baja,¿Cuáles son los trabajadores de ETT disponibles?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::trabajadores_tt,,
+294,trabajo_temporal,sharepoint:ETT,boletines,pendientes,media,¿Cuántos boletines de ETT hay registrados este mes?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::boletines_tt,,
+295,trabajo_temporal,sharepoint:ETT,coste,periodo,media,¿Cuánto costó la ETT el mes pasado?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::boletines_tt / estimar_coste_tt,,
+296,trabajo_temporal,sharepoint:ETT,boletines,horas,media,¿Cuántas horas de ETT hay registradas en agosto?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::boletines_tt,,
+297,trabajo_temporal,sharepoint:ETT,anomalías,detección,alta,¿Hay anomalías en las hojas horarias de ETT?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::anomalias_tt,,
+298,trabajo_temporal,sharepoint:ETT,anomalías,importe,alta,¿Hay alguna factura de ETT con importe inusual?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::anomalias_tt (desviacion>25%),,
+299,trabajo_temporal,sharepoint:ETT,anomalías,duplicados,alta,¿Hay duplicados en los boletines de ETT?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::anomalias_tt (duplicates),,
+300,trabajo_temporal,sharepoint:ETT,tarifas,consulta,baja,¿Cuáles son las tarifas de la ETT para cada puesto?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::tarifas_tt,,
+301,trabajo_temporal,sharepoint:ETT,contactos,empresa,baja,¿Quién es el contacto de la ETT Eulen?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::contactos_ett,,
+302,trabajo_temporal,sharepoint:ETT,contactos,listado,baja,¿Cuántas ETTs trabajan con la empresa?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::contactos_ett,,
+303,trabajo_temporal,sharepoint:ETT,comunicaciones,listado,media,¿Qué comunicaciones recientes ha habido con la ETT?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::comunicaciones_tt,,
+304,trabajo_temporal,sharepoint:ETT,comunicaciones,urgente,media,¿Hay alguna comunicación urgente de la ETT pendiente?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::comunicaciones_tt,,
+305,trabajo_temporal,sharepoint:ETT,coste,estimación,alta,Estima el coste de 5 camareros de ETT para la semana de agosto,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::estimar_coste_tt,,
+306,trabajo_temporal,sharepoint:ETT,coste,departamento,alta,¿Cuánto costaron los trabajadores de ETT de Pisos en julio?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::boletines_tt,,
+307,trabajo_temporal,sharepoint:ETT,anomalías,jornada_larga,alta,¿Hay algún trabajador de ETT que trabaje más de 12 horas al día?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::anomalias_tt (>12h/day),,
+308,trabajo_temporal,sharepoint:ETT,empresas,listado,baja,¿Cuáles son las empresas de ETT con las que trabaja el hotel?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::contactos_ett,,
+309,trabajo_temporal,sharepoint:ETT,boletines,departamento,media,Dame el último boletin de ETT de Cocina,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::boletines_tt,,
+310,trabajo_temporal,sharepoint:ETT,boletines,jornadas,media,¿Cuántas jornadas de ETT se han registrado este mes?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::boletines_tt,,
+311,trabajo_temporal,sharepoint:ETT,boletines,horas_nocturnas,media,¿Cuántas horas nocturnas de ETT hay esta semana?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::boletines_tt,,
+312,trabajo_temporal,sharepoint:ETT,anomalías,cero_horas,alta,¿Hay algún trabajador de ETT con horas a cero en el boletin?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::anomalias_tt (zero hours),,
+313,trabajo_temporal,sharepoint:ETT,empresas,ranking,alta,¿Qué ETT factura más a la empresa?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::boletines_tt,,
+314,trabajo_temporal,sharepoint:ETT,coste,acumulado,media,¿Cuánto se ha gastado en ETT este año?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::boletines_tt (acumular),,
+315,trabajo_temporal,sharepoint:ETT,trabajadores,departamento,media,¿Hay trabajadores de ETT en Mantenimiento?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::trabajadores_tt / ett_hoy,,
+316,trabajo_temporal,sharepoint:ETT,coste,estimación,alta,Estima el presupuesto mensual de ETT si aumentamos 10 jornadas en Pisos,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::estimar_coste_tt,,
+317,trabajo_temporal,sharepoint:ETT,trabajadores,recuento,baja,¿Cuántos trabajadores de ETT tenemos actualmente en el sistema?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::trabajadores_tt,,
+318,trabajo_temporal,sharepoint:ETT,boletines,empresa,media,¿Cuántas jornadas ha registrado cada ETT en agosto?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::boletines_tt,,
+319,trabajo_temporal,sharepoint:ETT,trabajadores,puestos,media,¿Cuáles son los puestos más demandados a las ETTs?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::trabajadores_tt / boletines_tt,,
+320,trabajo_temporal,no_implementado,presupuesto,control,alta,¿Está el coste de ETT por encima del presupuesto?,🔴 NO SOPORTADA,0.0,Sin datos de presupuesto ETT,No hay módulo de presupuesto de ETT implementado,Módulo presupuesto / finanzas ETT
+321,trabajo_temporal,sharepoint:ETT,comunicaciones,tarifas,media,¿Hay comunicaciones de la ETT sobre cambios de tarifas?,✅ SOPORTADA,1.0,trabajo_temporal/tools.py::comunicaciones_tt,,
+322,trabajo_temporal,sharepoint:ETT,boletines,faltantes,media,¿Hay trabajadores de ETT sin boletin este mes?,🟡 PARCIALMENTE,0.5,trabajo_temporal/tools.py::boletines_tt,No hay herramienta de 'faltantes ETT' equivalente a documentos_faltantes,Herramienta boletines_faltantes_tt
+323,trabajo_temporal,sharepoint:ETT,coste,variación,alta,¿Qué variación de coste de ETT hay respecto al mes anterior?,🟡 PARCIALMENTE,0.5,trabajo_temporal/tools.py::boletines_tt,Requiere comparar dos periodos; no hay herramienta de variación directa,Comparación automática de periodos
+324,informes,core,informes,tabla,baja,Genera un informe en PDF de la plantilla de Cocina,✅ SOPORTADA,1.0,informes/tools.py::generar_informe (LAST_TABLE + formato pdf),,
+325,informes,core,informes,tabla,baja,Exporta la tabla de ausencias a Excel,✅ SOPORTADA,1.0,informes/tools.py::generar_informe (xlsx),,
+326,informes,core,informes,tabla,baja,Dame una presentación PowerPoint de las ausencias por departamento,✅ SOPORTADA,1.0,informes/tools.py::generar_informe (pptx),,
+327,informes,core,informes,ejecutivo,alta,Genera un informe ejecutivo de RRHH,✅ SOPORTADA,1.0,informes/tools.py::generar_informe_ejecutivo,,
+328,informes,core,informes,ejecutivo,alta,Necesito el resumen ejecutivo de RRHH en PDF para la dirección,✅ SOPORTADA,1.0,informes/tools.py::generar_informe_ejecutivo,,
+329,informes,core,informes,tabla,baja,Exporta el resultado anterior a Excel,✅ SOPORTADA,1.0,informes/tools.py::generar_informe (LAST_TABLE),,
+330,informes,core,informes,tabla,baja,Dame un informe en PDF de los saldos de vacaciones,✅ SOPORTADA,1.0,informes/tools.py::generar_informe (tras saldo_vacaciones),,
+331,informes,core,informes,ejecutivo,alta,Genera una presentación ejecutiva del estado de la empresa en PowerPoint,✅ SOPORTADA,1.0,informes/tools.py::generar_informe_ejecutivo(formato=pptx),,
+332,informes,core,informes,tabla,baja,¿Puedo descargar los resultados de la consulta anterior?,✅ SOPORTADA,1.0,informes/tools.py::generar_informe (URL de descarga),,
+333,informes,core,informes,tabla,media,Dame un Excel con todos los trabajadores de ETT este mes,✅ SOPORTADA,1.0,informes/tools.py::generar_informe (xlsx tras boletines_tt),,
+334,informes,core,informes,ejecutivo,alta,Genera un informe ejecutivo en Excel para el comité de empresa,✅ SOPORTADA,1.0,informes/tools.py::generar_informe_ejecutivo(formato=xlsx),,
+335,informes,core,informes,tabla,media,Exporta la tabla de documentos faltantes a PDF,✅ SOPORTADA,1.0,informes/tools.py::generar_informe,,
+336,informes,core,informes,gráficas,alta,Genera un informe ejecutivo con gráficas incluidas,✅ SOPORTADA,1.0,informes/tools.py::generar_informe_ejecutivo + rrhh/charts.py,,
+337,informes,core,informes,ejecutivo,alta,¿El informe ejecutivo incluye datos de ETT?,✅ SOPORTADA,1.0,informes/executive.py (TtTimesheet incluido),,
+338,informes,core,informes,tabla,media,Genera un informe de vacaciones en PowerPoint para la reunión de dirección,✅ SOPORTADA,1.0,informes/tools.py::generar_informe (pptx tras analitica_vacaciones),,
+339,informes,core,informes,tabla,media,Genera un PowerPoint del análisis de ausencias para el director,✅ SOPORTADA,1.0,informes/tools.py::generar_informe (pptx),,
+340,informes,no_implementado,informes,personalización,alta,¿Puedo personalizar los colores o el diseño del informe?,🔴 NO SOPORTADA,0.0,informes/tools.py (sin parámetros de diseño),No hay personalización de diseño/branding en informes,Parámetros de diseño en generar_informe
+341,informes,core,informes,ejecutivo,alta,¿Puedo generar un informe histórico comparativo de los últimos 12 meses?,🟡 PARCIALMENTE,0.5,informes/tools.py::generar_informe_ejecutivo,No hay parámetro de periodo explícito en generar_informe_ejecutivo,Parámetro periodo en generar_informe_ejecutivo
+342,informes,core,informes,tabla,media,Dame un Excel de los candidatos encontrados en la última búsqueda,🟡 PARCIALMENTE,0.5,informes/tools.py::generar_informe (LAST_TABLE),Solo funciona si buscar_candidatos devolvió tabla compatible,Presentación tabular garantizada en buscar_candidatos
+343,finanzas,no_implementado,facturación,ingresos,alta,¿Cuánto facturó el hotel el mes pasado?,🔴 NO SOPORTADA,0.0,finanzas/__init__.py (register vacío),Módulo Finanzas sin fuente de datos; register() no añade ninguna herramienta,Fuente de datos Finanzas + herramientas
+344,finanzas,no_implementado,contabilidad,resultado,alta,¿Cuál es el resultado de explotación del trimestre?,🔴 NO SOPORTADA,0.0,finanzas/__init__.py (register vacío),Módulo Finanzas sin implementación,Módulo Finanzas completo
+345,finanzas,no_implementado,proveedores,listado,media,¿Qué proveedores hay registrados?,🔴 NO SOPORTADA,0.0,finanzas/__init__.py (register vacío),Módulo Finanzas sin implementación,Módulo Finanzas + fuente proveedores
+346,finanzas,no_implementado,tesorería,saldo,alta,Dame el balance de tesorería,🔴 NO SOPORTADA,0.0,finanzas/__init__.py (register vacío),Módulo Finanzas sin implementación,Módulo Finanzas completo
+347,finanzas,no_implementado,presupuesto,personal,alta,¿Cuál es el presupuesto de personal para este año?,🔴 NO SOPORTADA,0.0,finanzas/__init__.py (register vacío),Módulo Finanzas sin implementación,Módulo Finanzas + presupuesto
+348,finanzas,no_implementado,contabilidad,beneficio,alta,¿Cuál es el beneficio neto del año?,🔴 NO SOPORTADA,0.0,finanzas/__init__.py (register vacío),Módulo Finanzas sin implementación,Módulo Finanzas completo
+349,finanzas,no_implementado,coste,total_personal,alta,¿Cuánto gasta la empresa en salarios totales al mes?,🔴 NO SOPORTADA,0.0,nominas/estadisticas.py (min 5 por grupo; sin suma total),No hay suma global de nóminas; NOM-004 prohíbe revelar grupos <5,Módulo Finanzas + coste total personal
+350,finanzas,no_implementado,contabilidad,ratio,alta,¿Cuál es el ratio coste personal sobre ingresos?,🔴 NO SOPORTADA,0.0,finanzas/__init__.py + nominas sin suma global,Requiere datos de ingresos (no disponibles) y suma de personal (limitada),Módulo Finanzas completo
+351,finanzas,no_implementado,proveedores,deuda,alta,¿Cuánto se debe a los proveedores?,🔴 NO SOPORTADA,0.0,finanzas/__init__.py (register vacío),Módulo Finanzas sin implementación,Módulo Finanzas completo
+352,finanzas,no_implementado,facturación,habitación,alta,¿Cuál es la facturación por habitación?,🔴 NO SOPORTADA,0.0,finanzas/__init__.py (register vacío),Módulo Finanzas sin implementación,Módulo Finanzas + operaciones hoteleras
+353,finanzas,no_implementado,presupuesto,desviación,alta,¿Cuánto ha desviado el coste de personal del presupuesto?,🔴 NO SOPORTADA,0.0,finanzas/__init__.py (register vacío),Módulo Finanzas sin implementación,Módulo Finanzas completo
+354,finanzas,no_implementado,gastos,energía,alta,¿Cuánto se ha gastado en energía este mes?,🔴 NO SOPORTADA,0.0,finanzas/__init__.py (register vacío),No hay datos operativos de gastos,Módulo Finanzas + datos operativos
+355,finanzas,no_implementado,contabilidad,EBITDA,alta,¿Cuál es el EBITDA del hotel?,🔴 NO SOPORTADA,0.0,finanzas/__init__.py (register vacío),Módulo Finanzas sin implementación,Módulo Finanzas completo
+356,transversal,no_implementado,escritura,empleados,alta,¿Puede mIA crear un nuevo empleado en el sistema?,🔴 NO SOPORTADA,0.0,Sin herramientas de escritura,mIA es solo lectura; no escribe en SharePoint ni en BD,Herramientas de escritura / integración bidireccional
+357,transversal,no_implementado,escritura,vacaciones,alta,¿Puede mIA aprobar solicitudes de vacaciones?,🔴 NO SOPORTADA,0.0,Sin herramientas de escritura,mIA no tiene herramientas de aprobación/escritura,Herramientas de escritura de flujos de trabajo
+358,transversal,no_implementado,escritura,turnos,alta,¿Puede mIA publicar o modificar un turno?,🔴 NO SOPORTADA,0.0,Sin herramientas de escritura,mIA es solo lectura sobre SharePoint,Herramientas de escritura en Turnos
+359,transversal,no_implementado,igualdad,plan,alta,¿Qué empleados cumplen el plan de igualdad?,🔴 NO SOPORTADA,0.0,Sin módulo de plan de igualdad,No hay módulo de igualdad ni campo género en Employee,Módulo plan de igualdad + campo género
+360,transversal,no_implementado,evaluación,desempeño,alta,¿Cuáles son las evaluaciones de desempeño del año?,🔴 NO SOPORTADA,0.0,Sin módulo de evaluación,No hay módulo de evaluación de desempeño implementado,Módulo de evaluación de desempeño
+361,transversal,no_implementado,formación,historial,media,¿Qué formaciones ha realizado Ana Torres?,🔴 NO SOPORTADA,0.0,documentos/tools.py (solo tipo Formación firmado),Solo documentos de formación firmados; no hay histórico de cursos,Módulo de formación con catálogo de cursos
+362,transversal,no_implementado,historial,cambios,alta,¿Puedo ver el historial de cambios de datos de un empleado?,🔴 NO SOPORTADA,0.0,data/models.py::AuditEvent (solo acceso; no cambios),AuditEvent registra accesos a datos; no hay historial de modificaciones del empleado,Historial de modificaciones en Employee
+363,transversal,no_implementado,jornada,reducción,alta,¿Cuántos empleados tienen reducción de jornada?,🔴 NO SOPORTADA,0.0,hr.py::Employee (sin campo tipo_jornada),No hay campo tipo de jornada ni reducción en Employee,Campo tipo_jornada + reducción_jornada en Employee
+364,transversal,no_implementado,calendario_laboral,festivos,media,¿Qué días festivos tiene el convenio colectivo del hotel?,🔴 NO SOPORTADA,0.0,Sin módulo de calendario laboral,No hay datos de convenio colectivo ni calendario laboral propio,Módulo calendario laboral + convenio
+365,transversal,no_implementado,salud,restricciones,alta,¿Hay empleados con restricciones médicas para turnos nocturnos?,🔴 NO SOPORTADA,0.0,Sin datos de salud laboral,No hay datos de salud laboral ni restricciones médicas,Módulo salud laboral con datos protegidos

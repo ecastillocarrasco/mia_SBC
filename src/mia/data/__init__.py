@@ -23,6 +23,17 @@ from mia.data.hr import (
     VacationBalance,
     WeekComment,
 )
+from mia.data.jobs import (
+    JOB_CANCELLED,
+    JOB_COMPLETED,
+    JOB_FAILED,
+    JOB_QUEUED,
+    JOB_RUNNING,
+    JOB_STATES,
+    JOB_TERMINAL_STATES,
+    JOB_VALIDATING,
+    ReportJob,
+)
 from mia.data.models import AuditEvent, Base, ConversationSession, ConversationTurn
 from mia.data.reports import Report
 from mia.data.sources import SourceItem, SourceSyncState
@@ -40,10 +51,19 @@ __all__ = [
     "Database",
     "DocumentTypeConfig",
     "Employee",
+    "JOB_CANCELLED",
+    "JOB_COMPLETED",
+    "JOB_FAILED",
+    "JOB_QUEUED",
+    "JOB_RUNNING",
+    "JOB_STATES",
+    "JOB_TERMINAL_STATES",
+    "JOB_VALIDATING",
     "NewHire",
     "OrgUnit",
     "Payslip",
     "Report",
+    "ReportJob",
     "ShiftDay",
     "ShiftTemplate",
     "ShiftTypeCatalog",

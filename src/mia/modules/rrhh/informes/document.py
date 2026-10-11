@@ -5,9 +5,27 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from mia.text import format_number, humanize_label
+
+NarrativeKind = Literal["fact", "interpretation", "hypothesis", "recommendation"]
+"""Bloque II, sección 9 (ajuste de Fase D, condición 4 de la aprobación): toda afirmación narrativa
+debe declarar explícitamente de qué tipo es — nunca mezclar un hecho verificado con una hipótesis sin
+que quien lo lea pueda distinguirlos."""
+
+_NARRATIVE_LABELS: dict[NarrativeKind, str] = {
+    "fact": "Hecho verificado",
+    "interpretation": "Interpretación",
+    "hypothesis": "Hipótesis",
+    "recommendation": "Recomendación",
+}
+
+_SEVERITY_LABELS: dict[str, str] = {
+    "blocker": "Bloqueante",
+    "data_quality": "Calidad de datos",
+    "info": "Información",
+}
 
 # Claves de distribución en el resumen (orden de preferencia para el gráfico)
 _DIST_KEYS = (
@@ -42,9 +60,16 @@ SKIP = {"type", "title", "acciones_rapidas", "al_dia", "aviso", "regla", "nota"}
 
 @dataclass
 class Block:
-    kind: str  # kpis · section · table
+    kind: str  # kpis · section · table · chart · warnings · narrative · methodology · annex
     title: str
     data: Any
+    """Para ``kind="chart"``: el dict con forma ``{type, title, labels, series:[{name, values}]}`` que ya
+    producen ``mia.modules.rrhh.charts.chart_spec()`` y sus constructores (``bar_chart()``,
+    ``donut_chart()``, ``time_series_chart()``...). Bloque de PRIMERA CLASE (Bloque II, sección 10): el
+    backend decide el tipo de gráfico y calcula los datos UNA sola vez; los cuatro renderizadores (PDF,
+    XLSX, PPTX y — cuando exista — HTML) lo consumen sin volver a derivarlo. Para tablas normales (sin
+    este bloque explícito), los renderizadores siguen derivando un gráfico heurísticamente a partir de
+    un bloque ``table`` 2-columnas, como ya hacían (compatibilidad hacia atrás, ver ``render.py``)."""
 
 
 @dataclass
@@ -53,6 +78,63 @@ class Document:
     blocks: list[Block] = field(default_factory=list)
     subtitle: str | None = None
     badges: list[str] = field(default_factory=list)
+
+
+# ------------------------------------------------------------------ bloques de Fase D (sección 9)
+def warnings_block(title: str, issues: list[dict[str, Any]]) -> Block:
+    """``issues``: lista de dicts con la forma de ``HomogeneityIssue.to_dict()``
+    (``mia.analytics.homogeneity``) — severidad, código, mensaje, fuente y contexto. Este módulo no
+    importa ``mia.analytics`` a propósito (``mia/query``/``mia/modules/rrhh/informes`` son capas más
+    genéricas que no deben depender de un dominio analítico concreto): el llamador convierte con
+    ``.to_dict()`` antes de pasarlas aquí."""
+    for issue in issues:
+        if issue.get("severity") not in _SEVERITY_LABELS:
+            raise ValueError(f"Severidad de advertencia desconocida: {issue.get('severity')!r}")
+        if not issue.get("code") or not issue.get("message"):
+            raise ValueError("Toda advertencia necesita código y mensaje: no se admite una advertencia muda.")
+    return Block("warnings", title, {"items": issues})
+
+
+def narrative_statement(
+    kind: NarrativeKind, text: str, *, evidence: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Una afirmación narrativa individual. Un ``fact`` EXIGE evidencia verificable (fuente/métrica/
+    periodo/valor, sección 16) — nunca una cifra sin respaldo del backend; se rechaza en el momento de
+    construirla, no en el de mostrarla."""
+    if kind == "fact" and not evidence:
+        raise ValueError(
+            "Una afirmación de tipo 'fact' exige evidencia verificable (source/metric/period/value): "
+            "no se permiten conclusiones cuantitativas sin respaldo del backend."
+        )
+    return {"kind": kind, "text": text, "evidence": dict(evidence or {})}
+
+
+def narrative_block(title: str, statements: list[dict[str, Any]]) -> Block:
+    return Block("narrative", title, {"statements": statements})
+
+
+def methodology_block(title: str, notes: list[str]) -> Block:
+    return Block("methodology", title, {"notes": list(notes)})
+
+
+def annex_block(
+    title: str, columns: list[str], rows: list[list[Any]], *, max_rows: int = 5000
+) -> Block:
+    """Tabla extensa de detalle. Nunca trunca en silencio (sección 19): si ``rows`` supera
+    ``max_rows``, se recortan las filas mostradas pero ``total_rows``/``truncated`` quedan explícitos
+    en el propio bloque para que el renderizador SIEMPRE pueda avisarlo."""
+    total = len(rows)
+    truncated = total > max_rows
+    return Block(
+        "annex",
+        title,
+        {
+            "columns": columns,
+            "rows": rows[:max_rows] if truncated else rows,
+            "total_rows": total,
+            "truncated": truncated,
+        },
+    )
 
 
 def _label(key: str) -> str:
@@ -159,8 +241,60 @@ def to_document(
     doc = Document(str(presentation.get("title") or "Informe de mIA"))
     if kind == "table":
         summary = presentation.get("__summary__") or {}
-        # Chart block from summary distribution data (e.g. seleccion_por_departamento)
-        if include_chart:
+
+        # KPIs explícitos (p. ej. analisis_economico_nominas, vía table(..., kpis=[...])): tienen
+        # prioridad sobre los escalares derivados de __summary__ — son los que la propia herramienta ya
+        # decidió destacar, no una heurística genérica sobre lo que sobra.
+        explicit_kpis = presentation.get("kpis")
+        if isinstance(explicit_kpis, list) and explicit_kpis:
+            doc.blocks.append(
+                Block(
+                    "kpis", "Indicadores",
+                    {str(k.get("label")): _flat(k.get("value")) for k in explicit_kpis if isinstance(k, dict)},
+                )
+            )
+        elif not include_detail and summary:
+            # KPI scalars from summary when not showing detail table (comportamiento existente, sin tocar)
+            kpis = {
+                _label(k): _flat(v)
+                for k, v in summary.items()
+                if not k.startswith("_")
+                and k not in _SKIP_KPI_KEYS
+                and isinstance(v, (int, float))
+                and not isinstance(v, bool)
+            }
+            if kpis:
+                doc.blocks.append(Block("kpis", "Indicadores", kpis))
+
+        # Advertencias del análisis (p. ej. meses sin datos, periodo incompleto, grupos ocultos por
+        # k-anonimato): vivían solo en ToolResult.summary y nunca llegaban a ningún informe. Cualquier
+        # herramienta que ponga `summary["advertencias"]` (lista de str o de dicts ya estructurados) se
+        # beneficia de esto, no solo nóminas.
+        advertencias = summary.get("advertencias")
+        if advertencias:
+            items = [
+                {
+                    "severity": a.get("severity", "info"),
+                    "code": a.get("code", "ANALYSIS_NOTE"),
+                    "message": str(a.get("message", "")),
+                    "source": a.get("source", "analysis"),
+                    "context": dict(a.get("context") or {}),
+                }
+                if isinstance(a, dict)
+                else {"severity": "info", "code": "ANALYSIS_NOTE", "message": str(a), "source": "analysis", "context": {}}
+                for a in advertencias
+            ]
+            doc.blocks.append(warnings_block("Advertencias del análisis", items))
+
+        # Gráficos explícitos (p. ej. analisis_economico_nominas, vía table(..., charts=[...])): de
+        # primera clase (Block(kind="chart"), Fase D) — ya calculados por el backend, nunca re-derivados.
+        explicit_charts = presentation.get("charts")
+        if include_chart and isinstance(explicit_charts, list) and explicit_charts:
+            for spec in explicit_charts:
+                if isinstance(spec, dict) and spec.get("labels") and spec.get("series"):
+                    doc.blocks.append(Block("chart", str(spec.get("title") or doc.title), spec))
+        elif include_chart:
+            # Chart block from summary distribution data (comportamiento existente, sin tocar)
             for dist_key in _DIST_KEYS:
                 dist = summary.get(dist_key)
                 if (
@@ -175,20 +309,15 @@ def to_document(
                     )
                     doc.blocks.append(dist_block)
                     break
-        # KPI scalars from summary when not showing detail table
-        if not include_detail and summary:
-            kpis = {
-                _label(k): _flat(v)
-                for k, v in summary.items()
-                if not k.startswith("_")
-                and k not in _SKIP_KPI_KEYS
-                and isinstance(v, (int, float))
-                and not isinstance(v, bool)
-            }
-            if kpis:
-                doc.blocks.append(Block("kpis", "Indicadores", kpis))
+
         if include_detail:
             doc.blocks.append(Block("table", doc.title, presentation))
+
+        # Estadísticas adjuntas (p. ej. percentiles salariales): tabla adicional, no se pierden.
+        stats = presentation.get("stats")
+        if isinstance(stats, dict) and stats.get("rows"):
+            doc.blocks.append(Block("table", str(stats.get("title") or "Estadísticas"), stats))
+
         return doc
     if kind == "dashboard":
         doc.blocks.append(Block("kpis", "Indicadores", {_label(k): _flat(v) for k, v in presentation["kpis"].items()}))

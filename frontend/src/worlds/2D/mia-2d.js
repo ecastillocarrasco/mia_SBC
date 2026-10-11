@@ -564,12 +564,14 @@ const MIA_API = {
   backendStream: '/api/mia/chat/stream',
   voice: '/api/mia/voice'
 };
+function _pendingAttachmentIds(){return typeof window._getAttachmentIds==='function'?window._getAttachmentIds():[]}
 async function callNaturalLlm(q){
  if(!MIA_API.llmEnabled)throw new Error('LLM disabled');let last=null;
- for(const url of MIA_API.llmCandidates){try{const ctrl=new AbortController(),to=setTimeout(()=>ctrl.abort(),120000);const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/json'},body:JSON.stringify({message:q,context:{...miaProfile,...context}}),signal:ctrl.signal});clearTimeout(to);if(!res.ok){last=new Error('HTTP '+res.status);continue}const j=await res.json();if(j&&typeof j==='object')return j}catch(e){last=e}}
+ const ids=_pendingAttachmentIds();const ctxPayload={...miaProfile,...context};if(ids.length)ctxPayload.attachment_ids=ids;
+ for(const url of MIA_API.llmCandidates){try{const ctrl=new AbortController(),to=setTimeout(()=>ctrl.abort(),120000);const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/json'},body:JSON.stringify({message:q,context:ctxPayload}),signal:ctrl.signal});clearTimeout(to);if(!res.ok){last=new Error('HTTP '+res.status);continue}const j=await res.json();if(j&&typeof j==='object')return j}catch(e){last=e}}
  throw last||new Error('LLM gateway unavailable')
 }
-function _chatPayload(q){const ids=typeof window._getAttachmentIds==='function'?window._getAttachmentIds():[];const p={message:q,context:{...miaProfile,...context}};if(ids.length)p.attachment_ids=ids;return p}
+function _chatPayload(q){const ids=_pendingAttachmentIds();const p={message:q,context:{...miaProfile,...context}};if(ids.length)p.attachment_ids=ids;return p}
 async function fallbackChat(q){const res=await fetch(MIA_API.backendChat,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/json'},body:JSON.stringify(_chatPayload(q))});return await res.json()}
 async function callBackendStream(q,prog){let finalResult=null;const res=await fetch(MIA_API.backendStream,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/x-ndjson'},body:JSON.stringify(_chatPayload(q))});if(!res.ok||!res.body)throw new Error('stream unavailable');const reader=res.body.getReader(),decoder=new TextDecoder('utf-8');let buf='';while(true){const {value,done}=await reader.read();buf+=decoder.decode(value||new Uint8Array(),{stream:!done});let pos;while((pos=buf.indexOf('\n'))>=0){const line=buf.slice(0,pos).trim();buf=buf.slice(pos+1);if(!line)continue;let ev;try{ev=JSON.parse(line)}catch(_){continue}if(ev.type==='progress')updateProgress(prog,ev);else if(ev.type==='result'){finalResult=ev.payload;break}}if(finalResult||done)break}return finalResult||{}}
 async function ask(raw){

@@ -13,33 +13,33 @@
 /** Compatibilidad: estado de backend -> clip principal conocido. */
 export const STATE_ANIMATION = {
   reposo: "mIA_IDLE",
-  escuchando: "mIA_IDLE_STANDING",
+  escuchando: "mIA_IDLE_BREATHING",
   pensando: "mIA_THINK",
   concentrada: "mIA_TYPING",
   hablando: "mIA_TALK",
   sonriendo: "mIA_IDLE_HAPPY",
   saludando: "mIA_WAVE",
-  guinando: "mIA_YES",
+  guinando: "mIA_AGREE",
   sorprendida: "mIA_SURPRISED",
   confundida: "mIA_SHRUG",
-  entusiasmada: "mIA_HAPPY",
+  entusiasmada: "mIA_HAPPY_HANDS",
   celebrando: "mIA_CLAP",
   avisando: "mIA_POINT",
   empatica: "mIA_AGREE",
   despedida: "mIA_GREET",
-  aprobando: "mIA_YES",
+  aprobando: "mIA_AGREE",
 };
 
 /** Animaciones que pueden mantenerse en bucle. */
 export const LOOPING = new Set([
   "mIA_IDLE",
   "mIA_IDLE_HAPPY",
-  "mIA_IDLE_STANDING",
+  "mIA_IDLE_BREATHING",
   "mIA_TALK",
   "mIA_THINK",
   "mIA_TYPING",
   "mIA_WALK",
-  "mIA_WALK_ALT",
+  "mIA_WALK_FEMALE",
   "mIA_STRUT_WALK",
   "mIA_WALK_BACK",
   "mIA_LOOK_AROUND",
@@ -62,7 +62,7 @@ export const STATE_PROFILE = {
     behavior: "idle",
   },
   escuchando: {
-    base: "mIA_IDLE_STANDING",
+    base: "mIA_IDLE_BREATHING",
     behavior: "listening",
   },
   pensando: {
@@ -74,7 +74,7 @@ export const STATE_PROFILE = {
     behavior: "thinking",
   },
   concentrada: {
-    base: "mIA_IDLE_STANDING",
+    base: "mIA_IDLE_BREATHING",
     gesture: "mIA_TYPING",
     mask: "upper",
     weight: 0.72,
@@ -94,7 +94,7 @@ export const STATE_PROFILE = {
     behavior: "happy",
   },
   saludando: {
-    base: "mIA_IDLE_STANDING",
+    base: "mIA_IDLE_BREATHING",
     gesture: "mIA_WAVE",
     mask: "upper",
     weight: 0.96,
@@ -103,15 +103,15 @@ export const STATE_PROFILE = {
     behavior: "greeting",
   },
   guinando: {
-    base: "mIA_IDLE_STANDING",
-    gesture: "mIA_YES",
+    base: "mIA_IDLE_BREATHING",
+    gesture: "mIA_AGREE",
     mask: "upper",
     weight: 0.78,
     loop: false,
     behavior: "agreeing",
   },
   sorprendida: {
-    base: "mIA_IDLE_STANDING",
+    base: "mIA_IDLE_BREATHING",
     gesture: "mIA_SURPRISED",
     mask: "upper",
     weight: 0.82,
@@ -119,7 +119,7 @@ export const STATE_PROFILE = {
     behavior: "surprised",
   },
   confundida: {
-    base: "mIA_IDLE_STANDING",
+    base: "mIA_IDLE_BREATHING",
     gesture: "mIA_SHRUG",
     mask: "upper",
     weight: 0.82,
@@ -128,7 +128,7 @@ export const STATE_PROFILE = {
   },
   entusiasmada: {
     base: "mIA_IDLE_HAPPY",
-    gesture: "mIA_HAPPY",
+    gesture: "mIA_HAPPY_HANDS",
     mask: "upper",
     weight: 0.84,
     loop: false,
@@ -143,7 +143,7 @@ export const STATE_PROFILE = {
     behavior: "happy",
   },
   avisando: {
-    base: "mIA_IDLE_STANDING",
+    base: "mIA_IDLE_BREATHING",
     gesture: "mIA_POINT",
     mask: "upper",
     weight: 0.86,
@@ -151,7 +151,7 @@ export const STATE_PROFILE = {
     behavior: "presenting",
   },
   empatica: {
-    base: "mIA_IDLE_STANDING",
+    base: "mIA_IDLE_BREATHING",
     gesture: "mIA_AGREE",
     mask: "upper",
     weight: 0.78,
@@ -159,7 +159,7 @@ export const STATE_PROFILE = {
     behavior: "agreeing",
   },
   despedida: {
-    base: "mIA_IDLE_STANDING",
+    base: "mIA_IDLE_BREATHING",
     gesture: "mIA_GREET",
     mask: "upper",
     weight: 0.9,
@@ -167,8 +167,8 @@ export const STATE_PROFILE = {
     behavior: "greeting",
   },
   aprobando: {
-    base: "mIA_IDLE_STANDING",
-    gesture: "mIA_YES",
+    base: "mIA_IDLE_BREATHING",
+    gesture: "mIA_AGREE",
     mask: "upper",
     weight: 0.8,
     loop: false,
@@ -200,7 +200,7 @@ export const BONE_MASKS = {
 function normalizedTrackNode(trackName) {
   const propertySeparator = trackName.lastIndexOf(".");
   const nodeName = propertySeparator >= 0 ? trackName.slice(0, propertySeparator) : trackName;
-  return nodeName.toLowerCase().replace("mixamorig:", "");
+  return nodeName.toLowerCase().replace(/^(?:mixamorig|smartrig):/, "");
 }
 
 export function trackMatchesMask(trackName, mask = "upper") {

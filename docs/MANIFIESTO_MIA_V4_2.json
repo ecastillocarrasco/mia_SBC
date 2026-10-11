@@ -1,0 +1,95 @@
+{
+  "version": "4.2",
+  "base_required": "mIA SBC V4.1 White Studio + Voice First",
+  "scope": "frontend, solo mundo 3D, holograma y core compartido por ambos",
+  "untouched": [
+    "src/worlds/2d",
+    "public/models/mIA_SBC_V4_84_ANIMACIONES.glb",
+    "backend",
+    "dist",
+    "node_modules"
+  ],
+  "features": [
+    "TTS conservado y dictado desactivado",
+    "bienvenida automatic + idle seguro",
+    "narrativa sin tarjetas",
+    "progreso en lenguaje natural",
+    "animaciones de espera",
+    "presentación premium con datos",
+    "selección orientada al frente"
+  ],
+  "validation": {
+    "node_checks": true,
+    "unit_tests_passed": 11,
+    "unit_tests_failed": 0,
+    "full_vite_build": "PENDIENTE (npm offline sin cache)",
+    "browser_with_real_glb": "PENDIENTE"
+  },
+  "files": [
+    {
+      "path": "src/core/progress-language-v42.js",
+      "bytes": 2489,
+      "sha256": "8b9dbca12854ff09b98bfab31aae7b36c10e74d52f1398c2559d59a95c7cec03"
+    },
+    {
+      "path": "src/core/narrative-v42.js",
+      "bytes": 2273,
+      "sha256": "804282252650bf08271019f9a1839eae867f79a34e5810b082234588c71ccf63"
+    },
+    {
+      "path": "src/core/waiting-v4.js",
+      "bytes": 2580,
+      "sha256": "9818ceb6b570c2101f2e407c06efe7aee2e22874c00476b7b1b3ea4ca454671f"
+    },
+    {
+      "path": "src/core/behavior-v4.js",
+      "bytes": 7777,
+      "sha256": "d48283d169e02915eb021a7bc712e4fc3133964328a453aedb6cc2e435161195"
+    },
+    {
+      "path": "src/core/scene.js",
+      "bytes": 14487,
+      "sha256": "9fabd235631b3416b8e73830b4eae68ee2370a0f95000b1e0002a32fadc4dbab"
+    },
+    {
+      "path": "src/worlds/3d/main.js",
+      "bytes": 14824,
+      "sha256": "34b48402284ec37c6b8096dc8702ea2b50fa76623f762736d432068f485ad886"
+    },
+    {
+      "path": "src/worlds/3d/index.html",
+      "bytes": 3426,
+      "sha256": "8e807a522f13c680fd1ab337dd9202c929bce215a18e2311e164cf15f95ab036"
+    },
+    {
+      "path": "src/worlds/3d/v4-white.css",
+      "bytes": 13229,
+      "sha256": "c9439587febbad4b02b8c19377adeb8fa637b0d323cf1d6b0f964843b12c7d4d"
+    },
+    {
+      "path": "src/worlds/hologram/main.js",
+      "bytes": 6710,
+      "sha256": "c6417cd6bab838f53dc173a356db145b949572abc08a0d6661881c68bbf60f14"
+    },
+    {
+      "path": "src/worlds/hologram/index.html",
+      "bytes": 891,
+      "sha256": "0fcb242c58a95dbffb94913e9ae5a7179305fa266e11345ebbda557d49913afa"
+    },
+    {
+      "path": "src/worlds/hologram/style.css",
+      "bytes": 6253,
+      "sha256": "26b29f0ca01b402c6ca999f9981b160305ad2780aeec1ad735d764e91924b8b4"
+    },
+    {
+      "path": "tests/mia-v42.test.mjs",
+      "bytes": 7148,
+      "sha256": "4d75ea1263c11a1e55b131c3a1700d377df1b316f8061b900516939dbeb9bf15"
+    },
+    {
+      "path": "docs/INSTALAR_MIA_V4_2.md",
+      "bytes": 4901,
+      "sha256": "a5cff313449fcfceff243e6f62d75077fe5cab0e351ef13e8a5e99964d8e7ec4"
+    }
+  ]
+}

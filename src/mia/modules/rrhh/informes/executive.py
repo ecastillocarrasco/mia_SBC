@@ -13,11 +13,15 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mia.analytics.insights import InsightEngine
+from mia.analytics.stats import TimePoint
 from mia.data import Employee, Payslip, ShiftDay, TtTimesheet, Vacation, VacationBalance
 from mia.ingestion.mappers.hr import ShiftKind
 from mia.modules.rrhh.common import Deps, fmt_date
 from mia.modules.rrhh.informes.document import Block, Document
 from mia.modules.rrhh.turnos.periods import absence_periods
+
+_insight_engine = InsightEngine()
 
 
 async def build_executive_report(
@@ -288,6 +292,21 @@ async def _collect_blocks(
                     {"columns": ["Mes", "Días de ausencia"], "rows": trend_rows},
                 )
             )
+            # Hallazgos deterministas sobre esa misma serie (sección 16: "cada afirmación cuantitativa
+            # debe estar respaldada por fuente/métrica/periodo/valor") — el LLM podrá redactarlos en
+            # fases futuras, pero el VALOR sale siempre de aquí, nunca inventado. Con un solo mes de
+            # datos no hay tendencia que detectar (from_time_series exige ≥2 puntos): no se añade un
+            # bloque vacío ni uno con una afirmación sin base.
+            trend_points = [TimePoint(label=mes, value=float(dias)) for mes, dias in trend_rows]
+            findings = _insight_engine.from_time_series(trend_points, label="el absentismo", unit="días")
+            if findings:
+                blocks.append(
+                    Block(
+                        "section",
+                        "Hallazgos · Absentismo",
+                        {f"Hallazgo {i}": f.text for i, f in enumerate(findings, start=1)},
+                    )
+                )
 
     # 5 · Saldos de vacaciones — distribución por rangos (chartable)
     if valid_balances:

@@ -122,6 +122,43 @@ body[data-state="pensando"] .avatar-wrap img { animation: float 2s ease-in-out i
 .toasts { position: fixed; right: 18px; bottom: 18px; display: grid; gap: 8px; z-index: 50; }
 .toast { padding: 10px 14px; border: 1px solid var(--line2); border-radius: 12px; background: #123039; font-size: 12.5px; box-shadow: 0 14px 34px rgba(0,0,0,.4); animation: in .3s var(--ease); }
 
+/* KPIs y gráficos adjuntos a las presentaciones (análisis económico de nóminas) */
+.mia-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 10px 0; }
+.mia-kpi { display: flex; flex-direction: column; gap: 3px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.04); }
+.mia-kpi.highlight { border-color: rgba(214,176,103,.5); background: rgba(214,176,103,.09); }
+.mia-kpi-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.mia-kpi-value { font-size: 15px; font-weight: 800; color: var(--ink); }
+
+.mia-chart { margin: 12px 0; padding: 14px 16px 12px; border: 1px solid var(--line); border-radius: 18px; background: rgba(255,255,255,.03); }
+.mia-chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.mia-chart-head strong { font-size: 12px; color: var(--ink); letter-spacing: .01em; }
+.mia-chart-head span { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+.mia-bars { display: grid; gap: 7px; }
+.mia-bar-row { display: grid; grid-template-columns: minmax(78px, 150px) 1fr 54px; align-items: center; gap: 10px; font-size: 10.5px; }
+.mia-bar-label { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mia-bar-track { height: 12px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.mia-bar-fill { display: block; height: 100%; width: 0; border-radius: 999px; transition: width .9s var(--ease); background: linear-gradient(90deg, var(--aqua), #5fb0ad); }
+.mia-bar-row:first-child .mia-bar-fill { background: linear-gradient(90deg, var(--accent), #c98b3f); }
+.mia-bar-value { text-align: right; font-weight: 750; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.mia-donut { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.mia-donut svg { width: 150px; height: 150px; flex: none; }
+.mia-donut-arc { fill: none; stroke-width: 22; transition: stroke-dasharray .9s var(--ease); }
+.mia-donut-total { font-size: 22px; font-weight: 800; fill: var(--ink); text-anchor: middle; }
+.mia-donut-caption { font-size: 8px; letter-spacing: .08em; text-transform: uppercase; fill: var(--muted); text-anchor: middle; }
+.mia-legend { display: grid; gap: 6px; font-size: 10.5px; min-width: 160px; }
+.mia-legend div { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.mia-legend i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.mia-legend b { margin-left: auto; color: var(--ink); }
+
+.mia-line svg { width: 100%; height: 170px; overflow: visible; }
+.mia-line-path { fill: none; stroke: var(--aqua); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.mia-line-area { fill: rgba(124,198,195,.14); stroke: none; }
+.mia-line-dot { fill: var(--panel2); stroke: var(--accent); stroke-width: 2.2; }
+.mia-line-axis { font-size: 8.5px; fill: var(--muted); text-anchor: middle; }
+.mia-line-val { font-size: 9px; font-weight: 700; fill: var(--ink); text-anchor: middle; }
+
 @media (max-width: 860px) {
   body { padding: 0; }
   .shell { height: 100dvh; gap: 0; }

@@ -1,0 +1,89 @@
+{
+  "package": "mIA SBC V4.4 - Micrófono de 3 estados + esperas expresivas",
+  "install_on": "mIA SBC V4.3 con micrófono manual V4.2.1",
+  "delivery": "only changed/new files",
+  "preserved": [
+    "mundo 2D",
+    "backend",
+    "GLB con 84 animaciones",
+    "assets del loader V4.3",
+    "dist",
+    "TTS de salida",
+    "fichas, gráficas, tablas de 20 registros"
+  ],
+  "verification": {
+    "node_test": 28,
+    "failed": 0,
+    "css_parse_errors": 0,
+    "full_vite_build": "pendiente sin dependencias npm offline",
+    "micro_real": "pendiente navegador usuario",
+    "walk_visual": "pendiente Three.js navegador usuario"
+  },
+  "files": [
+    {
+      "path": "src/core/voice-v4.js",
+      "bytes": 8508,
+      "sha256": "e3a36e08d9047d2b06d60e6060b376b6f47938a11e2dc26595a3c0c671e8119c"
+    },
+    {
+      "path": "src/core/behavior-v4.js",
+      "bytes": 9992,
+      "sha256": "d6f965929c1dce5be122127039dd145467acef613ca52abd7c93e9b3971c95c1"
+    },
+    {
+      "path": "src/core/scene.js",
+      "bytes": 17580,
+      "sha256": "49ddf61daee841c5a1b196778f2619d22f06f882d045426a66fd84258ee3231c"
+    },
+    {
+      "path": "src/worlds/3d/main.js",
+      "bytes": 18643,
+      "sha256": "dbf684f79c8cdee76d0720617602b2b0547cb01f5862bd96fb3a80b434255ec6"
+    },
+    {
+      "path": "src/worlds/3d/index.html",
+      "bytes": 4327,
+      "sha256": "51bdf5d6500b07f4c3e6f2bc5b4c40d62ccfae159c00df2c84ad540590bf0338"
+    },
+    {
+      "path": "src/worlds/3d/v4-white.css",
+      "bytes": 17103,
+      "sha256": "60040d6b85bb5e11c6637155f71b6e6d179065ba92648240f323bc39c15c5cc3"
+    },
+    {
+      "path": "src/worlds/hologram/main.js",
+      "bytes": 8909,
+      "sha256": "7fe1a731ba87b0fe89012d7b6df573c1e0090eacf9b2aec8b1d2f37920f7e383"
+    },
+    {
+      "path": "src/worlds/hologram/index.html",
+      "bytes": 1183,
+      "sha256": "ab5ae67b89b176f3fdf2e8b4b6beb07dd800340491438db02bf25308b6835445"
+    },
+    {
+      "path": "src/worlds/hologram/style.css",
+      "bytes": 7727,
+      "sha256": "c854d527cc1ed70d34006891478a6ec34809ed39a863c13da7217d9f5f5180b6"
+    },
+    {
+      "path": "tests/mia-v42.test.mjs",
+      "bytes": 9936,
+      "sha256": "c2376f2c12fe8ac6a640a00278e97cc5a7f5cdc05a1d4b9f7c82eae0855e83ad"
+    },
+    {
+      "path": "tests/mia-v43-loader.test.mjs",
+      "bytes": 3761,
+      "sha256": "1362167532dc976e9bb6f6ef61ac7105ea614bf7705c31751730d6b3c7be9519"
+    },
+    {
+      "path": "tests/mia-v44.test.mjs",
+      "bytes": 8300,
+      "sha256": "58a33dfdc7c980353c448963bc2b936ff642bed6b41b54c7a93fe657dd794121"
+    },
+    {
+      "path": "docs/INSTALAR_MIA_V4_4_MICRO_Y_ESPERAS.md",
+      "bytes": 6245,
+      "sha256": "0eb10fd849954064faa237edea2233adcf7c59bbbe25319585bf9df1fb04fcb6"
+    }
+  ]
+}

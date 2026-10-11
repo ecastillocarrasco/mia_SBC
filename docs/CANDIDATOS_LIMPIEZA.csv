@@ -1,0 +1,6 @@
+﻿Ruta;Archivos;Mebibytes;Operacion;Condicion
+public/assets/blender;117;2227.97;MOVER fuera de public, sin borrar;Solo tras backup y pruebas de V4
+public/assets/rigs;28;125.83;MOVER fuera de public, sin borrar;Solo tras backup y pruebas de V4
+public/assets/meshy;3;85.07;MOVER fuera de public, sin borrar;Solo tras backup y pruebas de V4
+public/models/mIA_WEB.glb;1;10.97;ARCHIVAR luego;Solo despues del rollback validado
+public/models/mIA_WEB_old.glb;1;10.72;ARCHIVAR luego;Solo despues del rollback validado

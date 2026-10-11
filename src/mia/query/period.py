@@ -45,6 +45,26 @@ _QUARTER_MONTHS: dict[int, tuple[int, int]] = {
     1: (1, 3), 2: (4, 6), 3: (7, 9), 4: (10, 12)
 }
 
+_WORD_NUM_ES: dict[str, int] = {
+    "un": 1, "una": 1, "uno": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5, "seis": 6,
+    "siete": 7, "ocho": 8, "nueve": 9, "diez": 10, "once": 11, "doce": 12,
+}
+"""«los últimos tres meses» es al menos tan habitual como «los últimos 3 meses» — sin esto, el motor de
+periodos solo entendía la forma numérica. Solo cardinales pequeños (1-12): cubre los casos reales de
+«últimos N días/meses/años»; no pretende ser un parser numérico general."""
+
+_WORD_NUM_RE = re.compile(
+    r"\b(" + "|".join(sorted(_WORD_NUM_ES, key=len, reverse=True)) + r")\b"
+)
+
+
+def _spell_digits(text: str) -> str:
+    """Sustituye cardinales en palabras por su dígito (solo dentro de «últimos/pasados N dias/meses/
+    años», de ahí que sea seguro aplicarlo de forma general: no hay otro contexto en las expresiones de
+    periodo reconocidas donde un cardinal en palabras significara otra cosa)."""
+    return _WORD_NUM_RE.sub(lambda m: str(_WORD_NUM_ES[m.group(1)]), text)
+
+
 _SEASON_ES: dict[str, tuple[int, int]] = {
     "verano": (6, 8),
     "otono": (9, 11),
@@ -92,14 +112,16 @@ class PeriodEngine:
     def resolve(self, expression: str, today: date | None = None) -> ResolvedPeriod | None:
         """Devuelve (start, end) o None si la expresión no se reconoce."""
         ref = today or date.today()
-        norm = _normalize(expression)
+        norm = _spell_digits(_normalize(expression))
         return (
             self._exact(norm, ref)
             or self._relative_days(norm, ref)
             or self._relative_months(norm, ref)
+            or self._relative_years(norm, ref)
             or self._ytd(norm, ref)
             or self._quarter(norm, ref)
             or self._year(norm, ref)
+            or self._numeric_month(norm, ref)
             or self._named_month(norm, ref)
             or self._season(norm, ref)
             or self._from_to(norm, ref)
@@ -119,14 +141,14 @@ class PeriodEngine:
             monday = ref - timedelta(days=ref.weekday())
             sunday = monday + timedelta(days=6)
             return ResolvedPeriod(monday, min(sunday, ref), "esta semana")
-        if n in ("semana pasada", "la semana pasada"):
+        if n in ("semana pasada", "la semana pasada", "ultima semana", "la ultima semana"):
             monday = ref - timedelta(days=ref.weekday() + 7)
             sunday = monday + timedelta(days=6)
             return ResolvedPeriod(monday, sunday, "semana pasada")
         if n in ("este mes", "mes actual", "el mes actual"):
             start = ref.replace(day=1)
             return ResolvedPeriod(start, ref, f"{ref.strftime('%B %Y')}")
-        if n in ("mes pasado", "el mes pasado", "mes anterior"):
+        if n in ("mes pasado", "el mes pasado", "mes anterior", "ultimo mes", "el ultimo mes"):
             first_this = ref.replace(day=1)
             last_month = first_this - timedelta(days=1)
             start = last_month.replace(day=1)
@@ -134,7 +156,10 @@ class PeriodEngine:
         if n in ("este ano", "este año", "el ano actual", "el año actual"):
             start = ref.replace(month=1, day=1)
             return ResolvedPeriod(start, ref, str(ref.year))
-        if n in ("ano pasado", "año pasado", "el ano pasado", "el año pasado", "año anterior"):
+        if n in (
+            "ano pasado", "año pasado", "el ano pasado", "el año pasado", "año anterior",
+            "ultimo ano", "el ultimo ano",
+        ):
             year = ref.year - 1
             return ResolvedPeriod(date(year, 1, 1), date(year, 12, 31), str(year))
         return None
@@ -142,7 +167,7 @@ class PeriodEngine:
     def _relative_days(self, n: str, ref: date) -> ResolvedPeriod | None:
         m = re.match(r"ultimos?\s+(\d+)\s+dias?", n)
         if not m:
-            m = re.match(r"(?:en\s+los?\s+)?(?:ultimos?|pasados?)\s+(\d+)\s+dias?", n)
+            m = re.match(r"(?:en\s+)?(?:el|los?)\s+(?:ultimos?|pasados?)\s+(\d+)\s+dias?", n)
         if m:
             days = int(m.group(1))
             start = ref - timedelta(days=days - 1)
@@ -152,7 +177,7 @@ class PeriodEngine:
     def _relative_months(self, n: str, ref: date) -> ResolvedPeriod | None:
         m = re.match(r"(?:ultimos?|pasados?)\s+(\d+)\s+meses?", n)
         if not m:
-            m = re.match(r"(?:en\s+los?\s+)?(?:ultimos?|pasados?)\s+(\d+)\s+meses?", n)
+            m = re.match(r"(?:en\s+)?(?:el|los?)\s+(?:ultimos?|pasados?)\s+(\d+)\s+meses?", n)
         if m:
             months = int(m.group(1))
             # start = same day N months ago (approximate)
@@ -167,6 +192,19 @@ class PeriodEngine:
             return ResolvedPeriod(start, ref, f"últimos {months} meses")
         return None
 
+    def _relative_years(self, n: str, ref: date) -> ResolvedPeriod | None:
+        m = re.match(r"(?:ultimos?|pasados?)\s+(\d+)\s+anos?", n)
+        if not m:
+            m = re.match(r"(?:en\s+)?(?:el|los?)\s+(?:ultimos?|pasados?)\s+(\d+)\s+anos?", n)
+        if m:
+            years = int(m.group(1))
+            try:
+                start = ref.replace(year=ref.year - years)
+            except ValueError:  # 29 de febrero sin año bisiesto al restar
+                start = ref.replace(year=ref.year - years, day=28)
+            return ResolvedPeriod(start, ref, f"últimos {years} años")
+        return None
+
     def _ytd(self, n: str, ref: date) -> ResolvedPeriod | None:
         if n in ("ytd", "year to date", "acumulado del ano", "acumulado del año", "desde inicio de ano",
                  "desde inicio de año", "desde enero", "lo que llevamos de ano", "lo que llevamos de año"):
@@ -175,8 +213,8 @@ class PeriodEngine:
         return None
 
     def _quarter(self, n: str, ref: date) -> ResolvedPeriod | None:
-        # "Q1", "q2", "primer trimestre", "tercer trimestre 2025"
-        m = re.match(r"q([1-4])(?:\s+(\d{4}))?", n)
+        # "Q1", "q2", "T3 2026" (abreviatura española de «trimestre»), "primer trimestre", "tercer trimestre 2025"
+        m = re.match(r"[qt]([1-4])(?:\s+(\d{4}))?", n)
         if m:
             q = int(m.group(1))
             year = int(m.group(2)) if m.group(2) else ref.year
@@ -190,7 +228,7 @@ class PeriodEngine:
         if n in ("trimestre actual", "este trimestre"):
             q = (ref.month - 1) // 3 + 1
             return _quarter_period(ref.year, q, ref)
-        if n in ("trimestre pasado", "trimestre anterior"):
+        if n in ("trimestre pasado", "trimestre anterior", "ultimo trimestre", "el ultimo trimestre"):
             q = (ref.month - 1) // 3 + 1
             q -= 1
             year = ref.year
@@ -208,6 +246,16 @@ class PeriodEngine:
             if 1990 <= year <= ref.year + 1:
                 end = date(year, 12, 31) if year < ref.year else ref
                 return ResolvedPeriod(date(year, 1, 1), end, str(year))
+        return None
+
+    def _numeric_month(self, n: str, ref: date) -> ResolvedPeriod | None:
+        # "2026-07" — formato AAAA-MM
+        m = re.fullmatch(r"(\d{4})-(0?[1-9]|1[0-2])", n)
+        if m:
+            year, month = int(m.group(1)), int(m.group(2))
+            start = date(year, month, 1)
+            end = min(_month_end(year, month), ref)
+            return ResolvedPeriod(start, end, f"{start.strftime('%B %Y')}")
         return None
 
     def _named_month(self, n: str, ref: date) -> ResolvedPeriod | None:
@@ -240,12 +288,23 @@ class PeriodEngine:
     def _from_to(self, n: str, ref: date) -> ResolvedPeriod | None:
         # "desde enero hasta marzo", "de enero a junio", "entre enero y junio"
         sep = re.search(r"\s+(?:hasta|a|y)\s+", n)
-        if not sep:
-            return None
-        prefix = n[: sep.start()]
-        suffix = n[sep.end():]
+        if sep:
+            prefix, suffix = n[: sep.start()], n[sep.end():]
+        else:
+            # "julio-septiembre 2026" — rango unido por un guion entre dos nombres de mes (no
+            # entre dígitos: "2026-07" ya lo resuelve _numeric_month antes de llegar aquí).
+            hyphen = re.search(r"(?<=[a-z])-(?=[a-z])", n)
+            if not hyphen:
+                return None
+            prefix, suffix = n[: hyphen.start()], n[hyphen.start() + 1 :]
         # strip "desde"/"de"/"entre"
         prefix = re.sub(r"^(desde|de|entre)\s+", "", prefix).strip()
+        suffix = suffix.strip()
+        # Si el año solo aparece al final ("julio-septiembre 2026"), se aplica también al inicio:
+        # si no, "julio" se resolvería sobre el año de referencia y podría no casar con el del rango.
+        year_match = re.fullmatch(r".*?\s+(\d{4})", suffix)
+        if year_match and not re.search(r"\d{4}", prefix):
+            prefix = f"{prefix} {year_match.group(1)}"
         start_p = self.resolve(prefix, ref)
         end_p = self.resolve(suffix, ref)
         if start_p and end_p:

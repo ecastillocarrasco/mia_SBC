@@ -1,0 +1,405 @@
+/*
+ * mIA V4.2 / Sunset Beach Club
+ * Pure white 3D stage, depth via scene illumination only.
+ * Text-first micro dock and non-blocking wait/progress HUD.
+ * Applied AFTER the existing style.css; no changes to HG/2D.
+ */
+:root{
+  color-scheme:light;
+  --mia-white:#fff;
+  --mia-navy:#17243d;
+  --mia-ink:#223344;
+  --mia-slate:#6c7885;
+  --mia-line:rgba(35,50,63,.12);
+  --mia-teal:#0a8b89;
+}
+html,body{background:#fff!important;background-image:none!important;}
+body::before,body::after{display:none!important;background:none!important;opacity:0!important;}
+#canvas-root,#canvas-root canvas{background:#fff!important;}
+#canvas-root canvas{transform:none!important;filter:none!important;transition:none!important;}
+/* No beige stage, vignette, second white floor or horizon. */
+.back-link{z-index:30;top:20px;left:20px;background:rgba(255,255,255,.92);color:var(--mia-ink);border:1px solid var(--mia-line);box-shadow:0 7px 24px rgba(32,50,60,.06);font-size:12px;padding:10px 15px;}
+.back-link:hover{background:#fff;box-shadow:0 8px 28px rgba(25,40,50,.12);}
+
+/* Structured data ONLY; no panel at all for conversational replies. */
+.panel,.panel[data-presentation]:not([data-presentation="conversation"]){
+  z-index:13;
+  display:flex;
+  box-sizing:border-box;
+}
+.panel[data-presentation="conversation"]{display:none!important;}
+.panel[data-presentation]:not([data-presentation="conversation"]){
+  position:fixed!important;
+  left:auto!important;right:22px!important;
+  top:18px!important;bottom:128px!important;
+  height:calc(100dvh - 148px)!important;
+  max-height:none!important;
+  width:min(1060px,calc(100vw - 455px))!important;
+  transform:none!important;
+  opacity:1!important;
+  border-radius:26px!important;
+  background:linear-gradient(158deg,rgba(12,28,37,.98),rgba(9,23,33,.985))!important;
+  box-shadow:0 24px 85px rgba(12,33,45,.20),0 0 0 1px rgba(173,196,196,.05)!important;
+  border:1px solid rgba(171,197,198,.24)!important;
+}
+.panel:before{display:none!important;}
+.panel-head{gap:10px;}
+.mia-results-brand{font-size:11px;font-weight:650;color:#e2f0ed;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.panel[data-presentation]:not([data-presentation="conversation"]) .conversation{max-width:100%;min-width:0;}
+
+/* The caption is dark on white, and deliberately NOT over the avatar. */
+.mia-voice-caption{
+  position:fixed;z-index:10;
+  left:auto!important;right:34px!important;
+  bottom:114px!important;
+  width:min(485px,31vw)!important;
+  color:#253640!important;
+  font:500 clamp(15px,1.15vw,19px)/1.48 "Segoe UI",Aptos,Arial,sans-serif!important;
+  text-shadow:none!important;
+  text-align:left!important;
+  background:transparent;
+  border:0;
+  border-radius:0;
+  box-shadow:none;
+  padding:0;
+  max-height:min(27vh,220px);overflow-y:auto;
+  scrollbar-width:thin;
+  pointer-events:auto;
+  pointer-events:none;
+}
+.mia-voice-caption:not(.has-text){visibility:hidden;}
+body[data-presentation]:not([data-presentation="conversation"]) .mia-voice-caption{display:none!important;}
+
+/* A single floating mic is visible, no bar until interaction. */
+.mia-text-launcher{
+  position:fixed;right:27px;bottom:24px;z-index:32;
+  width:64px;height:64px;padding:15px;display:grid;place-items:center;
+  border:1px solid rgba(9,110,116,.24);border-radius:23px;
+  background:#fff;color:#087d81;
+  cursor:pointer;
+  box-shadow:0 15px 44px rgba(21,61,70,.14),0 0 0 1px rgba(255,255,255,.72) inset;
+  transition:transform .25s ease,box-shadow .25s ease;
+}
+.mia-text-launcher svg{width:29px;height:29px;fill:currentColor;}
+.mia-text-launcher:hover{transform:translateY(-3px);box-shadow:0 20px 44px rgba(21,61,70,.20);}
+
+
+body.mia-dock-open .mia-text-launcher{display:none;}
+.mia-interaction-dock[hidden]{display:none!important;}
+.mia-interaction-dock{
+  position:fixed;z-index:32;right:26px;bottom:24px;
+  display:flex;flex-direction:column;gap:9px;
+  width:min(520px,calc(100vw - 48px));min-width:0;
+  padding:13px 14px 14px;
+  border:1px solid rgba(32,77,88,.15);border-radius:23px;
+  background:rgba(255,255,255,.97);
+  color:#243b49;
+  box-shadow:0 18px 64px rgba(19,53,65,.17),0 2px 9px rgba(19,53,65,.05);
+  backdrop-filter:blur(18px);
+  animation:miaDockIn .28s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes miaDockIn{from{transform:translateY(12px) scale(.985);opacity:0;}to{transform:none;opacity:1;}}
+.mia-dock-head{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:30px;}
+.mia-dock-status{display:flex;gap:9px;align-items:center;min-width:0;color:#657780;font-size:11px;}
+.mia-dock-status .dot{background:#098c8f;box-shadow:0 0 0 4px rgba(11,139,143,.10);width:6px;height:6px;}
+.mia-dock-status #statusLabel{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+.mia-dock-actions{display:flex;align-items:center;gap:7px;}
+.mia-dock-actions .icon-toggle,#miaDockClose{
+  display:grid;place-items:center;cursor:pointer;
+  width:31px;height:31px;border-radius:50%;
+  color:#3c6471;border:1px solid rgba(40,75,87,.12);background:#f4f8f8;
+}
+.mia-dock-actions .icon-toggle svg{width:17px;height:17px;}
+#miaDockClose{font-size:22px;line-height:1;}
+.mia-interaction-dock .composer{display:flex;gap:9px;align-items:center;padding:0;min-width:0;}
+.mia-interaction-dock .composer-field{min-width:0;flex:1;}
+.mia-interaction-dock .composer input{
+  display:block;width:100%;height:48px;background:#f7faf9;color:#1e3743;
+  border:1px solid #dbe6e5;font-size:15px;padding:0 15px;border-radius:15px;
+}
+.mia-interaction-dock .composer input::placeholder{color:#8b9a9e;}
+.mia-interaction-dock .composer input:focus{outline:0;border-color:#3ba9a9;box-shadow:0 0 0 3px rgba(29,149,151,.1);}
+.mia-interaction-dock .icon-button{flex:0 0 46px;width:46px;height:46px;border-radius:15px;box-shadow:none;}
+
+
+.mia-interaction-dock .send{background:#103b48;color:#fff;}
+.mia-interaction-dock .send:hover{background:#0b7275;}
+
+/* Honest wait feedback: small, readable, never a results card. */
+.mia-wait-progress[hidden]{display:none!important;}
+.mia-wait-progress{
+  position:fixed;z-index:11;
+  top:25px;right:27px;
+  max-width:min(415px,calc(100vw - 90px));
+  display:flex;align-items:flex-start;gap:11px;
+  border:1px solid rgba(16,133,135,.14);border-radius:17px;
+  background:rgba(255,255,255,.96);padding:13px 17px;
+  color:#36535a;font-size:13px;line-height:1.42;
+  box-shadow:0 13px 36px rgba(20,60,70,.07);
+}
+.mia-wait-pulse{display:inline-block;flex:0 0 8px;margin-top:5px;width:8px;height:8px;border-radius:50%;background:#139b9c;animation:miaWaitPulse 1.4s ease-in-out infinite;}
+@keyframes miaWaitPulse{50%{opacity:.3;transform:scale(1.5);}}
+body[data-presentation]:not([data-presentation="conversation"]) .mia-wait-progress{top:20px;left:25px;right:auto;max-width:350px;}
+
+/* Controls never cover feet in the middle of the stage. */
+@media (max-width:1150px){
+  .panel[data-presentation]:not([data-presentation="conversation"]){width:calc(100vw - 360px)!important;}
+  .mia-voice-caption{width:min(420px,37vw)!important;}
+}
+@media (max-width:800px){
+  .back-link{left:12px;top:12px;}
+  .mia-text-launcher{bottom:calc(14px + env(safe-area-inset-bottom,0px));right:14px;width:58px;height:58px;}
+  .mia-interaction-dock{bottom:calc(12px + env(safe-area-inset-bottom,0px));left:12px;right:12px;width:auto;}
+  .panel[data-presentation]:not([data-presentation="conversation"]){top:60px!important;right:12px!important;left:12px!important;bottom:125px!important;width:auto!important;height:auto!important;border-radius:19px!important;padding:11px!important;}
+  .mia-voice-caption{right:15px!important;left:15px!important;bottom:95px!important;width:auto!important;text-align:center!important;font-size:14px!important;}
+  .mia-wait-progress{right:12px;left:auto;top:65px;max-width:calc(100vw - 24px);font-size:12px;}
+}
+@media (max-height:570px) and (orientation:landscape){
+  .panel[data-presentation]:not([data-presentation="conversation"]){top:10px!important;right:10px!important;bottom:95px!important;width:min(62vw,800px)!important;height:auto!important;left:auto!important;}
+  .mia-interaction-dock{right:12px;bottom:9px;width:min(520px,64vw);}
+  .mia-voice-caption{bottom:95px!important;}
+}
+@media (prefers-reduced-motion:reduce){
+  .mia-interaction-dock,.mia-text-launcher,.mia-wait-pulse{animation:none!important;transition:none!important;}
+}
+
+
+/* ===========================================================
+ * V4.2: editorial cinematic voice text — NO data card/panel
+ * The narrative sits to the right of the actor on a pure
+ * white stage. Its decorative accents never resemble a modal.
+ * =========================================================== */
+.mia-text-launcher{
+  width:56px;height:56px;border-radius:18px;
+  background:#fff; color:#173b48;border:1px solid rgba(26,65,78,.17);
+  box-shadow:0 12px 36px rgba(31,67,77,.12);
+}
+.mia-text-launcher svg{width:22px;height:22px;fill:currentColor;}
+body.mia-dock-open .mia-text-launcher{display:none;}
+
+.mia-voice-caption.mia-narrative{
+  position:fixed;z-index:12;
+  left:auto!important;right:clamp(40px,5.3vw,106px)!important;
+  top:23%!important;bottom:auto!important;
+  width:min(665px,46vw)!important;max-height:54dvh;
+  overflow-y:auto;overflow-x:hidden;
+  display:flex;flex-direction:column;align-items:flex-start;gap:0;
+  margin:0;padding:2px 6px 20px 1px;
+  color:#1a2935!important;text-align:left!important;
+  font-family:"Segoe UI",Aptos,Inter,Arial,sans-serif!important;
+  line-height:1.46;text-shadow:none!important;
+  background:transparent!important;border:0!important;
+  box-shadow:none!important;border-radius:0!important;
+  pointer-events:none;
+  isolation:isolate;
+}
+.mia-narrative-kicker{
+  display:block;margin-bottom:18px;letter-spacing:.22em;
+  font-size:11px;font-weight:800;color:#a06950;
+  text-transform:uppercase;
+  opacity:0;transform:translateY(8px);
+}
+.mia-narrative-kicker:before{
+  content:"";display:inline-block;vertical-align:middle;
+  width:34px;height:1px;margin-right:12px;
+  background:linear-gradient(90deg,#c78f69,#e5c8b5);
+}
+.mia-narrative-lead{
+  display:block;width:100%;
+  color:#1e2d3c;
+  font-family:Georgia,"Times New Roman",serif;
+  font-weight:400;font-size:clamp(27px,2.45vw,47px);
+  letter-spacing:-.037em;line-height:1.15;
+  text-wrap:pretty;overflow-wrap:anywhere;
+  opacity:0;transform:translateY(16px);filter:blur(5px);
+}
+.mia-narrative-body{
+  display:block;margin-top:21px;max-width:61ch;
+  font-size:clamp(15px,1.12vw,19px);
+  font-weight:430;line-height:1.72;letter-spacing:.006em;
+  color:#61707b;text-wrap:pretty;overflow-wrap:anywhere;
+  opacity:0;transform:translateY(14px);
+}
+.mia-narrative-body:empty{display:none;}
+.mia-narrative-accent{
+  display:block;width:0;height:3px;margin-top:24px;
+  border-radius:10px;
+  background:linear-gradient(90deg,#b67051 0%,#e6b687 60%,rgba(230,182,135,0) 100%);
+  box-shadow:0 3px 15px rgba(203,139,88,.16);
+}
+.mia-narrative.is-revealed .mia-narrative-kicker{
+  animation:mia42Kicker .6s ease .03s forwards;
+}
+.mia-narrative.is-revealed .mia-narrative-lead{
+  animation:mia42Lead .82s cubic-bezier(.18,.76,.15,1) .12s forwards;
+}
+.mia-narrative.is-revealed .mia-narrative-body{
+  animation:mia42Body .72s cubic-bezier(.18,.76,.15,1) .42s forwards;
+}
+.mia-narrative.is-revealed .mia-narrative-accent{
+  animation:mia42Accent .8s cubic-bezier(.18,.78,.2,1) .60s forwards;
+}
+.mia-narrative[data-kind="welcome"] .mia-narrative-lead{
+  font-size:clamp(33px,3vw,56px);
+}
+.mia-narrative[data-kind="waiting"] .mia-narrative-lead{
+  font-size:clamp(24px,2.2vw,38px);color:#345160;
+}
+.mia-narrative[data-kind="waiting"] .mia-narrative-kicker{color:#198b8b;}
+.mia-narrative[data-kind="error"] .mia-narrative-kicker{color:#ad594d;}
+@keyframes mia42Kicker{to{opacity:1;transform:none;}}
+@keyframes mia42Lead{to{opacity:1;transform:none;filter:blur(0);}}
+@keyframes mia42Body{to{opacity:1;transform:none;}}
+@keyframes mia42Accent{to{width:min(270px,60%);}}
+
+.mia-wait-progress{
+  max-width:260px;box-shadow:0 9px 26px rgba(24,65,72,.06);
+  font-size:11px;border-radius:999px;padding:10px 14px;
+}
+.mia-interaction-dock{width:min(570px,calc(100vw - 48px));}
+.mia-interaction-dock .composer{padding:2px 0 0;}
+
+@media(max-width:980px){
+  .mia-voice-caption.mia-narrative{
+    right:3vw!important;width:49vw!important;top:24%!important;
+  }
+  .mia-narrative-lead{font-size:clamp(25px,3vw,37px);}
+}
+@media(max-width:800px){
+  .mia-voice-caption.mia-narrative{
+    left:16px!important;right:16px!important;top:auto!important;
+    bottom:100px!important;width:auto!important;max-height:32dvh;
+    background:transparent!important;padding:10px 12px;
+    border-radius:0!important;box-shadow:none!important;
+    backdrop-filter:none;pointer-events:none;
+  }
+  .mia-narrative-kicker{font-size:9px;margin-bottom:9px;}
+  .mia-narrative-lead,.mia-narrative[data-kind="welcome"] .mia-narrative-lead{
+    font-size:clamp(22px,5vw,30px);
+  }
+  .mia-narrative-body{font-size:13px;line-height:1.5;margin-top:8px;}
+  .mia-narrative-accent{margin-top:12px;}
+}
+@media (prefers-reduced-motion:reduce){
+  .mia-narrative-kicker,.mia-narrative-lead,.mia-narrative-body{
+    opacity:1!important;transform:none!important;filter:none!important;animation:none!important;
+  }
+  .mia-narrative-accent{width:180px!important;animation:none!important;}
+}
+
+/* V4.2.1 — Micrófono disponible, APAGADO por defecto. No escuchar sin clic. */
+.mia-mic-launcher{
+  position:fixed;right:93px;bottom:24px;z-index:32;
+  width:56px;height:56px;padding:13px;display:grid;place-items:center;
+  border:1px solid rgba(26,65,78,.17);border-radius:18px;
+  background:#fff;color:#173b48;cursor:pointer;
+  box-shadow:0 12px 36px rgba(31,67,77,.12);
+  transition:transform .22s ease,box-shadow .22s ease;
+}
+.mia-mic-launcher svg,.mia-interaction-dock .mic svg{width:21px;height:21px;fill:currentColor;}
+.mia-mic-launcher:hover{transform:translateY(-2px);box-shadow:0 15px 40px rgba(31,67,77,.17);}
+.mia-mic-launcher.is-listening,.mia-interaction-dock .mic.is-listening{
+  background:#0b8688!important;color:#fff!important;
+  box-shadow:0 0 0 5px rgba(11,134,136,.13),0 10px 25px rgba(20,79,86,.13);
+}
+.mia-mic-launcher:disabled,.mia-interaction-dock .mic:disabled{opacity:.35;cursor:not-allowed;}
+body.mia-dock-open .mia-mic-launcher{display:none;}
+.mia-interaction-dock .mic{
+  display:grid;place-items:center;background:#f2f8f8!important;
+  color:#167a80!important;border:1px solid rgba(21,137,141,.18)!important;
+}
+.mia-interaction-dock .mic.is-listening{
+  background:#0b8688!important;color:#fff!important;
+}
+@media(max-width:800px){
+  .mia-mic-launcher{right:82px;bottom:calc(14px + env(safe-area-inset-bottom,0px));width:58px;height:58px;}
+}
+@media(prefers-reduced-motion:reduce){.mia-mic-launcher{transition:none!important;}}
+
+/* V4.4 | Microfonia explicita: OFF -> UNA CONSULTA -> CONTINUO -> OFF.
+ * Dos botones (launcher y dock) reflejan un unico modo compartido.
+ * En modo continuo el indicador sigue activo incluso si la escucha se
+ * encuentra pausada durante la sintesis de voz de mIA. */
+.mia-visually-hidden{
+  position:absolute!important;width:1px!important;height:1px!important;
+  overflow:hidden!important;clip:rect(0,0,0,0)!important;
+  white-space:nowrap!important;border:0!important;padding:0!important;
+}
+.mia-mic-launcher,.mia-interaction-dock .mic{position:relative;isolation:isolate;}
+.mia-mic-launcher[data-mic-mode="once"],
+.mia-interaction-dock .mic[data-mic-mode="once"]{
+  color:#fff!important;background:#0b8688!important;
+  box-shadow:0 0 0 5px rgba(11,134,136,.13),0 10px 25px rgba(20,79,86,.13);
+}
+.mia-mic-launcher[data-mic-mode="continuous"],
+.mia-interaction-dock .mic[data-mic-mode="continuous"]{
+  background:#143d50!important;color:#fff!important;
+  border-color:#256a77!important;
+  box-shadow:0 0 0 5px rgba(19,90,109,.12),0 12px 27px rgba(20,60,78,.17);
+}
+.mia-mic-launcher[data-mic-mode="continuous"]::after,
+.mia-interaction-dock .mic[data-mic-mode="continuous"]::after{
+  content:"∞";position:absolute;right:-5px;top:-7px;
+  display:grid;place-items:center;min-width:23px;height:23px;
+  border:2px solid #fff;border-radius:50%;
+  background:#0b8a8a;color:#fff;font-size:17px;font-weight:800;line-height:1;
+}
+.mia-mic-launcher[data-mic-mode="once"]::after,
+.mia-interaction-dock .mic[data-mic-mode="once"]::after{
+  content:"1";position:absolute;right:-4px;top:-6px;
+  display:grid;place-items:center;width:19px;height:19px;border-radius:50%;
+  color:#fff;background:#cf8d64;border:2px solid #fff;font-size:11px;font-weight:800;
+}
+.mia-mic-launcher.is-suspended,.mia-interaction-dock .mic.is-suspended{
+  opacity:.76;
+  box-shadow:0 0 0 5px rgba(19,90,109,.07),0 8px 22px rgba(20,60,78,.11);
+}
+@media(prefers-reduced-motion:reduce){
+  .mia-mic-launcher,.mia-interaction-dock .mic{transition:none!important;animation:none!important;}
+}
+
+/* Una consulta ya pronunciada: etapa 1 se mantiene para respetar el ciclo
+ * de tres clics, pero el micrófono no está capturando audio. */
+.mia-mic-launcher[data-mic-mode="once"].is-suspended,
+.mia-interaction-dock .mic[data-mic-mode="once"].is-suspended{
+  background:#eef4f3!important;color:#617980!important;
+  box-shadow:0 6px 18px rgba(29,58,69,.07);
+}
+
+/* mIA V4.5: report coverage is derived from the actual backend payload,
+   not inferred from the wording of the user's question. */
+.mia45-coverage{
+  font-size:12px;letter-spacing:.025em;color:#78d1ce;
+  border-bottom:1px solid rgba(170,209,213,.14);
+  margin:6px 0 16px;padding:0 0 12px;
+}
+.mia45-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin:15px 0;}
+.mia45-kpi{padding:17px 15px;border:1px solid rgba(158,207,209,.23);border-radius:16px;
+  background:linear-gradient(155deg,rgba(79,139,146,.19),rgba(41,76,86,.13));min-width:0;}
+.mia45-kpi>span{display:block;font-size:11px;color:#a9cfd1;letter-spacing:.04em;}
+.mia45-kpi>strong{display:block;margin-top:8px;color:#f4ffff;font:550 clamp(22px,2vw,30px)/1.2 Aptos,Arial,sans-serif;overflow-wrap:anywhere;}
+.mia45-chart{padding:19px;border-radius:18px;background:rgba(52,102,110,.11);border:1px solid rgba(161,210,212,.15);margin:16px 0;}
+.mia45-chart h3{font-size:13px;font-weight:700;margin:0 0 18px;color:#e3fbf9;}
+.mia45-chart-rows{display:grid;gap:13px;}
+.mia45-chart-row{display:grid;grid-template-columns:minmax(95px,1fr) minmax(85px,2.7fr) auto;align-items:center;gap:12px;min-width:0;font-size:12px;color:#cbdfe1;}
+.mia45-chart-row>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mia45-chart-row>i{height:9px;border-radius:99px;background:rgba(210,239,238,.08);display:block;overflow:hidden;}
+.mia45-chart-row>i>b{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#8fc8bc,#cea48c);}
+.mia45-chart-row strong{color:#e0ffff;font-variant-numeric:tabular-nums;}
+.mia45-donut{display:grid;grid-template-columns:minmax(100px,150px) minmax(140px,1fr);gap:18px;align-items:center;}
+.mia45-donut svg{width:100%;height:auto;}
+.mia45-donut-legend{display:grid;gap:8px;}
+.mia45-donut-legend>div{display:flex;align-items:center;gap:8px;color:#d2e4e5;font-size:12px;}
+.mia45-donut-legend i{flex:none;height:8px;width:8px;border-radius:50%;}
+.mia45-donut-legend strong{margin-left:auto;color:#fff;}
+.mia45-line-wrap svg{width:100%;max-width:100%;height:auto;}
+.mia45-line-labels{display:flex;justify-content:space-between;font-size:10px;color:#b1cdcf;overflow:hidden;gap:8px;}
+.mia45-replay[hidden]{display:none!important;}
+.mia45-replay{
+  position:fixed;z-index:38;left:25px;bottom:25px;cursor:pointer;
+  border:1px solid rgba(23,82,90,.16);border-radius:999px;padding:11px 19px;
+  background:#fff;color:#275465;font:650 12px Aptos,'Segoe UI',Arial,sans-serif;
+  box-shadow:0 10px 25px rgba(32,67,73,.10);
+}
+.mia45-replay:hover{background:#edf8f8;}
+@media(max-width:700px){.mia45-donut{grid-template-columns:1fr}.mia45-donut svg{max-width:155px;margin:auto}.mia45-replay{bottom:90px;left:12px}}

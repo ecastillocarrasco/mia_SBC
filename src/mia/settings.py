@@ -168,6 +168,25 @@ class CurriculumSettings(BaseModel):
     max_file_mb: int = 15
 
 
+class PrivacyGatewaySettings(BaseModel):
+    enabled: bool = False
+    """Activa la protección real (análisis Presidio + seudonimización) en el punto único de salida al LLM
+    (``MIA_PRIVACY_GATEWAY__ENABLED=true``). Con False, el gateway sigue envolviendo arquitectónicamente
+    a cualquier LLMProvider (no hay bypass posible), pero actúa como paso directo sin coste: así el
+    despliegue inicial no cambia el comportamiento de ninguna ruta existente hasta validarlo por etapas."""
+    default_policy: str = "standard"
+    """Perfil de política por defecto cuando el dominio/herramienta no especifica uno: strict | standard |
+    aggregated | public."""
+    vault_key: SecretStr = SecretStr("")
+    """Clave para cifrar el Token Vault (Fernet). En Azure, desde Key Vault. Vacía solo en local/test."""
+    vault_ttl_seconds: int = 900
+    """Caducidad de cada entrada del Token Vault: una vez pasado, el token ya no se puede restaurar."""
+    spacy_model: str = "es_core_news_lg"
+    fail_open: bool = False
+    """Si el motor Presidio falla (modelo no cargado, excepción interna), True dejaría pasar la llamada sin
+    protección. SIEMPRE debe ser False salvo en depuración local explícita: es la política de fallo seguro."""
+
+
 class AttachmentSettings(BaseModel):
     enabled: bool = False
     """Activa la funcionalidad de adjuntos (``MIA_ATTACHMENTS__ENABLED=true``)."""
@@ -252,6 +271,7 @@ class Settings(BaseSettings):
     curriculums: CurriculumSettings = Field(default_factory=CurriculumSettings)
     reports: ReportSettings = Field(default_factory=ReportSettings)
     attachments: AttachmentSettings = Field(default_factory=AttachmentSettings)
+    privacy_gateway: PrivacyGatewaySettings = Field(default_factory=PrivacyGatewaySettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     diagnostics: DiagnosticsSettings = Field(default_factory=DiagnosticsSettings)
 
@@ -268,6 +288,16 @@ class Settings(BaseSettings):
             raise ValueError("En producción MIA_DATA__PSEUDONYM_KEY debe venir de Key Vault.")
         if self.environment is Environment.PRODUCTION and self.llm.provider is LLMProviderName.FAKE:
             raise ValueError("El proveedor LLM 'fake' no está permitido en producción.")
+        if self.environment is Environment.PRODUCTION and not self.privacy_gateway.enabled:
+            raise ValueError("MIA_PRIVACY_GATEWAY__ENABLED=false no está permitido en producción.")
+        if self.environment is Environment.PRODUCTION and self.privacy_gateway.fail_open:
+            raise ValueError("MIA_PRIVACY_GATEWAY__FAIL_OPEN=true no está permitido en producción.")
+        if (
+            self.environment is Environment.PRODUCTION
+            and self.privacy_gateway.enabled
+            and not self.privacy_gateway.vault_key.get_secret_value()
+        ):
+            raise ValueError("En producción MIA_PRIVACY_GATEWAY__VAULT_KEY debe venir de Key Vault.")
         return self
 
 

@@ -39,6 +39,15 @@ def script() -> list[Script]:
     return [lambda req: final_answer("Hola, soy mIA.", "¡Hola! Soy mIA. ¿En qué te ayudo?", "saludando")]
 
 
+@pytest.fixture(autouse=True)
+def _clear_payslip_amounts_cache() -> None:
+    """La caché en memoria de `_amounts` (nóminas) está keyed por id() del cliente SharePoint de cada
+    fixture; se limpia entre tests igualmente para no depender de que Python nunca reutilice un id()."""
+    from mia.modules.rrhh.nominas.estadisticas import _clear_amounts_cache  # noqa: PLC0415
+
+    _clear_amounts_cache()
+
+
 @pytest.fixture
 async def services(settings: Settings, script: list[Script], tmp_path: Path) -> AsyncIterator[Services]:
     db = await fresh_database(tmp_path)

@@ -203,7 +203,12 @@ async def begin_trace(
         ctx.finish(status=TraceStatus.ERROR)
         raise
     finally:
-        _current_trace.reset(token)
+        try:
+            _current_trace.reset(token)
+        except ValueError:
+            # El generador fue cerrado desde un contexto asyncio diferente al que lo creó
+            # (SSE stream cerrado por el cliente). El reset falla pero es seguro ignorarlo.
+            pass
         # Si finish() no fue llamado explícitamente (error inesperado), cierro aquí
         if record.status == TraceStatus.RUNNING:
             ctx.finish(status=TraceStatus.ERROR)

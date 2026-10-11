@@ -1,0 +1,65 @@
+{
+  "version": "V4.2.1",
+  "applies_on": "V4.2",
+  "purpose": "Restaurar micro manual; desactivar todo inicio y reinicio automático",
+  "changes": [
+    "3D mic botón visible y dentro del chat",
+    "HG mic botón manual",
+    "reconocimiento una frase por clic, sin permisos ni activación al iniciar",
+    "TTS y escritura conservados"
+  ],
+  "validation": {
+    "node_tests_pass": 13,
+    "node_syntax": "pass",
+    "css_syntax": "pass",
+    "vite_build": "NOT RUN",
+    "real_browser": "NOT RUN"
+  },
+  "files": [
+    {
+      "path": "src/core/voice-v4.js",
+      "bytes": 4154,
+      "sha256": "473dfd0a5630c235c76e3850baec1ea333c086df71b8c724c238f8c619e84e1f"
+    },
+    {
+      "path": "src/worlds/3d/main.js",
+      "bytes": 16695,
+      "sha256": "2d5e448c170bc67a62bf7b7cd1e5ea6c45f8749359654d923cdb83ea8d30e5d5"
+    },
+    {
+      "path": "src/worlds/3d/index.html",
+      "bytes": 4216,
+      "sha256": "439972220c458ea7b17d3e97a96fa43296455dff23fac5a41e8492e34c69ea08"
+    },
+    {
+      "path": "src/worlds/3d/v4-white.css",
+      "bytes": 14690,
+      "sha256": "74cc42df310dff9887f30bd79f545db350f2aea7b2178d48e620cda048a03494"
+    },
+    {
+      "path": "src/worlds/hologram/main.js",
+      "bytes": 7612,
+      "sha256": "b47d46b0ae1e9c33b6431fcb5bfdb9d3ef3e95abdb1584f56195ca2cc6ff0388"
+    },
+    {
+      "path": "src/worlds/hologram/index.html",
+      "bytes": 1045,
+      "sha256": "d1361afddb8e1db20df3c5a9f3a10e3fbd19e3c37cf4f12a1746d4e18f885c00"
+    },
+    {
+      "path": "src/worlds/hologram/style.css",
+      "bytes": 6643,
+      "sha256": "222bf2ef121321f33da040b6d92986e3675c8faf7f76e9ad4c5e320172234260"
+    },
+    {
+      "path": "tests/mia-v42.test.mjs",
+      "bytes": 9708,
+      "sha256": "e80a210ba95850073fb184af229c671ebc12af5b91a55e66c60e9a1341738298"
+    },
+    {
+      "path": "docs/INSTALAR_MIA_V4_2_1_MIC_MANUAL.md",
+      "bytes": 1760,
+      "sha256": "fbd8e1c4b3a1c8cce34dbe10703cf0da906d8a64e9759c4ad6c72a7c6ceea11c"
+    }
+  ]
+}

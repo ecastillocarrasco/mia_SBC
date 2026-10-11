@@ -1,17 +1,21 @@
 """Estadísticas salariales agregadas (NOM-004).
 
 «¿Cuál es el salario medio de un cocinero?», «líquido medio por departamento». Se leen las nóminas de la
-plantilla activa del grupo en el momento (los importes nunca se guardan) y solo se devuelven agregados:
-media, mediana, mínimo y máximo. Salvaguardas:
+plantilla activa del grupo en el momento y solo se devuelven agregados: media, mediana, mínimo y máximo.
+Salvaguardas:
   * permiso propio (nominas:importes) y auditoría;
   * mínimo de personas por grupo: por debajo no se muestran importes (evita deducir el sueldo de alguien);
   * nunca se devuelve ni se cita el importe de una persona concreta;
-  * los importes no se dicen en voz alta (filtro en código).
+  * los importes no se dicen en voz alta (filtro en código);
+  * no se persisten en disco ni en base de datos. Sí existe una caché EN MEMORIA del proceso, de corta
+    duración (``_AMOUNTS_CACHE_TTL``), para no releer el mismo PDF en consultas repetidas o solapadas
+    sobre el mismo periodo; se pierde al reiniciar el servicio y nunca se escribe en ningún almacén.
 """
 
 from __future__ import annotations
 
 import asyncio
+import time
 from statistics import mean, median, quantiles
 from typing import Any, Literal
 
@@ -50,7 +54,7 @@ class SalarialesParams(ActivosParams):
     departamento: str | None = None
     periodo: str | None = Field(default=None, description="AAAA-MM; por defecto la última nómina ordinaria de cada uno")
     agrupar_por: Literal["puesto", "departamento", "ninguno"] = Field(
-        default="ninguno", description="Desglosar por puesto o por departamento (cada grupo debe tener 5+ personas)"
+        default="ninguno", description=f"Desglosar por puesto o por departamento (cada grupo debe tener {MIN_GROUP}+ personas)"
     )
 
 
@@ -74,21 +78,47 @@ def _stats(values: list[float]) -> dict[str, float]:
     return out
 
 
+_AMOUNTS_CACHE: dict[tuple[int, int], tuple[float, dict[str, float] | None]] = {}
+_AMOUNTS_CACHE_TTL = 1200.0  # 20 min: evita releer el mismo PDF en consultas repetidas o solapadas
+_AMOUNTS_CACHE_MAXSIZE = 20_000
+
+
+def _clear_amounts_cache() -> None:
+    """Solo para aislar pruebas entre sí (claves por id() del cliente SharePoint de cada fixture).
+    En producción el caché vive mientras viva el proceso; nunca se expone fuera de este módulo."""
+    _AMOUNTS_CACHE.clear()
+
+
 async def _amounts(deps: Deps, slip_id: int, gate: asyncio.Semaphore) -> dict[str, float] | None:
+    # Clave por (cliente SharePoint, slip_id): en producción hay un único cliente de larga vida, así que
+    # equivale a cachear solo por slip_id; en pruebas, cada fixture crea su propio cliente, así que sus
+    # cachés no se mezclan aunque reutilicen los mismos ids numéricos pequeños.
+    key = (id(deps.sharepoint), slip_id)
+    now = time.monotonic()
+    cached = _AMOUNTS_CACHE.get(key)
+    if cached is not None and cached[0] > now:
+        return cached[1]
+
     async with gate:
         try:
             content = await deps.sharepoint.download_item_file("Nominas", slip_id, MAX_BYTES)
             full = parse_payslip(pdf_lines(content))
             parsed = full.get("importes") or {}
         except Exception:  # un PDF ilegible no invalida el conjunto: se cuenta como no leído
-            return None
-    result = {k: parsed[k] for k in ("total_devengado", "liquido") if parsed.get(k)}
-    if ss_total := (full.get("coste_empresa") or {}).get("total_aportacion_empresa"):
-        devengado = parsed.get("total_devengado")
-        result["coste_empresa_ss"] = ss_total
-        if devengado:
-            result["coste_total_empresa"] = round(devengado + ss_total, 2)
-    return result or None
+            result = None
+        else:
+            result = {k: parsed[k] for k in ("total_devengado", "liquido") if parsed.get(k)}
+            if ss_total := (full.get("coste_empresa") or {}).get("total_aportacion_empresa"):
+                devengado = parsed.get("total_devengado")
+                result["coste_empresa_ss"] = ss_total
+                if devengado:
+                    result["coste_total_empresa"] = round(devengado + ss_total, 2)
+            result = result or None
+
+    if len(_AMOUNTS_CACHE) >= _AMOUNTS_CACHE_MAXSIZE:
+        _AMOUNTS_CACHE.pop(next(iter(_AMOUNTS_CACHE)))  # descarta la entrada más antigua (FIFO simple)
+    _AMOUNTS_CACHE[key] = (now + _AMOUNTS_CACHE_TTL, result)
+    return result
 
 
 def _group_summary(members: list[dict[str, float]], total: int) -> dict[str, Any]:
@@ -224,9 +254,9 @@ def ranking_salarial(deps: Deps) -> Tool:
 
     return Tool(
         "ranking_salarial",
-        "Quién cobra más o menos dentro de un grupo (departamento o puesto), ordenado sobre TODAS las nóminas del "
-        "grupo: «los 3 que más cobraron en agosto en Cocina». Máximo 10 y grupos de 5+ personas; solo en pantalla, "
-        "con permiso y auditoría. Nunca ordenes salarios con una muestra parcial: usa esta herramienta.",
+        f"Quién cobra más o menos dentro de un grupo (departamento o puesto), ordenado sobre TODAS las nóminas del "
+        f"grupo: «los 3 que más cobraron en agosto en Cocina». Máximo 10 y grupos de {MIN_GROUP}+ personas; solo en "
+        f"pantalla, con permiso y auditoría. Nunca ordenes salarios con una muestra parcial: usa esta herramienta.",
         RankingParams,
         handler,
         permission=Permission.NOMINAS_IMPORTES,
@@ -335,16 +365,17 @@ def estadisticas_salariales(deps: Deps) -> Tool:
 
     return Tool(
         "estadisticas_salariales",
-        "Estadísticas salariales de un grupo de la plantilla activa (suma, media, mediana, mínimo, máximo, "
-        "percentiles 25 y 75) de líquido, devengado y coste total empresa (devengado + SS patronal): "
-        "por puesto, departamento o totales. "
-        "Responde «¿cuánto pagó la empresa en nóminas?», «¿cuál es el coste medio por empleado?», "
-        "«¿cuál es el percentil 25 en Cocina?» y «salario medio por departamento». "
-        "Para comparaciones interanuales (p. ej. «¿ha subido el salario medio de Pisos este año?»), "
-        "llámalo dos veces con distintos periodos y compara los resultados. "
-        "Para análisis trimestrales, llámalo por cada mes del trimestre. "
-        "Solo agregados: nunca el importe de una persona ni grupos de menos de 5. "
-        "No digas los importes en voz alta.",
+        f"Estadísticas salariales de un grupo de la plantilla activa (suma, media, mediana, mínimo, máximo, "
+        f"percentiles 25 y 75) de líquido, devengado y coste total empresa (devengado + SS patronal), para UN "
+        f"único mes: por puesto, departamento o totales. "
+        f"Responde «¿cuánto pagó la empresa en nóminas en agosto?», «¿cuál es el coste medio por empleado?», "
+        f"«¿cuál es el percentil 25 en Cocina?» y «salario medio por departamento». "
+        f"Para comparaciones interanuales (p. ej. «¿ha subido el salario medio de Pisos este año?»), "
+        f"llámalo dos veces con distintos periodos y compara los resultados. "
+        f"Para trimestres, años, varios meses o evolución temporal usa analisis_economico_nominas en su lugar "
+        f"(resuelve el periodo y descarga todos los meses en paralelo). "
+        f"Solo agregados: nunca el importe de una persona ni grupos de menos de {MIN_GROUP}. "
+        f"No digas los importes en voz alta.",
         SalarialesParams,
         handler,
         permission=Permission.NOMINAS_IMPORTES,

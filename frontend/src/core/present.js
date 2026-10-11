@@ -3,7 +3,7 @@
  * basta con que cualquier resultado se pueda leer, sin perder datos. */
 
 function escapeHtml(value) {
-  return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 }
 
 function humanize(key) {
@@ -26,16 +26,27 @@ function urlLabel(url) {
   return "Ver";
 }
 
+function safeDocumentUrl(value) {
+  const text = String(value ?? "").trim();
+  if (/^\/api\/[\w/?=&%.-]+$/.test(text)) return text;
+  try {
+    const url = new URL(text);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch { return ""; }
+}
+
 function renderLink(url, label) {
+  url = safeDocumentUrl(url);
+  if (!url) return "—";
   return `<a class="mia-doc-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
 }
 
 // ── Document card ─────────────────────────────────────────────────────────────
 
 function renderDocumentCard(doc) {
-  if (!doc?.url) return "";
+  if (!safeDocumentUrl(doc?.url)) return "";
   const meta = [doc.subtitle, doc.date].filter(Boolean).map(escapeHtml).join(" · ");
-  return `<a class="mia-doc-card" href="${escapeHtml(doc.url)}" target="_blank" rel="noopener">
+  return `<a class="mia-doc-card" href="${escapeHtml(safeDocumentUrl(doc.url))}" target="_blank" rel="noopener">
     <span class="mia-doc-body">
       <b>${escapeHtml(doc.title || urlLabel(doc.url))}</b>
       ${meta ? `<small>${meta}</small>` : ""}
@@ -66,18 +77,21 @@ function renderValue(value) {
 // ── Table ─────────────────────────────────────────────────────────────────────
 
 function renderTable(presentation) {
-  const columns = presentation.columns || [];
-  const rows = presentation.rows || [];
+  const columns = Array.isArray(presentation.columns) ? presentation.columns : [];
+  const rows = Array.isArray(presentation.rows) ? presentation.rows : [];
+  const keyFor = (c) => typeof c === "string" ? c : (c?.key || c?.field || c?.id || c?.name || c?.label || "");
+  const labelFor = (c) => typeof c === "string" ? c : (c?.label || c?.title || keyFor(c));
+  const cells = (row) => {
+    if (Array.isArray(row)) return row;
+    if (row && typeof row === "object") return columns.map((c) => row[keyFor(c)]);
+    return [row];
+  };
   return `
     <div class="mia-table-wrap">
       <table class="mia-table">
-        <thead><tr>${columns.map((c) => `<th>${escapeHtml(c)}</th>`).join("")}</tr></thead>
-        <tbody>${rows
-          .slice(0, 100)
-          .map((row) => `<tr>${row.map((cell) => `<td>${renderValue(cell)}</td>`).join("")}</tr>`)
-          .join("")}</tbody>
+        <thead><tr>${columns.map((c) => `<th>${escapeHtml(labelFor(c))}</th>`).join("")}</tr></thead>
+        <tbody>${rows.map((row) => `<tr>${cells(row).map((cell) => `<td>${renderValue(cell)}</td>`).join("")}</tr>`).join("")}</tbody>
       </table>
-      ${rows.length > 100 ? `<p class="mia-table-note">Mostrando 100 de ${rows.length} filas.</p>` : ""}
     </div>`;
 }
 
@@ -93,6 +107,7 @@ export function renderPresentation(presentation) {
   if (!presentation || typeof presentation !== "object") return "";
   const { type, title, ...rest } = presentation;
   const heading = title ? `<h3 class="mia-presentation-title">${escapeHtml(title)}</h3>` : "";
+  if ((type === "document" || type === "download") && rest.url && !safeDocumentUrl(rest.url)) return "";
 
   // Table — also render attached document cards when present
   if (type === "table" && Array.isArray(rest.columns)) {
@@ -110,9 +125,9 @@ export function renderPresentation(presentation) {
   }
 
   // Download button
-  if (type === "download" && rest.url) {
+  if (type === "download" && safeDocumentUrl(rest.url)) {
     return `<section class="mia-presentation">${heading}
-      <a class="mia-download" href="${escapeHtml(rest.url)}" target="_blank" rel="noopener">
+      <a class="mia-download" href="${escapeHtml(safeDocumentUrl(rest.url))}" target="_blank" rel="noopener">
         Descargar ${escapeHtml(rest.file_name || rest.format || "archivo")}
       </a></section>`;
   }

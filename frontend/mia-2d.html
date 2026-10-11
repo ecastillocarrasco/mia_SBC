@@ -108,8 +108,10 @@
     </section>
   </main>
 
-  <div class="universe-composer-wrap composer-wrap-premium">
+  <div id="composer" class="universe-composer-wrap composer-wrap-premium">
+    <div id="attachmentPreviews" class="attachment-previews" style="display:none"></div>
     <div class="universe-composer">
+      <button id="attachBtn" class="composer-attach" type="button" title="Adjuntar archivo" aria-label="Adjuntar archivo">📎</button>
       <button id="mic" class="composer-mic" type="button" title="Hablar con mIA" aria-label="Hablar con mIA"><span class="mic-core"></span></button>
       <div class="composer-input-shell">
         <input id="input" autocomplete="off" spellcheck="true" placeholder="Pregunta a mIA…">
@@ -117,6 +119,7 @@
       </div>
       <button id="send" class="composer-send" type="button" title="Enviar" aria-label="Enviar"><span>↑</span></button>
     </div>
+    <input id="fileInput" type="file" multiple accept=".pdf,.docx,.txt,.md,.xlsx,.xls,.csv,.png,.jpg,.jpeg,.webp" style="display:none">
     <div class="universe-composer-meta"><span id="sessionBadge">Sesión contextual activa</span><span>2D Focus · misma mIA, mismo contexto</span></div>
   </div>
 

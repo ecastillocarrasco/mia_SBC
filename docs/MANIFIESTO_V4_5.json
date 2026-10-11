@@ -1,0 +1,93 @@
+{
+  "version": "4.5.0",
+  "base_required": "mIA SBC V4.4 (with V4.3 loading, V4.2.1 manual microphone)",
+  "objective": "Automatic spoken first-name greeting, parity 2D/3D for received staff tables, front-stabilized pointing gestures",
+  "files": [
+    {
+      "path": "src/core/identity-v45.js",
+      "bytes": 2481,
+      "sha256": "dfc3ac4c1de8884b7099142d4d7a6209c24f89d446f18ff6e52388904720225f"
+    },
+    {
+      "path": "src/core/welcome-voice-v45.js",
+      "bytes": 2632,
+      "sha256": "bd0dd1c3521d2aa6ba08ac335a63d6a77126cbcd1150d7cac1a9f7afdd49735d"
+    },
+    {
+      "path": "src/core/presentation-parity-v45.js",
+      "bytes": 5827,
+      "sha256": "1aeef40d0a1a7887fb30d040ac2ee4ccec665215f586e3ecc851774216ca7e62"
+    },
+    {
+      "path": "src/core/answer-structure-v45.js",
+      "bytes": 1967,
+      "sha256": "81f974787dbea2f254f076b916a8880959d10b7331c0b053836b38a5a3161d04"
+    },
+    {
+      "path": "src/core/behavior-v4.js",
+      "bytes": 11490,
+      "sha256": "d5d06f0456bc1b771aa6bd47af1c54b78f973f8ec3a780b6cc94770c68377249"
+    },
+    {
+      "path": "src/worlds/3d/main.js",
+      "bytes": 20767,
+      "sha256": "7ea9d9379e87a8359a4ef8267505a0de08c0a389f4e2456f0d45b6aef3ccf32e"
+    },
+    {
+      "path": "src/worlds/3d/index.html",
+      "bytes": 4501,
+      "sha256": "ef44a4f72556867e4eb553fff0ea8d7da0d93ae0155e99ef149fc31287add949"
+    },
+    {
+      "path": "src/worlds/3d/v4-white.css",
+      "bytes": 19853,
+      "sha256": "4e5eb0a36ea80006f5ed3b153e400fec9e85dc337360c7a3eaaf94c55213165e"
+    },
+    {
+      "path": "src/worlds/hologram/main.js",
+      "bytes": 9575,
+      "sha256": "556eb93d06a042ddfbe52fbf217f5831471e74d73c46a35da28fe3c4f99eac68"
+    },
+    {
+      "path": "src/worlds/hologram/index.html",
+      "bytes": 1291,
+      "sha256": "03a6d031c310530289f3718952080b295e0da19a8f100070c84e9c9a7bf2a729"
+    },
+    {
+      "path": "src/worlds/hologram/style.css",
+      "bytes": 8112,
+      "sha256": "2ebb7687a8a00a3c41592ad28213d9d1b211397d37bd41018f0f3ab1c6034105"
+    },
+    {
+      "path": "tests/mia-v45.test.mjs",
+      "bytes": 7685,
+      "sha256": "5028685aa86f5f19eb3f4755b6be6fdf5889d26e400e1b35c999e9d262ad80e1"
+    },
+    {
+      "path": "docs/INSTALAR_MIA_V45_IDENTIDAD_PARIDAD_ANIMACION.md",
+      "bytes": 5716,
+      "sha256": "d8142d5001cf7e7d874d1850fdde406f9501335625abd1b1ecab738a24da3d49"
+    }
+  ],
+  "guaranteed_untouched": [
+    "src/worlds/2d/",
+    "public/models/mIA_SBC_V4_84_ANIMACIONES.glb",
+    "backend/",
+    "dist/",
+    "node_modules/"
+  ],
+  "tests": {
+    "unit": 12,
+    "passed": 12,
+    "node_check": "OK",
+    "css_parse": "OK",
+    "full_vite_build": "NOT VERIFIED",
+    "browser_real_glb": "NOT VERIFIED",
+    "backend_employee_query": "NOT VERIFIED"
+  },
+  "limitations": [
+    "MSAL sign-in is not implemented; reads future active MSAL account adapter",
+    "Browser autoplay may block welcome audio; a replay button is provided",
+    "Backend-supplied department filters cannot be corrected by a frontend presentation-only patch"
+  ]
+}

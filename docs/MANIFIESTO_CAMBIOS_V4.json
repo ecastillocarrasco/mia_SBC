@@ -1,0 +1,120 @@
+{
+  "note": "Only modified or added source files and GLB, no dist or node_modules",
+  "files": [
+    {
+      "path": "docs/AUDITORIA_FRONTEND_SBC_V4.md",
+      "bytes": 7345,
+      "sha256": "0d5b7db3602a78d49408596f093577c45e7ed5e9c703e4ac5f38531640a1ebaa"
+    },
+    {
+      "path": "docs/CANDIDATOS_LIMPIEZA.csv",
+      "bytes": 517,
+      "sha256": "215489094e0174c11bf0fc1825161cd84ab76ae0c600baba6b40f7fb2e986875"
+    },
+    {
+      "path": "docs/INSTALACION_Y_PRUEBAS.md",
+      "bytes": 4718,
+      "sha256": "99987ded5c5f08b348077b83335c7bdaee082b2467ee5bd954edc70257949fcd"
+    },
+    {
+      "path": "docs/LIMPIEZA_REVERSIBLE.ps1",
+      "bytes": 1676,
+      "sha256": "16577875c62df565fa8b00fce13408cfeeb1add1b521287a61c5f62d1bcf6f84"
+    },
+    {
+      "path": "docs/REFERENCIAS_COMPARTIDAS_PUBLIC_DIST.csv",
+      "bytes": 21430,
+      "sha256": "35a324084b31d556fed33cf458205b3ca834b946b56b4c82767dc2c09b2081d0"
+    },
+    {
+      "path": "index.html",
+      "bytes": 4655,
+      "sha256": "7b862482906f1db27353cfb0a511db167888e34dd4837c2cc278a923cb7c4fee"
+    },
+    {
+      "path": "mia-3d.html",
+      "bytes": 367,
+      "sha256": "8ad78979c5462b4b526016a7eb5ac334ecf829b72c65b3293589a29485785407"
+    },
+    {
+      "path": "public/models/mIA_SBC_V4_84_ANIMACIONES.glb",
+      "bytes": 39562116,
+      "sha256": "87f3669f2a4113bc232c9a048a5519557c464e164973d82f6a070607f283141e"
+    },
+    {
+      "path": "src/core/animations.js",
+      "bytes": 6550,
+      "sha256": "00e0c5f719e09d8c67c4b097e7075aec0a2165c7313fe0afe2a5af82d8301a1e"
+    },
+    {
+      "path": "src/core/behavior-v4.js",
+      "bytes": 5845,
+      "sha256": "dd0fc3576d3b2f364ecb2d12c2f166a9c8eaf7a7857cc3aade9124eb5082b6c2"
+    },
+    {
+      "path": "src/core/hologram-brief.js",
+      "bytes": 4357,
+      "sha256": "dfa407543978eb5e9d7eaf82e615de887908d221367ef81848c2373150f15ae9"
+    },
+    {
+      "path": "src/core/premium-tables.js",
+      "bytes": 6525,
+      "sha256": "9e5b32abec23eef91f2cb587cb661a383d67b7726b07c152607db9e349df1358"
+    },
+    {
+      "path": "src/core/present.js",
+      "bytes": 8544,
+      "sha256": "8330ae490da165300db6ff720bc3975b9d018bd07e1e5273a37369ba49e70584"
+    },
+    {
+      "path": "src/core/scene.js",
+      "bytes": 12191,
+      "sha256": "23f9a1b1fb3caf992e031abf40f160a39096aa7f2d6b494e5902ab69a2a87dfe"
+    },
+    {
+      "path": "src/worlds/3d/index.html",
+      "bytes": 2387,
+      "sha256": "2534c8ba3cbe739d492983281e4e3f4d1463dfbd504e9c0aeeba812d1a106ba2"
+    },
+    {
+      "path": "src/worlds/3d/main.js",
+      "bytes": 10274,
+      "sha256": "a513261f18cfea10ababb7eee1b16761b35d994de2d8b41e89c3856f0c4c2052"
+    },
+    {
+      "path": "src/worlds/3d/style.css",
+      "bytes": 53979,
+      "sha256": "8cafccd9b48d6f71e0ce80c711d4c8a23395e96ab03dd6c9027acefcc750b399"
+    },
+    {
+      "path": "src/worlds/hologram/index.html",
+      "bytes": 975,
+      "sha256": "d0ed70624954d4dcc30cd09b86a5b997126a1cf371a86cb2bfe82a222b4eba05"
+    },
+    {
+      "path": "src/worlds/hologram/main.js",
+      "bytes": 5899,
+      "sha256": "bd83fd09d604be55524939fe4c8a61a6c6fb773fb4e348a7441dcbe057933a5c"
+    },
+    {
+      "path": "src/worlds/hologram/style.css",
+      "bytes": 5482,
+      "sha256": "3e785f0e382a2010a30028a270435c63956c44887a06161b57d7dea849eedfa0"
+    },
+    {
+      "path": "tests/browser-table-test.html",
+      "bytes": 1386,
+      "sha256": "7168ba81a806e1dd17631ab6471675b328c38fdb414a81cf7d34a90d29f0c4e5"
+    },
+    {
+      "path": "tests/mia-v4.test.mjs",
+      "bytes": 4481,
+      "sha256": "374599747916c913111ee38ef6e151f3a29b032aecc14a148012cec1bcb8d0c5"
+    },
+    {
+      "path": "vite.config.js",
+      "bytes": 1453,
+      "sha256": "2a4a12390288dd8fb1266d4464f33e6295031ced3ef558142884b4bfd20f0f92"
+    }
+  ]
+}

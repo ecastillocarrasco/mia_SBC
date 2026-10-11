@@ -17,13 +17,16 @@ from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolSt
 from mia.conversation.tools import LAST_TABLE
 from mia.data import Report
 from mia.data.models import _uuid
+from mia.diagnostics import EventStage
+from mia.diagnostics import emit as diag_emit
 from mia.modules.rrhh.common import Deps, department_problem, resolve_department
 from mia.modules.rrhh.informes.document import Document, to_document
 from mia.modules.rrhh.informes.render import RENDERERS
+from mia.reporting.narrative_generation import generate_narrative_block
 
 
 class InformeParams(BaseModel):
-    formato: Literal["pdf", "xlsx", "pptx"] = Field(description="pdf, xlsx (Excel) o pptx (PowerPoint)")
+    formato: Literal["pdf", "xlsx", "pptx", "html"] = Field(description="pdf, xlsx (Excel), pptx (PowerPoint) o html")
     titulo: str | None = Field(default=None, description="Título (por defecto, el de la tabla)")
     incluir_detalle: bool = Field(
         default=True,
@@ -38,6 +41,15 @@ class InformeParams(BaseModel):
         description=(
             "Incluir gráfico automático de distribución si los datos tienen desglose por categorías "
             "(por departamento, por tipo…). True por defecto."
+        ),
+    )
+    incluir_narrativa: bool = Field(
+        default=False,
+        description=(
+            "Añadir una sección de hallazgos redactada por el modelo, verificada frase a frase contra "
+            "los datos reales antes de publicarse (nunca una cifra sin respaldo). False por defecto: "
+            "pásalo a True solo si el usuario pide expresamente un análisis o unas conclusiones, no para "
+            "una simple exportación de tabla."
         ),
     )
 
@@ -66,6 +78,16 @@ def generar(deps: Deps) -> Tool:
         if p.titulo:
             document.title = p.titulo
         title = document.title
+        if p.incluir_narrativa:
+            # Fase F (integración LLM): se usa deps.llm, el MISMO proveedor que ya usa el resto de mIA
+            # (ya envuelto por el Privacy Gateway en build_llm_provider() — nunca un segundo camino
+            # hacia el proveedor), y se verifica contra los datos reales antes de añadirse — nunca una
+            # afirmación sin comprobar.
+            narrative = await generate_narrative_block(
+                deps.llm, title=title, backend_summary=presentation.get("__summary__") or {}
+            )
+            if narrative is not None:
+                document.blocks.append(narrative)
         logo_path = settings.logo_path if settings else None
         content = await asyncio.to_thread(_render, p.formato, document, ctx.now, logo_path)
         report_id = _uuid()
@@ -86,6 +108,14 @@ def generar(deps: Deps) -> Tool:
                 )
             )
         url = f"/api/reports/{report_id}"
+        # Trazabilidad (sección 22/requisito 5 del Bloque II): el propio `report_id` ya queda persistido
+        # en la tabla `reports` (user_id/título/formato/fechas, sin datos personales del contenido); esto
+        # solo lo enlaza con la traza de diagnóstico de ESTE turno, si está activa — nunca guarda cifras
+        # ni nombres, solo metadatos estructurales.
+        diag_emit(
+            EventStage.REPORT_GENERATION,
+            data={"report_id": report_id, "formato": p.formato, "secciones": len(document.blocks), "tool": "generar_informe"},
+        )
         return ToolResult(
             ToolStatus.OK,
             {
@@ -124,9 +154,9 @@ class InformeEjecutivoParams(BaseModel):
         default=None,
         description="Limitar el informe a un departamento concreto; sin valor: toda la empresa",
     )
-    formato: Literal["pdf", "xlsx", "pptx"] = Field(
+    formato: Literal["pdf", "xlsx", "pptx", "html"] = Field(
         default="pdf",
-        description="Formato del documento: pdf (predeterminado), xlsx o pptx",
+        description="Formato del documento: pdf (predeterminado), xlsx, pptx o html",
     )
     titulo: str | None = Field(default=None, description="Título personalizado del informe")
 
@@ -180,6 +210,13 @@ def generar_ejecutivo(deps: Deps) -> Tool:
             )
 
         url = f"/api/reports/{report_id}"
+        diag_emit(
+            EventStage.REPORT_GENERATION,
+            data={
+                "report_id": report_id, "formato": p.formato, "secciones": len(document.blocks),
+                "tool": "generar_informe_ejecutivo",
+            },
+        )
         return ToolResult(
             ToolStatus.OK,
             {

@@ -277,3 +277,38 @@ def test_period_engine_year_literal() -> None:
     assert period is not None
     assert period.start == date(2024, 1, 1)
     assert period.end == date(2024, 12, 31)
+
+
+# ------------------------------------------------------------------ Bloque II, Fase B: ajustes a PeriodEngine
+def test_period_engine_accepts_spelled_out_cardinal_same_as_digit() -> None:
+    """«los últimos tres meses» es al menos tan habitual como «los últimos 3 meses» (ejemplo literal de
+    la sección 2 del encargo del Bloque II: «evolución... de los últimos tres años»)."""
+    pe = PeriodEngine()
+    ref = date(2026, 10, 11)
+    spelled = pe.resolve("los últimos tres años", today=ref)
+    digits = pe.resolve("los últimos 3 años", today=ref)
+    assert spelled is not None
+    assert (spelled.start, spelled.end) == (digits.start, digits.end)
+    assert spelled.start == date(2023, 10, 11)
+
+
+def test_period_engine_relative_years_without_leading_en() -> None:
+    """Antes, solo «en los últimos N años» (con «en») se reconocía; «los últimos N años» sin «en» —la
+    forma más común— no coincidía con ningún patrón."""
+    pe = PeriodEngine()
+    ref = date(2026, 10, 11)
+    period = pe.resolve("los últimos 2 años", today=ref)
+    assert period is not None
+    assert period.start == date(2024, 10, 11)
+    assert period.end == ref
+
+
+def test_period_engine_ultimo_is_an_alias_for_pasado() -> None:
+    """«último trimestre/mes/año/semana» (ordinal «más reciente ya cerrado») debe dar el mismo
+    resultado que su forma ya reconocida con «pasado»/«anterior» — antes no se reconocía en absoluto."""
+    pe = PeriodEngine()
+    ref = date(2026, 10, 11)
+    assert pe.resolve("último trimestre", today=ref) == pe.resolve("trimestre pasado", today=ref)
+    assert pe.resolve("último mes", today=ref) == pe.resolve("mes pasado", today=ref)
+    assert pe.resolve("último año", today=ref) == pe.resolve("año pasado", today=ref)
+    assert pe.resolve("última semana", today=ref) == pe.resolve("semana pasada", today=ref)

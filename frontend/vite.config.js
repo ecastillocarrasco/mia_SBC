@@ -12,7 +12,7 @@ export default defineConfig(({ command }) => ({
     host: "127.0.0.1",
     port: 5173,
     // Igual que antes: evita los EBUSY de Windows con el GLB de mIA.
-    watch: { ignored: ["**/public/models/**"] },
+    watch: { ignored: ["**/public/models/**", "**/public/assets/blender/**", "**/public/assets/rigs/**", "**/public/assets/meshy/**"] },
     proxy: {
       "/api/mia/v4": { target: "http://127.0.0.1:5002", changeOrigin: true },
       "/api": { target: "http://127.0.0.1:5001", changeOrigin: true },

@@ -1,0 +1,56 @@
+{
+  "version": "4.1",
+  "base_required": "mIA_SBC_V4_PARCHE_3D_HOLOGRAMA_84.zip",
+  "files": [
+    {
+      "path": "docs/INSTALAR_MIA_V4_1_WHITE_VOICE.md",
+      "bytes": 5108,
+      "sha256": "917234c69a6757b7fe2a99f91f8d883034dd5738b484f99d84e7048c0aaac8d5"
+    },
+    {
+      "path": "src/core/behavior-v4.js",
+      "bytes": 7146,
+      "sha256": "df81bfca8db3465aaaeeec1fb0a24bdc0845c08ca8dec57aeacd23761c6bc985"
+    },
+    {
+      "path": "src/core/scene.js",
+      "bytes": 12159,
+      "sha256": "92f256a7010cc67f0b86df50e22e9eab425c5e8a5339d7e0c37f33bd90a6a00b"
+    },
+    {
+      "path": "src/core/voice-v4.js",
+      "bytes": 4343,
+      "sha256": "4e36d5ba8052f75af2878fbd19348db47d3f5db06878c58bea7833b0b2934dd5"
+    },
+    {
+      "path": "src/core/waiting-v4.js",
+      "bytes": 2304,
+      "sha256": "182aaec00f1747c1dfe4d8fc25822b21aa95ea2ba1c3747053467c1788611aef"
+    },
+    {
+      "path": "src/worlds/3d/index.html",
+      "bytes": 3749,
+      "sha256": "d22b5fd8d9a1580997d7148b9968d73d634fb21d36f820b019fabcc0c562a6e2"
+    },
+    {
+      "path": "src/worlds/3d/main.js",
+      "bytes": 14856,
+      "sha256": "fe4082a3b21705f69844d7d1892dadc1ae2c8cf4ca5569e9c49f60a51ea20d9f"
+    },
+    {
+      "path": "src/worlds/3d/v4-white.css",
+      "bytes": 8680,
+      "sha256": "5669c5105ac9152c2885cbb3eb5475ace8d91f12d2071f9afef1431935a1e3ff"
+    },
+    {
+      "path": "src/worlds/hologram/main.js",
+      "bytes": 6099,
+      "sha256": "d45ace412d8b840f56d1699f7f0ecbc2d13d255d07890e35c651d48c2a252535"
+    },
+    {
+      "path": "tests/mia-v41.test.mjs",
+      "bytes": 3284,
+      "sha256": "b548784a194b1b39e5c2c78def5b31ba0f13928e899a08c43ad746fc05e4e390"
+    }
+  ]
+}

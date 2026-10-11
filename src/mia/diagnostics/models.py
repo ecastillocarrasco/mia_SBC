@@ -95,6 +95,14 @@ class EventStage(StrEnum):
     LLM_ERROR = "LLM_ERROR"
     POSTPROCESSING = "POSTPROCESSING"
 
+    # ── Privacy Gateway ────────────────────────────────────────
+    PRIVACY_GATEWAY_INSPECT = "PRIVACY_GATEWAY_INSPECT"
+    """Resumen de una llamada protegida: política aplicada y categorías detectadas (nunca los valores)."""
+    PRIVACY_GATEWAY_BLOCKED = "PRIVACY_GATEWAY_BLOCKED"
+    """Fallo seguro: la llamada externa se bloqueó (Presidio no disponible, secreto irredactable, etc.)."""
+    PRIVACY_GATEWAY_RESTORED = "PRIVACY_GATEWAY_RESTORED"
+    """Restauración de tokens en la respuesta del LLM antes de mostrarla."""
+
     # ── Presentación ──────────────────────────────────────────
     PRESENTATION_INTENT_CLASSIFIED = "PRESENTATION_INTENT_CLASSIFIED"
     PRESENTATION_ROUTING = "PRESENTATION_ROUTING"

@@ -1,14 +1,19 @@
+import { MiaBootLoader } from "../../core/boot-loader-v43.js";
+import { getWelcomeText } from "../../core/identity-v45.js";
+import { MiaWelcomeVoiceV45 } from "../../core/welcome-voice-v45.js";
 import * as THREE from "three";
 import { MiaClient } from "../../core/client.js";
-import { bindMicButton } from "../../core/dictation.js";
+import { MiaVoiceV4 } from "../../core/voice-v4.js";
 import { avatarLabel } from "../../core/avatar.js";
-import { renderPresentation, renderSources } from "../../core/present.js";
 import { MiaScene } from "../../core/scene.js";
+import { MiaBehaviorV4 } from "../../core/behavior-v4.js";
+import { MiaWaitingV4 } from "../../core/waiting-v4.js";
+import { hasPresentationData, presentationType } from "../../core/premium-tables.js";
+import { renderHologramBrief } from "../../core/hologram-brief.js";
 
-// Material de proyección: brillo en los bordes (fresnel) y bandas que suben, aditivo.
 function hologramMaterial() {
   return new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(0x5ff2ff) } },
+    uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(0x71e9f1) } },
     vertexShader: `
       #include <skinning_pars_vertex>
       varying vec3 vNormal; varying vec3 vView; varying float vY;
@@ -29,10 +34,10 @@ function hologramMaterial() {
       uniform float uTime; uniform vec3 uColor;
       varying vec3 vNormal; varying vec3 vView; varying float vY;
       void main() {
-        float fresnel = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.2);
-        float bands = 0.55 + 0.45 * step(0.5, fract(vY * 18.0 - uTime * 1.6));
-        float alpha = clamp(fresnel * 1.4 + 0.12, 0.0, 1.0) * bands;
-        gl_FragColor = vec4(uColor * (0.6 + fresnel), alpha);
+        float edge = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.0);
+        float scan = 0.75 + 0.25 * step(0.5, fract(vY * 18.0 - uTime * 1.35));
+        float alpha = clamp(0.18 + edge * 0.83, 0.0, 0.92) * scan;
+        gl_FragColor = vec4(uColor * (0.72 + edge * 0.95), alpha);
       }`,
     transparent: true,
     depthWrite: false,
@@ -45,103 +50,202 @@ const resultEl = document.getElementById("result");
 const composer = document.getElementById("composer");
 const input = document.getElementById("input");
 const sendButton = document.getElementById("send");
-
-const scene = new MiaScene(document.getElementById("canvas-root"), { background: 0x000000, shadows: false, fov: 34 });
-scene.camera.position.set(0, 1.15, 5.2);
+const micButton = document.getElementById("mic");
+const welcomeReplay = document.getElementById("miaWelcomeReplay");
+const boot = new MiaBootLoader({ mode: "hologram" });
+const scene = new MiaScene(document.getElementById("canvas-root"), {
+  background: 0x01090d, shadows: false, fov: 34,
+});
+scene.camera.position.set(0, 1.5, 5.2);
+scene.target.set(0, 1.45, 0);
 const client = new MiaClient();
 const materials = [];
+let behavior = null;
 let busy = false;
+let greetingTimer = null;
+let welcomeMessage = "";
+const welcomeVoice = new MiaWelcomeVoiceV45({
+  apiBase: client.apiBase,
+  onBlocked: () => {
+    if (!busy && welcomeReplay) welcomeReplay.hidden = false;
+  },
+});
+welcomeReplay?.addEventListener("click", () => {
+  welcomeReplay.hidden = true;
+  if (!busy && welcomeMessage) void welcomeVoice.start(welcomeMessage);
+});
+let captionEpoch = 0;
+let voice = null;
+function sayCaption(message, kind = "answer") {
+  const epoch = ++captionEpoch;
+  caption.textContent = String(message ?? "");
+  caption.dataset.kind = kind;
+  caption.classList.remove("is-revealed");
+  requestAnimationFrame(() => {
+    if (epoch === captionEpoch) caption.classList.add("is-revealed");
+  });
+}
 
-scene.onFrame = (t) => {
-  for (const m of materials) m.uniforms.uTime.value = t;
-  if (scene.model) scene.model.rotation.y = Math.sin(t * 0.25) * 0.12; // leve giro de "proyección"
+const waiting = new MiaWaitingV4({
+  onUpdate: (message) => sayCaption(message, "waiting"),
+  onClear: () => {},
+});
+
+scene.onFrame = (time) => {
+  for (const m of materials) m.uniforms.uTime.value = time;
+  if (scene.model) scene.model.rotation.y = Math.sin(time * 0.19) * 0.07;
 };
 
-client.addEventListener("avatar", (e) => {
-  scene.playState(e.detail.state);
-  if (!busy) caption.textContent = avatarLabel(e.detail.state);
+client.addEventListener("avatar", (event) => {
+  if (busy) return;
+  behavior?.enterBackendState(event.detail?.state);
+  if (!busy) sayCaption(avatarLabel(event.detail?.state));
 });
-client.addEventListener("progress", (e) => {
-  caption.textContent = e.detail.message || "Consultando…";
+client.addEventListener("progress", (event) => {
+  if (busy) waiting.progress(event.detail?.message ?? event.detail?.state ??
+      event.detail?.tool ?? "Estamos tramitando tu solicitud.");
+  behavior?.progress();
 });
 
 async function submit(text) {
-  if (busy || !text.trim()) return;
+  const question = String(text || "").trim();
+  if (busy || !question) return;
   busy = true;
+  welcomeVoice.cancel();
+  if (welcomeReplay) welcomeReplay.hidden = true;
   sendButton.disabled = true;
-  resultEl.innerHTML = "";
-  caption.textContent = "Pensando…";
-  scene.playState("pensando");
+  // En modo continuo: suspender mientras Mía responde, conservando el modo.
+  voice?.pause();
+  resultEl.replaceChildren();
+  window.clearTimeout(greetingTimer);
+  greetingTimer = null;
+  waiting.start();
+  behavior?.enter("thinking", { query: question });
   try {
-    const result = await client.send(text);
-    caption.textContent = result.answer;
-    resultEl.innerHTML = (result.presentations || []).map(renderPresentation).join("") + renderSources(result.web_sources);
-    await client.speak(result.speech, { onStart: () => scene.playState("hablando") });
-    scene.playState(result.avatar_state);
+    const response = await client.send(question);
+    waiting.stop();
+    const answer = String(response?.answer || response?.speech || "Ya tengo el resultado.");
+    const presentations = Array.isArray(response?.presentations) ? response.presentations : [];
+    const withData = hasPresentationData(presentations);
+    const type = withData ? presentationType(presentations) : "conversation";
+    sayCaption(answer, withData ? "presenting" : "answer");
+    // Hologram is concise by contract. Never dump detailed employee data or full tables here.
+    if (withData) {
+      resultEl.innerHTML = renderHologramBrief(presentations, { type });
+      behavior?.enter("presenting", { presentationType: type, query: question });
+    } else {
+      resultEl.replaceChildren();
+    }
+    await client.speak(response?.speech || answer, {
+      onStart: () => {
+        if (!withData) behavior?.enter("speaking", { answer, presentationType: type });
+      },
+    });
+    behavior?.enter("idle");
   } catch (error) {
-    console.error(error);
-    caption.textContent = "No he podido completar la consulta.";
-    scene.playState("confundida");
+    waiting.stop();
+    console.error("[mIA V4 HG] Consulta fallida", error);
+    sayCaption("No he podido completar la consulta.", "error");
+    resultEl.replaceChildren();
+    behavior?.enter("error");
   } finally {
+    waiting.stop();
     busy = false;
     sendButton.disabled = false;
-    input.focus();
+    voice?.resume();  // se rearma solo si se eligió escucha continua
+    if (voice?.mode !== "continuous") input.focus();
   }
 }
 
-composer.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const text = input.value;
+composer.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const question = input.value;
   input.value = "";
-  submit(text);
+  void submit(question);
 });
 
-scene
-  .load((p) => {
-    caption.textContent = `Iniciando proyección… ${Math.round(p * 100)} %`;
-  })
-  .then(() => {
-    // Bajamos la proyección para que el avatar quede completo dentro del viewport
-    // y deje espacio suficiente para el HUD inferior.
-    if (scene.model) {
-      scene.model.position.y -= 0.8;
-    }
-
-    // Si el shader no compila en esta GPU/navegador, mIA no debe quedar invisible:
-    // se cambia a un material holográfico simple (sin bandas animadas).
-    scene.renderer.debug.onShaderError = () => {
-      console.warn("[mIA] shader del holograma no disponible: uso el material de respaldo");
-      materials.length = 0;
-      scene.applyMaterial(
-        () =>
-          new THREE.MeshBasicMaterial({
-            color: 0x5ff2ff,
-            transparent: true,
-            opacity: 0.55,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-          }),
-      );
-    };
-    scene.applyMaterial(() => {
-      const material = hologramMaterial();
-      materials.push(material);
-      return material;
-    });
-    scene.playState("saludando");
-    caption.textContent = "Hola, soy mIA. ¿En qué puedo ayudarte?";
-  })
-  .catch((error) => {
-    console.error(error);
-    caption.textContent = "No se ha podido cargar la proyección.";
+scene.load((value, detail) => {
+  boot.progress(value, detail);
+}).then(async (clips) => {
+  const sourceClipCount = clips.filter((name) => name !== "mIA_IDLE_SAFE").length;
+  if (sourceClipCount !== 84) console.warn(`[mIA V4 HG] Se esperaban 84 clips originales; cargados ${sourceClipCount}`);
+  // Existing GLSL may not compile on every GPU: fallback to a skinned-compatible material.
+  scene.renderer.debug.onShaderError = () => {
+    console.warn("[mIA V4 HG] Shader no compatible: material de respaldo");
+    materials.length = 0;
+    scene.applyMaterial(() => new THREE.MeshBasicMaterial({
+      color: 0x71e9f1, transparent: true, opacity: 0.52,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+  };
+  scene.applyMaterial(() => {
+    const mat = hologramMaterial();
+    materials.push(mat);
+    return mat;
   });
+  behavior = new MiaBehaviorV4({ scene, mode: "hologram" });
+  await boot.complete();
+  behavior.enter("greeting");
+  welcomeMessage = getWelcomeText();
+  sayCaption(welcomeMessage, "welcome");
+  void welcomeVoice.start(welcomeMessage);
+  greetingTimer = window.setTimeout(() => {
+    greetingTimer = null;
+    if (!busy && behavior?.state === "greeting") behavior.enter("idle");
+  }, Math.max(2000, scene.clipDuration("mIA_SEQ_BIENVENIDA") * 1000 + 250));
+}).catch((error) => {
+  boot.fail(error);
+  console.error("[mIA V4 HG] Fallo al cargar el modelo", error);
+  sayCaption("No se ha podido cargar la proyección de Mía.", "error");
+});
 
-bindMicButton(document.getElementById("mic"), {
-  onInterim: (text) => {
-    input.value = text;
-  },
+// V4.4: micrófono apagado -> una consulta -> continuo -> apagado.
+const hgMicAnnounce = document.getElementById("hgMicModeAnnounce");
+function displayHgMicMode(mode, { paused = false } = {}) {
+  const names = {
+    off: ["Micrófono desactivado", "Una pregunta"],
+    once: [paused ? "Una consulta finalizada; micrófono en pausa" : "Escucha para una pregunta", "Escucha continua"],
+    continuous: [paused ? "Modo continuo pausado" : "Modo continuo activo", "Apagar micrófono"],
+  };
+  const [state, next] = names[mode] || names.off;
+  micButton.dataset.micMode = mode;
+  micButton.classList.toggle("is-once", mode === "once");
+  micButton.classList.toggle("is-continuous", mode === "continuous");
+  micButton.classList.toggle("is-suspended", mode !== "off" && paused);
+  micButton.setAttribute("aria-pressed", String(mode !== "off"));
+  micButton.setAttribute("aria-label", `${state}. Siguiente pulsación: ${next}`);
+  micButton.title = `${state} · ${next}`;
+  if (hgMicAnnounce) hgMicAnnounce.textContent = state;
+}
+voice = new MiaVoiceV4({
+  onInterim: (text) => { input.value = text; },
   onFinal: (text) => {
     input.value = "";
-    submit(text);
+    if (text.trim()) void submit(text);
   },
+  onModeChange: (mode, info) => { displayHgMicMode(mode, info); },
+  onError: () => {
+    if (!busy) sayCaption("No he podido activar el micrófono. Puedes escribir tu consulta.", "error");
+  },
+});
+displayHgMicMode("off");
+if (!voice.available) {
+  micButton.disabled = true;
+  micButton.title = "Dictado no disponible en este navegador";
+}
+micButton.addEventListener("click", () => {
+  if (busy) {
+    if (voice?.mode === "continuous") voice.stop();
+    return;
+  }
+  voice?.cycle();
+});
+window.addEventListener("pagehide", () => {
+  boot.dispose();
+  window.clearTimeout(greetingTimer);
+  waiting.stop();
+  client.stopSpeaking();
+  welcomeVoice.dispose();
+  voice?.destroy();
+  behavior?.destroy();
 });

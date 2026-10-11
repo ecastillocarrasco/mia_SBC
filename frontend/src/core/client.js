@@ -58,12 +58,14 @@ export class MiaClient extends EventTarget {
   }
 
   /** Envía un mensaje y va emitiendo eventos según llegan; devuelve el TurnResult final. */
-  async send(message) {
+  async send(message, { attachmentIds = [] } = {}) {
     this._emit("sending", { message });
+    const body = { message, session_id: this.sessionId };
+    if (attachmentIds.length) body.attachment_ids = attachmentIds;
     const response = await fetch(`${this.apiBase}/api/chat/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, session_id: this.sessionId }),
+      body: JSON.stringify(body),
     });
     if (!response.ok || !response.body) {
       const detail = { status: response.status };

@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -57,8 +58,9 @@ from mia.llm import (
 )
 from mia.diagnostics import EventStage, EventStatus, begin_trace, emit as diag_emit
 from mia.modules.finanzas import KEYWORDS as _FINANZAS_KEYWORDS
-from mia.presentation.intent import build_presentation_hint, classify_query
 from mia.observability import current_request_id, get_logger
+from mia.presentation.intent import build_presentation_hint, classify_query
+from mia.privacy_gateway.context_manager import set_operation_context
 from mia.rules import rules_for_prompt
 
 log = get_logger(__name__)
@@ -232,6 +234,7 @@ class ConversationEngine:
     ) -> AsyncIterator[TurnEvent]:
         message = message.strip()[:MAX_MESSAGE_CHARS]
         request_id = current_request_id()
+        set_operation_context(user_id=user.user_id, operation_id=request_id or uuid.uuid4().hex)
 
         async with begin_trace(
             query=message,

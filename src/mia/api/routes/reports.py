@@ -16,6 +16,7 @@ MEDIA = {
     "pdf": "application/pdf",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "html": "text/html; charset=utf-8",
 }
 
 

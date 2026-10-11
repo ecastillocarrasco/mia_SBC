@@ -8,7 +8,7 @@ from mia.attachments.service import AttachmentService
 from mia.auth import IdentityProvider, build_identity_provider
 from mia.connectors.graph import GraphClient
 from mia.connectors.sharepoint import CertificateTokenProvider, SharePointClient
-from mia.conversation import ConversationEngine, Persona
+from mia.conversation import ConversationEngine, Persona, ToolRegistry
 from mia.data import Database
 from mia.ingestion.sync.factory import build_sharepoint_client
 from mia.llm import LLMProvider, build_llm_provider
@@ -38,6 +38,9 @@ class Services:
     voice: CachedVoice
     identity: IdentityProvider
     engine: ConversationEngine
+    registry: ToolRegistry
+    """Mismo registro que usa `engine` — expuesto para quien necesite ejecutar una herramienta fuera de
+    una conversación (p. ej. el ejecutor de trabajos del Job Manager, Fase G)."""
     graph: GraphClient | None = None
     sharepoint: SharePointClient | None = None
     attachment_service: AttachmentService | None = None
@@ -52,7 +55,7 @@ class Services:
         db: Database | None = None,
     ) -> Services:
         database = db or Database(settings.database_url)
-        provider = llm or build_llm_provider(settings.llm)
+        provider = llm or build_llm_provider(settings.llm, settings.privacy_gateway)
         graph = build_graph_client(settings)
         sharepoint = build_sharepoint_client(settings) if settings.sharepoint.configured else None
         registry = build_registry(
@@ -92,6 +95,7 @@ class Services:
             voice=voice or build_voice(settings.voice),
             identity=build_identity_provider(settings.auth),
             engine=engine,
+            registry=registry,
             graph=graph,
             sharepoint=sharepoint,
             attachment_service=attachment_svc,

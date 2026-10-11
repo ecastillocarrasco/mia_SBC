@@ -13,6 +13,7 @@ from typing import Any
 
 from mia.modules.rrhh.charts import chart_spec
 from mia.modules.rrhh.informes.document import Block, Document
+from mia.modules.rrhh.informes.render_html import to_html
 
 NAVY = "1B2559"
 GOLD = "D8A565"
@@ -21,14 +22,67 @@ LINE = "E3DDD3"
 MUTED = "6B6F80"
 PALETTE = ["1B2559", "D8A565", "3A8F8A", "D9776B", "5B8DEF", "8A6BB0", "7FA37A", "C9B8A3"]
 
+# Colores de severidad para Block(kind="warnings") — sección 9/condición 2 de la aprobación de Fase D:
+# bloqueante, calidad de datos e información deben distinguirse visualmente, no solo en el dato crudo.
+SEVERITY_COLOR = {"blocker": "B3261E", "data_quality": "A66A1E", "info": "3A8F8A"}
+SEVERITY_LABEL = {"blocker": "BLOQUEANTE", "data_quality": "CALIDAD DE DATOS", "info": "INFO"}
+NARRATIVE_LABEL = {
+    "fact": "HECHO VERIFICADO", "interpretation": "INTERPRETACIÓN",
+    "hypothesis": "HIPÓTESIS", "recommendation": "RECOMENDACIÓN",
+}
+
+
+def _flat_evidence(evidence: dict[str, Any]) -> str:
+    return ", ".join(f"{k}: {v}" for k, v in evidence.items()) if evidence else "—"
+
 
 def _rows(block: Block) -> tuple[list[str], list[list[Any]]]:
-    if block.kind == "table":
+    if block.kind in ("table", "annex"):
         return [str(c) for c in block.data.get("columns", [])], list(block.data.get("rows", []))
+    if block.kind == "chart":
+        # Reconstrucción de la tabla de datos que respalda el gráfico (sección 9: el gráfico y su
+        # tabla deben venir del mismo cálculo, nunca inventarse por separado) — ver ``Block.kind ==
+        # "chart"`` en el docstring de ``Block``.
+        spec = block.data
+        series = spec.get("series", [])
+        labels = spec.get("labels", [])
+        columns = ["Categoría", *(str(s.get("name", "Valor")) for s in series)]
+        rows = [
+            [label, *(s.get("values", [None] * len(labels))[i] for s in series)]
+            for i, label in enumerate(labels)
+        ]
+        return columns, rows
+    if block.kind == "warnings":
+        columns = ["Severidad", "Código", "Mensaje", "Fuente"]
+        rows = [
+            [SEVERITY_LABEL.get(i.get("severity"), i.get("severity")), i.get("code"), i.get("message"), i.get("source", "")]
+            for i in block.data.get("items", [])
+        ]
+        return columns, rows
+    if block.kind == "narrative":
+        columns = ["Tipo", "Afirmación", "Evidencia"]
+        rows = [
+            [NARRATIVE_LABEL.get(s.get("kind"), s.get("kind")), s.get("text"), _flat_evidence(s.get("evidence") or {})]
+            for s in block.data.get("statements", [])
+        ]
+        return columns, rows
+    if block.kind == "methodology":
+        return ["Metodología"], [[n] for n in block.data.get("notes", [])]
     return ["Concepto", "Valor"], [[k, v] for k, v in block.data.items()]
 
 
+def _annex_notice(block: Block) -> str | None:
+    if block.kind != "annex" or not block.data.get("truncated"):
+        return None
+    shown, total = len(block.data.get("rows", [])), block.data.get("total_rows")
+    return f"Mostrando {shown} de {total} filas — el resto no se ha omitido en silencio, solo no entra en este documento."
+
+
 def _chart_of(block: Block) -> dict[str, Any] | None:
+    if block.kind == "chart":
+        # Bloque de primera clase (sección 10 del Bloque II): los datos y el tipo de gráfico ya los
+        # decidió el backend al construir el Document — nunca se re-derivan aquí.
+        return block.data
     if block.kind != "table":
         return None
     columns, rows = _rows(block)
@@ -59,6 +113,9 @@ def to_xlsx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
         ws["C2"].font = Font(bold=True, size=16, color=NAVY)
         ws["C3"] = block.title if block.title != doc.title else (doc.subtitle or "")
         ws["C3"].font = Font(size=10, color=MUTED)
+        if notice := _annex_notice(block):
+            ws["C4"] = notice
+            ws["C4"].font = Font(size=9, italic=True, color=GOLD)
         for col in range(1, 13):
             ws.cell(row=5, column=col).border = Border(top=Side(style="medium", color=GOLD))
         columns, rows = _rows(block)
@@ -67,10 +124,18 @@ def to_xlsx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
             cell.font = Font(bold=True, color="FFFFFF")
             cell.fill = PatternFill("solid", fgColor=NAVY)
             cell.alignment = Alignment(wrap_text=True, vertical="center")
+        severity_col = 1 if block.kind == "warnings" else None
         for r, row in enumerate(rows, header_row + 1):
             for c, value in enumerate(row, 1):
                 cell = ws.cell(row=r, column=c, value=value)
                 cell.border = Border(bottom=hair)
+                if severity_col == c:
+                    sev = next(
+                        (k for k, label in SEVERITY_LABEL.items() if label == value),
+                        None,
+                    )
+                    if sev:
+                        cell.font = Font(bold=True, color=SEVERITY_COLOR[sev])
                 if (r - header_row) % 2 == 0:
                     cell.fill = PatternFill("solid", fgColor=LIGHT)
                 if isinstance(value, int | float) and not isinstance(value, bool):
@@ -277,6 +342,12 @@ def to_pdf(doc: Document, generated: datetime, logo: Path | None = None) -> byte
         "kv", fontName="Helvetica-Bold", fontSize=18, leading=21, textColor=hexc(NAVY), alignment=1
     )
     kpi_label = ParagraphStyle("kl", fontName="Helvetica", fontSize=8, leading=10, textColor=hexc(MUTED), alignment=1)
+    evidence_style = ParagraphStyle("ev", parent=cell, fontSize=7.5, fontName="Helvetica-Oblique", textColor=hexc(MUTED))
+    annex_notice_style = ParagraphStyle("an", parent=cell, fontSize=8.5, fontName="Helvetica-Oblique", textColor=hexc(GOLD))
+    severity_label_styles = {
+        sev: ParagraphStyle(f"warnlbl_{sev}", parent=cell, fontName="Helvetica-Bold", fontSize=9, textColor=hexc(color))
+        for sev, color in SEVERITY_COLOR.items()
+    }
 
     def para(value: Any, style: Any) -> Paragraph:
         text = "" if value is None else str(value)
@@ -364,7 +435,47 @@ def to_pdf(doc: Document, generated: datetime, logo: Path | None = None) -> byte
                 )
             )
             parts.append(pairs)
+        elif block.kind == "warnings":
+            cells = []
+            for item in block.data.get("items", []):
+                sev = item.get("severity", "info")
+                label = f"{SEVERITY_LABEL.get(sev, sev.upper())} · {item.get('code', '')}"
+                style = severity_label_styles.get(sev, label_style)
+                cells.append([[para(label, style), para(item.get("message", ""), value_style)]])
+            grid = Table(cells, colWidths=[width])
+            grid.setStyle(
+                TableStyle(
+                    [
+                        ("LINEBELOW", (0, 0), (-1, -1), 0.4, hexc(LINE)),
+                        ("TOPPADDING", (0, 0), (-1, -1), 7),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                    ]
+                )
+            )
+            parts.append(grid)
+        elif block.kind == "narrative":
+            cells = []
+            for s in block.data.get("statements", []):
+                kind_label = NARRATIVE_LABEL.get(s.get("kind"), str(s.get("kind", "")).upper())
+                flow = [para(kind_label, label_style), para(s.get("text", ""), value_style)]
+                evidence = s.get("evidence") or {}
+                if evidence:
+                    flow.append(para(f"Evidencia: {_flat_evidence(evidence)}", evidence_style))
+                cells.append([flow])
+            grid = Table(cells, colWidths=[width])
+            grid.setStyle(
+                TableStyle(
+                    [
+                        ("LINEBELOW", (0, 0), (-1, -1), 0.4, hexc(LINE)),
+                        ("TOPPADDING", (0, 0), (-1, -1), 7),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                    ]
+                )
+            )
+            parts.append(grid)
         else:
+            if notice := _annex_notice(block):
+                parts += [para(notice, annex_notice_style), Spacer(1, 0.15 * cm)]
             if spec := _chart_of(block):
                 parts += [_pdf_chart(spec, width), Spacer(1, 0.2 * cm)]
             col_widths = _smart_col_widths(columns, rows, width)
@@ -452,6 +563,9 @@ def to_pptx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
         if block.kind == "kpis":
             _kpi_slide(prs, blank, header, block)
             continue
+        if block.kind == "warnings":
+            _warnings_slide(prs, blank, header, block)
+            continue
         if spec := _chart_of(block):
             _chart_slide(prs, blank, header, block.title, spec)
         _table_slides(prs, blank, header, block)
@@ -511,15 +625,43 @@ def _kpi_slide(prs: Any, layout: Any, header: Any, block: Block) -> None:
         tf.paragraphs[1].runs[0].font.color.rgb = RGBColor.from_string(MUTED)
 
 
+def _warnings_slide(prs: Any, layout: Any, header: Any, block: Block) -> None:
+    """Diapositiva dedicada (no una tabla genérica): cada advertencia con su severidad en color,
+    condición obligatoria 2 de la aprobación de Fase D."""
+    from pptx.dml.color import RGBColor  # noqa: PLC0415
+    from pptx.util import Inches, Pt  # noqa: PLC0415
+
+    items = block.data.get("items", [])
+    for start in range(0, max(len(items), 1), 5):
+        chunk = items[start : start + 5]
+        slide = prs.slides.add_slide(layout)
+        header(slide, block.title if start == 0 else f"{block.title} (cont.)")
+        for i, item in enumerate(chunk):
+            sev = item.get("severity", "info")
+            y = Inches(1.5 + i * 1.05)
+            box = slide.shapes.add_textbox(Inches(0.5), y, Inches(12.3), Inches(1.0)).text_frame
+            box.word_wrap = True
+            box.text = f"{SEVERITY_LABEL.get(sev, sev.upper())} · {item.get('code', '')}"
+            box.paragraphs[0].runs[0].font.size = Pt(13)
+            box.paragraphs[0].runs[0].font.bold = True
+            box.paragraphs[0].runs[0].font.color.rgb = RGBColor.from_string(SEVERITY_COLOR.get(sev, MUTED))
+            msg = box.add_paragraph()
+            msg.text = str(item.get("message", ""))
+            msg.runs[0].font.size = Pt(11)
+            msg.runs[0].font.color.rgb = RGBColor(0x22, 0x22, 0x22)
+
+
 def _table_slides(prs: Any, layout: Any, header: Any, block: Block) -> None:
     from pptx.dml.color import RGBColor  # noqa: PLC0415
     from pptx.util import Inches, Pt  # noqa: PLC0415
 
     columns, rows = _rows(block)
+    notice = _annex_notice(block)
     for start in range(0, len(rows), 12):
         chunk = rows[start : start + 12]
         slide = prs.slides.add_slide(layout)
-        header(slide, block.title if start == 0 else f"{block.title} (cont.)")
+        title = block.title if start == 0 else f"{block.title} (cont.)"
+        header(slide, f"{title} · {notice}" if notice and start == 0 else title)
         shape = slide.shapes.add_table(
             len(chunk) + 1, len(columns), Inches(0.4), Inches(1.4), Inches(12.5), Inches(0.4) * (len(chunk) + 1)
         )
@@ -543,4 +685,4 @@ def _table_slides(prs: Any, layout: Any, header: Any, block: Block) -> None:
                         run.font.bold = r == 0
 
 
-RENDERERS = {"pdf": to_pdf, "xlsx": to_xlsx, "pptx": to_pptx}
+RENDERERS = {"pdf": to_pdf, "xlsx": to_xlsx, "pptx": to_pptx, "html": to_html}

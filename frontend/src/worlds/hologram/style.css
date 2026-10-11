@@ -30,3 +30,73 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color:
   cursor: pointer; font-size: 16px; }
 .mic.listening { border-color: #ef8b6f; box-shadow: 0 0 0 3px rgba(239, 139, 111, 0.25); animation: pulse 1.2s infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(239, 139, 111, 0.08); } }
+
+/* mIA V4 | hologram executive brief, intentionally lighter than 3D. */
+:root{--hg-ice:#a9f5f3;--hg-blue:#71e9f1;--hg-line:rgba(113,233,241,.24)}
+html,body{overflow:hidden}
+.projection{background:radial-gradient(circle at 50% 35%,#05262d 0%,#020a0e 57%,#000 100%)}
+.hud{width:min(900px,calc(100vw - 26px));bottom:clamp(12px,3vh,24px);gap:12px}
+.caption{font:400 clamp(15px,1.5vw,22px)/1.38 Georgia,'Times New Roman',serif;letter-spacing:.015em;color:#ddffff;max-width:60ch;margin:0 auto;text-shadow:0 0 22px rgba(113,233,241,.48),0 2px 18px #000;overflow-wrap:anywhere}
+.result{max-height:min(38dvh,440px);overflow:auto;scrollbar-width:thin;scrollbar-color:rgba(113,233,241,.3) transparent}
+.result:empty{display:none}
+.hg-brief{border:1px solid var(--hg-line);border-radius:22px;padding:17px;background:linear-gradient(145deg,rgba(4,31,41,.92),rgba(1,15,23,.91));box-shadow:0 16px 60px rgba(0,0,0,.42),inset 0 1px 0 rgba(180,255,250,.11);display:grid;gap:14px}
+.hg-brief-head span{font-size:9px;letter-spacing:.2em;color:#63dfdf;font-weight:800}
+.hg-brief-head h2{margin:5px 0 0;font:400 clamp(20px,2vw,29px) Georgia,'Times New Roman',serif;color:#dcfffc}
+.hg-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:9px}
+.hg-kpi{padding:13px;background:rgba(113,233,241,.075);border:1px solid rgba(113,233,241,.17);border-radius:15px;min-width:0}
+.hg-kpi span{display:block;color:#8cdbd9;font-size:10px;overflow-wrap:anywhere}
+.hg-kpi strong{display:block;font-size:clamp(17px,2vw,27px);margin-top:5px;font-variant-numeric:tabular-nums;color:#f1ffff;overflow-wrap:anywhere}
+.hg-kpi small{font-size:10px;color:#a9f5f3}
+.hg-mini-table{background:rgba(1,16,23,.5);border:1px solid rgba(113,233,241,.11);border-radius:14px;padding:11px;max-width:100%;overflow:auto}
+.hg-mini-head{display:flex;align-items:baseline;gap:12px;justify-content:space-between;margin-bottom:10px}
+.hg-mini-head b{font-size:12px;color:#d9ffff}
+.hg-mini-head small{color:#79b5b9;font-size:9px}
+.hg-mini-table table{border-collapse:collapse;width:100%;font-size:11px;color:#c6ebef}
+.hg-mini-table th,.hg-mini-table td{padding:7px;border-bottom:1px solid rgba(113,233,241,.1);text-align:left;overflow-wrap:anywhere}
+.hg-mini-table th{font-size:9px;color:#86e2e2;text-transform:uppercase;letter-spacing:.07em}
+.hg-documents{display:flex;flex-wrap:wrap;gap:8px}
+.hg-documents a{padding:9px 12px;border:1px solid rgba(113,233,241,.26);border-radius:10px;text-decoration:none;color:#d9ffff;font-size:11px;background:rgba(113,233,241,.08)}
+.hg-documents a:hover{background:rgba(113,233,241,.18)}
+.composer{background:rgba(1,21,28,.64);padding:6px;border:1px solid rgba(113,233,241,.17);border-radius:999px;backdrop-filter:blur(15px)}
+.composer input{font-size:13px;min-width:0;flex:1}
+@media(max-width:600px){.hud{width:calc(100vw - 16px);bottom:8px}.result{max-height:34dvh}.hg-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.hg-brief{padding:11px}.hg-mini-table{padding:8px}.caption{font-size:15px}}
+
+
+/* V4.2 — mensajes holográficos con entrada editorial, sin tarjetas en
+ * conversación simple. Los resúmenes/KPIs conservan su HUD compacto. */
+.caption{
+  max-width:62ch;padding:0 4px 4px;
+  font-size:clamp(18px,2vw,27px);font-weight:400;
+  text-wrap:balance;line-height:1.35;
+  transition:none;
+}
+.caption.is-revealed{
+  animation:miaHG42Reveal .85s cubic-bezier(.18,.8,.2,1) both;
+}
+.caption[data-kind="welcome"]{font-size:clamp(22px,2.5vw,34px);color:#e5ffff}
+.caption[data-kind="waiting"]{font-size:clamp(16px,1.7vw,22px);color:#abe6eb}
+@keyframes miaHG42Reveal{
+  from{opacity:0;transform:translateY(12px);filter:blur(3px)}
+  to{opacity:1;transform:none;filter:blur(0)}
+}
+@media(prefers-reduced-motion:reduce){.caption.is-revealed{animation:none!important}}
+
+/* V4.2.1 — Botón de dictado manual (sin captura automática). */
+.composer .mic{flex:0 0 43px;width:43px;height:43px;background:transparent;border:1px solid rgba(113,233,241,.27);color:#a5f3f0;border-radius:50%;}
+.composer .mic.is-listening{background:rgba(40,211,216,.24);box-shadow:0 0 0 4px rgba(40,211,216,.08);color:#fff;}
+.composer .mic:disabled{opacity:.35;cursor:not-allowed;}
+
+/* V4.4 - microfono en tres estados, claramente visible en HG. */
+.hg-visually-hidden{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important}
+.composer .mic{position:relative;}
+.composer .mic[data-mic-mode="once"]{border-color:#83e3e9;background:rgba(24,171,183,.25);color:#fff}
+.composer .mic[data-mic-mode="continuous"]{border-color:#83e3e9;background:rgba(15,116,131,.57);color:#fff;box-shadow:0 0 0 4px rgba(42,211,225,.11)}
+.composer .mic[data-mic-mode="continuous"]::after{content:"∞";position:absolute;top:-7px;right:-7px;display:grid;place-items:center;width:23px;height:23px;border:1px solid #9cf2f4;border-radius:50%;background:#094c5b;color:#fff;font-size:17px;font-weight:800}
+.composer .mic[data-mic-mode="once"]::after{content:"1";position:absolute;top:-6px;right:-6px;display:grid;place-items:center;width:19px;height:19px;border:1px solid #baf7f8;border-radius:50%;background:#0e8791;color:#fff;font-size:11px;font-weight:800}
+.composer .mic.is-suspended{opacity:.7}
+
+/* mIA V4.5 — user-gesture fallback if browser forbids welcome autoplay. */
+.mia45-hg-replay[hidden]{display:none!important;}
+.mia45-hg-replay{align-self:center;width:auto!important;max-width:230px;padding:9px 18px;
+  border:1px solid rgba(113,233,241,.35);border-radius:999px;color:#c6ffff;
+  background:rgba(9,48,59,.65);cursor:pointer;font:600 12px Aptos,'Segoe UI',sans-serif;}

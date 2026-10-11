@@ -89,7 +89,7 @@ async def _check(client: SharePointClient, settings: Settings, sources: list[Sou
 
 
 async def _index_cvs(settings: Settings, db: Database, client: SharePointClient) -> None:
-    llm = build_llm_provider(settings.llm)
+    llm = build_llm_provider(settings.llm, settings.privacy_gateway)
     indexer = CvIndexer(
         db=db,
         client=client,
