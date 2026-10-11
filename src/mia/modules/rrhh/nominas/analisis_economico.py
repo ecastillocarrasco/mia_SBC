@@ -593,7 +593,10 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
             "insights económicos y gráficos. "
             "Usa 'coste_empresa' cuando el usuario pregunte por 'gasto en nóminas' o 'coste salarial'. "
             "Para consultas de un solo mes, esta herramienta también funciona (p. ej. periodo='septiembre 2026'). "
-            "Para comparativas entre periodos distintos, llámala dos veces con periodos diferentes."
+            "Para comparativas entre periodos distintos, llámala dos veces con periodos diferentes. "
+            "Esta es la herramienta correcta para cualquier 'comparativa de costes/nóminas por "
+            "departamento': después de ejecutarla, usa 'generar_informe' para exportar el resultado a "
+            "PDF/Excel/PowerPoint/HTML — nunca 'generar_informe_ejecutivo', que no calcula importes."
         ),
         AnalisisEconomicoParams,
         handler,

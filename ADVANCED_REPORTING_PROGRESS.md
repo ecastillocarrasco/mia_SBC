@@ -166,6 +166,102 @@ seguridad y pruebas:
    3D/HG/Avatar Engine/animaciones en esta sesión. Se documentan aquí para que el proceso V4 (u otra
    sesión con autorización explícita sobre ese dominio) pueda actualizar esas dos aserciones.
 
+## 15. Incidencia: "comparativa de costes en nóminas por departamento" entregaba la plantilla ejecutiva genérica
+
+**Síntoma reportado por el usuario**: la petición «Genera un informe completo de comparativa de costes en
+nóminas por departamento en agosto de 2026» producía un PDF de 7 páginas con el título correcto pero
+contenido de la plantilla ejecutiva genérica (plantilla, puestos, absentismo, vacaciones), usando además
+octubre (el mes en curso) en vez de agosto — sin ningún coste salarial por departamento.
+
+### Causa raíz (confirmada leyendo el código, nunca supuesta)
+
+1. **Herramienta equivocada seleccionada por el LLM**: existen dos rutas para "informe" —
+   `analisis_economico_nominas` (motor real de coste salarial por departamento, con periodo y
+   k-anonimato ya validados en Fase B/C) y `generar_informe_ejecutivo` (plantilla genérica de
+   plantilla/absentismo/vacaciones — **cero** lógica de coste salarial, confirmado por búsqueda
+   exhaustiva en `src/mia/modules/rrhh/informes/executive.py`). La descripción de la segunda («informe...
+   completo... por departamento... sin consultas previas») competía con la ruta correcta y el LLM eligió
+   la equivocada.
+2. **Sustitución silenciosa de fecha**: al no recibir `desde`/`hasta` explícitos, `generar_informe_ejecutivo`
+   asumía «mes en curso» (octubre) sin avisar — de ahí los datos de octubre en vez de agosto.
+3. **Fallo arquitectónico de fondo**: el `ReportPlanner` (Fase B/F, `src/mia/reporting/planner.py`) ya
+   existía, validado y con sus propias pruebas, pero **nunca estaba conectado a ningún camino de
+   ejecución real** — ninguna herramienta lo importaba fuera de sus propios tests.
+4. **Gap de sinonimia real**: el registro semántico (`src/mia/query/fields.py`) no reconocía la frase
+   literal de la incidencia («costes en nóminas») como sinónimo de `coste_empresa` — solo variantes como
+   «coste salarial»/«costes salariales»/«coste de los salarios». Sin esta sinonimia, ni la validación
+   semántica ni la redirección habrían detectado la petición.
+
+### Corrección (mínima, sin reconstruir el motor ni tocar 3D/HG/sincronización)
+
+- **`src/mia/query/fields.py`**: añadidas las sinonimias que faltaban para `coste_empresa` ("coste en
+  nominas", "costes en nominas", "coste de nomina", "costes de nomina", "gasto en nominas", "gastos en
+  nominas").
+- **`src/mia/modules/rrhh/__init__.py`**: `build_registry()` ahora guarda una referencia a sí mismo en
+  `deps.services["registry"]` — el único cambio de cableado necesario para que una herramienta pueda
+  invocar a otra **a través del registro** (nunca llamando a su handler directamente, para no saltarse
+  la comprobación de permisos, el trazado de diagnóstico ni el timeout de `ToolRegistry.execute()`).
+- **`src/mia/modules/rrhh/informes/tools.py`**:
+  - `generar_informe_ejecutivo` usa el `ReportPlanner` YA EXISTENTE (no se construye otro) sobre
+    `ctx.user_message`. Si detecta un campo del dominio `"payroll"` (coste_empresa, líquido,
+    devengado...), **redirección real, no un mensaje de error**: ejecuta de verdad
+    `analisis_economico_nominas` a través de `deps.services["registry"]` y entrega ESE informe —
+    nunca un error técnico ni una mera indicación de qué herramienta usar. El usuario obtiene
+    directamente el informe que pidió, sin tener que volver a solicitarlo.
+  - **Una sola magnitud económica, nunca mezclada**: `_infer_concepto()` prioriza determinísticamente
+    coste_empresa > devengado > líquido según qué campo detectó el planner — nunca pasa más de un
+    concepto a `analisis_economico_nominas` en la misma llamada.
+  - Interpretación del periodo: si no hay fechas explícitas pero el texto menciona un periodo
+    reconocible, se usa ESE periodo (vía el mismo `PeriodEngine` de Fase B) en vez de asumir el mes en
+    curso en silencio — corrige también el síntoma de la fecha incluso para peticiones ejecutivas
+    legítimas sin vocabulario económico.
+  - Lógica de renderizado extraída a `_build_report_result()` (antes duplicada en `generar()`), reutilizada
+    por ambos caminos — sin duplicar lógica de negocio.
+- **`src/mia/modules/rrhh/nominas/analisis_economico.py`**: descripción de la herramienta reforzada
+  ("Esta es la herramienta correcta para cualquier comparativa de costes/nóminas por departamento...")
+  para reducir la ambigüedad desde el origen, además de la corrección estructural.
+
+### Verificación de los puntos exigidos explícitamente por el usuario
+
+1. **Redirección automática real** (no solo rechazo): `test_salary_cost_request_through_executive_tool_is_redirected_to_the_real_report`
+   (NOT_FOUND honesto con datos insuficientes — nunca la plantilla genérica) y el test de extremo a
+   extremo (OK con el informe real, sin que el usuario repita la petición).
+2. **`ReportPlanner` no acoplado solo a `generar_informe_ejecutivo`**: `test_report_planner_resolves_domains_beyond_payroll`
+   verifica, llamando al planner directamente (sin pasar por ninguna herramienta), que resuelve Nóminas
+   (`payroll`), Turnos (`shift`), Vacaciones (`vacation`) y Plantilla (`employee`). La conexión general
+   del planner con TODOS los dominios de ejecución queda, como indicó el usuario, para la Fase F — aquí
+   solo se verifica que el catálogo semántico subyacente ya generaliza.
+3. **Sin recursión, reintentos indefinidos ni llamadas duplicadas**: analíticamente, `_redirect_to_economic_analysis`
+   hace una única llamada acotada a `registry.execute()`, sin bucles ni reintentos; `analisis_economico_nominas`
+   no vuelve a llamar a `generar_informe_ejecutivo` en ningún punto (no hay ciclo posible). Verificado
+   también empíricamente: la traza de diagnóstico del test de extremo a extremo muestra exactamente una
+   invocación de cada herramienta (sin duplicados), y la suite completa (824 pruebas) corre en ~285 s,
+   el mismo orden de magnitud que antes de esta corrección.
+4. **Magnitud económica única y explícita**: verificado leyendo el PDF realmente persistido — contiene
+   "Coste empresa" y "Gasto salarial por departamento" (una sola magnitud), y explícitamente NO contiene
+   los marcadores de sección exclusivos de la plantilla ejecutiva genérica ("Absentismo ·", "Trabajo
+   temporal ·") ni una advertencia de k-anonimato que no procede en este escenario.
+5. **Permisos obligatorios en ambas rutas**: la ruta directa ya estaba cubierta (`test_needs_its_own_permission`
+   en `tests/test_analisis_economico.py`, preexistente); la ruta indirecta (a través de
+   `generar_informe_ejecutivo`) se cubre ahora con `test_payroll_redirect_still_enforces_the_nominas_permission`
+   — un usuario con `INFORMES_GENERAR` pero sin `NOMINAS_IMPORTES` recibe `PERMISSION_DENIED` también por
+   la vía indirecta, nunca una fuga de datos económicos.
+6. **LLM simulado vs. flujo real, documentado explícitamente**: ver la cabecera de
+   `tests/test_report_routing_semantic_validation.py` — todos los tests salvo uno llaman a
+   `ToolRegistry.execute()` directamente (sin ningún LLM, real ni simulado);
+   `test_incident_request_through_the_real_chat_entry_point_delivers_the_real_report` es el único que
+   atraviesa `ConversationEngine.run()` (el mismo método que invoca `/api/chat`) con un `FakeLLMProvider`
+   que elige PRIMERO la herramienta equivocada — reproduciendo fielmente el incidente real, no solo el
+   rechazo ni una llamada directa al generador económico.
+7. **Prueba funcional de referencia**: la solicitud exacta "comparativa de costes salariales por
+   departamento en agosto de 2026" queda fijada como `INCIDENT_REQUEST` en
+   `tests/test_report_routing_semantic_validation.py` — referencia para cualquier cambio futuro al
+   routing de informes.
+
+**Resultado de la suite completa tras la corrección**: 824 pruebas (817 + 7 nuevas/actualizadas de esta
+incidencia), todas en verde, 0 fallos. Build de frontend no afectado (ningún archivo de `frontend/`
+tocado). No se ha modificado Fase G, el Job Manager, ni los mundos 3D/HG/sincronización de datos.
+
 ## 10. Cierre de Fases D y E (ronda de continuación tras el cierre de la validación de nóminas)
 
 **Fase D — verificado, no reconstruido**: los 8 tipos de bloque que pedía esta ronda (KPI, Table,

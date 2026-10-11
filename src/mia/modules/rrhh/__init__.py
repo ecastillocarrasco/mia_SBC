@@ -99,6 +99,11 @@ def build_registry(
         sharepoint=sharepoint,
     )
     registry = ToolRegistry(pending_domains=tuple(DOMAINS[d][0] for d in DOMAINS if d not in active))
+    # Referencia a sí mismo para los pocos casos (p. ej. redirección interna de informes) en los que una
+    # herramienta debe invocar a otra a través del registro — nunca llamando a su handler directamente,
+    # para no saltarse la comprobación de permisos, el trazado de diagnóstico ni el timeout que aplica
+    # `ToolRegistry.execute()`. `deps.services` ya es el cajón de servicios compartidos del dominio.
+    deps.services["registry"] = registry
     sistema.register(registry)
     for domain in active:
         DOMAINS[domain][1](registry, deps)
