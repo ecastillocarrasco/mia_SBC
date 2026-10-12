@@ -193,7 +193,8 @@ class OpenAIResponsesProvider:
         return "\n".join(parts)
 
     async def stream(self, request: LLMRequest) -> AsyncIterator[LLMEvent]:
-        payload = build_payload(self._model, request, web_search=self._web_search)
+        model = request.model or self._model
+        payload = build_payload(model, request, web_search=self._web_search)
         for attempt in range(self.MAX_RETRIES + 1):
             try:
                 async with self._client.stream("POST", "/responses", json=payload) as response:
@@ -211,7 +212,7 @@ class OpenAIResponsesProvider:
                             log.warning(
                                 "llm.web_search_changed", now=self._web_search or "desactivada", reason=body[:200]
                             )
-                            payload = build_payload(self._model, request, web_search=self._web_search)
+                            payload = build_payload(model, request, web_search=self._web_search)
                             continue
                         raise LLMError(f"HTTP {response.status_code}: {body}")
                     async for event in self._parse_sse(response):

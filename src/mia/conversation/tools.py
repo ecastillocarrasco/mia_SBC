@@ -251,8 +251,17 @@ def remember_table(
     presentation: dict[str, Any] | None,
     max_rows: int,
     summary: Any = None,
+    *,
+    source_tool: str | None = None,
 ) -> None:
-    """Guarda el último resultado mostrado (tabla, panel, ficha 360…) para convertirlo en informe."""
+    """Guarda el último resultado mostrado (tabla, panel, ficha 360…) para convertirlo en informe.
+
+    ``source_tool`` (revisión de la Fase F, "procedencia del análisis económico"): el nombre de la
+    herramienta que REALMENTE produjo esta tabla concreta — se guarda junto a ella (``__source_tool__``)
+    para que una validación posterior (p. ej. el guard de ``generar_informe``) se ate a la EJECUCIÓN que
+    produjo lo que se va a exportar, nunca a "la última herramienta llamada en el turno" (``LAST_CALL``),
+    que puede haber cambiado por una herramienta auxiliar posterior sin presentación propia (sin tocar
+    esta tabla) — eso rechazaría un informe legítimo por una causa ajena a sus datos."""
     if not presentation or presentation.get("type") in {None, "download"}:
         return
     stored = dict(presentation)
@@ -262,6 +271,8 @@ def remember_table(
         sub_table["rows"] = list(sub_table.get("rows") or [])[:max_rows]
     if isinstance(summary, dict):
         stored["__summary__"] = dict(summary)
+    if source_tool:
+        stored["__source_tool__"] = source_tool
     state[LAST_TABLE] = stored
 
 

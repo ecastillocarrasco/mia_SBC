@@ -42,6 +42,9 @@ class LLMRequest:
     response_schema: dict[str, Any] | None = None
     """JSON Schema de la respuesta final (salida estructurada)."""
     max_output_tokens: int = 1200
+    model: str | None = None
+    """Anula el modelo por defecto del proveedor para ESTA petición (Fase F: niveles FAST/BALANCED/
+    ADVANCED, ver ``mia.llm.tiers``). ``None`` conserva el comportamiento anterior a esta fase."""
 
 
 @dataclass(frozen=True, slots=True)

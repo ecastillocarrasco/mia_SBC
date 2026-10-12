@@ -15,7 +15,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -61,6 +61,7 @@ from mia.modules.finanzas import KEYWORDS as _FINANZAS_KEYWORDS
 from mia.observability import current_request_id, get_logger
 from mia.presentation.intent import build_presentation_hint, classify_query
 from mia.privacy_gateway.context_manager import set_operation_context
+from mia.reporting.planner import planner
 from mia.rules import rules_for_prompt
 
 log = get_logger(__name__)
@@ -84,6 +85,44 @@ def _module_hint(selected: set[str]) -> str:
             "inventar cifras ni datos."
         )
     return ""
+
+
+_REPORT_DOMAIN_HINTS: dict[str, str] = {
+    "payroll": "coste salarial / importes de nómina (usa analisis_economico_nominas, NUNCA el informe "
+    "ejecutivo genérico para esto)",
+    "shift": "turnos / absentismo",
+    "vacation": "saldos o solicitudes de vacaciones",
+    "employee": "plantilla / datos de empleados",
+    "timesheet": "trabajo temporal / horas",
+    "document": "documentos firmados",
+}
+
+
+def _report_hint(message: str, user: UserContext, today: date) -> str:
+    """Conexión general del ``ReportPlanner`` al pipeline conversacional (Bloque II, Fase F): una pista
+    NO VINCULANTE (el modelo sigue decidiendo qué herramienta llamar) calculada con el MISMO planificador
+    determinista ya validado — nunca un segundo planificador, nunca una decisión de permisos o
+    k-anonimato basada en texto generado. Reduce la ambigüedad de qué herramienta usar para CUALQUIER
+    dominio del catálogo semántico (nóminas, turnos, vacaciones, plantilla…), no solo el caso puntual ya
+    resuelto con un guard explícito dentro de ``generar_informe_ejecutivo``. Si la petición no resuelve
+    ningún campo conocido, no añade nada (sin ruido para preguntas normales)."""
+    plan = planner.plan(message, user=user, today=today)
+    if plan.is_empty:
+        return ""
+    domains = sorted(
+        {m.field.domain for m in plan.granted_metrics} | {d.domain for d in plan.dimensions},
+        key=lambda d: _REPORT_DOMAIN_HINTS.get(d, d),
+    )
+    described = [_REPORT_DOMAIN_HINTS.get(d) for d in domains if d in _REPORT_DOMAIN_HINTS]
+    if not described:
+        return ""
+    period_note = f" Periodo detectado: {plan.period.label}." if plan.period else ""
+    compare_note = " Parece una comparativa entre periodos o grupos." if plan.compare else ""
+    return (
+        "\n\n## Pista de datos detectados\nEsta petición parece referirse a: "
+        f"{'; '.join(described)}.{period_note}{compare_note} Usa la herramienta real que calcula ese "
+        "dato — nunca sustituyas por un informe genérico de plantilla si el dato pedido no está en él."
+    )
 
 
 @dataclass(slots=True)
@@ -305,6 +344,7 @@ class ConversationEngine:
                 hint=(
                     self.persona.hint_for(message, mailbox)
                     + _module_hint(selected_modules)
+                    + _report_hint(message, user, now.date())
                     + ("\n" + _pres_hint if _pres_hint else "")
                 ).strip(),
             )
@@ -520,7 +560,13 @@ class ConversationEngine:
             messages.append(Message(role="assistant", content="".join(raw), tool_calls=tuple(calls)))
             for execution in executions:
                 turn.state.update(execution.result.state_updates)
-                remember_table(turn.state, execution.result.presentation, self._max_report_rows, execution.result.summary)
+                remember_table(
+                    turn.state,
+                    execution.result.presentation,
+                    self._max_report_rows,
+                    execution.result.summary,
+                    source_tool=execution.call.name,
+                )
                 remember_population(turn.state, execution.result.state_updates.get("ultima_poblacion"))
                 remember_last_call(turn.state, execution)
                 messages.append(

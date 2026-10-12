@@ -16,6 +16,7 @@ from mia.assets import resolve_logo
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.conversation.tools import LAST_TABLE
+from mia.text import normalize_key
 from mia.data import Report
 from mia.data.models import _uuid
 from mia.diagnostics import EventStage
@@ -92,8 +93,27 @@ async def _build_report_result(
         # (ya envuelto por el Privacy Gateway en build_llm_provider() — nunca un segundo camino
         # hacia el proveedor), y se verifica contra los datos reales antes de añadirse — nunca una
         # afirmación sin comprobar.
+        #
+        # Privacidad contextual (revisión de la Fase F): "nombre" en el resumen es el patrón ya usado
+        # por herramientas de sujeto individual (p. ej. ficha_empleado) que YA comprobaron el permiso
+        # para esa persona EXACTA antes de construir su resumen — esa autorización, ya tomada, es lo
+        # único que se reutiliza aquí; un informe agregado (sin "nombre") nunca autoriza ningún nombre
+        # propio en la narrativa (fail-closed, ver authorized_subjects en generate_narrative_block).
+        summary = presentation.get("__summary__") or {}
+        subject = summary.get("nombre")
+        authorized_subjects = frozenset({subject}) if isinstance(subject, str) and subject.strip() else frozenset()
+        # Coherencia temporal (revisión de la Fase F): "periodo_interpretado" es la clave ya usada por
+        # el motor analítico (p. ej. analisis_economico_nominas) para el periodo real del informe — se
+        # pasa como contexto explícito y se verifica contra el campo estructurado que cada hecho declara,
+        # nunca analizando la prosa libre con expresiones regulares.
+        expected_period = summary.get("periodo_interpretado")
         narrative = await generate_narrative_block(
-            deps.llm, title=title, backend_summary=presentation.get("__summary__") or {}
+            deps.llm,
+            title=title,
+            backend_summary=summary,
+            authorized_subjects=authorized_subjects,
+            expected_period=expected_period if isinstance(expected_period, str) else None,
+            llm_settings=getattr(deps.settings, "llm", None),
         )
         if narrative is not None:
             document.blocks.append(narrative)
@@ -137,6 +157,13 @@ async def _build_report_result(
     )
 
 
+_PAYROLL_SOURCE_TOOLS = frozenset({"analisis_economico_nominas"})
+"""Herramientas cuyo resultado SÍ puede contener coste salarial real. Si la petición original pide un
+dato económico de nómina pero la última tabla no viene de ninguna de estas, exportarla sería entregar
+un informe semánticamente distinto del que se pidió (ver sección 15/incidencia de costes por
+departamento) — se rechaza en vez de exportar en silencio."""
+
+
 def generar(deps: Deps) -> Tool:
     async def handler(p: InformeParams, ctx: ToolContext) -> ToolResult:
         presentation = ctx.session_state.get(LAST_TABLE)
@@ -145,6 +172,55 @@ def generar(deps: Deps) -> Tool:
                 ToolStatus.NOT_FOUND,
                 "No hay ningún resultado reciente (tabla, panel o ficha) para el informe.",
             )
+        # Fase F, punto 1 (revisado: "procedencia del análisis económico"): el plan de la petición no
+        # es solo una sugerencia para el LLM — se valida contra la EJECUCIÓN que de verdad produjo lo
+        # que se va a exportar (reutiliza el MISMO ReportPlanner, nunca un segundo planificador). Solo
+        # se aplica al dominio "payroll": es el único con un incidente real demostrado; generalizarlo
+        # sin verificar los demás dominios arriesgaría bloquear exportaciones legítimas (ver limitación
+        # documentada en ADVANCED_REPORTING_PROGRESS.md).
+        if ctx.user_message:
+            plan = planner.plan(ctx.user_message, user=ctx.user, today=ctx.now.date())
+            payroll_names = {m.field.name for m in plan.metrics if m.field.domain == "payroll"}
+            if payroll_names:
+                # Atado a la tabla que se va a exportar (``__source_tool__``, puesto por
+                # ``remember_table()`` junto a ESTA presentación concreta) — nunca a "la última
+                # herramienta llamada en el turno" (``LAST_CALL``), que puede haber cambiado por una
+                # herramienta auxiliar posterior sin presentación propia (sin tocar esta tabla) y
+                # rechazaría así un informe legítimo por una causa ajena a sus datos.
+                source_tool = presentation.get("__source_tool__")
+                if source_tool not in _PAYROLL_SOURCE_TOOLS:
+                    campos = ", ".join(sorted(payroll_names))
+                    return ToolResult(
+                        ToolStatus.INVALID_ARGUMENTS,
+                        {
+                            "mensaje": (
+                                f"La petición menciona datos económicos de nómina ({campos}), pero el último "
+                                "resultado disponible para exportar no viene de 'analisis_economico_nominas'. "
+                                "Ejecuta esa herramienta primero con el periodo y concepto correctos, y "
+                                "después exporta su resultado — nunca se exporta una tabla que no coincide "
+                                "con lo pedido."
+                            )
+                        },
+                    )
+                # Periodo: evita aceptar el resultado de OTRA petición anterior (periodo distinto) que
+                # siguiera siendo la última tabla en la sesión cuando llega esta nueva petición.
+                backend_period = (presentation.get("__summary__") or {}).get("periodo_interpretado")
+                if (
+                    plan.period
+                    and isinstance(backend_period, str)
+                    and normalize_key(plan.period.label) != normalize_key(backend_period)
+                ):
+                    return ToolResult(
+                        ToolStatus.INVALID_ARGUMENTS,
+                        {
+                            "mensaje": (
+                                f"La petición pide el periodo «{plan.period.label}», pero el último resultado "
+                                f"de 'analisis_economico_nominas' disponible es de «{backend_period}». Ejecuta "
+                                "esa herramienta de nuevo con el periodo correcto antes de exportar — nunca se "
+                                "exporta el resultado de otro periodo."
+                            )
+                        },
+                    )
         return await _build_report_result(
             deps,
             ctx,

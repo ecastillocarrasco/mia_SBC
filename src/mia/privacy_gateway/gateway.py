@@ -25,7 +25,7 @@ from mia.privacy_gateway.exceptions import UnsafeContentBlockedError
 from mia.privacy_gateway.inbound_inspector import sanitize_inbound
 from mia.privacy_gateway.outbound_inspector import redact_secrets
 from mia.privacy_gateway.policy_engine import Action, Policy, action_for, resolve_policy, score_threshold
-from mia.privacy_gateway.presidio_engine import PresidioEngine, drop_overlapping, get_presidio_engine
+from mia.privacy_gateway.presidio_engine import DetectedEntity, PresidioEngine, drop_overlapping, get_presidio_engine
 from mia.privacy_gateway.prompt_injection_guard import scan as scan_injection
 from mia.privacy_gateway.prompt_injection_guard import wrap_untrusted
 from mia.privacy_gateway.token_vault import TokenVault
@@ -174,6 +174,19 @@ class PrivacyGateway(LLMProvider):
         # No se purga aquí: una operación (turno) puede implicar varias llamadas a stream() (una por
         # ronda de herramientas) y un token asignado en la ronda 1 debe poder restaurarse en la ronda 3.
         # La limpieza es por antigüedad (TTL), igual que el propio Token Vault — ver Tokenizer._sweep_stale.
+
+    def scan_text_for_pii(self, text: str) -> list[DetectedEntity]:
+        """Detecta entidades personales en texto GENERADO (p. ej. narrativa de un informe escrita por el
+        LLM) antes de incluirlo en un documento — nunca se trata como una instrucción, solo se
+        inspecciona. A diferencia de ``_anonymize_for_embedding``, esto no sustituye nada: quien llama
+        decide qué hacer con el resultado (ver ``mia.reporting.narrative_guard.enforce_narrative_privacy``,
+        que bloquea la afirmación completa en vez de parchear el texto con marcadores dentro de una
+        frase). Con ``settings.enabled=False`` devuelve siempre `[]`, igual que el resto del gateway en
+        modo desactivado."""
+        if not self._settings.enabled or self._engine is None or not text:
+            return []
+        threshold = score_threshold(resolve_policy(None, default=self._settings.default_policy))
+        return [e for e in self._engine.analyze(text) if e.score >= threshold]
 
     def _anonymize_for_embedding(self, text: str, *, policy: Policy) -> str:
         """A diferencia de ``tokenize()``, esto NO es reversible ni se guarda en el Token Vault: un

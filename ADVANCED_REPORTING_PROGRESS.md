@@ -361,6 +361,206 @@ según indicó el usuario, para la Fase F.
 ronda). Ningún archivo de `frontend/` ni del Job Manager genérico (sección 12) modificado. No se ha
 tocado sincronización ni caché de negocio.
 
+## 17. Fase F — conexión general del ReportPlanner, niveles de modelo y validación de narrativa vía Privacy Gateway
+
+Tres entregables, reutilizando en los tres casos piezas ya existentes y validadas (ningún motor nuevo):
+
+1. **Conexión general del `ReportPlanner`**: `_report_hint()` (`src/mia/conversation/engine.py`) llama
+   al MISMO `ReportPlanner`/`SemanticFieldRegistry` ya existente (no se construye otro) en CADA turno,
+   para CUALQUIER dominio del catálogo semántico — nóminas, turnos, vacaciones, plantilla — no solo el
+   caso puntual de nóminas ya resuelto en la sección 15. Es una pista no vinculante en el contexto del
+   turno (mismo patrón ya usado para el aviso de "Finanzas no disponible"), reforzada con VALIDACIÓN
+   REAL EN EL BACKEND (ver punto 1 de la verificación más abajo).
+2. **Niveles de modelo configurables** (`ModelTier.FAST/BALANCED/ADVANCED`, `src/mia/settings.py`):
+   BALANCED usa `LLMSettings.model` (GPT-4.1 mini, sin cambios respecto a antes de esta fase).
+   `LLMRequest` ganó un campo `model: str | None` opcional (`src/mia/llm/base.py`), propagado por
+   `OpenAIResponsesProvider.stream()` — nunca un segundo proveedor ni un segundo camino hacia el LLM.
+3. **Validación de narrativa vía Privacy Gateway**: `PrivacyGateway.scan_text_for_pii()`
+   (`src/mia/privacy_gateway/gateway.py`) reutiliza el mismo motor Presidio ya cargado del gateway;
+   `narrative_guard.enforce_narrative_privacy()` bloquea cualquier afirmación narrativa con un dato
+   personal detectado que no estuviera YA en el resumen del backend — ver el punto 4 de la verificación
+   para la distinción crítica que evita inutilizar informes individuales legítimos.
+
+### Verificación de los 5 puntos exigidos antes de cerrar la fase
+
+1. **El plan no es solo una sugerencia — validación real en el backend**: además del hint no vinculante,
+   `generar_informe` ahora RECHAZA la exportación (antes se exportaba sin comprobar nada) cuando la
+   petición original resuelve un campo del dominio "payroll" pero la última tabla disponible
+   (`LAST_CALL` en el estado de sesión, ya poblado por el motor para cualquier herramienta) no viene de
+   `analisis_economico_nominas` —
+   `test_generar_informe_rejects_a_payroll_request_exported_from_an_unrelated_tool`. Control negativo
+   (`test_generar_informe_still_exports_normally_when_last_call_matches_the_request`) confirma que no
+   hay falso positivo cuando sí coincide. **Alcance deliberado**: el bloqueo DURO solo cubre "payroll"
+   (el único dominio con un incidente real demostrado — sección 15); turnos/vacaciones/plantilla tienen
+   HOY varias herramientas legítimas cada uno (turnos_persona, ausencias, horas_trabajadas…;
+   vacaciones, saldo_vacaciones…; plantilla, ficha_empleado, cumpleanos…) sin ningún incidente que
+   justifique construir un mapa dominio→herramienta completo arriesgando bloquear exportaciones
+   legítimas — para esos tres, la protección real sigue siendo el hint no vinculante más la ausencia de
+   un fallo demostrado, documentado aquí como alcance pendiente, no como garantía ya cerrada.
+2. **FAST/BALANCED/ADVANCED nunca saltan el Privacy Gateway**: el campo `model` de `LLMRequest` es un
+   dato más que `PrivacyGateway._sanitize_request()` reconstruye con `dataclasses.replace()` — no hay
+   ninguna rama de código que lo use para evitar la sanitización, sustituir el proveedor o saltarse la
+   auditoría. Verificado con los tres niveles reales en
+   `test_every_model_tier_still_goes_through_privacy_gateway_sanitization`: un secreto en el mensaje
+   sigue redactado para los tres, y el modelo pedido llega intacto al proveedor interno. Modelo por
+   defecto: GPT-4.1 mini (BALANCED), sin cambio de proveedor.
+3. **Narrative Guard — casos explícitos probados**: importes incorrectos, porcentajes equivocados
+   (`test_an_incorrect_amount_is_blocked`, `test_an_incorrect_percentage_is_blocked`) y conclusiones no
+   respaldadas (`test_an_unsupported_fact_claim_is_rejected_before_it_ever_reaches_the_guard` — un
+   "fact" sin evidencia ni se puede construir, y si el LLM lo devuelve en bruto, `_parse_statements` lo
+   descarta). **Limitación real, documentada, no oculta**: "periodos incorrectos" en la PROSA libre NO
+   se verifica — `verify_statement` comprueba el VALOR numérico contra el backend, nunca el periodo que
+   el texto describe (`test_narrative_guard_does_not_verify_the_free_text_period_described_in_a_statement`
+   prueba el hueco explícitamente). No se ha intentado un analizador de fechas en texto libre esta
+   ronda: el riesgo de falsos positivos (bloquear comparativas legítimas entre varios periodos) es alto
+   y no está validado.
+4. **Privacidad contextual — motor real, sin inutilizar informes legítimos**:
+   `test_privacy_gateway_scan_text_for_pii_detects_a_real_name_with_the_real_engine` usa el Presidio
+   REAL (no un simulador) para confirmar que detecta un nombre real. La distinción crítica pedida — no
+   bloquear informes individuales legítimos — se resuelve comparando el dato detectado contra TODOS los
+   valores de texto que ya estaban en el resumen que el backend le dio al LLM
+   (`known_safe_values` en `enforce_narrative_privacy`): citar el nombre de la persona de una ficha 360
+   que el usuario SÍ está autorizado a ver nunca se bloquea
+   (`test_generate_narrative_block_does_not_block_the_subject_of_an_individual_report`); un nombre que
+   el LLM introduce de la nada, ausente del resumen, sí se bloquea
+   (`test_enforce_narrative_privacy_still_blocks_a_name_absent_from_the_backend_summary`). Esto separa
+   explícitamente la protección de lo que sale hacia el LLM (este escaneo) de la autorización sobre el
+   contenido del documento final (permisos + NOM-004/NOM-005), que siguen aplicándose sin cambios en el
+   motor analítico que calculó `backend_summary` antes de que exista ninguna narrativa — no se ha
+   tocado ni debilitado ninguna de las dos reglas.
+5. **Extremo a extremo por dominio, documentado explícitamente**:
+   - **Integrado de verdad (ConversationEngine real → herramienta real → documento real persistido)**:
+     Nóminas (sección 15/16, `test_incident_request_through_the_real_chat_entry_point_delivers_the_real_report`,
+     con redirección real y permisos verificados); Turnos
+     (`test_shift_domain_end_to_end_through_chat_to_a_real_document`, con `ausencias` y datos sembrados
+     reales de `tests/hr_seed.py`); Vacaciones
+     (`test_vacation_domain_end_to_end_through_chat_to_a_real_document`, con `vacaciones`); Plantilla
+     (`test_employee_domain_end_to_end_through_chat_to_a_real_document`, con `plantilla`). Los cuatro
+     atraviesan el mismo punto de entrada que usa `/api/chat`, con un LLM simulado, pero NINGÚN otro
+     componente simulado (ToolRegistry, base de datos, renderizadores y persistencia reales).
+   - **Solo reconocimiento semántico (el hint se calcula y llega al LLM, pero no hay un bloqueo duro
+     backend para esos tres dominios — ver punto 1)**: Turnos, Vacaciones y Plantilla en el sentido de
+     "impedir una exportación incompatible" — sí están plenamente integrados en el sentido de
+     "ejecutar la herramienta real y generar el documento real" (ver arriba).
+
+### Resultado de la suite completa
+
+Todas las pruebas en verde tras corregir una regresión real detectada por esta misma regresión (no
+oculta): `deps.settings.llm` asumía que `deps.settings` siempre tiene atributo `llm` si no es `None`,
+lo que rompía dos pruebas existentes (`test_reports_narrative_integration.py`) que usan un
+`SimpleNamespace` parcial como settings de prueba — corregido con `getattr(deps.settings, "llm", None)`.
+Ningún archivo de `frontend/` ni de los mundos 3D/HG/sincronización de datos modificado.
+
+## 18. Fase F — tercera ronda de revisión: autorización explícita, coherencia temporal estructurada y procedencia atada a la ejecución
+
+Tres correcciones reales sobre lo entregado en la sección 17, pedidas antes de cerrar la fase.
+
+### 1. Privacidad contextual: tres autorizaciones separadas, nunca inferidas del resumen
+
+**Qué estaba mal**: `enforce_narrative_privacy` consideraba "autorizado" cualquier dato personal que
+apareciera en `backend_summary`, confundiendo "el backend lo calculó" (autorización 2: inclusión en el
+documento, ya resuelta por NOM-004/NOM-005 antes de que exista `backend_summary`) con "autorizado a
+exponerse al LLM/a la narrativa" (autorización 3, la que de verdad decide esta pieza).
+
+**Corrección**: `generate_narrative_block()`/`enforce_narrative_privacy()` ya NO infieren nada del
+resumen. Reciben `authorized_subjects: frozenset[str]` EXPLÍCITO, que debe declarar quien llama —
+reutilizando una autorización YA TOMADA por esa herramienta (p. ej. `ficha_empleado` ya comprobó el
+permiso para esa persona exacta antes de construir su `profile["nombre"]`). `generar_informe`
+(`src/mia/modules/rrhh/informes/tools.py`) extrae ese sujeto de `summary["nombre"]` —el mismo patrón ya
+usado por las herramientas de ficha individual— y lo pasa explícitamente; por defecto (sin ese campo)
+el conjunto está vacío y NINGÚN nombre propio se considera autorizado (fail-closed). La propia
+evidencia que el LLM recibe ahora incluye una instrucción explícita ("este informe es sobre: X" o "no
+menciones ningún nombre") para que la narrativa tenga una base legítima para citar al sujeto, no solo
+que no se la bloquee después.
+
+**Las tres autorizaciones, explícitas y nunca confundidas** (documentado también en el docstring de
+`enforce_narrative_privacy`):
+1. Acceso del usuario al dato → `Permission` en el registro de herramientas (sin cambios).
+2. Inclusión en el documento final → NOM-004/NOM-005 dentro del motor analítico (sin cambios, resuelto
+   antes de que exista `backend_summary`).
+3. Exposición al LLM/aparición en la narrativa generada → `authorized_subjects`, explícito, nunca
+   inferido (esta corrección).
+
+**Pruebas**: `test_generate_narrative_block_blocks_a_name_in_the_summary_without_explicit_authorization`
+(un nombre en el resumen, SIN autorización explícita → bloqueado — antes de esta corrección NO se
+bloqueaba, era el propio fallo); `test_generar_informe_authorizes_the_narrative_subject_of_an_individual_report`
+(extremo a extremo real, con base de datos y persistencia reales: `generar_informe` extrae y propaga el
+sujeto, la narrativa de una ficha individual legítima se publica); los dos tests ya existentes de
+autorización/bloqueo se mantienen, ahora exigiendo `authorized_subjects` explícito.
+
+### 2. Narrative Guard: coherencia temporal mediante evidencia estructurada, nunca regex
+
+**Qué se pidió evitar**: un analizador de fechas en la prosa libre (regex), por el riesgo de falsos
+positivos en comparativas legítimas entre periodos.
+
+**Corrección**: el esquema de salida estructurada (`NARRATIVE_RESPONSE_SCHEMA`) gana un campo opcional
+`period` en la evidencia de cada afirmación `fact` — el LLM debe declarar ESTRUCTURALMENTE a qué
+periodo corresponde su cifra, igual que ya declara `metric`/`value`. `verify_statement_period()`/
+`enforce_narrative_period_coherence()` (`src/mia/reporting/narrative_guard.py`) comparan ESE campo
+estructurado contra el periodo real del informe (`expected_period`, p. ej.
+`summary["periodo_interpretado"]`, ya calculado por el motor analítico) — una comparación de cadenas
+estructuradas, nunca un análisis de la prosa libre. Si la afirmación no declara periodo, o no hay
+`expected_period`, se deja sin marcar — "no verificable" nunca se trata como "incorrecto" (mismo
+principio ya aplicado a una métrica desconocida).
+
+**Pruebas pedidas explícitamente ("periodos incorrectos con cifras correctas")**:
+`test_an_incorrect_period_with_a_correct_amount_is_blocked_via_structured_evidence` (valor correcto,
+periodo estructurado incorrecto → bloqueado), más el extremo a extremo
+`test_generate_narrative_block_blocks_a_structurally_wrong_period_end_to_end`. Controles negativos:
+periodo correcto no se marca; sin periodo declarado o sin `expected_period`, no se bloquea nada.
+
+**Limitación que permanece, documentada, no un hueco oculto**: si el LLM NO declara el campo
+estructurado `period` (aunque la prosa libre mencione un mes distinto), no hay nada que verificar —
+deliberadamente no se analiza la prosa con regex. El sistema confía en que el esquema estructurado
+obliga a declararlo para cualquier "fact"; si el LLM lo omite, la afirmación queda "no verificada", no
+"verificada como correcta" ni "bloqueada".
+
+### 3. Procedencia del análisis económico: atada a la ejecución, no a "la última herramienta llamada"
+
+**Qué estaba mal**: el guard de `generar_informe` comprobaba `LAST_CALL` (la última herramienta
+llamada en el turno, para CUALQUIER propósito) en vez de la herramienta que produjo específicamente la
+tabla que se iba a exportar. Si el LLM llamaba a `analisis_economico_nominas` (correcto) y DESPUÉS a
+una herramienta auxiliar sin presentación propia (p. ej. una consulta de capacidades), `LAST_CALL`
+cambiaba pero `LAST_TABLE` seguía siendo la tabla económica correcta — el guard anterior habría
+rechazado un informe legítimo por esa causa ajena a sus datos, exactamente el falso positivo señalado.
+
+**Corrección**: `remember_table()` (`src/mia/conversation/tools.py`) gana un parámetro `source_tool`
+que se guarda JUNTO a la tabla concreta (`__source_tool__`) — tanto `ConversationEngine.run()` como el
+ejecutor de trabajos de Fase G (`src/mia/modules/rrhh/informes/jobs.py`) lo pasan ahora. El guard de
+`generar_informe` comprueba `presentation.get("__source_tool__")` (atado al RESULTADO que se va a
+exportar), nunca `LAST_CALL`. Además, se añadió una comprobación de periodo: si la tabla SÍ viene de
+`analisis_economico_nominas` pero su `periodo_interpretado` no coincide con el periodo que la petición
+actual resuelve (p. ej. una tabla de julio que seguía siendo la última de la sesión cuando llega una
+petición nueva sobre agosto), también se rechaza — "evitando aceptar resultados de... otro periodo".
+
+**Pruebas**: `test_generar_informe_is_not_fooled_by_an_auxiliary_tool_called_afterward` (reproduce
+exactamente el falso positivo descrito y confirma que ya no ocurre);
+`test_generar_informe_rejects_a_source_tool_result_from_a_different_period` (periodo distinto, misma
+herramienta → rechazado); los dos tests de la sección 17 se actualizaron para usar `__source_tool__`
+en vez de `LAST_CALL`. Sobre "otro usuario": no es un riesgo nuevo ni existente aquí — el estado de
+sesión (`ctx.session_state`) ya está aislado por sesión/usuario en la capa de conversación, sin
+relación con este guard.
+
+### Garantías de Privacy Gateway que permanecen intactas, sin cambios en esta ronda
+
+- El proveedor LLM sigue siendo SIEMPRE el mismo envuelto por `build_llm_provider()` — ninguna de las
+  tres correcciones introduce un segundo camino hacia el proveedor.
+- La sanitización de la petición saliente (`_sanitize_request`: secretos, inyección, tokenización
+  Presidio) se sigue aplicando igual, independientemente del nivel de modelo (sección 17, punto 2, sin
+  cambios en esta ronda).
+- NOM-004/NOM-005 (minimización económica, k-anonimato) siguen resolviéndose enteramente DENTRO del
+  motor analítico, antes de que exista ningún resumen o narrativa — ninguna de las tres correcciones
+  los toca ni los debilita.
+- El escaneo de PII en la narrativa GENERADA (`scan_text_for_pii`) sigue siendo el mismo motor Presidio
+  real del gateway; lo que cambia es únicamente qué se considera "ya autorizado" frente a él
+  (corrección 1), nunca el propio mecanismo de detección.
+
+### Pruebas ejecutadas y resultado
+
+`tests/test_fase_f_integration.py` (31), `tests/test_narrative_guard.py` (16) y la suite completa del
+proyecto — sin fallos. Ningún archivo de `frontend/`, del Job Manager genérico (sección 12) ni de los
+mundos 3D/HG/sincronización de datos modificado en esta ronda.
+
 ## 10. Cierre de Fases D y E (ronda de continuación tras el cierre de la validación de nóminas)
 
 **Fase D — verificado, no reconstruido**: los 8 tipos de bloque que pedía esta ronda (KPI, Table,

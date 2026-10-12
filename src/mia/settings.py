@@ -41,6 +41,16 @@ class LLMProviderName(StrEnum):
     FAKE = "fake"
 
 
+class ModelTier(StrEnum):
+    """Niveles de modelo configurables (Bloque II, Fase F). BALANCED usa ``LLMSettings.model`` —el
+    mismo modelo que ya usa toda la conversación general, GPT-4.1 mini por defecto— así que no pasar
+    ningún nivel explícito preserva exactamente el comportamiento anterior a esta fase."""
+
+    FAST = "fast"
+    BALANCED = "balanced"
+    ADVANCED = "advanced"
+
+
 class VoiceProviderName(StrEnum):
     ELEVENLABS = "elevenlabs"
     NONE = "none"
@@ -50,6 +60,11 @@ class LLMSettings(BaseModel):
     provider: LLMProviderName = LLMProviderName.OPENAI
     api_key: SecretStr = SecretStr("")
     model: str = "gpt-4.1-mini"
+    """Nivel BALANCED (predeterminado) — ver ``ModelTier``."""
+    model_fast: str = "gpt-4.1-nano"
+    """Nivel FAST: tareas ligeras/baratas donde no hace falta el modelo por defecto."""
+    model_advanced: str = "gpt-4.1"
+    """Nivel ADVANCED: análisis o narrativa compleja que justifique el coste mayor."""
     base_url: str = "https://api.openai.com/v1"
     """En Azure OpenAI: ``https://<recurso>.openai.azure.com/openai/v1``."""
     timeout_seconds: float = 45.0
