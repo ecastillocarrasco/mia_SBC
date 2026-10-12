@@ -8,7 +8,10 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
 
 from mia.api.deps import ServicesDep, UserDep
+from mia.auth import Permission, PermissionDeniedError
 from mia.data import Report
+from mia.diagnostics import EventStage
+from mia.diagnostics import emit as diag_emit
 
 router = APIRouter(prefix="/api", tags=["informes"])
 
@@ -22,7 +25,14 @@ MEDIA = {
 
 @router.get("/reports/{report_id}")
 async def download(report_id: str, services: ServicesDep, user: UserDep) -> FileResponse:
-    """Solo quien generó el informe puede descargarlo, y solo mientras no caduque."""
+    """Solo quien generó el informe puede descargarlo, y solo mientras no caduque.
+
+    Fase I (cierre de seguridad): para informes que exigen un permiso sensible
+    (``report.required_permission`` — hoy, solo los de ``analisis_economico_nominas``), se vuelve a
+    comprobar ese permiso AQUÍ, con el usuario realmente autenticado en ESTA petición (``UserDep``) —
+    nunca con el conjunto de roles que tuviera cuando se generó el informe. Cierra el hueco de que un
+    permiso revocado después de generarse (pero antes de descargarse) siguiera permitiendo la
+    descarga: la comprobación de propiedad por sí sola nunca re-evalúa el permiso del dominio."""
     async with services.db.session() as db:
         report = await db.get(Report, report_id)
     expires = report.expires_at if report else None
@@ -33,4 +43,16 @@ async def download(report_id: str, services: ServicesDep, user: UserDep) -> File
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Informe no encontrado")
     if expires is not None and expires < datetime.now(UTC):
         raise HTTPException(status.HTTP_410_GONE, "El informe ha caducado: pídeselo de nuevo a mIA")
+    if report.required_permission:
+        try:
+            user.require(Permission(report.required_permission))
+        except (ValueError, PermissionDeniedError) as exc:
+            # ValueError: el valor guardado no corresponde a ningún Permission conocido — denegación
+            # segura también ante ese caso, nunca se interpreta como "sin restricción".
+            diag_emit(
+                EventStage.AUTH_CONTEXT,
+                status="error",
+                data={"report_id": report_id, "required_permission": report.required_permission, "decision": "denied"},
+            )
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Ya no tienes el permiso necesario para este informe") from exc
     return FileResponse(report.path, media_type=MEDIA.get(report.format), filename=report.file_name)

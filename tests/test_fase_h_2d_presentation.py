@@ -294,7 +294,8 @@ async def chat_app_jobs_enabled(tmp_path):
 
     llm = FakeLLMProvider(scripted)
     settings = make_settings(
-        tmp_path, database_url=f"sqlite+aiosqlite:///{tmp_path / 'fase_h_2d_jobs.db'}", jobs={"enabled": True}
+        tmp_path, database_url=f"sqlite+aiosqlite:///{tmp_path / 'fase_h_2d_jobs.db'}",
+        jobs={"enabled": True, "allow_sensitive_async": True},
     )
 
     from mia.api.services import Services

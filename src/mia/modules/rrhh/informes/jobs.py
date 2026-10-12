@@ -48,7 +48,20 @@ async def run_informe_economico_nominas(services: Any, job: JobSnapshot) -> str:
     no hay ninguna conversación real detrás de un trabajo en segundo plano.
 
     Devuelve el ``report_id`` del informe generado; lanza una excepción en caso de fallo real (el
-    ``ReportJobWorker`` llamante decide reintentar o marcar el trabajo como fallido)."""
+    ``ReportJobWorker`` llamante decide reintentar o marcar el trabajo como fallido).
+
+    Fase I (cierre de seguridad): bloqueado de forma segura mientras
+    ``settings.jobs.allow_sensitive_async`` sea ``False`` (su valor por defecto) — ningún proveedor
+    de identidad de este sistema (dev/EasyAuth/Entra ID) permite consultar en vivo, desde este worker
+    sin una petición HTTP real, si los roles capturados en ``params["_auth"]`` al encolar el trabajo
+    siguen vigentes. Hasta que exista esa fuente verificable, la ejecución asíncrona de informes
+    económicos queda deshabilitada — nunca se ejecuta con una autorización que podría estar obsoleta."""
+    if not getattr(getattr(services.settings, "jobs", None), "allow_sensitive_async", False):
+        raise RuntimeError(
+            "permission_denied: ejecución asíncrona de informes económicos deshabilitada "
+            "(MIA_JOBS__ALLOW_SENSITIVE_ASYNC=false) hasta validar autorizaciones vigentes — "
+            "pide el informe sin 'en segundo plano' para la ruta síncrona, ya autorizada"
+        )
     params = job.params
     user = _rebuild_user(params)
     now = datetime.now(ZoneInfo(services.settings.timezone))
@@ -118,6 +131,18 @@ def informe_economico_en_segundo_plano(deps: Deps) -> Tool:
     exactamente el mismo `kind`, los mismos parámetros y la misma clave de idempotencia determinista."""
 
     async def handler(p: InformeEconomicoJobParams, ctx: ToolContext) -> ToolResult:
+        if not getattr(getattr(deps.settings, "jobs", None), "allow_sensitive_async", False):
+            return ToolResult(
+                ToolStatus.PERMISSION_DENIED,
+                {
+                    "mensaje": (
+                        "El procesamiento en segundo plano de informes económicos está deshabilitado "
+                        "mientras no exista una comprobación fiable de permisos vigentes para un trabajo "
+                        "en cola. Pide el informe sin 'en segundo plano': la ruta directa ya está "
+                        "autorizada y funciona con normalidad."
+                    )
+                },
+            )
         params = p.model_dump()
         params["_auth"] = {
             "user_id": ctx.user.user_id,

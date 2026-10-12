@@ -124,6 +124,13 @@ async def _build_report_result(
     await asyncio.to_thread(_write, path, content)
     safe = re.sub(r"[^\w\- ]+", "", title).strip()[:60] or "informe"
     file_name = f"{safe}.{formato}"
+    # Reautorización en la descarga (Fase I, cierre de seguridad): un informe construido a partir de
+    # `analisis_economico_nominas` exige NOMINAS_IMPORTES también en el momento de descargarlo, con el
+    # usuario que esté autenticado ENTONCES — nunca solo la propiedad, que es lo único que comprobaba
+    # antes `GET /api/reports/{id}`. El resto de dominios queda exactamente igual que siempre (`None`).
+    required_permission = (
+        Permission.NOMINAS_IMPORTES.value if presentation.get("__source_tool__") in _PAYROLL_SOURCE_TOOLS else None
+    )
     async with deps.db.session() as db:
         db.add(
             Report(
@@ -133,6 +140,7 @@ async def _build_report_result(
                 format=formato,
                 file_name=file_name,
                 path=str(path),
+                required_permission=required_permission,
                 expires_at=ctx.now + ttl,
             )
         )

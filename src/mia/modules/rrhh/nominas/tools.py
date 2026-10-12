@@ -529,6 +529,10 @@ def register_amounts(registry: ToolRegistry, deps: Deps) -> None:
         registry.register(factory(deps))
     # Solo se ofrece si el worker en segundo plano está activo (MIA_JOBS__ENABLED=true, ver
     # src/mia/main.py): un trabajo encolado sin ningún worker que lo reclame se quedaría "en cola"
-    # para siempre — nunca un botón que promete algo que el despliegue actual no puede cumplir.
-    if getattr(getattr(deps.settings, "jobs", None), "enabled", False):
+    # para siempre — nunca un botón que promete algo que el despliegue actual no puede cumplir. Y
+    # solo si, además, la ejecución asíncrona de informes sensibles está explícitamente permitida
+    # (Fase I, cierre de seguridad: MIA_JOBS__ALLOW_SENSITIVE_ASYNC=true) — mientras no exista una
+    # fuente verificable de autorizaciones vigentes, el modelo ni siquiera debe ver esta herramienta.
+    jobs_settings = getattr(deps.settings, "jobs", None)
+    if getattr(jobs_settings, "enabled", False) and getattr(jobs_settings, "allow_sensitive_async", False):
         registry.register(informe_economico_en_segundo_plano(deps))

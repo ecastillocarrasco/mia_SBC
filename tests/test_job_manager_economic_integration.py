@@ -56,6 +56,17 @@ AUTH_ADMIN = {"user_id": "u", "display_name": "Enrique", "roles": ["mia.admin"]}
 
 
 @pytest.fixture
+def settings(tmp_path):
+    """Sustituye la `settings` por defecto de `tests/conftest.py` (que deja
+    `jobs.allow_sensitive_async=False`, su valor seguro por defecto desde el cierre de seguridad de la
+    Fase I) para que las pruebas de ESTE fichero — centradas en la mecánica de envío/consulta/
+    cancelación por REST, no en ese bloqueo concreto — puedan ejercitar la ruta sin que el nuevo
+    control de seguridad las intercepte a todas. El bloqueo en sí tiene sus propias pruebas dedicadas
+    más abajo, con la configuración por defecto (sin este override)."""
+    return make_settings(tmp_path, jobs={"enabled": False, "allow_sensitive_async": True})
+
+
+@pytest.fixture
 async def job_services(tmp_path: Path):
     """Mismos datos sintéticos de agosto de 2026 (con cotizaciones SS reales) que
     `tests/test_report_routing_semantic_validation.py::incident_engine` — sin repetir la siembra, solo
@@ -93,6 +104,10 @@ async def job_services(tmp_path: Path):
         reports=SimpleNamespace(directory=str(tmp_path / "informes"), ttl_hours=24, logo_path=None, max_rows=5000),
         data=SimpleNamespace(content_enabled=True),
         timezone="Europe/Madrid",
+        # Fase I, cierre de seguridad: estas pruebas ejercitan el worker/ejecutor real (concurrencia,
+        # idempotencia, cancelación, reintentos…), no el bloqueo de seguridad en sí — ese tiene sus
+        # propias pruebas dedicadas, con el valor por defecto (`allow_sensitive_async=False`).
+        jobs=SimpleNamespace(enabled=True, allow_sensitive_async=True),
     )
     registry = build_registry(db, settings=settings, sharepoint=sp)
     services = SimpleNamespace(db=db, registry=registry, settings=settings)
@@ -354,7 +369,8 @@ async def test_real_app_startup_processes_jobs_and_recovers_after_a_simulated_re
     db_url = _test_database_url(tmp_path, "restart_real.db")
     await fresh_database(tmp_path, "restart_real.db")  # crea el esquema real antes del primer arranque
     settings = make_settings(
-        tmp_path, database_url=db_url, jobs={"enabled": True, "poll_interval_seconds": 0.05, "lease_seconds": 1}
+        tmp_path, database_url=db_url,
+        jobs={"enabled": True, "poll_interval_seconds": 0.05, "lease_seconds": 1, "allow_sensitive_async": True},
     )
 
     app1 = create_app(settings)
@@ -511,11 +527,25 @@ async def test_failure_messages_never_contain_salary_amounts(job_services) -> No
 # ToolRegistry existente y respeta todos sus permisos. No dupliques APIs ni gestores de trabajos."
 
 
-async def test_the_conversational_job_tool_is_only_registered_when_the_worker_is_enabled(job_services) -> None:
-    """`job_services.settings` (un `SimpleNamespace`) no tiene `jobs` en absoluto, igual que el valor
-    por defecto real (`JobsSettings.enabled == False`): la herramienta no debe aparecer, para no ofrecer
-    un botón que un despliegue sin worker no podría cumplir nunca."""
-    assert "informe_economico_en_segundo_plano" not in job_services.registry._tools  # noqa: SLF001
+async def test_the_conversational_job_tool_is_only_registered_when_both_gates_are_open(job_services) -> None:
+    """La herramienta exige DOS condiciones a la vez: el worker activo (`jobs.enabled`, para no ofrecer
+    un botón que un despliegue sin worker no podría cumplir nunca) y, desde el cierre de seguridad de
+    la Fase I, también `jobs.allow_sensitive_async` (para no ofrecer un camino asíncrono mientras no
+    exista una comprobación fiable de permisos vigentes). Ausente cualquiera de las dos, no aparece."""
+    base = {k: v for k, v in vars(job_services.settings).items() if k != "jobs"}
+    cases = [
+        SimpleNamespace(enabled=False, allow_sensitive_async=False),
+        SimpleNamespace(enabled=True, allow_sensitive_async=False),
+        SimpleNamespace(enabled=False, allow_sensitive_async=True),
+    ]
+    for jobs_settings in cases:
+        settings = SimpleNamespace(**base, jobs=jobs_settings)
+        registry = build_registry(job_services.db, settings=settings, sharepoint=None)
+        assert "informe_economico_en_segundo_plano" not in registry._tools, jobs_settings  # noqa: SLF001
+
+    settings_both_open = SimpleNamespace(**base, jobs=SimpleNamespace(enabled=True, allow_sensitive_async=True))
+    registry = build_registry(job_services.db, settings=settings_both_open, sharepoint=None)
+    assert "informe_economico_en_segundo_plano" in registry._tools  # noqa: SLF001
 
 
 async def test_the_conversational_job_tool_submits_to_the_same_job_manager_as_the_rest_endpoint(
@@ -523,8 +553,7 @@ async def test_the_conversational_job_tool_submits_to_the_same_job_manager_as_th
 ) -> None:
     """La herramienta y el endpoint REST (`POST /api/jobs/informe-economico`) son dos puertas de
     entrada al MISMO backend: mismo `kind`, mismos parámetros de negocio, mismo trabajo persistido."""
-    settings_with_jobs = SimpleNamespace(**vars(job_services.settings), jobs=SimpleNamespace(enabled=True))
-    registry = build_registry(job_services.db, settings=settings_with_jobs, sharepoint=None)
+    registry = build_registry(job_services.db, settings=job_services.settings, sharepoint=None)
     assert "informe_economico_en_segundo_plano" in registry._tools  # noqa: SLF001
 
     ctx = ToolContext(user=ADMIN, request_id=None, now=Q3_NOW, session_state={}, user_message="")
@@ -552,8 +581,7 @@ async def test_the_conversational_job_tool_submits_to_the_same_job_manager_as_th
 async def test_the_conversational_job_tool_still_requires_the_nominas_permission(job_services) -> None:
     """El permiso se aplica en el mismo punto que cualquier otra herramienta (`ToolRegistry.execute`),
     nunca se salta por tratarse de un envío a segundo plano."""
-    settings_with_jobs = SimpleNamespace(**vars(job_services.settings), jobs=SimpleNamespace(enabled=True))
-    registry = build_registry(job_services.db, settings=settings_with_jobs, sharepoint=None)
+    registry = build_registry(job_services.db, settings=job_services.settings, sharepoint=None)
     sin_nominas = UserContext("u2", "Sin nóminas", roles=frozenset({"mia.empleado"}))
     ctx = ToolContext(user=sin_nominas, request_id=None, now=Q3_NOW, session_state={}, user_message="")
     args = {"periodo": "agosto de 2026"}

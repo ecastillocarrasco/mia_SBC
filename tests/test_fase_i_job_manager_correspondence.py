@@ -85,7 +85,10 @@ async def comparison_services(tmp_path, request):
     sp = SharePointClient(
         site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=httpx.MockTransport(files)
     )
-    settings = make_settings(tmp_path, jobs={"enabled": True})
+    # Estas pruebas comparan la MECÁNICA del Job Manager contra el camino directo (cifras, NOM-005,
+    # atribución, volumen) — no el bloqueo de seguridad en sí, que tiene su propio fichero de pruebas
+    # dedicado con el valor por defecto (`allow_sensitive_async=False`).
+    settings = make_settings(tmp_path, jobs={"enabled": True, "allow_sensitive_async": True})
     registry = build_registry(db, settings.data.stale_after_minutes, settings=settings, sharepoint=sp)
     services = type("Services", (), {})()  # objeto simple: lo que necesita ReportJobWorker (db/registry/settings)
     services.db = db

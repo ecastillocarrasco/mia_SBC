@@ -1290,6 +1290,131 @@ Avatar Engine se ha tocado en ningún commit de este bloque — revertir estos c
 mundos. No hay migraciones de base de datos nuevas en este bloque (el Job Manager de la Fase G ya tenía
 la suya, migración 0008, sin cambios aquí) — revertir no requiere ninguna migración de reversión.
 
+## 22. Cierre de seguridad del Job Manager — autorizaciones vigentes en trabajos en cola
+
+El usuario aceptó el informe de Fase I (924 pruebas) y pidió resolver, antes de autorizar
+preproducción con datos salariales, el riesgo identificado en la sección 21: el snapshot de permisos
+capturado al encolar un trabajo podría estar obsoleto cuando el worker lo ejecuta.
+
+### 1. Auditoría — ¿existe una fuente de autorización en vivo accesible desde el worker?
+
+Investigado leyendo el código, no asumido. Los tres proveedores de identidad
+(`src/mia/auth/providers.py`) son:
+- `DevIdentityProvider`: identidad fija de configuración. Sin fuente externa.
+- `EasyAuthIdentityProvider`: lee cabeceras que la plataforma de Azure inyecta EN CADA PETICIÓN.
+- `EntraIdIdentityProvider`: valida un token Bearer JWT que llega EN CADA PETICIÓN.
+
+**Los tres requieren una petición HTTP real para resolver identidad/roles — ninguno expone "¿qué
+roles tiene AHORA el usuario X?" de forma consultable por `user_id` sin esa petición.** El worker del
+Job Manager no tiene ninguna petición HTTP: solo tiene lo que quedó guardado en `params["_auth"]`
+cuando se envió el trabajo.
+
+Existe `mia.connectors.graph.GraphClient` (cliente de Microsoft Graph con credenciales de aplicación,
+ya usado para el correo) que EN PRINCIPIO podría consultar asignaciones de rol de aplicación
+(`/servicePrincipals/{id}/appRoleAssignedTo`) sin una petición del usuario — pero hoy no tiene (a) el
+permiso de Graph necesario concedido (su token está limitado a correo), (b) ningún identificador de
+Service Principal configurado, ni (c) ninguna correspondencia entre GUID de rol de Entra y los nombres
+de `Permission` que usa el resto de la aplicación. Construir las tres cosas es añadir infraestructura
+nueva, no reutilizar la existente — exactamente lo que el usuario pidió no hacer si no existe ya.
+
+**Conclusión de la auditoría: no existe hoy una fuente de autorización en vivo, verificable y ya
+construida, accesible desde el worker sin una petición HTTP del propio usuario.**
+
+### 2. Lo implementado (reutilizando mecanismos existentes, sin fuente nueva)
+
+Dos controles, cada uno cerrando una mitad distinta del riesgo, los dos reutilizando el sistema de
+permisos que YA existe (`Permission`/`ROLE_PERMISSIONS`/`UserContext.require` —
+`src/mia/auth/context.py`, sin cambios en su lógica):
+
+**a) Ejecución — bloqueada por defecto.** `JobsSettings.allow_sensitive_async: bool = False`
+(`src/mia/settings.py`, `MIA_JOBS__ALLOW_SENSITIVE_ASYNC`). Mientras sea `False`:
+- `run_informe_economico_nominas` (`src/mia/modules/rrhh/informes/jobs.py`) se niega a ejecutar
+  cualquier trabajo `informe_economico_nominas`, sea cual sea el permiso capturado — nunca se confía
+  en el snapshot, se bloquea la categoría entera.
+- La herramienta conversacional `informe_economico_en_segundo_plano` ni siquiera se registra en el
+  `ToolRegistry` (se añadió esta condición a la ya existente de `jobs.enabled`) — el modelo nunca ve
+  la opción.
+- El endpoint REST `POST /api/jobs/informe-economico` responde `403` antes de encolar nada — nunca se
+  encola un trabajo que de todas formas no podría ejecutarse.
+
+**b) Descarga — reautorizada con el usuario real de ese momento.** Nueva columna
+`Report.required_permission` (migración `0009_permiso_requerido_para_descargar_un_informe.py`,
+nullable, `None` para cualquier informe no sensible — ningún otro dominio cambia de comportamiento).
+`generar_informe`/`_build_report_result` la rellena con `"nominas:importes"` únicamente cuando la
+presentación viene de `analisis_economico_nominas` (reutiliza `__source_tool__`, el mismo campo que ya
+usaba el bloqueo semántico de la Fase F). `GET /api/reports/{id}` (`src/mia/api/routes/reports.py`),
+tras la comprobación de propiedad de siempre, si el informe tiene `required_permission`, llama a
+`user.require(Permission(...))` con el `UserDep` de ESA petición — el usuario realmente autenticado
+en el momento de descargar, nunca el capturado al generarse. Si el valor guardado no corresponde a
+ningún `Permission` conocido, se deniega igual (fail-closed), nunca se trata como "sin restricción".
+
+Auditoría sin datos sensibles: la denegación en ejecución queda en `job.error_message` (ya existente,
+nunca con cifras — ver `test_failure_messages_never_contain_salary_amounts`); la denegación en
+descarga emite `EventStage.AUTH_CONTEXT` vía el `diag_emit` ya existente, con `report_id`/
+`required_permission`/`decision`, nunca con cifras ni nombres.
+
+### 3. Pruebas obligatorias — los 8 escenarios pedidos
+
+`tests/test_fase_i_security_closure.py` (8 pruebas nuevas):
+1-4. `test_sensitive_async_execution_is_disabled_by_default`,
+   `test_sensitive_async_submission_is_rejected_at_both_entry_points`,
+   `test_authorized_user_submits_then_permission_is_revoked_before_execution_is_denied`: usuario
+   autorizado envía → se revoca su permiso mientras espera en cola → el worker lo intenta → se
+   deniega, nunca se reutiliza un permiso ya caducado.
+5-6. `test_permission_revoked_after_the_report_exists_but_before_download_is_denied` (y su control,
+   `test_permission_intact_at_download_time_still_succeeds`, para confirmar que NO se ha convertido en
+   una denegación universal): informe generado con permiso vigente → revocado después → descarga
+   denegada; con el permiso intacto, la descarga sigue funcionando con normalidad.
+7. `test_permission_change_concurrent_with_the_jobs_own_state_transition_is_still_caught`: la
+   revocación llega justo cuando el trabajo pasa de "en cola" a "en curso" — se detecta igual, porque
+   la comprobación consulta `ROLE_PERMISSIONS` en el momento exacto de ejecutar, nunca antes.
+8. `test_an_unverifiable_required_permission_denies_safely_rather_than_allowing`: un valor de permiso
+   que no se puede verificar (equivalente, en este diseño, a que la fuente de verificación falle) se
+   deniega siempre — nunca se interpreta como autorizado.
+
+Más `test_a_report_with_no_required_permission_is_unaffected_by_this_closure`: ningún dominio no
+sensible cambia de comportamiento. Todas las pruebas reutilizan datos sintéticos controlados (el
+mismo escenario de agosto de 2026 de toda la Fase H/I).
+
+Pruebas existentes actualizadas para seguir pasando con el nuevo valor seguro por defecto (donde
+explícitamente ejercitan la MECÁNICA del Job Manager, no este bloqueo): `test_job_manager_economic_
+integration.py` (fixture `settings` nueva con `allow_sensitive_async=True` para las pruebas de
+capa REST; `job_services` con el mismo valor para las del worker/ejecutor), `test_fase_h_2d_
+presentation.py` y `test_fase_i_job_manager_correspondence.py` (su propósito es demostrar que el
+Job Manager funciona/coincide con el camino directo cuando SÍ se acepta el riesgo — algo que un
+despliegue puede decidir explícitamente). Ninguna prueba de seguridad existente se ha debilitado:
+`test_payroll_job_still_enforces_the_nominas_permission_at_execution_time`,
+`test_a_user_cannot_see_another_users_job`, `test_a_user_cannot_cancel_another_users_job`,
+`test_report_download_is_only_available_to_the_job_owner`, todas sin cambios y pasando.
+
+### 4. Alcance — qué no se ha tocado
+
+Ni `mia.reporting.job_manager` ni `mia.reporting.worker` (el motor genérico) se han modificado — solo
+los puntos domain-specific ya existentes (`informes/jobs.py`, `routes/jobs.py`, `routes/reports.py`).
+Ningún proveedor LLM nuevo. Ningún archivo de `frontend/src/worlds/3d/`,
+`frontend/src/worlds/hologram/` ni Avatar Engine. Ningún trabajo en el motor de sincronización/caché.
+Privacy Gateway y NOM-004/NOM-005 sin cambios en su lógica — solo se añadió una comprobación
+ADICIONAL (permiso de descarga), nunca se debilitó ninguna existente.
+
+### 5. Resultado y veredicto
+
+Regresión completa: **932/932 pruebas backend, 0 fallos** (tras corregir también
+`src/mia/data/schema.py::EXPECTED_REVISION`, que debía pasar de `"0008"` a `"0009"` al añadirse la
+migración — detectado por la propia prueba `test_expected_revision_matches_the_latest_migration`, no
+pasado por alto). Migración `0009` verificada con `alembic upgrade head`/`downgrade -1` reales contra
+una base de datos SQLite nueva (no solo `Base.metadata.create_all`, que es lo que usan las pruebas).
+
+**Veredicto, con el riesgo de la sección 21 ahora cerrado**: el flujo asíncrono del Job Manager para
+`informe_economico_nominas` queda bloqueado de forma segura y verificada por defecto
+(`allow_sensitive_async=False`) — no autorizado para producción mientras siga así, exactamente como
+se pidió. Un despliegue puede activarlo explícitamente (`MIA_JOBS__ALLOW_SENSITIVE_ASYNC=true`) si
+acepta el riesgo residual documentado (sin fuente de autorización en vivo durante la ejecución) o si
+aplica su propio control equivalente fuera de este código (p. ej. una ventana de cola máxima operativa
+verificada). La ruta síncrona (petición normal, sin "en segundo plano") sigue intacta y autorizada,
+sin cambios: re-evalúa permisos en cada turno real, como siempre. La descarga de CUALQUIER informe
+económico, generado por cualquier camino, ahora exige el permiso vigente en el momento de descargar,
+no solo ser el propietario.
+
 ## 10. Cierre de Fases D y E (ronda de continuación tras el cierre de la validación de nóminas)
 
 **Fase D — verificado, no reconstruido**: los 8 tipos de bloque que pedía esta ronda (KPI, Table,

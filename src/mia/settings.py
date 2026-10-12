@@ -244,6 +244,14 @@ class JobsSettings(BaseModel):
     lease_seconds: int = 300
     """Tiempo máximo que un worker retiene un trabajo antes de que otro pueda reclamarlo tras un
     bloqueo/caída (``MIA_JOBS__LEASE_SECONDS``)."""
+    allow_sensitive_async: bool = False
+    """Permite encolar y EJECUTAR trabajos en segundo plano que exigen un permiso sensible
+    (``NOMINAS_IMPORTES``). Por defecto ``False``: no existe en este sistema ninguna fuente de
+    autorización que se pueda consultar en vivo desde el worker (los tres proveedores de identidad
+    — dev/EasyAuth/Entra ID — solo entregan roles dentro de una petición HTTP real; el trabajo en
+    segundo plano no tiene ninguna), así que los permisos capturados al encolar podrían haber quedado
+    obsoletos cuando el worker ejecuta. Mantener esto en ``False`` bloquea de forma segura esa ruta
+    sensible hasta que exista un control verificable equivalente (``MIA_JOBS__ALLOW_SENSITIVE_ASYNC``)."""
 
 
 class DiagnosticsSettings(BaseModel):

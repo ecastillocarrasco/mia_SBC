@@ -67,7 +67,17 @@ async def submit_informe_economico(
     body: SubmitInformeEconomicoParams, services: ServicesDep, user: NominasDep
 ) -> JobStatusResponse:
     """Encola el análisis económico de nóminas + su renderizado como trabajo en segundo plano —
-    pensado para periodos/volúmenes grandes que no caben cómodamente en un turno de conversación."""
+    pensado para periodos/volúmenes grandes que no caben cómodamente en un turno de conversación.
+
+    Fase I (cierre de seguridad): bloqueado mientras ``settings.jobs.allow_sensitive_async`` sea
+    ``False`` (su valor por defecto) — ver el mismo bloqueo, con la misma justificación, en
+    ``run_informe_economico_nominas`` (nunca se ejecutaría igualmente aunque se encolara)."""
+    if not getattr(getattr(services.settings, "jobs", None), "allow_sensitive_async", False):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "El procesamiento en segundo plano de informes económicos está deshabilitado mientras no "
+            "exista una comprobación fiable de permisos vigentes para un trabajo en cola.",
+        )
     params = body.model_dump()
     params["_auth"] = {"user_id": user.user_id, "display_name": user.display_name, "roles": sorted(user.roles)}
     # Clave de idempotencia determinista (mismo usuario + misma petición de negocio): reenviar la misma
