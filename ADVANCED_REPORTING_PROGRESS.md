@@ -1034,6 +1034,69 @@ diagnóstico posible. Cuando se autorice corregir el mundo V4, la prueba deberí
 nunca deje un temporizador real sin limpiar, independientemente de cuál sea el texto correcto en
 `progress-language-v42.js`.
 
+## 21. Fase I — validación funcional integral (primer incremento)
+
+Con la Fase H cerrada (commits `82fe1dc` y `80bf32f`), el usuario pidió explícitamente "pruebas
+completas desde la solicitud del usuario hasta el informe descargado, incluyendo su correspondencia
+exacta con los datos mostrados en el mundo 2D" — sin iniciar todavía cambios de sincronización/caché.
+
+### Qué faltaba exactamente (investigado antes de escribir nada)
+
+Ya existían dos pruebas end-to-end relacionadas, pero ninguna cubría el requisito completo:
+- `tests/test_report_routing_semantic_validation.py::test_salary_cost_comparison_for_august_two_
+  thousand_twenty_six_end_to_end_four_formats` prueba los 4 formatos, pero llamando a las herramientas
+  DIRECTAMENTE (`ToolCall`), nunca a través de `/api/mia/chat` — no pasa por el mundo 2D real.
+- `tests/test_fase_h_2d_presentation.py::test_background_job_request_is_queued_tracked_and_
+  downloadable_from_the_2d_world` sí pasa por `/api/mia/chat` y descarga un PDF real, pero solo
+  comprueba nombres de departamento (nunca una CIFRA exacta), solo en PDF, y solo por el camino de
+  trabajo en segundo plano — no el camino directo que sigue la mayoría de peticiones reales.
+
+### Prueba nueva: `tests/test_fase_i_integral_validation.py` (5 pruebas)
+
+- `test_screen_kpi_figure_matches_the_downloaded_document_exactly` (parametrizada en pdf/xlsx/pptx/
+  html, 4 ejecuciones): la petición exacta de la incidencia, en lenguaje natural, por
+  `/api/mia/chat`, con descarga INMEDIATA (sin Job Manager) en cada formato. Extrae la cifra exacta
+  del KPI "Gasto total del periodo" tal como se muestra en `data.cards` (p. ej. `"16.225,14 €"`,
+  formateada por `format_eur`/`_fmt`, la MISMA función que formatea la fila "Total" de la tabla que
+  `generar_informe` reutiliza) y comprueba que esa cifra EXACTA aparece, literalmente, dentro del
+  documento descargado — en el texto del PDF, en las celdas del XLSX, en las tablas/texto del PPTX, y
+  en el HTML crudo. Nunca una comparación aproximada ni solo "contiene el nombre del departamento".
+- `test_screen_table_value_matches_the_downloaded_document_for_a_non_payroll_domain`: la misma
+  correspondencia exacta pantalla↔documento para un dominio NO económico (ausencias/Turnos, "Eva Sol,
+  primera semana de agosto") — el nombre de la persona mostrado en `data.table` debe aparecer también,
+  literalmente, en el PDF descargado.
+
+Ambas pruebas usan el punto de entrada REAL del 2D (`/api/mia/chat`, nunca `/api/chat` directamente) y
+la acción de descarga REAL devuelta por el backend (`body["actions"]`, tipo `"download"`, con la URL
+real `/api/reports/{id}`) — nunca un atajo que construya la URL a mano.
+
+**Corrección menor encontrada al escribir las pruebas** (no un bug de producto, solo de la prueba): la
+acción de descarga vive en `body["actions"]` (nivel superior de la respuesta de `/api/mia/chat`,
+confirmado en `src/mia/api/routes/compat.py`), no dentro de `body["data"]["actions"]` como asumí al
+redactar la prueba por primera vez — corregido antes de que ninguna prueba quedara registrada como
+pasada con una aserción equivocada.
+
+### Resultado
+
+5/5 pruebas nuevas pasan. Regresión completa de `tests/` tras añadirlas: **903 pruebas, 0 fallos, 0
+omitidas** (898 de la Fase H + 5 nuevas de este incremento).
+
+### Qué queda explícitamente pendiente de validar (no declarado resuelto por este incremento)
+
+- Correspondencia exacta de cifras (no solo nombres) para el camino del **Job Manager** (trabajo en
+  segundo plano) — la prueba de Fase H de ese camino solo comprueba departamentos, no una cifra KPI
+  exacta; no se ha repetido aquí.
+- Correspondencia exacta en **XLSX/PPTX/HTML** (no solo PDF) para dominios no económicos (Turnos,
+  Vacaciones, Plantilla) — solo se probó PDF para ausencias.
+- Vacaciones y Plantilla específicamente (se usó ausencias/Turnos como representante del grupo no
+  económico; no se repitió para los otros dos).
+- Ninguna de las limitaciones ya documentadas en las secciones 16/18/19 queda resuelta por este
+  incremento (bloqueo semántico duro solo en nóminas, afirmaciones narrativas sin período estructurado,
+  snapshot de permisos de un trabajo en cola, cancelación no interrumpe un trabajo ya iniciado,
+  validación visual en navegador real).
+- **No se ha iniciado ningún cambio de sincronización ni de caché**, por instrucción explícita del
+  usuario — queda fuera del alcance de este incremento de Fase I, no solo pendiente de probar.
+
 ## 10. Cierre de Fases D y E (ronda de continuación tras el cierre de la validación de nóminas)
 
 **Fase D — verificado, no reconstruido**: los 8 tipos de bloque que pedía esta ronda (KPI, Table,
