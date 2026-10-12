@@ -1546,6 +1546,106 @@ extremo), `test_tool_error_diagnostics.py` (2, mejora de diagnóstico de la Prio
 reconstruido; ningún archivo de `frontend/src/worlds/3d/`, `frontend/src/worlds/hologram/` ni Avatar
 Engine tocado.
 
+## 24. Incidencia real tras el commit `0a52253` — migración 0009 pendiente en la base de desarrollo real
+
+Trace: `mia-20261012-125035-4c5047f6`. Tras aplicar el commit `0a52253` (correcciones de la sección
+23), `analisis_economico_nominas` seguía completándose (`periodo_interpretado: "Agosto 2026"` — la
+corrección de `PeriodEngine` funcionaba correctamente), pero `generar_informe` fallaba en 998 ms con
+`exception_type: ProgrammingError`, `exception_location: src/mia/data/db.py:25` — exactamente la
+mejora de diagnóstico de la sección 23, Prioridad 5, funcionando como se diseñó: localizó la causa sin
+necesidad de reproducir nada a ciegas.
+
+### 1-2. Identificación de la base real y su revisión
+
+No se ha leído `.env` (bloqueado por los permisos del propio usuario — correctamente respetado, nunca
+se intentó evitar). En su lugar: el valor por defecto de `Settings.database_url`
+(`src/mia/settings.py`) ya apunta a PostgreSQL en `localhost:5432`; se confirmó que hay un proceso
+escuchando en ese puerto, y una conexión de solo lectura con las credenciales de desarrollo YA
+públicas en `docker-compose.yml` (`mia`/`mia`, nunca un secreto real de producción) confirmó: **motor
+PostgreSQL 18.6, base lógica `mia`, 29 tablas reales (no la `mia_local.db` SQLite suelta en la raíz del
+repo, que resultó ser un artefacto antiguo y abandonado, en la revisión `0001` y sin siquiera la tabla
+`reports`)**. `alembic current` (ejecutado desde el propio directorio del proyecto, que resuelve la
+URL real vía `.env` igual que lo haría el backend) confirmó independientemente la misma revisión:
+**`0007`** — dos migraciones por detrás de lo esperado (`0008` del Job Manager y `0009` de esta ronda),
+no solo una.
+
+### 3-4. Esquema real y error original
+
+`information_schema.columns` confirmó que `reports` no tenía `required_permission` en absoluto.
+Reproducido el error EXACTO en una transacción que se revirtió sin persistir nada: **`asyncpg.
+UndefinedColumnError: no existe la columna «required_permission» en la relación «reports»`** — la
+causa SQLAlchemy `ProgrammingError` que reportó el diagnóstico envuelve exactamente este error de
+asyncpg. Confirmado sin ambigüedad: es la columna inexistente, nada más.
+
+### 5-6. Copia de seguridad y migración oficial
+
+`pg_dump` no estaba en el `PATH` del entorno de shell, pero SÍ existe una instalación nativa de
+PostgreSQL 18 en `C:\Program Files\PostgreSQL\18\bin\pg_dump.exe` (el motor corre como servicio nativo
+de Windows, no en Docker). Copia de seguridad completa creada con ese binario (formato `custom`,
+comprimido, 141 entradas, ~37,8 MB) en el directorio de scratchpad de esta sesión (nunca dentro del
+repositorio) — verificada con `pg_restore --list` antes de continuar. Ejecutado después
+`python -m alembic upgrade head` (sin especificar ninguna URL propia: se dejó que resolviera la MISMA
+`.env` que usa el backend real) — `0007 → 0008 → 0009`, sin errores. Nunca se usó `create_all` ni se
+recreó ninguna tabla a mano.
+
+### 7-8. Verificación posterior
+
+`alembic current` → `0009 (head)`. `information_schema.columns` confirma `required_permission`
+(`character varying`, `NULLABLE`) en `reports`; `report_jobs` (migración 0008) también existe ya.
+**Ningún dato se perdió**: `SELECT count(*) FROM reports` sigue devolviendo las mismas 25 filas de
+antes de migrar. Generación y persistencia de un informe real: confirmada contra el servidor REAL ya
+en ejecución (puerto 5001, el mismo que usa el frontend) — ver punto 9.
+
+### 9. Conversación de aceptación completa, contra el sistema real
+
+Repetida la petición real exacta contra el backend EN EJECUCIÓN (no una prueba aislada): "Genera un
+informe completo en PDF..." → `status: ok`, `presentations: [table, download]`, PDF descargado
+(136 KB, contiene "Cocina"/"Recepción" reales). En la MISMA sesión real: "Ahora en PowerPoint" →
+descarga pptx (108 KB); "Ahora en Excel" → xlsx (266 KB); "También en HTML" → html (70 KB) — los 4
+formatos, los 4 con descarga autorizada confirmada (HTTP 200 contra `/api/reports/{id}`). Verificado
+en la propia tabla `reports`: las 4 filas nuevas tienen `required_permission = 'nominas:importes'`
+correctamente asignado (el cierre de seguridad de la sección 22 funcionando también contra la base
+real, no solo en pruebas). 13 departamentos reales, 331 nóminas reales de agosto de 2026, 641
+empleados — el mismo volumen que mostraba la traza original.
+
+### 10. Verificación de compatibilidad de esquema — ya existía, confirmada funcionando
+
+**No se ha añadido código nuevo**: `src/mia/data/schema.py::schema_problem()` ya existía (de una
+ronda anterior) y `src/mia/main.py` (líneas 78-79) ya la invoca en el arranque real
+(`create_app()`/lifespan), registrando `log.error("app.migrations_pending", ...)` con un mensaje claro
+si la base va por detrás — sin ejecutar ninguna migración ni alterar nada, exactamente lo pedido. Ya
+tenía su propia prueba (`tests/test_migrations.py::test_pending_migrations_are_reported_clearly`,
+genérica frente a `EXPECTED_REVISION`, cubre precisamente este tipo de desalineación). Confirmado que
+sigue intacto y pasando.
+
+### 11. Rendimiento — registrado, sin ningún cambio de caché iniciado
+
+`analisis_economico_nominas` tardó 40,87 s en la incidencia original para 331 nóminas/13
+departamentos (confirmado real, no un volumen de prueba). La misma operación, repetida en esta
+verificación sobre el mismo proceso ya caliente, tardó solo ≈6-9 s por turno — consistente con la
+caché en memoria de importes de nómina ya existente (`_clear_amounts_cache`/caché keyed por cliente
+SharePoint, Fase previa) resolviendo ya en memoria lo que la primera llamada tuvo que leer vía red
+(331 llamadas HTTP a SharePoint + extracción de PDF, operación dominada por E/S). **No se ha iniciado
+ningún cambio de caché ni de sincronización** — queda registrado aquí como hallazgo de rendimiento
+real para la próxima ronda explícitamente dedicada a fuentes/caché/sincronización, tal como pidió el
+usuario.
+
+### Cierre
+
+Ningún cambio de código en este ciclo (la corrección fue enteramente operativa: aplicar una migración
+ya existente a la base real correcta). Regresión completa de `tests/` repetida tras la migración:
+**940 pruebas, 0 fallos** — sin cambios respecto a antes de esta incidencia, confirmando que nada se
+rompió. `PeriodEngine` sin tocar; NOM-004/NOM-005 sin tocar; `allow_sensitive_async` sigue en `False`
+por defecto (nunca se activó el Job Manager económico asíncrono); ningún archivo de
+`frontend/src/worlds/3d/`, `frontend/src/worlds/hologram/` ni Avatar Engine tocado.
+
+**Qué requería la migración y qué se corrigió, en una frase**: la base de datos PostgreSQL real de
+desarrollo (`mia`@`localhost:5432`) estaba en la revisión `0007` (dos migraciones por detrás:
+`report_jobs` de la Fase G y `required_permission` del cierre de seguridad), causando un
+`ProgrammingError`/`UndefinedColumnError` real al intentar generar cualquier informe económico tras el
+commit `0a52253`; corregido aplicando `alembic upgrade head` (con copia de seguridad previa real)
+contra esa misma base, sin tocar ningún otro componente.
+
 ## 10. Cierre de Fases D y E (ronda de continuación tras el cierre de la validación de nóminas)
 
 **Fase D — verificado, no reconstruido**: los 8 tipos de bloque que pedía esta ronda (KPI, Table,
