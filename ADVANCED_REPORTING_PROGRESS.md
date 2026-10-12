@@ -929,6 +929,111 @@ Regresión completa de `tests/`: **898 pruebas, 0 fallos** (XML JUnit,
 empaquetables) analizadas arriba. Suite V4 (`node --test`): indeterminada, proceso bloqueado desde hace
 ~6 horas, documentada por separado, sin reiniciarla ni atribuirle un resultado.
 
+### Cuarta ronda — corrección real del hueco de `dist/` (mecanismo nativo de Vite, sin copia manual)
+
+El usuario confirmó que hoy el frontend se sirve con `npm run dev` (no hay despliegue con `dist/` ni
+IIS todavía), pero pidió corregir el hueco de cara a la futura publicación, con una corrección mínima,
+compatible con Vite, sin copiarlo manualmente tras cada build, sin convertir a `type="module"`, y sin
+tocar 3D/HG/Avatar Engine.
+
+**Corrección**: un plugin de Vite nuevo en `frontend/vite.config.js`
+(`copyClassicWorld2dAssets`/`CLASSIC_WORLD_2D_ASSETS`), activo únicamente en `build`
+(`apply: "build"`, nunca en `vite dev`) que, en el hook `closeBundle` (se ejecuta automáticamente al
+final de cada `vite build`, sin ningún paso manual ni dependencia nueva de npm), copia los 4 ficheros
+clásicos (`mia-2d.js`, `mia-enhance.js`, `mia-2d.css`, `mia-enhance.css`) desde su ubicación real
+(`frontend/src/worlds/2D/`, sin moverlos ni duplicarlos como fuente) al mismo path relativo dentro de
+`dist/`. Si falta alguno de los 4 en el origen, el plugin lanza un error que falla el build — nunca un
+`dist/` incompleto en silencio.
+
+**Por qué este mecanismo y no otro**: se valoró mover los 4 ficheros a `public/src/worlds/2D/` (el
+`publicDir` nativo de Vite, que también se copia solo a `dist/` sin ningún plugin) — descartado porque
+habría significado sacar código fuente activo de `src/` a una carpeta pensada para activos opacos,
+confuso para quien edite estos ficheros en el futuro. Un plugin pequeño y declarativo dentro de
+`vite.config.js`, con la lista de ficheros en un único sitio documentado, mantiene `src/worlds/2D/`
+como la única ubicación real del código (sin dos copias que puedan desincronizarse) y es tan "nativo de
+Vite" como `publicDir` (usa su propio sistema de hooks de plugin).
+
+**Verificación real, no solo build verde**:
+- `npm run build`: sigue mostrando las mismas dos advertencias esperadas ("can't be bundled without
+  type=module") — no se han ocultado, tal como pidió el usuario explícitamente; son solo el aviso de
+  que Vite no los procesa, el plugin actúa después, en `closeBundle`.
+- `dist/src/worlds/2D/{mia-2d.js,mia-enhance.js,mia-2d.css,mia-enhance.css}` existen tras el build, con
+  el contenido real (confirmado: `mia-2d.js` compilado contiene `MIA_JOBS_API` y el resto del Job
+  Manager de la Fase H; `mia-2d.css` compilado contiene `.mia-job-card`).
+- `npx vite preview` sirviendo ese `dist/` real: las 4 rutas devuelven `200` con
+  `Content-Type: text/javascript` / `text/css` reales — ya NO el fallback SPA (`text/html`) que
+  devolvían antes de la corrección, verificado comparando con una ruta inventada (antes, ambas
+  devolvían exactamente el mismo `text/html`; ahora solo la ruta inventada lo hace).
+- `npm run dev` tras el cambio: las mismas 4 rutas siguen funcionando exactamente igual que antes
+  (`200`, `Content-Type` correcto con el `Accept` real que envía un `<link>`/`<script>` de navegador) —
+  el plugin no se activa en modo dev (`apply: "build"`), así que no podía romper nada aquí, y se
+  verificó de todos modos. `mia-2d.html` sigue devolviendo `200`.
+- Orden de ejecución y globales: sin cambios — los 4 ficheros se copian bit a bit, nunca se
+  reescriben ni se transforman; `mia-enhance.js` sigue dependiendo de las globales de `mia-2d.js`
+  exactamente igual que antes (no se tocó ningún `type="module"`).
+
+**Prueba automatizada nueva** (punto 10, "detecte si vuelven a faltar recursos esenciales"):
+`frontend/tests/mia-2d-build.test.mjs` ejecuta un `vite build` REAL (no asume un `dist/` ya construido
+de antes) y comprueba que los 4 ficheros existen en `dist/`, que ninguno es el fallback HTML de Vite, y
+que el JS/CSS compilado contiene marcadores reales del Job Manager de la Fase H. Verificada de las dos
+formas que importan: (a) pasa con el plugin activo; (b) se desactivó el plugin temporalmente
+(`plugins: []`) y la prueba falló exactamente con el mensaje esperado
+(`falta en dist/ tras el build: dist/src/worlds/2D/mia-2d.js`), confirmando que detecta de verdad la
+regresión que motivó esta ronda — después se restauró el plugin y se confirmó que la prueba vuelve a
+pasar.
+
+Ningún archivo de `frontend/src/worlds/3d/`, `frontend/src/worlds/hologram/` ni Avatar Engine se ha
+tocado en esta corrección.
+
+## 20. Incidencia independiente del mundo V4 — proceso de `node --test` bloqueado indefinidamente (no relacionado con Fase H)
+
+Durante la tercera ronda de verificación de la Fase H se detectó que la suite V4
+(`node --test tests/mia-v4.test.mjs tests/mia-v41.test.mjs tests/mia-v42.test.mjs
+tests/mia-v43-loader.test.mjs tests/mia-v44.test.mjs tests/mia-v45.test.mjs`), lanzada en una sesión
+anterior, seguía viva más de 6 horas después sin producir ninguna salida nueva. Por instrucción
+explícita del usuario, ese proceso original (PID 27496) **no se ha reiniciado ni se le ha atribuido
+ningún resultado**; en su lugar se investigó la causa con ejecuciones nuevas, aisladas y acotadas por
+tiempo (`timeout`/`--test-timeout`) de cada fichero por separado, sin tocar ningún archivo de
+`frontend/src/worlds/3d/` ni `frontend/src/worlds/hologram/`.
+
+**Causa raíz, confirmada de forma reproducible**: NO es un bucle infinito ni un cómputo lento — con
+`--test-timeout=3000` los 6 ficheros terminan de ejecutar TODAS sus pruebas (incluida la emisión de
+cada resultado `✔`/`✖`) en milisegundos, pero el PROCESO de `mia-v42.test.mjs` nunca termina. La causa
+es un recurso real sin liberar:
+
+1. El test `"backend messages take priority temporarily, and technical names are filtered"`
+   (`frontend/tests/mia-v42.test.mjs:36`) crea un `MiaWaitingV4` real con `interval: 999999` y llama a
+   `w.start()`, que programa un `setInterval` REAL (`frontend/src/core/waiting-v4.js:40`) — no un mock.
+2. Esa misma prueba falla antes de llegar a `w.stop()` (línea 52): `w.progress("analisis_financiero")`
+   devuelve `"Estoy tramitando tu solicitud."`, pero la prueba espera `"Estamos tramitando tu
+   solicitud."` — un error de redacción real en `friendlyProgress`/`progress-language-v42.js` (singular
+   "Estoy" donde el resto del texto usa el plural "Estamos"), confirmado reproduciendo solo esa prueba
+   con `--test-reporter=tap`.
+3. Como la aserción lanza una excepción, `w.stop()` nunca se ejecuta, y el `setInterval` con periodo de
+   999999 ms (~16,7 minutos) queda activo para siempre — un `setInterval` real sin `clearInterval`
+   mantiene viva la cola de eventos de Node indefinidamente, explicando por qué el proceso original
+   lleva más de 6 horas sin terminar (seguirá así para siempre, no es cuestión de esperar más).
+
+Es decir: un defecto real de redacción en `progress-language-v42.js` ("Estoy" vs "Estamos") provoca que
+una prueba falle antes de limpiar su propio temporizador, y esa prueba en concreto (no el resto de la
+suite V4) nunca deja terminar al proceso de `node --test`. Ambos son del mundo V4 (`frontend/src/core/`,
+`frontend/tests/mia-v42.test.mjs`); ninguno se ha corregido aquí, por instrucción expresa de no tocar
+3D/HG durante esta ronda — quedan documentados como incidencia independiente, pendiente de que el
+usuario autorice abordarlos.
+
+**Hallazgo adicional, mismo origen de copy, en `mia-v45.test.mjs`** (ese fichero SÍ termina, con 1
+fallo real): la misma discrepancia de redacción ("Estoy tramitando..." vs "Estamos tramitando...")
+reaparece allí también — sugiere que el texto real de `progress-language-v42.js` cambió en algún punto
+sin actualizar todas las pruebas que lo citan literalmente, o viceversa; cuál de los dos textos es el
+"correcto" es una decisión de producto, no algo que deba asumirse aquí.
+
+**Recomendación, no aplicada**: el proceso original (PID 27496) no terminará nunca por sí solo — puede
+cerrarse con seguridad en cuanto el usuario lo autorice, dado que ya se ha extraído de él todo el valor
+diagnóstico posible. Cuando se autorice corregir el mundo V4, la prueba debería envolver `w.start()`/
+`w.stop()` en `try/finally` (o usar el hook `t.after()` de `node:test`) para que un fallo de aserción
+nunca deje un temporizador real sin limpiar, independientemente de cuál sea el texto correcto en
+`progress-language-v42.js`.
+
 ## 10. Cierre de Fases D y E (ronda de continuación tras el cierre de la validación de nóminas)
 
 **Fase D — verificado, no reconstruido**: los 8 tipos de bloque que pedía esta ronda (KPI, Table,
