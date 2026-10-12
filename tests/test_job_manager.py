@@ -7,6 +7,7 @@ reintentos controlados antes de fallar definitivamente."""
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -214,3 +215,31 @@ async def test_cannot_cancel_an_already_completed_job(tmp_path: Path) -> None:
     assert cancelled is False
     async with db.session() as s:
         assert (await jm.get(s, job_id)).status == JOB_COMPLETED  # nunca retrocede desde un estado terminal
+
+
+async def test_list_for_user_returns_only_that_users_jobs_most_recent_first(tmp_path: Path) -> None:
+    """Fase H, "consulta de trabajos anteriores autorizados" y "recuperación tras refrescar la página":
+    aislamiento por usuario (nunca se ve un trabajo ajeno) y orden por fecha de creación descendente.
+    El `sleep` evita que ambos envíos caigan en el mismo tick de reloj (en Windows, ~15 ms de
+    resolución): dos envíos reales de un mismo usuario nunca ocurren con esa cercanía."""
+    db = await fresh_database(tmp_path, "jobs_list_for_user.db")
+    async with db.session() as s:
+        first = await jm.submit(s, user_id="u1", kind="x", params={"periodo": "julio"})
+    await asyncio.sleep(0.05)
+    async with db.session() as s:
+        second = await jm.submit(s, user_id="u1", kind="x", params={"periodo": "agosto"})
+        await jm.submit(s, user_id="u2", kind="x", params={"periodo": "ajeno"})
+    async with db.session() as s:
+        snapshots = await jm.list_for_user(s, user_id="u1")
+    assert [snap.id for snap in snapshots] == [second, first]
+    assert all(snap.user_id == "u1" for snap in snapshots)
+
+
+async def test_list_for_user_respects_the_limit(tmp_path: Path) -> None:
+    db = await fresh_database(tmp_path, "jobs_list_for_user_limit.db")
+    async with db.session() as s:
+        for i in range(5):
+            await jm.submit(s, user_id="u1", kind="x", params={"periodo": str(i)}, idempotency_key=f"k{i}")
+    async with db.session() as s:
+        snapshots = await jm.list_for_user(s, user_id="u1", limit=2)
+    assert len(snapshots) == 2

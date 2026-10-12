@@ -2,11 +2,27 @@
 
 El 2D (idéntico al del sistema anterior) espera sus propias estructuras:
   * ``data.table``      → {title, subtitle, columns: [{key, label}], rows: [{key: valor}], total, searchable}
-  * ``data.cards``      → [{label, value, unit}]
+  * ``data.cards``      → [{label, value, unit}]  (incluye KPIs de primera clase, Fase H)
+  * ``data.charts``     → [{type, title, labels, series}] (de primera clase si la herramienta ya los
+    calculó; derivados de la tabla/resumen solo si no — nunca ambos, nunca ninguno en silencio)
+  * ``data.stats``      → misma forma que ``data.table``, para estadísticas de primera clase (Fase H)
+  * ``data.alertas_calidad`` → avisos de privacidad/cobertura/homogeneidad (claves ``advertencias`` o
+    ``alertas_calidad`` del resumen de la herramienta — Fase H añadió el reconocimiento de la primera)
+  * ``data.comparacion`` → comparativas homogéneas (de un resumen con forma {tipo: {métrica: valor}})
+  * ``data.job``         → trabajo en segundo plano del Job Manager (Fase H): {job_id, kind, status,
+    periodo, formato} — el mundo 2D sondea su estado real con esto, nunca simula el progreso aquí
   * ``data.presentation`` con schema ``mia.employee360.presentation`` para la ficha 360
   * ``actions``         → [{type: download|open_document, url, label}]
 Se evita a propósito ``visualizations`` y los dominios vacaciones/ausencias/nóminas/turnos: en el 2D
 activan vistas que recortan columnas o esperan campos del sistema anterior.
+
+Narrativa/metodología/anexo (los otros tipos de bloque del modelo documental, ``mia.modules.rrhh.
+informes.document``) NO tienen equivalente aquí porque NUNCA existen a este nivel: solo se generan
+dentro de ``to_document()`` al construir un FICHERO (PDF/XLSX/...), nunca en la presentación que una
+herramienta devuelve al chat — no hay nada que este módulo pueda perder aquí, porque nunca llega.
+Cualquier tipo de presentación que NO sea uno de los reconocidos arriba cae en la rama ``else`` de
+``_absorb()``: se extraen tarjetas y sub-tablas genéricas de sus campos (comportamiento explícito,
+nunca una pérdida silenciosa), aunque sin el formato específico de su tipo.
 """
 
 from __future__ import annotations
@@ -71,6 +87,25 @@ def cards_from(values: dict[str, Any]) -> list[dict[str, Any]]:
         for k, v in values.items()
         if v not in (None, "", [], {}) and not isinstance(v, list) and not k.startswith("_")
     ][:MAX_CARDS]
+
+
+def kpis_to_cards(kpis: Any) -> list[dict[str, Any]]:
+    """Los KPI de primera clase de un bloque de tabla (Fase H: ``mia.modules.rrhh.common.table(...,
+    kpis=[...])``, lista de ``{label, value, unit?, highlight?}``) al mismo formato que ya pinta el 2D
+    (``data.cards``: ``[{label, value, unit}]``) — antes se perdían por completo: ``table_view()`` solo
+    traduce columnas/filas, nunca los KPI ya calculados por la herramienta."""
+    out: list[dict[str, Any]] = []
+    for item in kpis if isinstance(kpis, list) else []:
+        if not isinstance(item, dict):
+            continue
+        label, value = item.get("label"), item.get("value")
+        if not label or value in (None, ""):
+            continue
+        card = {"label": str(label), "value": _flat(value)}
+        if item.get("unit"):
+            card["unit"] = str(item["unit"])
+        out.append(card)
+    return out[:MAX_CARDS]
 
 
 SECTION_ORDER: dict[str, tuple[str, ...]] = {
@@ -259,7 +294,10 @@ def summary_view(
                 quality.append(value)
             elif key in NOTE_KEYS:
                 insights.append(f"{_label(key)}: {_flat(value)}" if not isinstance(value, str) else value)
-            elif key == "alertas_calidad" and isinstance(value, list):
+            elif key in ("alertas_calidad", "advertencias") and isinstance(value, list):
+                # Fase H: "advertencias" (privacidad/NOM-005, cobertura temporal, homogeneidad…) es la
+                # clave real que usa analisis_economico_nominas y otras herramientas analíticas — antes
+                # solo se reconocía "alertas_calidad", así que estos avisos nunca llegaban al 2D.
                 quality += [str(_flat(a)) for a in value]
             elif _is_scalar(value) and isinstance(value, int | float) and not isinstance(value, bool):
                 cards.append({"label": _label(key), "value": value})
@@ -355,6 +393,7 @@ def _absorb(
     actions: list[dict[str, Any]],
     cards: list[dict[str, Any]],
     tables: list[dict[str, Any]],
+    charts: list[dict[str, Any]],
 ) -> None:
     """Traduce una presentación de mIA a lo que pinta el 2D (tablas, tarjetas, acciones, correo…)."""
     kind = p.get("type")
@@ -372,11 +411,27 @@ def _absorb(
         data["mail_draft"] = {k: p.get(k) for k in ("borrador", "texto", "responde_a", "envio_habilitado")}
     elif kind == "table":
         tables.append(table_view(p))
+        # Fase H: los KPI y gráficos de primera clase que la herramienta YA calculó (p. ej.
+        # analisis_economico_nominas) se perdían por completo — table_view() solo traduce columnas/
+        # filas. Se priorizan sobre los derivados heurísticamente más abajo en legacy_view().
+        cards.extend(kpis_to_cards(p.get("kpis")))
+        if isinstance(p.get("charts"), list):
+            charts.extend(c for c in p["charts"] if isinstance(c, dict))
+        # Estadísticas de primera clase (p. ej. media/mediana/mínimo/máximo por departamento, ya
+        # calculadas): se muestran como su propia tabla con nombre, nunca mezcladas en silencio con
+        # la tabla principal ni descartadas.
+        if isinstance(p.get("stats"), dict) and p["stats"].get("rows"):
+            data["stats"] = table_view(p["stats"], "Estadísticas")
     elif kind == "dashboard":
         cards.extend(cards_from(p.get("kpis") or {}))
         tables.extend([table_view(t, "Panel") for t in p.get("tables") or [] if t.get("rows")])
     elif kind == "download" and p.get("url"):
         actions.append({"type": "download", "url": p["url"], "label": f"Descargar {p.get('format', 'informe')}"})
+    elif kind == "job":
+        # Fase H: trabajo en segundo plano (Job Manager) — paso directo de los campos que el mundo 2D
+        # necesita para pintar la tarjeta y empezar a sondear su estado real; nunca se simula progreso
+        # aquí, solo se transporta lo que el backend ya sabe en el momento de encolar.
+        data["job"] = {k: p.get(k) for k in ("job_id", "kind", "status", "periodo", "formato")}
     else:
         body = {k: v for k, v in p.items() if k not in {"type", "title"}}
         cards.extend(cards_from(body))
@@ -427,9 +482,10 @@ def legacy_view(
     actions: list[dict[str, Any]] = []
     cards: list[dict[str, Any]] = []
     tables: list[dict[str, Any]] = []
+    native_charts: list[dict[str, Any]] = []
     extra = summary_view(summaries or [], suppress_comparison=suppress_comparison)
     for p in presentations:
-        _absorb(p, data, actions, cards, tables)
+        _absorb(p, data, actions, cards, tables, native_charts)
     tables = _merge_same_schema_tables(tables)
     every_table = list(tables)
     if tables:
@@ -441,7 +497,10 @@ def legacy_view(
     main = data.get("table")
     if main and main["columns"] and str(main["columns"][0]["label"]).lower() == "indicador":
         data.pop("comparacion", None)  # la tabla ya ES la comparativa: no se repite
-    charts = [c for t in every_table if (c := chart_from_table(t))][:2] or extra["charts"][:1]
+    # Fase H: los gráficos de primera clase que la propia herramienta ya calculó (donut/bar/line
+    # correctamente tipados, p. ej. analisis_economico_nominas) tienen prioridad sobre los derivados
+    # heurísticamente de una tabla genérica de 2 columnas — nunca se recalculan ni se duplican.
+    charts = native_charts[:3] or [c for t in every_table if (c := chart_from_table(t))][:2] or extra["charts"][:1]
     if charts:
         data["charts"] = charts
     return data, actions

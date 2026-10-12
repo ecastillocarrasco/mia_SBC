@@ -222,3 +222,108 @@ def test_labels_have_their_accents_and_the_card_order_is_stable() -> None:
     from mia.text import humanize_label  # noqa: PLC0415
 
     assert humanize_label("codigo_empleado") == "Código empleado"
+
+
+# ──────────────────────────────────────────────── Fase H: KPI/gráficos de primera clase, advertencias
+
+
+ECONOMIC_TABLE = {
+    "type": "table",
+    "title": "Gasto salarial por departamento · Agosto 2026 (Coste empresa)",
+    "columns": ["Departamento", "Agosto 2026", "Total", "Peso %"],
+    "rows": [["Cocina", "6.990,45", "6.990,45", "44,3%"], ["Recepción", "8.790,45", "8.790,45", "55,7%"]],
+    "kpis": [
+        {"label": "Gasto total del periodo", "value": "15.780,90 €", "highlight": True},
+        {"label": "Agosto 2026", "value": "15.780,90 €"},
+    ],
+    "charts": [
+        {
+            "type": "donut",
+            "title": "Distribución del gasto · Agosto 2026",
+            "labels": ["Cocina", "Recepción"],
+            "series": [{"name": "Coste empresa", "values": [6990.45, 8790.45]}],
+        },
+        {
+            "type": "bar",
+            "title": "Ranking de gasto salarial · Agosto 2026",
+            "labels": ["Recepción", "Cocina"],
+            "series": [{"name": "Coste empresa", "values": [8790.45, 6990.45]}],
+        },
+    ],
+}
+
+
+def test_table_kpis_reach_the_screen_as_cards() -> None:
+    """Fase H: antes, los KPI de primera clase de una tabla (p. ej. analisis_economico_nominas) se
+    perdían por completo — `table_view()` solo traduce columnas/filas, nunca `kpis`."""
+    data, _ = legacy_view([ECONOMIC_TABLE])
+    labels = [c["label"] for c in data["cards"]]
+    assert "Gasto total del periodo" in labels
+
+
+def test_table_native_charts_take_priority_over_the_derived_heuristic() -> None:
+    """Fase H: los gráficos ya calculados por la herramienta (correctamente tipados: donut/bar) deben
+    usarse tal cual, en vez de derivar uno genérico de 2 columnas desde la tabla final."""
+    data, _ = legacy_view([ECONOMIC_TABLE])
+    assert data["charts"][0]["type"] == "donut"
+    assert data["charts"][0]["labels"] == ["Cocina", "Recepción"]
+    assert len(data["charts"]) == 2
+
+
+def test_advertencias_in_a_tool_summary_reach_alertas_calidad() -> None:
+    """Fase H: `analisis_economico_nominas` (y otras herramientas analíticas) usan la clave
+    `advertencias` en su resumen — antes `summary_view()` solo reconocía `alertas_calidad`, así que
+    los avisos de k-anonimato/cobertura nunca llegaban a la pantalla."""
+    summaries = [
+        {
+            "summary": {
+                "advertencias": [
+                    "1 departamento(s) no cumplen el mínimo de 3 personas y no se desglosan "
+                    "(protección de datos, NOM-005)."
+                ]
+            }
+        }
+    ]
+    data, _ = legacy_view([ECONOMIC_TABLE], summaries)
+    assert any("NOM-005" in a for a in data["alertas_calidad"])
+
+
+def test_table_stats_reach_the_screen_as_their_own_named_block() -> None:
+    """Fase H, revisión de completitud: 'Estadísticas' de primera clase (p. ej. media/mediana/mínimo/
+    máximo por departamento) no deben perderse en silencio ni mezclarse con la tabla principal."""
+    with_stats = {
+        **ECONOMIC_TABLE,
+        "stats": {
+            "type": "table",
+            "title": "Estadísticas salariales",
+            "columns": ["Departamento", "Media"],
+            "rows": [["Cocina", "2.330,15"], ["Recepción", "2.930,15"]],
+        },
+    }
+    data, _ = legacy_view([with_stats])
+    assert data["stats"]["title"] == "Estadísticas salariales"
+    assert data["stats"]["subtitle"] == "Estadísticas"
+    assert data["stats"]["rows"][0]["Departamento"] == "Cocina"
+    # Nunca se mezcla con la tabla principal: siguen siendo bloques separados.
+    assert data["table"]["title"] != data["stats"]["title"]
+
+
+def test_job_presentation_passes_through_for_the_2d_job_card() -> None:
+    """Fase H, "integración del Job Manager en el mundo 2D real": el 2D necesita job_id/status/periodo
+    para pintar la tarjeta y empezar a sondear — nunca se simula el progreso aquí."""
+    job_presentation = {
+        "type": "job",
+        "job_id": "abc123",
+        "kind": "informe_economico_nominas",
+        "status": "queued",
+        "periodo": "agosto de 2026",
+        "formato": "pdf",
+    }
+    data, _ = legacy_view([job_presentation])
+    assert data["job"] == {
+        "job_id": "abc123",
+        "kind": "informe_economico_nominas",
+        "status": "queued",
+        "periodo": "agosto de 2026",
+        "formato": "pdf",
+    }

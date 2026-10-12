@@ -515,6 +515,7 @@ def evolucion_nominas(deps: Deps) -> Tool:
 
 
 def register_amounts(registry: ToolRegistry, deps: Deps) -> None:
+    from mia.modules.rrhh.informes.jobs import informe_economico_en_segundo_plano  # noqa: PLC0415
     from mia.modules.rrhh.nominas.analisis_economico import analisis_economico_nominas  # noqa: PLC0415
     from mia.modules.rrhh.nominas.estadisticas import estadisticas_salariales, ranking_salarial  # noqa: PLC0415
 
@@ -526,3 +527,8 @@ def register_amounts(registry: ToolRegistry, deps: Deps) -> None:
         analisis_economico_nominas,
     ):
         registry.register(factory(deps))
+    # Solo se ofrece si el worker en segundo plano está activo (MIA_JOBS__ENABLED=true, ver
+    # src/mia/main.py): un trabajo encolado sin ningún worker que lo reclame se quedaría "en cola"
+    # para siempre — nunca un botón que promete algo que el despliegue actual no puede cumplir.
+    if getattr(getattr(deps.settings, "jobs", None), "enabled", False):
+        registry.register(informe_economico_en_segundo_plano(deps))

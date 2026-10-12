@@ -292,6 +292,56 @@ async def test_cancel_endpoint_marks_a_queued_job_cancelled_immediately(
     assert cancelled.json()["status"] == "cancelled"
 
 
+async def test_a_user_cannot_cancel_another_users_job(client: httpx.AsyncClient, services: Services) -> None:
+    """Aislamiento por usuario también en la cancelación (no solo en la consulta de estado/descarga):
+    el trabajo de otro usuario debe seguir intacto, nunca cancelado por quien no lo envió."""
+    submitted = (await client.post("/api/jobs/informe-economico", json=_SUBMIT_BODY)).json()
+
+    services.identity = DevIdentityProvider(AuthSettings(dev_user_id="otro-usuario"))
+    denied = await client.delete(f"/api/jobs/{submitted['job_id']}")
+    assert denied.status_code == 404
+
+    services.identity = DevIdentityProvider(AuthSettings(dev_user_id="dev-user"))
+    still_queued = await client.get(f"/api/jobs/{submitted['job_id']}")
+    assert still_queued.json()["status"] == "queued"  # nunca cancelado por el usuario ajeno
+
+
+async def test_list_endpoint_returns_only_the_callers_jobs_most_recent_first(
+    client: httpx.AsyncClient, services: Services
+) -> None:
+    """Fase H: `GET /api/jobs` (sin segmento `{job_id}`) es lo que el mundo 2D llama al cargar para
+    reanudar el sondeo y mostrar el historial — nunca los trabajos de otro usuario. El `sleep` evita
+    que ambos envíos caigan en el mismo tick de reloj (en Windows, ~15 ms de resolución)."""
+    first = (await client.post("/api/jobs/informe-economico", json=_SUBMIT_BODY)).json()
+    await asyncio.sleep(0.05)
+    second_body = {**_SUBMIT_BODY, "periodo": "septiembre de 2026"}
+    second = (await client.post("/api/jobs/informe-economico", json=second_body)).json()
+
+    listing = await client.get("/api/jobs")
+    assert listing.status_code == 200
+    job_ids = [row["job_id"] for row in listing.json()]
+    assert job_ids == [second["job_id"], first["job_id"]]
+    assert all(row["kind"] == "informe_economico_nominas" for row in listing.json())
+
+    services.identity = DevIdentityProvider(AuthSettings(dev_user_id="otro-usuario"))
+    other_listing = await client.get("/api/jobs")
+    assert other_listing.json() == []  # nunca se ven trabajos ajenos, ni siquiera vacío por error
+
+
+async def test_list_route_does_not_collide_with_the_single_job_route(
+    client: httpx.AsyncClient, services: Services
+) -> None:
+    """`GET /api/jobs` y `GET /api/jobs/{job_id}` deben resolverse a rutas distintas — la ruta de lista
+    sin segmento no debe intentar interpretarse como un `job_id` ni al revés."""
+    submitted = (await client.post("/api/jobs/informe-economico", json=_SUBMIT_BODY)).json()
+    listing = await client.get("/api/jobs")
+    single = await client.get(f"/api/jobs/{submitted['job_id']}")
+    assert listing.status_code == 200
+    assert isinstance(listing.json(), list)
+    assert single.status_code == 200
+    assert single.json()["job_id"] == submitted["job_id"]
+
+
 # ───────────────────────────────────────── verificaciones adicionales pedidas antes de cerrar Fase G
 
 
@@ -453,6 +503,65 @@ async def test_failure_messages_never_contain_salary_amounts(job_services) -> No
     assert not re.search(r"\d[.\d]*,\d{2}", snapshot.error_message), (
         f"el mensaje de error parece contener un importe: {snapshot.error_message!r}"
     )
+
+
+# ──────────────────────────── herramienta conversacional `informe_economico_en_segundo_plano`
+#
+# Fase H, "si hace falta una herramienta conversacional adicional, intégrala mediante el
+# ToolRegistry existente y respeta todos sus permisos. No dupliques APIs ni gestores de trabajos."
+
+
+async def test_the_conversational_job_tool_is_only_registered_when_the_worker_is_enabled(job_services) -> None:
+    """`job_services.settings` (un `SimpleNamespace`) no tiene `jobs` en absoluto, igual que el valor
+    por defecto real (`JobsSettings.enabled == False`): la herramienta no debe aparecer, para no ofrecer
+    un botón que un despliegue sin worker no podría cumplir nunca."""
+    assert "informe_economico_en_segundo_plano" not in job_services.registry._tools  # noqa: SLF001
+
+
+async def test_the_conversational_job_tool_submits_to_the_same_job_manager_as_the_rest_endpoint(
+    job_services,
+) -> None:
+    """La herramienta y el endpoint REST (`POST /api/jobs/informe-economico`) son dos puertas de
+    entrada al MISMO backend: mismo `kind`, mismos parámetros de negocio, mismo trabajo persistido."""
+    settings_with_jobs = SimpleNamespace(**vars(job_services.settings), jobs=SimpleNamespace(enabled=True))
+    registry = build_registry(job_services.db, settings=settings_with_jobs, sharepoint=None)
+    assert "informe_economico_en_segundo_plano" in registry._tools  # noqa: SLF001
+
+    ctx = ToolContext(user=ADMIN, request_id=None, now=Q3_NOW, session_state={}, user_message="")
+    args = {"periodo": "agosto de 2026", "concepto": "coste_empresa", "formato": "pdf"}
+    execution = await registry.execute(ToolCall("t1", "informe_economico_en_segundo_plano", json.dumps(args)), ctx)
+    assert execution.result.status is ToolStatus.OK
+    job_id = execution.result.summary["job_id"]
+
+    async with job_services.db.session() as db:
+        snapshot = await job_manager.get(db, job_id)
+    assert snapshot is not None
+    assert snapshot.kind == JOB_KIND_INFORME_ECONOMICO
+    assert snapshot.user_id == "u"
+    assert snapshot.params["periodo"] == "agosto de 2026"
+    assert execution.result.presentation == {
+        "type": "job",
+        "job_id": job_id,
+        "kind": JOB_KIND_INFORME_ECONOMICO,
+        "status": "queued",
+        "periodo": "agosto de 2026",
+        "formato": "pdf",
+    }
+
+
+async def test_the_conversational_job_tool_still_requires_the_nominas_permission(job_services) -> None:
+    """El permiso se aplica en el mismo punto que cualquier otra herramienta (`ToolRegistry.execute`),
+    nunca se salta por tratarse de un envío a segundo plano."""
+    settings_with_jobs = SimpleNamespace(**vars(job_services.settings), jobs=SimpleNamespace(enabled=True))
+    registry = build_registry(job_services.db, settings=settings_with_jobs, sharepoint=None)
+    sin_nominas = UserContext("u2", "Sin nóminas", roles=frozenset({"mia.empleado"}))
+    ctx = ToolContext(user=sin_nominas, request_id=None, now=Q3_NOW, session_state={}, user_message="")
+    args = {"periodo": "agosto de 2026"}
+    execution = await registry.execute(ToolCall("t2", "informe_economico_en_segundo_plano", json.dumps(args)), ctx)
+    assert execution.result.status is ToolStatus.PERMISSION_DENIED
+    async with job_services.db.session() as db:
+        rows = (await db.scalars(select(ReportJob))).all()
+    assert all(row.user_id != "u2" for row in rows)  # ningún trabajo quedó encolado para el usuario denegado
 
 
 async def test_large_multi_month_volume_has_no_silent_truncation(q3_registry) -> None:

@@ -119,6 +119,18 @@ async def get(db: AsyncSession, job_id: str) -> JobSnapshot | None:
     return JobSnapshot.from_row(row) if row else None
 
 
+async def list_for_user(db: AsyncSession, *, user_id: str, limit: int = 20) -> list[JobSnapshot]:
+    """Fase H, "consulta de trabajos anteriores autorizados" y "recuperación tras refrescar la
+    página": los más recientes primero, de un único usuario — nunca de otro (aislamiento ya garantizado
+    por la condición ``WHERE user_id =``, la misma que ya aplica el endpoint de descarga de informes)."""
+    rows = (
+        await db.scalars(
+            select(ReportJob).where(ReportJob.user_id == user_id).order_by(ReportJob.created_at.desc()).limit(limit)
+        )
+    ).all()
+    return [JobSnapshot.from_row(row) for row in rows]
+
+
 async def claim_next(
     db: AsyncSession, *, worker_id: str, kinds: tuple[str, ...] | None = None, lease_seconds: int = DEFAULT_LEASE_SECONDS
 ) -> JobSnapshot | None:

@@ -462,6 +462,149 @@ function renderAnalyticsSingleMetric(data,wrap){
  const scope=document.createElement('div');scope.className='analytics-single-scope';scope.textContent=cleanDisplay(row.Ambito)||'Resultado';panel.appendChild(scope);
  const grid=document.createElement('div');grid.className='analytics-single-grid';entries.slice(0,4).forEach(([k,v])=>{const x=document.createElement('div');x.innerHTML='<span>'+encodeText(metricLabel(k))+'</span><strong>'+encodeText(displayValue(v))+'</strong><small>'+encodeText(metricUnit(k))+'</small>';grid.appendChild(x)});panel.appendChild(grid);wrap.appendChild(panel);return true
 }
+const MIA_CHART_PALETTE=['var(--coral)','var(--gold)','var(--burgundy)','var(--coral2)','var(--gold2)','var(--success)'];
+function chartSeriesValues(chart){const s=(Array.isArray(chart.series)?chart.series:[])[0];return Array.isArray(s?.values)?s.values.map(v=>Number(v)||0):[]}
+function renderDonutChart(chart,box){
+ const labels=Array.isArray(chart.labels)?chart.labels:[],values=chartSeriesValues(chart);
+ const total=values.reduce((a,b)=>a+Math.abs(b),0);if(!total)return;
+ let offset=0;const slices=values.map((v,i)=>{const start=offset/total*100;offset+=Math.abs(v);const end=offset/total*100;return MIA_CHART_PALETTE[i%MIA_CHART_PALETTE.length]+' '+start.toFixed(2)+'% '+end.toFixed(2)+'%'}).join(',');
+ const layout=document.createElement('div');layout.className='mia-chart-donut-layout';
+ const donut=document.createElement('div');donut.className='mia-chart-donut';donut.style.background='conic-gradient('+slices+')';donut.innerHTML='<span><b>'+encodeText(fmt(total))+'</b></span>';layout.appendChild(donut);
+ const legend=document.createElement('div');legend.className='mia-chart-legend';
+ values.forEach((v,i)=>{const pct=total?Math.round(Math.abs(v)/total*100):0;const row=document.createElement('div');row.innerHTML='<i style="background:'+MIA_CHART_PALETTE[i%MIA_CHART_PALETTE.length]+'"></i><span>'+encodeText(cleanDisplay(labels[i])||'—')+'</span><b>'+encodeText(fmt(v))+' <small>'+pct+'%</small></b>';legend.appendChild(row)});
+ layout.appendChild(legend);box.appendChild(layout)
+}
+function renderBarChart(chart,box){
+ const labels=Array.isArray(chart.labels)?chart.labels:[],values=chartSeriesValues(chart);if(!labels.length)return;
+ const max=Math.max(1,...values.map(v=>Math.abs(v)));const list=document.createElement('div');list.className='mia-chart-bars';
+ labels.forEach((label,i)=>{const v=values[i]||0;const row=document.createElement('div');row.className='mia-chart-bar-row';row.innerHTML='<span>'+encodeText(cleanDisplay(label))+'</span><div class="mia-chart-bar-track"><div class="mia-chart-bar-fill" style="width:'+Math.max(2,Math.abs(v)/max*100)+'%"></div></div><strong>'+encodeText(fmt(v))+'</strong>';list.appendChild(row)});
+ box.appendChild(list)
+}
+function renderLineChart(chart,box){
+ const labels=Array.isArray(chart.labels)?chart.labels:[],series=Array.isArray(chart.series)?chart.series:[];if(!series.length)return;
+ const allValues=series.flatMap(s=>Array.isArray(s.values)?s.values.map(v=>Number(v)||0):[]);if(!allValues.length)return;
+ const max=Math.max(...allValues),min=Math.min(0,...allValues),w=320,h=120,pad=10;
+ const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 '+w+' '+h);svg.setAttribute('class','mia-chart-line-svg');svg.setAttribute('preserveAspectRatio','none');
+ series.forEach((s,si)=>{const vals=Array.isArray(s.values)?s.values:[];if(!vals.length)return;const step=(w-2*pad)/Math.max(1,vals.length-1);
+  const pts=vals.map((v,i)=>{const x=pad+i*step,y=h-pad-((Number(v)||0-min)/((max-min)||1))*(h-2*pad);return x+','+y}).join(' ');
+  const poly=document.createElementNS('http://www.w3.org/2000/svg','polyline');poly.setAttribute('points',pts);poly.setAttribute('fill','none');poly.setAttribute('stroke',MIA_CHART_PALETTE[si%MIA_CHART_PALETTE.length]);poly.setAttribute('stroke-width','2.5');poly.setAttribute('stroke-linecap','round');poly.setAttribute('stroke-linejoin','round');svg.appendChild(poly)
+ });
+ box.appendChild(svg);
+ if(labels.length){const axis=document.createElement('div');axis.className='mia-chart-line-axis';labels.forEach(l=>{const s=document.createElement('span');s.textContent=cleanDisplay(l);axis.appendChild(s)});box.appendChild(axis)}
+}
+function renderCharts(data,wrap){
+ const charts=Array.isArray(data?.charts)?data.charts:[];if(!charts.length)return false;
+ const panel=document.createElement('section');panel.className='mia-charts-panel';
+ charts.forEach(chart=>{
+  if(!chart||typeof chart!=='object')return;
+  const box=document.createElement('div');box.className='mia-chart-box';
+  const head=document.createElement('div');head.className='mia-chart-title';head.textContent=cleanDisplay(chart.title)||'Gráfico';box.appendChild(head);
+  const type=cleanDisplay(chart.type);
+  if(type==='donut')renderDonutChart(chart,box);else if(type==='line')renderLineChart(chart,box);else renderBarChart(chart,box);
+  panel.appendChild(box)
+ });
+ wrap.appendChild(panel);return true
+}
+// ---------------------------------------------------------------- Job Manager (Fase H)
+// Integra el mismo backend ya construido en la Fase G (`mia.reporting.job_manager`, endpoints
+// `/api/jobs/...`): nunca se simula el progreso con un temporizador visual — cada actualización viene
+// de una consulta real al servidor, igual tanto para la tarjeta que aparece en el chat como para el
+// panel de historial (misma tarjeta reutilizada; un trabajo puede estar representado por ambas a la
+// vez y las dos se mantienen sincronizadas desde el mismo sondeo).
+const MIA_JOBS_API='/api/jobs';
+const MIA_JOB_POLL_MS=2500;
+const miaJobCardsByJob=new Map();
+const miaJobsState=new Map();
+const miaJobPollTimers=new Map();
+const miaJobFirstSeenAt=new Map();
+function jobStatusLabel(status){
+ const map={queued:'En cola',running:'En curso',completed:'Completado',failed:'Error',cancelled:'Cancelado'};
+ return map[status]||cleanDisplay(status)||'—'
+}
+function registerJobCard(jobId,card){let set=miaJobCardsByJob.get(jobId);if(!set){set=new Set();miaJobCardsByJob.set(jobId,set)}set.add(card);if(!miaJobFirstSeenAt.has(jobId))miaJobFirstSeenAt.set(jobId,Date.now())}
+function updateJobsBadge(jobs){const badge=document.getElementById('jobsBadge');if(!badge)return;const list=jobs||Array.from(miaJobsState.values());const active=list.filter(j=>j.status==='queued'||j.status==='running').length;if(active>0){badge.style.display='';badge.textContent=String(active)}else badge.style.display='none'}
+function paintJobCard(card,job){
+ const statusEl=card.querySelector('.mia-job-status');statusEl.className='mia-job-status mia-job-status-'+encodeText(job.status||'');statusEl.textContent=jobStatusLabel(job.status);
+ card.querySelector('.mia-job-meta').textContent=[cleanDisplay(job.periodo),cleanDisplay(job.formato)?cleanDisplay(job.formato).toUpperCase():''].filter(Boolean).join(' · ')||'Análisis económico de nóminas';
+ card.querySelector('.mia-job-progress-fill').style.width=(Math.max(0,Math.min(1,Number(job.progress)||0))*100)+'%';
+ card.querySelector('.mia-job-message').textContent=cleanDisplay(job.progress_message)||'';
+ const actions=card.querySelector('.mia-job-actions');actions.innerHTML='';
+ if(job.status==='queued'||job.status==='running'){const b=document.createElement('button');b.type='button';b.className='mia-job-cancel';b.textContent='Cancelar trabajo';b.addEventListener('click',()=>cancelJob(job.job_id));actions.appendChild(b)}
+ if(job.status==='completed'&&job.report_id){const a=document.createElement('a');a.className='mia-job-download';a.href='/api/reports/'+encodeURIComponent(job.report_id);a.setAttribute('download','');a.textContent='↓ Descargar informe';actions.appendChild(a)}
+ let note=card.querySelector('.mia-job-note');
+ const firstSeen=miaJobFirstSeenAt.get(job.job_id)||Date.now(),elapsed=Date.now()-firstSeen;
+ let noteText='';
+ if(job._pollError)noteText='No se ha podido consultar el estado del trabajo. Reintentando…';
+ else if(job.status==='failed')noteText='No se ha podido completar: '+(cleanDisplay(job.error_message)||'error desconocido');
+ else if(job.status==='cancelled')noteText='Trabajo cancelado.';
+ else if(job.status==='queued'&&elapsed>120000)noteText='Sigue en cola; está tardando más de lo habitual.';
+ else if(job.status==='running'&&elapsed>240000)noteText='Sigue en curso; los volúmenes grandes pueden tardar varios minutos.';
+ if(noteText){if(!note){note=document.createElement('div');note.className='mia-job-note';card.appendChild(note)}note.textContent=noteText}
+ else if(note)note.remove();
+}
+function buildJobCard(job){
+ const card=document.createElement('div');card.className='mia-job-card';card.dataset.jobId=job.job_id;
+ card.innerHTML='<div class="mia-job-head"><strong>Informe en segundo plano</strong><span class="mia-job-status"></span></div><div class="mia-job-meta"></div><div class="mia-job-progress-track"><div class="mia-job-progress-fill"></div></div><div class="mia-job-message"></div><div class="mia-job-actions"></div>';
+ paintJobCard(card,job);return card
+}
+function updateAllCardsForJob(jobId,job,pollError){
+ miaJobsState.set(jobId,job);const set=miaJobCardsByJob.get(jobId);
+ if(set)for(const card of Array.from(set)){if(!card.isConnected){set.delete(card);continue}paintJobCard(card,{...job,_pollError:Boolean(pollError)})}
+ if(set&&!set.size)miaJobCardsByJob.delete(jobId);
+ updateJobsBadge()
+}
+function stopJobPolling(jobId){const t=miaJobPollTimers.get(jobId);if(t){clearTimeout(t);miaJobPollTimers.delete(jobId)}}
+async function pollJobOnce(jobId){
+ try{
+  const res=await fetch(MIA_JOBS_API+'/'+encodeURIComponent(jobId));if(!res.ok)throw new Error('HTTP '+res.status);
+  const job=await res.json();updateAllCardsForJob(jobId,job,false);
+  if(job.status==='queued'||job.status==='running')miaJobPollTimers.set(jobId,setTimeout(()=>pollJobOnce(jobId),MIA_JOB_POLL_MS));else stopJobPolling(jobId)
+ }catch(e){
+  const prev=miaJobsState.get(jobId);if(prev)updateAllCardsForJob(jobId,prev,true);
+  miaJobPollTimers.set(jobId,setTimeout(()=>pollJobOnce(jobId),MIA_JOB_POLL_MS*2))
+ }
+}
+function ensureJobPolling(jobId){if(!miaJobPollTimers.has(jobId))pollJobOnce(jobId)}
+async function cancelJob(jobId){
+ try{
+  const res=await fetch(MIA_JOBS_API+'/'+encodeURIComponent(jobId),{method:'DELETE'});if(!res.ok)throw new Error('HTTP '+res.status);
+  const job=await res.json();updateAllCardsForJob(jobId,job,false);
+  if(job.status!=='queued'&&job.status!=='running')stopJobPolling(jobId)
+ }catch(e){miaToast('No se ha podido cancelar el trabajo. Inténtalo de nuevo.')}
+}
+function renderJob(data,wrap){
+ const job=data?.job;if(!job||typeof job!=='object'||!job.job_id)return false;
+ const full={progress:0,progress_message:'',report_id:null,error_message:null,cancel_requested:false,...job};
+ const card=buildJobCard(full);wrap.appendChild(card);registerJobCard(job.job_id,card);
+ miaJobsState.set(job.job_id,full);updateJobsBadge();
+ if(full.status==='queued'||full.status==='running')ensureJobPolling(job.job_id);
+ return true
+}
+function renderJobsPanelList(jobs){
+ const body=document.getElementById('jobsPanelBody');if(!body)return;body.innerHTML='';
+ if(!jobs.length){body.innerHTML='<div class="jobs-panel-empty">No tienes trabajos en segundo plano todavía.</div>';return}
+ jobs.forEach(job=>{const card=buildJobCard(job);registerJobCard(job.job_id,card);body.appendChild(card);if(job.status==='queued'||job.status==='running')ensureJobPolling(job.job_id)})
+}
+async function refreshJobsHistory(){
+ try{
+  const res=await fetch(MIA_JOBS_API);if(!res.ok)throw new Error('HTTP '+res.status);
+  const jobs=await res.json();jobs.forEach(j=>miaJobsState.set(j.job_id,j));
+  renderJobsPanelList(jobs);updateJobsBadge(jobs);
+  jobs.filter(j=>j.status==='queued'||j.status==='running').forEach(j=>ensureJobPolling(j.job_id));
+  return jobs
+ }catch(e){
+  const body=document.getElementById('jobsPanelBody');if(body)body.innerHTML='<div class="jobs-panel-empty">No se ha podido cargar el historial de trabajos.</div>';
+  return []
+ }
+}
+(function initJobsWidget(){
+ const btn=document.getElementById('jobsBtn'),panel=document.getElementById('jobsPanel');if(!btn||!panel)return;
+ btn.addEventListener('click',()=>{
+  const opening=!panel.classList.contains('open');panel.classList.toggle('open',opening);
+  panel.setAttribute('aria-hidden',opening?'false':'true');btn.setAttribute('aria-expanded',opening?'true':'false');
+  if(opening)refreshJobsHistory()
+ });
+})();
 function renderAnalyticsWorkspace(data,r,wrap){
  const out={tableHandled:false};
  renderAnalyticsReportHeader(data,wrap);
@@ -480,7 +623,7 @@ function renderData(r,msg){
  const presentation=nativeEmployeePresentation||(looksLikeEmployee360?synthesizeEmployee360Presentation(data):null);
  const cards=Array.isArray(data.cards)?data.cards:[],visual=Array.isArray(r.visualizations)?r.visualizations:[],actions=Array.isArray(r.actions)?r.actions:[],turnos=Array.isArray(data.turnos)?data.turnos:[],table=data.table,documents=Array.isArray(data.documents)?data.documents:(data.document?[data.document]:[]);
  const mail=mailPayload(data);
- const hasAny=kind==='mail'?Boolean(mail.rows.length||Object.keys(mail.summary).length):Boolean(presentation||cards.length||visual.length||actions.length||turnos.length||table||documents.length||Array.isArray(data.comparacion)||(r.sources||[]).length||Array.isArray(data.web_sources)||data.alertas_calidad||data.insights||data.query_summary);
+ const hasAny=kind==='mail'?Boolean(mail.rows.length||Object.keys(mail.summary).length):Boolean(presentation||cards.length||visual.length||actions.length||turnos.length||table||documents.length||Array.isArray(data.comparacion)||(r.sources||[]).length||Array.isArray(data.web_sources)||data.alertas_calidad||data.insights||data.query_summary||(data.job&&typeof data.job==='object'&&data.job.job_id));
  if(!hasAny)return;
  const wrap=document.createElement('div');wrap.className='results results--'+kind;wrap.dataset.resultKind=kind;
  renderResponseMeta(r,wrap);renderQuerySummary(data,wrap);
@@ -505,7 +648,7 @@ function renderData(r,msg){
  else if(kind==='analytics'){if(!analyticsState.tableHandled)renderGenericTable(table,wrap)}
  else if(kind!=='turnos'&&kind!=='employee360')renderGenericTable(table,wrap);
  if(turnos.length){renderShiftTimeline(data,turnos,wrap);renderTurnsTable(data,turnos,wrap)}
- renderInsights(data,wrap);renderQuality(data,r,wrap);
+ renderInsights(data,wrap);renderQuality(data,r,wrap);renderCharts(data,wrap);renderJob(data,wrap);
  visual.forEach(v=>{const p=document.createElement('div');p.className='viz';const h=document.createElement('div');h.className='viz-head';h.innerHTML='<strong>'+encodeText(cleanDisplay(v.title)||'Resumen')+'</strong><span>Visualización</span>';p.appendChild(h);const rows=(v.data||[]).map(x=>({label:cleanDisplay(x.label??x.Mes??''),value:Number(x.value??x.Horas??0)})).filter(x=>x.label);const max=Math.max(1,...rows.map(x=>Math.abs(x.value)));const b=document.createElement('div');b.className='bars';rows.forEach(x=>{const r0=document.createElement('div');r0.className='barrow';r0.innerHTML=`<span>${encodeText(x.label)}</span><div class="track"><div class="fill" style="width:${Math.max(1,Math.abs(x.value)/max*100)}%"></div></div><strong>${encodeText(fmt(x.value))}</strong>`;b.appendChild(r0)});p.appendChild(b);wrap.appendChild(p)});
  if(actions.length){const a=document.createElement('div');a.className='actions';actions.forEach(x=>{if(!x.url)return;const t=cleanDisplay(x.type);if(!['download','open','open_document'].includes(t))return;if(documents.length&&t==='open_document')return;const l=document.createElement('a');l.className='action-btn';l.href=x.url;if(t==='download'){l.setAttribute('download','');l.textContent='↓ '+(cleanDisplay(x.label)||'Descargar')}else{l.target='_blank';l.rel='noopener noreferrer';l.textContent='↗ '+(cleanDisplay(x.label)||'Abrir documento')}a.appendChild(l)});if(a.childNodes.length)wrap.appendChild(a)}
  const renderedWebSources=renderWebSources(data,wrap);const src=(r.sources||[]).map(cleanDisplay).filter(Boolean);if(src.length&&!renderedWebSources){const d=document.createElement('details');d.className='sources-details';d.innerHTML='<summary>Ver fuentes consultadas</summary><div>'+encodeText(src.join(' · '))+'</div>';wrap.appendChild(d)}msg.appendChild(wrap);convo.scrollTop=convo.scrollHeight
@@ -585,7 +728,7 @@ async function ask(raw){
 }
 send.addEventListener('click',()=>ask());input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask()}});
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(SR){recognition=new SR();recognition.lang=context.locale||miaProfile.locale;recognition.interimResults=true;recognition.continuous=false;recognition.maxAlternatives=3;recognition.onstart=()=>{recognitionFinalSent=false;if('speechSynthesis'in window)speechSynthesis.cancel();setAvatarState('escuchando','Te escucho. Habla con naturalidad.');};recognition.onresult=e=>{let finalText='',interim='';for(let i=e.resultIndex;i<e.results.length;i++){const t=e.results[i]?.[0]?.transcript||'';if(e.results[i].isFinal)finalText+=t+' ';else interim+=t+' '}input.value=(finalText||interim).trim();if(finalText.trim()&&!recognitionFinalSent){recognitionFinalSent=true;ask(finalText.trim())}};recognition.onerror=()=>setAvatarState('reposo','No te he entendido bien. Puedes repetirlo o escribirlo.');recognition.onend=()=>{if(currentState==='escuchando')setAvatarState('reposo','Lista para ayudarte.');};mic.addEventListener('click',()=>{try{recognition.start()}catch(_){}})}else mic.addEventListener('click',()=>addMsg('mIA','El reconocimiento de voz no está disponible en este navegador.','mia','avisando'));
-async function boot(){setAvatarState('reposo','Lista para ayudarte.');let backend=false,llm=false;try{const r=await fetch('/api/version');backend=r.ok}catch(_){}try{const r=await fetch('/api/mia/v4/health');llm=r.ok}catch(_){}const label=document.getElementById('backendStatus');if(backend&&llm)label.textContent='mIA conectada';else if(backend)label.textContent='mIA · LLM no disponible';else label.textContent='sin conexión'}boot();
+async function boot(){setAvatarState('reposo','Lista para ayudarte.');let backend=false,llm=false;try{const r=await fetch('/api/version');backend=r.ok}catch(_){}try{const r=await fetch('/api/mia/v4/health');llm=r.ok}catch(_){}const label=document.getElementById('backendStatus');if(backend&&llm)label.textContent='mIA conectada';else if(backend)label.textContent='mIA · LLM no disponible';else label.textContent='sin conexión';if(backend)refreshJobsHistory()}boot();
 
 
 // =============================================================================

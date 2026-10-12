@@ -561,6 +561,374 @@ relación con este guard.
 proyecto — sin fallos. Ningún archivo de `frontend/`, del Job Manager genérico (sección 12) ni de los
 mundos 3D/HG/sincronización de datos modificado en esta ronda.
 
+## 19. Fase H — integración premium del mundo 2D real
+
+### Hallazgo arquitectónico previo (investigación, no se asume nada sin comprobar)
+
+Existen DOS "mundos 2D" en el repositorio, y solo uno es real:
+- **El real, servido en producción**: `frontend/mia-2d.html` carga `frontend/src/worlds/2D/mia-2d.js`
+  (nótese `2D` en mayúsculas) — un script clásico (sin `type="module"`), ya incluido en
+  `vite.config.js` como entrada `world2d`. Llama a `/api/mia/chat` (y `/api/mia/v4/chat`), **no** a
+  `/api/chat`. Tiene su propio despachador (`detectResultKind`/`renderData`), su propio Employee360
+  (`.e360*`), y es donde viven voz, navegación y todo lo que pide conservar el requisito 8.
+- **El huérfano**: `frontend/src/worlds/2d/main.js` (minúsculas) + `index.html` — SÍ usa el contrato
+  moderno (`presentations`, `/api/chat`) pero **no está en `vite.config.js`**: no se sirve nunca.
+- `/api/mia/chat` (`src/mia/api/routes/compat.py`) NO es "legacy" en el sentido de CLAUDE.md (no es el
+  MIA Backend Legacy de solo lectura): es un adaptador activo y mantenido que llama al MISMO
+  `ConversationEngine.complete()` que `/api/chat`, y traduce el resultado con
+  `mia.api.legacy_view.legacy_view()` al formato que `mia-2d.js` ya entiende.
+
+**Decisión de diseño (satisface el requisito 7, "no crees otra interfaz paralela")**: Fase H trabaja
+sobre el mundo 2D REAL (`mia-2d.js`/`mia-2d.css`/`compat.py`/`legacy_view.py`), nunca sobre el huérfano
+ni promoviéndolo a entrada real — eso sí habría sido, de facto, una interfaz paralela.
+
+### Causa raíz del hueco (investigación, confirmada leyendo el código)
+
+`legacy_view.py` traduce cada presentación al formato de `mia-2d.js`, pero para `kind=="table"`
+(`analisis_economico_nominas`, y cualquier tabla con KPIs/gráficos de primera clase) usaba
+`table_view()`, que **solo traduce columnas y filas** — los campos `kpis`/`charts` que la propia
+herramienta ya había calculado (ver `mia.modules.rrhh.common.table(..., kpis=.., charts=..)`) se
+perdían por completo antes de llegar a la pantalla. Y `summary_view()` solo reconocía la clave
+`alertas_calidad` en el resumen de cada herramienta — nunca `advertencias`, que es la clave REAL que usa
+`analisis_economico_nominas` para sus avisos de k-anonimato/cobertura — así que esos avisos tampoco
+llegaban nunca al 2D.
+
+### Corrección (backend, `src/mia/api/legacy_view.py` — no toca `mia-2d.js` ni ningún archivo 3D/HG)
+
+- `kpis_to_cards()` (nueva): traduce `p["kpis"]` (lista `{label, value, unit?, highlight?}`) al mismo
+  formato `data.cards` que `mia-2d.js` YA pinta como `.kpis`/`.kpi` — **sin ningún cambio de frontend**:
+  los KPI económicos (coste total, por mes…) ya se muestran como tarjetas en cuanto el backend los
+  entrega correctamente.
+- `_absorb()` ahora también recoge `p["charts"]` (gráficos de primera clase, ya tipados
+  correctamente — donut/bar/line) en un acumulador separado, con prioridad sobre el gráfico derivado
+  heurísticamente de la tabla final (`chart_from_table`) o de un resumen (`extra["charts"]`).
+- `summary_view()` reconoce ahora también `"advertencias"` (lista de str), igual que ya reconocía
+  `"alertas_calidad"` — **sin ningún cambio de frontend**: `renderQuality()` en `mia-2d.js` ya existía y
+  ya lee `data.alertas_calidad`; solo faltaba que el backend llenara esa clave con el nombre real que
+  usa el motor analítico.
+
+Importante: estos tres cambios viven ÚNICAMENTE en `legacy_view.py`, que por su propio docstring es
+"traducción... al formato que pinta el universo 2D anterior" — 3D y holograma consumen `/api/chat` y
+`presentations` directamente (confirmado: no pasan por `compat.py`/`legacy_view.py` en ningún punto),
+así que esta corrección no los toca ni los afecta, cumpliendo el requisito 9 sin necesidad de evitarlo
+activamente.
+
+### Corrección (frontend, `frontend/src/worlds/2D/mia-2d.js` + `mia-2d.css`)
+
+El ÚNICO hueco de renderizado real que quedaba tras la corrección del backend: `data.charts` nunca se
+pintaba en ningún punto de `mia-2d.js` (confirmado: cero código de canvas/SVG/gráficos en todo el
+archivo antes de esta fase). Se añaden `renderDonutChart`/`renderBarChart`/`renderLineChart`/
+`renderCharts()` (donut con `conic-gradient`, igual que el patrón ya usado en
+`core/statistical-visuals.js`, pero con la paleta de color del propio `mia-2d.css`
+—`--coral`/`--gold`/`--burgundy`— en vez de introducir una paleta nueva; barras con las mismas
+proporciones de ancho ya usadas en `renderAnalyticsAgeBands`; línea con un `<svg><polyline>` simple,
+sin librería nueva), llamadas desde `renderData()` para cualquier tipo de resultado con gráficos, no
+solo "analytics". CSS nueva en la misma convención ya existente (`border/var(--line)`, `border-radius:
+20px`, mismo `box-shadow` que `.kpi`/`.viz`/`.insight-panel`).
+
+**No se tocó**: `detectResultKind`, Employee360, el panel de correo, voz (`speak`/`speakProgress`/
+`setAvatarState`), ni ningún archivo de `frontend/src/worlds/3d/` o `frontend/src/worlds/hologram/`.
+
+### Requisitos funcionales — qué queda satisfecho y cómo, qué queda pendiente
+
+1. **KPIs/gráficos/tablas/advertencias directamente en el chat**: KPIs y advertencias se arreglaron
+   SOLO con el fix de backend (reutilizando renderizado ya existente); gráficos necesitaron la nueva
+   función de frontend; tablas completas ya funcionaban (`renderGenericTable`, sin cambios). Comparativas:
+   el camino ya existente (`renderComparison`/`data.comparacion`) no se tocó.
+2. **PDF/XLSX/PPTX/HTML desde los mismos resultados validados**: YA funciona por el camino conversacional
+   existente — el LLM puede llamar a `generar_informe` tras `analisis_economico_nominas` dentro del
+   MISMO turno, y el resultado (`{"type":"download",...}`) ya se traduce a un botón real
+   (`_absorb()`, rama `kind=="download"`, sin cambios). **No se ha construido** un endpoint REST nuevo
+   tipo "exporta el último resultado de esta sesión a formato X" como atajo directo (más rápido que
+   repreguntar, pero una pieza nueva independiente) — queda como mejora futura explícita, no como algo
+   resuelto en esta ronda.
+3. **Job Manager real en la interfaz (progreso/estados/cancelación/historial/descargas), sin
+   temporizadores simulados**: **implementado en la segunda ronda de esta fase** (ver "Segunda ronda"
+   más abajo) — herramienta conversacional nueva (`informe_economico_en_segundo_plano`), endpoint de
+   listado (`GET /api/jobs`) y sondeo/cancelación/historial/descarga reales en `mia-2d.js`/`.html`/`.css`.
+4. **Paginación/virtualización sin truncamiento silencioso**: ya satisfecho SIN cambios —
+   `renderGenericTable()` ya pintaba (y sigue pintando) TODAS las filas recibidas, con un filtro de
+   búsqueda para tablas de más de 8 filas, nunca un `slice()` que recorte el conjunto de datos.
+5. **Selección semántica de presentación**: sin cambios — `detectResultKind()` ya distingue
+   conversación simple de resultado analítico; la nueva `renderCharts()` se activa únicamente cuando
+   `data.charts` no está vacío, nunca para una respuesta conversacional simple.
+6. **Advertencias en la interfaz, no solo en el documento**: resuelto con el fix de backend
+   (`"advertencias"` → `data.alertas_calidad` → `renderQuality()`, ya existente).
+7. **Reutiliza componentes/estilos/contratos existentes**: ver la decisión de diseño arriba — se
+   trabajó sobre `mia-2d.js`/`.css`/`compat.py`/`legacy_view.py` reales, nunca el huérfano ni una página
+   nueva; la CSS nueva usa las variables de color ya definidas.
+8. **Employee360/comparativas/navegación/voz/funcionalidad existente**: ninguna de esas rutas de
+   código se modificó; `renderCharts()` es una llamada nueva y aislada dentro de `renderData()`.
+9. **Sin tocar 3D/HG/Avatar Engine**: ningún archivo de `frontend/src/worlds/3d/`,
+   `frontend/src/worlds/hologram/` ni `Avatar Engine` se modificó. `legacy_view.py` es exclusivo del
+   camino 2D (ver más arriba).
+10. **Pruebas desde el chat hasta la visualización y la descarga**: ver abajo — cubre desde el chat
+    hasta el CONTRATO DE DATOS que consume la pantalla (backend, con pytest real); NO cubre una prueba
+    de navegador/DOM real de `mia-2d.js` (limitación honesta: este proyecto no tiene jsdom ni ningún
+    arnés de pruebas de navegador para el mundo 2D, y añadir una dependencia nueva solo para esto no se
+    ha considerado justificado en esta ronda — se verificó en su lugar que `npm run build` compila sin
+    errores de sintaxis).
+
+### Caso de aceptación obligatorio — verificado de extremo a extremo
+
+`tests/test_fase_h_2d_presentation.py::test_cost_comparison_request_reaches_the_2d_screen_with_period_kpis_charts_and_table`:
+la petición exacta de la incidencia ("comparativa de costes en nóminas por departamento en agosto de
+2026"), a través de `/api/mia/chat` (el endpoint real que usa `mia-2d.js`, con datos sintéticos propios
+con cotizaciones SS reales, igual que las pruebas de las secciones 15/16), produce `data.table` con
+Cocina/Recepción de agosto, `data.cards` con el KPI de gasto total, `data.charts` con un gráfico donut
+real (no derivado) con esas mismas etiquetas, y la presentación RAW (`body.presentations`) también
+disponible — nunca el mes equivocado, nunca sin gráficos ni KPIs.
+
+### Pruebas ejecutadas y resultado (primera ronda)
+
+`tests/test_legacy_view.py` (15, 3 nuevas), `tests/test_fase_h_2d_presentation.py` (1, el caso de
+aceptación obligatorio), `npm run build` (sin errores). Limitaciones de Fase F recordadas explícitamente
+aquí, sin declararlas resueltas por integrar el frontend: el bloqueo semántico duro en `generar_informe`
+sigue centrado solo en nóminas (sección 18, punto 1); las afirmaciones narrativas sin campo `period`
+estructurado siguen sin verificar, no bloqueadas (sección 18, punto 2); el snapshot de permisos de un
+trabajo en cola sigue pudiendo quedar obsoleto durante la espera (sección 16, punto 3) — ninguna de las
+tres queda resuelta por el trabajo de esta fase, que es puramente de presentación en el mundo 2D.
+
+### Segunda ronda — Job Manager en el 2D real, completitud de `legacy_view.py` y pruebas ampliadas
+
+El usuario, tras aceptar el avance anterior, pidió explícitamente NO declarar cerrada la Fase H hasta
+cubrir cuatro puntos adicionales. Estado de cada uno:
+
+**1. Job Manager real integrado en `mia-2d.html`/`.js`/`.css`** — hecho, reutilizando ÍNTEGRAMENTE el
+backend de la Fase G, sin segunda cola ni segundo gestor:
+- Backend: `job_manager.list_for_user()` (nueva, `src/mia/reporting/job_manager.py`) — trabajos del
+  usuario, más recientes primero, aislados por `user_id` (misma condición `WHERE` que ya usa la
+  descarga de informes). `GET /api/jobs` (`src/mia/api/routes/jobs.py`, nueva ruta SIN segmento,
+  verificada sin colisión con `GET /api/jobs/{job_id}`) la expone. `JobStatusResponse` ganó
+  `kind`/`periodo`/`formato`/`cancel_requested` (antes solo en el objeto interno, nunca en la
+  respuesta HTTP).
+- Punto de entrada conversacional nuevo: `informe_economico_en_segundo_plano`
+  (`src/mia/modules/rrhh/informes/jobs.py`) — llama exactamente a `job_manager.submit()` con el mismo
+  `kind` (`JOB_KIND_INFORME_ECONOMICO`) y la misma fórmula de clave de idempotencia que ya usa
+  `POST /api/jobs/informe-economico`: son dos puertas de entrada al mismo trabajo, nunca dos
+  trabajos distintos para la misma petición. Solo se registra en el `ToolRegistry` cuando
+  `settings.jobs.enabled` es `True` (`src/mia/modules/rrhh/nominas/tools.py::register_amounts`) —
+  igual que ya exige el arranque del worker — para no ofrecer nunca un botón que un despliegue sin
+  worker no podría cumplir.
+- Frontend (`frontend/src/worlds/2D/mia-2d.js`/`.css`, `frontend/mia-2d.html`): tarjeta de trabajo
+  (`buildJobCard`/`paintJobCard`) con estado, barra de progreso, mensaje y botón de cancelar
+  (`DELETE /api/jobs/{job_id}`) o enlace de descarga (`/api/reports/{report_id}`) cuando corresponde.
+  Sondeo controlado y real (`pollJobOnce`, cada 2.5 s mientras el estado sea `queued`/`running`, nunca
+  un `%` incrementado por temporizador) que actualiza TODAS las tarjetas que representan ese trabajo a
+  la vez (la del chat y la del panel de historial, si ambas existen — un único mapa de estado,
+  `miaJobsState`, nunca dos fuentes de verdad). Avisos honestos de espera larga (sin inventar un
+  fallo: "sigue en cola/en curso" pasados 2/4 minutos de sondeo real) y de error de red al consultar
+  (reintento automático, nunca una tarjeta que se queda congelada en silencio).
+  Botón nuevo en la barra superior (`#jobsBtn`/`#jobsPanel`) abre un panel de historial que llama a
+  `GET /api/jobs` (`refreshJobsHistory()`), reutilizado también en `boot()` para la **recuperación
+  tras refrescar la página**: el sondeo de cualquier trabajo no terminal se reanuda solo, sin depender
+  de nada guardado en el propio navegador.
+- Nada de esto toca Employee360, el panel de correo, voz, ni ningún archivo de `frontend/src/worlds/3d/`
+  o `/hologram/`.
+
+**2. Completitud de `legacy_view.py`** — auditado explícitamente bloque por bloque:
+- `stats` (estadísticas de primera clase, p. ej. media/mediana por departamento): antes se perdían en
+  silencio dentro de `kind=="table"`; ahora llegan como `data.stats` (su propia tabla con
+  `table_view()`, nunca mezcladas con la tabla principal). Prueba:
+  `test_table_stats_reach_the_screen_as_their_own_named_block`.
+- `job` (la tarjeta de trabajo en segundo plano): nueva rama `kind=="job"` → `data.job`. Prueba:
+  `test_job_presentation_passes_through_for_the_2d_job_card`.
+- `narrativa`/`metodología`/anexos de documento: **sin equivalente a este nivel por diseño, no por
+  descuido** — son bloques que solo existen dentro de `to_document()` en el momento de generar el
+  archivo (PDF/XLSX/PPTX/HTML), nunca como una `presentation` independiente que viaje por el chat; no
+  hay nada que traducir aquí porque el propio motor de documentos nunca produce una `presentation` de
+  ese tipo. Documentado explícitamente en el docstring de `legacy_view.py`.
+- Cualquier tipo de presentación no reconocido: cae en la rama `else` ya existente de `_absorb()` — un
+  comportamiento explícito (se absorbe como tabla/resumen genérico), nunca una pérdida silenciosa sin
+  ningún rastro.
+- `tests/test_legacy_view.py` pasó de 15 a 17 pruebas (las 2 nuevas de arriba); las 15 anteriores
+  siguen pasando sin cambios.
+
+**3. Calidad visual premium** — verificación honesta, distinguiendo lo comprobado por inspección de
+código de lo que requeriría un navegador real:
+- Verificado por inspección directa del código añadido: ausencia de scroll horizontal (la tarjeta de
+  trabajo y el panel de historial usan el mismo patrón de ancho relativo que el resto de tarjetas,
+  `max-width`/`calc(100vw - 24px)` en el breakpoint móvil ya existente de 760px); no hay HTML no
+  confiable insertado sin escapar — `paintJobCard()` usa `.textContent` para cualquier campo que puede
+  venir del backend (`progress_message`, `periodo`, `formato`, `error_message`), nunca
+  `.innerHTML` con esos valores; estados de carga y error tienen mensaje explícito propio
+  (`.mia-job-note`), nunca un hueco en blanco; el panel de historial tiene su propio estado vacío
+  explícito. Responsive: nuevo bloque CSS sigue el mismo vocabulario de variables
+  (`--coral`/--gold`/`--line`/`--sand`) y el mismo breakpoint ya usado por el resto del 2D.
+- Verificado también para el renderizado de gráficos de la primera ronda (`renderCharts`/
+  `renderDonutChart`/`renderBarChart`/`renderLineChart`): usan `.textContent`/`encodeText()`
+  consistentemente para cualquier etiqueta de origen backend (`chart.title`, `labels`) — no se
+  encontró ningún punto donde un valor del backend se insertara como HTML sin escapar.
+- **No verificado en un navegador real** (limitación honesta, ya señalada en la primera ronda): este
+  proyecto no tiene jsdom ni ningún arnés de pruebas de navegador para el mundo 2D. No se han podido
+  comprobar visualmente en un navegador real: la animación de la barra de progreso, los `tooltips`
+  nativos, el comportamiento exacto del panel de historial al abrir/cerrar en pantallas muy pequeñas,
+  ni accesibilidad real con lector de pantalla (los `aria-*` añadidos — `aria-haspopup`,
+  `aria-expanded`, `aria-hidden` en el panel — son correctos por inspección de las pautas ARIA
+  habituales para un menú desplegable, pero no se han probado con un lector de pantalla real). Se
+  verificó en su lugar que `node --check` acepta la sintaxis de `mia-2d.js` y que las etiquetas
+  `<div>` de `mia-2d.html` quedan balanceadas tras el cambio.
+
+**4. Pruebas reales ampliadas** — los 10 puntos del checklist, verificados con la petición obligatoria
+de agosto de 2026, en `tests/test_fase_h_2d_presentation.py` (ahora 7 pruebas, antes 1):
+1. Periodo agosto 2026 ✓ (ya cubierto en la primera ronda).
+2. Herramienta económica correcta ✓ (idem).
+3. KPIs correctos ✓ (idem).
+4. Costes salariales reales del escenario sintético ✓ (idem).
+5. Gráficos coherentes ✓ (idem).
+6. Tabla completa ✓ (idem).
+7. **Advertencias de privacidad y cobertura** — nueva:
+   `test_hidden_department_privacy_warning_reaches_the_2d_screen`, con un departamento de una sola
+   persona (bajo el mínimo NOM-005 de 3): confirma que `data.alertas_calidad` recibe el aviso real y
+   que la fila de ese departamento llega enmascarada (`"—"`) en `data.table`, nunca con su importe
+   desglosado — el mismo comportamiento que ya protegía el backend, ahora confirmado en el contrato
+   que ve el 2D.
+8. **Trabajo persistente cuando corresponde** — nueva:
+   `test_background_job_request_is_queued_tracked_and_downloadable_from_the_2d_world`: pide el informe
+   "en segundo plano" por chat, confirma `data.job` con estado `queued`, lo ejecuta con el mismo
+   `ReportJobWorker`/ejecutor ya validado en la Fase G, y confirma que una consulta nueva
+   (`GET /api/jobs/{job_id}`, como la que haría el 2D tras refrescar) lo ve `completed`.
+9. **Descarga autorizada** — misma prueba: `GET /api/reports/{report_id}` tras completar el trabajo.
+10. **Coherencia documento↔pantalla** — misma prueba: el PDF descargado contiene los mismos
+    departamentos (Cocina/Recepción) que el periodo solicitado.
+
+Turnos/Vacaciones/Plantilla, con la selección semántica conservada: `test_shift_domain_reaches_the_2d_
+screen_as_a_table`, `test_vacation_domain_reaches_the_2d_screen_as_a_table`,
+`test_employee_roster_domain_reaches_the_2d_screen_as_a_table` (las tres contra `/api/mia/chat`, el
+punto de entrada real del 2D — las de Fase F en `test_fase_f_integration.py` ya cubrían estos tres
+dominios contra `/api/chat`; estas son su equivalente para el 2D), y
+`test_a_simple_conversational_reply_never_gets_cards_in_the_2d_world` (un saludo simple no produce
+`table`/`cards`/`charts`).
+
+### Pruebas ejecutadas y resultado (segunda ronda)
+
+`tests/test_legacy_view.py` (17, 2 nuevas sobre las 15 de la primera ronda) ·
+`tests/test_job_manager.py` (15, 2 nuevas: `list_for_user` con aislamiento por usuario y límite) ·
+`tests/test_job_manager_economic_integration.py` (22, 5 nuevas: `GET /api/jobs`, no colisión de rutas,
+registro condicional de la herramienta conversacional, envío por chat equivalente al REST, permiso
+exigido también desde el chat) · `tests/test_fase_h_2d_presentation.py` (7, 6 nuevas) ·
+`node --check` sobre `mia-2d.js` (sintaxis correcta) · regresión completa de `tests/` (891 pruebas,
+0 fallos tras corregir una prueba de orden sensible al reloj, ver nota abajo).
+
+**Nota de regresión corregida**: `test_list_for_user_returns_only_that_users_jobs_most_recent_first`
+falló intermitentemente en la suite completa (no en ejecución aislada) por un empate de `created_at`
+entre dos envíos consecutivos — la resolución del reloj de Windows puede ser de ~15 ms, suficiente para
+que dos inserciones muy próximas comparen igual. No es un defecto de `list_for_user()` en uso real (dos
+envíos de un mismo usuario nunca ocurren con esa cercanía): se corrigió añadiendo un `sleep` real entre
+envíos en las dos pruebas afectadas (`tests/test_job_manager.py` y
+`tests/test_job_manager_economic_integration.py`), no el propio ordenamiento del backend.
+
+**Limitaciones que siguen abiertas, sin declararlas resueltas por este trabajo** (recordatorio, igual
+que en la primera ronda): el bloqueo semántico duro en `generar_informe` sigue centrado solo en nóminas
+(sección 18, punto 1); las afirmaciones narrativas sin campo `period` estructurado siguen sin verificar,
+no bloqueadas (sección 18, punto 2); el snapshot de permisos de un trabajo en cola sigue pudiendo quedar
+obsoleto durante la espera (sección 16, punto 3); un trabajo en segundo plano ya `running` no se
+interrumpe a mitad de ejecución al cancelarlo (cooperativo, ver `ReportJobWorker`, sin cambios en esta
+fase); y la calidad visual del panel de historial/tarjeta de trabajo en un navegador real (animación,
+accesibilidad con lector de pantalla, comportamiento en pantallas muy pequeñas) no se ha podido verificar
+sin un arnés de pruebas de navegador, que este proyecto no tiene.
+
+### Tercera ronda — verificación final antes del commit (regresión real, build real, hallazgo de empaquetado)
+
+El usuario aceptó provisionalmente la segunda ronda (23/23 pruebas específicas + build Vite) y pidió una
+última verificación antes del commit definitivo. Resultado de cada punto pedido:
+
+**1. Regresión completa del backend (resultado real del XML JUnit, no estimado)**: `tests/` completo,
+**898 pruebas, 0 fallos, 0 errores, 0 omitidas** (incluye la prueba nueva de aislamiento en cancelación,
+punto 7 más abajo). Se ejecutó una vez, hasta el final, sin relanzar la suite que ya estaba corriendo.
+
+**2. Suite V4 (`node --test`) que ya estaba en ejecución**: **no se ha reiniciado** (instrucción
+explícita del usuario). Diagnóstico sin atribuirle un resultado que no tiene: el proceso (PID 27496,
+iniciado a las 23:11) seguía vivo a las 05:00 — casi 6 horas después — y su fichero de salida
+(`node_tests_full.txt`) no ha crecido ni un byte desde el arranque (975 bytes, sin cambios). Esto no es
+el patrón ya conocido de "Node bufferiza stdout y solo lo vuelca al salir" (ese patrón explica silencio
+sin escritura NUEVA, no una salida que nunca cambia de tamaño durante horas): es un proceso bloqueado, no
+una ejecución lenta. Su resultado queda **indeterminado, no fallido ni pasado** — y, por tratarse del
+mundo V4/holograma (archivos `frontend/src/core/*`, `frontend/src/worlds/{2d,3d,hologram}/*`, ninguno
+tocado por la Fase H, confirmado con `git diff --stat`), es un hallazgo del mundo V4 que se documenta
+aquí por separado, sin tocar 3D/HG para intentar resolverlo.
+
+**3 y 4. Advertencias de Vite sobre `mia-2d.js`/`mia-enhance.js` y comprobación real sirviendo `dist/`**
+— esto reveló un hallazgo real, no solo cosmético. La advertencia de `npm run build`:
+```
+<script src="/src/worlds/2D/mia-2d.js?..."> in "/mia-2d.html" can't be bundled without type="module" attribute
+<script src="/src/worlds/2D/mia-enhance.js"> in "/mia-2d.html" can't be bundled without type="module" attribute
+```
+ya existía antes de la Fase H (`mia-2d.js` ya era un script clásico sin `type="module"` desde antes de
+esta fase — confirmado en la investigación arquitectónica de la primera ronda). Lo que NO se había
+comprobado hasta ahora es su consecuencia real: `npx vite build` **no copia esos tres archivos
+(`mia-2d.js`, `mia-enhance.js`, `mia-2d.css`) a `dist/` en absoluto** — `dist/src/worlds/2D/` no existe
+tras el build (verificado listando el árbol de `dist/`). Sirviendo `dist/` con `npm run preview` (el
+mecanismo de producción que el propio `package.json` define) y pidiendo esas tres rutas, el servidor
+devuelve `200 text/html` — pero es el *fallback* de SPA de Vite (confirmado comparando con una ruta
+inventada que no existe en absoluto: devuelve exactamente el mismo `200 text/html`), no el archivo real.
+Es decir: **si `dist/` se despliega tal cual mediante `vite preview` (o cualquier servidor estático con
+el mismo fallback de SPA), el navegador recibe HTML donde esperaba JavaScript/CSS — los navegadores
+modernos bloquean ejecutar `text/html` como script por comprobación de tipo MIME, así que el mundo 2D
+completo (chat, avatar, y todo el trabajo de Job Manager de esta fase) no arrancaría en absoluto** bajo
+ese despliegue concreto.
+
+Esto es un **hueco preexistente en `vite.config.js`** (nunca copia scripts clásicos no-módulo a
+`dist/`), no algo introducido ni corregido por la Fase H — esta fase solo añadió código DENTRO de
+`mia-2d.js`, nunca tocó cómo se empaqueta o se sirve. Tampoco hay, en este repositorio, un mecanismo
+committeado que sirva `dist/` en producción: el `Dockerfile` solo empaqueta el backend Python (no copia
+`frontend/` ni `dist/`), y `docker-compose.yml` solo define los servicios `db` y `api` — ningún servicio
+de frontend. Los comentarios de `vite.config.js` ("Los mundos 2D y 3D llaman directamente a
+127.0.0.1:5001 y :5002, como antes") sugieren que, en el despliegue real actual, el frontend se sirve
+como código FUENTE (no como `dist/` empaquetado) desde algún mecanismo externo a este repositorio — pero
+eso no está confirmado aquí, y no se debe asumir sin preguntar. **Pendiente explícito**: confirmar con el
+usuario cuál es el mecanismo real que sirve `frontend/` en su entorno de producción actual, para saber si
+este hueco de `dist/` es o no relevante para ese despliegue concreto.
+
+Siguiendo la instrucción explícita del usuario ("No cambies automáticamente a `type=module`"), **no se
+ha aplicado ningún cambio** de empaquetado ni de servidor en esta ronda — solo se diagnosticó.
+
+**5. Dependencias globales/orden de ejecución si se considerara `type="module"` en el futuro** (solo
+diagnóstico, sin cambio): `mia-2d.js` es un script clásico que declara funciones/variables en el ámbito
+global de `window` (p. ej. `ask`, `context`, `MIA_UI_BUILD`), y `mia-enhance.js` (que se carga justo
+después en `mia-2d.html`) depende de que esas globales ya existan al ejecutarse — convertir cualquiera
+de los dos a `type="module"` cambiaría ese orden (los módulos se ejecutan en modo diferido/estricto, con
+su propio ámbito, no en el ámbito global) y rompería ese acoplamiento sin refactorizar también
+`mia-enhance.js`. Confirma que la decisión de la primera ronda (no convertir a módulos dentro de esta
+fase) sigue siendo la correcta — un cambio de este tipo es una decisión arquitectónica aparte, no un
+ajuste de empaquetado trivial.
+
+**6. Funciones de Job Manager en la versión compilada**: dado el hallazgo de los puntos 3/4, la
+respuesta honesta es que **no se puede confirmar que funcionen en un despliegue de `dist/` aislado**,
+porque el propio archivo que las contiene no llega a `dist/`. Sí se confirma que el CÓDIGO en sí es
+correcto y sintácticamente válido (`node --check` sobre `frontend/src/worlds/2D/mia-2d.js`, sin errores)
+y que usa los endpoints reales (`GET/DELETE /api/jobs/{id}`, `GET /api/jobs`, `GET /api/reports/{id}` —
+nunca estado simulado), verificado por inspección directa del código. La confirmación de que SE EJECUTA
+correctamente en un navegador depende de qué mecanismo sirva realmente `mia-2d.js` en producción (ver
+punto 3/4) — no de este build de Vite en concreto.
+
+**7. Los 23 tests específicos incluyen autorización y aislamiento; nada del 2D validado se ha perdido**:
+de las 23 pruebas de `tests/test_job_manager_economic_integration.py`, 8 cubren explícitamente
+autorización/aislamiento: `test_submit_endpoint_requires_the_nominas_permission`,
+`test_payroll_job_still_enforces_the_nominas_permission_at_execution_time`,
+`test_the_conversational_job_tool_still_requires_the_nominas_permission` (autorización); `test_a_user_
+cannot_see_another_users_job`, `test_a_user_cannot_cancel_another_users_job` (nueva en esta ronda —
+antes solo se comprobaba el aislamiento en consulta/descarga, no en cancelación),
+`test_list_endpoint_returns_only_the_callers_jobs_most_recent_first`, `test_report_download_is_only_
+available_to_the_job_owner`, `test_idempotency_is_isolated_per_user_not_shared_by_hash_coincidence`
+(aislamiento). Ninguna funcionalidad 2D previamente validada se ha perdido: las 7 pruebas de
+`tests/test_fase_h_2d_presentation.py` (KPIs/gráficos/tabla/advertencias de nóminas, Turnos, Vacaciones,
+Plantilla, selección semántica) siguen pasando, y la regresión completa (898/898) las incluye.
+
+**8. Pruebas visuales en navegador pendientes** (reiterado explícitamente, no resuelto por este trabajo):
+animación real de la barra de progreso del trabajo, comportamiento del panel de historial al
+abrir/cerrar en pantallas pequeñas, accesibilidad con lector de pantalla, y — hallazgo nuevo de esta
+ronda — la propia carga del script en un navegador real contra un despliegue de `dist/` puro, dado el
+punto 3/4. Ninguna de estas se ha podido ejecutar en este entorno (sin arnés de pruebas de navegador).
+
+### Pruebas ejecutadas y resultado (tercera ronda)
+
+Regresión completa de `tests/`: **898 pruebas, 0 fallos** (XML JUnit,
+`full_regression_final.xml`) — incluye la prueba nueva `test_a_user_cannot_cancel_another_users_job`.
+`npm run build`: éxito (`✓ built in 13.70s`), con las dos advertencias ya conocidas (scripts clásicos no
+empaquetables) analizadas arriba. Suite V4 (`node --test`): indeterminada, proceso bloqueado desde hace
+~6 horas, documentada por separado, sin reiniciarla ni atribuirle un resultado.
+
 ## 10. Cierre de Fases D y E (ronda de continuación tras el cierre de la validación de nóminas)
 
 **Fase D — verificado, no reconstruido**: los 8 tipos de bloque que pedía esta ronda (KPI, Table,

@@ -35,21 +35,30 @@ class SubmitInformeEconomicoParams(BaseModel):
 
 class JobStatusResponse(BaseModel):
     job_id: str
+    kind: str
     status: str
     progress: float
     progress_message: str | None
     report_id: str | None
     error_message: str | None
+    periodo: str | None = None
+    formato: str | None = None
+    cancel_requested: bool = False
 
 
 def _to_response(snapshot: JobSnapshot) -> JobStatusResponse:
+    params = snapshot.params or {}
     return JobStatusResponse(
         job_id=snapshot.id,
+        kind=snapshot.kind,
         status=snapshot.status,
         progress=snapshot.progress,
         progress_message=snapshot.progress_message,
         report_id=snapshot.report_id,
         error_message=snapshot.error_message,
+        periodo=params.get("periodo"),
+        formato=params.get("formato"),
+        cancel_requested=snapshot.cancel_requested,
     )
 
 
@@ -74,6 +83,17 @@ async def submit_informe_economico(
         snapshot = await job_manager.get(db, job_id)
     assert snapshot is not None  # noqa: S101 — se acaba de crear/recuperar en la misma transacción
     return _to_response(snapshot)
+
+
+@router.get("")
+async def list_jobs(services: ServicesDep, user: UserDep) -> list[JobStatusResponse]:
+    """Fase H: "consulta de trabajos anteriores autorizados" y recuperación tras refrescar la
+    página — el mundo 2D llama a esto al cargar para reanudar el sondeo de cualquier trabajo que
+    siguiera en curso, sin depender de nada guardado en el propio navegador. Solo los del usuario
+    autenticado, igual que la descarga de informes."""
+    async with services.db.session() as db:
+        snapshots = await job_manager.list_for_user(db, user_id=user.user_id)
+    return [_to_response(s) for s in snapshots]
 
 
 @router.get("/{job_id}")

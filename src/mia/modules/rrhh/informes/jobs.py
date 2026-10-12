@@ -6,15 +6,20 @@ conversación real — nunca un camino paralelo ni una reconstrucción del motor
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
-from mia.auth import UserContext
-from mia.conversation import ToolContext, ToolStatus
+from pydantic import BaseModel, Field
+
+from mia.auth import Permission, UserContext
+from mia.conversation import Tool, ToolContext, ToolResult, ToolStatus
 from mia.conversation.tools import remember_table
 from mia.llm import ToolCall
+from mia.modules.rrhh.common import Deps
+from mia.reporting import job_manager
 from mia.reporting.job_manager import JobSnapshot
 
 JOB_KIND_INFORME_ECONOMICO = "informe_economico_nominas"
@@ -86,3 +91,83 @@ async def run_informe_economico_nominas(services: Any, job: JobSnapshot) -> str:
     # `generar_informe` construye el enlace como f"/api/reports/{report_id}" (ver informes/tools.py):
     # el propio informe ya lo recoge en la tabla `reports`, así que basta con el id para enlazarlo aquí.
     return informe_result.summary["enlace"].rsplit("/", 1)[-1]
+
+
+# ------------------------------------------------------------------ punto de entrada conversacional
+
+
+class InformeEconomicoJobParams(BaseModel):
+    """Mismos campos que ``SubmitInformeEconomicoParams`` (``src/mia/api/routes/jobs.py``) — un único
+    contrato de negocio para el trabajo, enviado desde el chat o desde el endpoint REST directo; nunca
+    dos formas distintas de describir el mismo trabajo."""
+
+    periodo: str = Field(description="Expresión temporal: 'T3 2026', 'agosto 2026', 'últimos 6 meses'…")
+    departamento: str | None = Field(default=None, description="Limitar a un departamento; vacío = todos")
+    concepto: Literal["liquido", "devengado", "coste_empresa"] = "liquido"
+    incluir_grupos_pequenos: bool = False
+    incluir_inactivos: bool = False
+    formato: Literal["pdf", "xlsx", "pptx", "html"] = "pdf"
+    titulo: str | None = None
+
+
+def informe_economico_en_segundo_plano(deps: Deps) -> Tool:
+    """Fase H, "integración del Job Manager en el mundo 2D real": punto de entrada conversacional al
+    MISMO Job Manager y ejecutor ya construidos en la Fase G (`job_manager.submit`,
+    `run_informe_economico_nominas`) — nunca una segunda cola ni un segundo gestor de trabajos. El
+    endpoint REST directo (`POST /api/jobs/informe-economico`) y esta herramienta comparten
+    exactamente el mismo `kind`, los mismos parámetros y la misma clave de idempotencia determinista."""
+
+    async def handler(p: InformeEconomicoJobParams, ctx: ToolContext) -> ToolResult:
+        params = p.model_dump()
+        params["_auth"] = {
+            "user_id": ctx.user.user_id,
+            "display_name": ctx.user.display_name,
+            "roles": sorted(ctx.user.roles),
+        }
+        business_params = {k: v for k, v in params.items() if k != "_auth"}
+        idempotency_key = hashlib.sha256(
+            json.dumps({"user_id": ctx.user.user_id, **business_params}, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        async with deps.db.session() as db:
+            job_id = await job_manager.submit(
+                db,
+                user_id=ctx.user.user_id,
+                kind=JOB_KIND_INFORME_ECONOMICO,
+                params=params,
+                idempotency_key=idempotency_key,
+            )
+            snapshot = await job_manager.get(db, job_id)
+        assert snapshot is not None  # noqa: S101 — se acaba de crear/recuperar en la misma transacción
+        return ToolResult(
+            ToolStatus.OK,
+            {
+                "job_id": snapshot.id,
+                "estado": snapshot.status,
+                "mensaje": (
+                    "He encolado el análisis económico en segundo plano. Puedo avisarte del progreso "
+                    "o puedes consultarlo cuando quieras — también queda guardado si recargas la página."
+                ),
+            },
+            {
+                "type": "job",
+                "job_id": snapshot.id,
+                "kind": snapshot.kind,
+                "status": snapshot.status,
+                "periodo": p.periodo,
+                "formato": p.formato,
+            },
+        )
+
+    return Tool(
+        "informe_economico_en_segundo_plano",
+        "Encola el análisis económico de nóminas y su informe como trabajo en SEGUNDO PLANO, con "
+        "progreso real consultable y descarga cuando termine. Úsala SOLO cuando el usuario pida "
+        "explícitamente procesarlo 'en segundo plano'/'en background'/'que tarde lo que tarde, avísame' "
+        "o para un volumen muy grande (muchos meses/departamentos) que el usuario prefiera no esperar "
+        "en el propio turno. Para la petición normal, usa 'analisis_economico_nominas' directamente — "
+        "esta herramienta nunca sustituye a esa por defecto.",
+        InformeEconomicoJobParams,
+        handler,
+        permission=Permission.NOMINAS_IMPORTES,
+        audit_resource="nominas_importes",
+    )
