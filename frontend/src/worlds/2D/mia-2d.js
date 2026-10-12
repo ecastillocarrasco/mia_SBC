@@ -734,7 +734,10 @@ async function boot(){setAvatarState('reposo','Lista para ayudarte.');let backen
 // =============================================================================
 // mIA 2D V1 - DUAL WORLD + SHARED SESSION + ELEVENLABS VOICE
 // =============================================================================
-const MIA_SHARED_SESSION_KEY='mia.shared.session.v1';
+// V5.2.9: contexto aislado 2D. El antiguo localStorage compartido no se consulta.
+// El cambio de mundo transfiere el contexto una única vez, en la misma pestaña.
+const MIA_WORLD_2D_KEY='mia.world.2d.session.v529';
+const MIA_WORLD_HANDOFF_KEY='mia.world.pending-handoff.v529';
 let miaSessionRestoring=false;
 let miaCurrentAudio=null;
 let miaAudioUrl=null;
@@ -745,27 +748,48 @@ function miaGreetingForNow(){
   if(h>=14&&h<21)return 'Buenas tardes';
   return 'Buenas noches';
 }
-
 function miaToast(text){
   const layer=document.getElementById('toastLayer');if(!layer)return;
   const t=document.createElement('div');t.className='mia-toast';t.textContent=String(text||'');layer.appendChild(t);
-  setTimeout(()=>{t.style.opacity='0';t.style.transform='translateY(7px)';setTimeout(()=>t.remove(),250)},2600);
+  setTimeout(()=>{t.style.opacity='';t.style.transform='translateY(7px)';setTimeout(()=>t.remove(),250)},2600);
 }
-
-function miaLoadSharedSession(){
-  try{const raw=localStorage.getItem(MIA_SHARED_SESSION_KEY);if(!raw)return null;const s=JSON.parse(raw);return s&&typeof s==='object'?s:null}catch(_){return null}
+function mia2dSafeObject(v){return v&&typeof v==='object'&&!Array.isArray(v)}
+function mia2dRead(key){try{return JSON.parse(sessionStorage.getItem(key)||'null')}catch(_){return null}}
+function mia2dInitialContext(){
+  const transfer=mia2dRead(MIA_WORLD_HANDOFF_KEY);
+  if(mia2dSafeObject(transfer)){
+    const age=Date.now()-Number(transfer.at||0);
+    if(transfer.from==='2d'||age<0||age>120000){
+      try{sessionStorage.removeItem(MIA_WORLD_HANDOFF_KEY)}catch(_){}
+    }else if((transfer.to==='any'||transfer.to==='2d')&&mia2dSafeObject(transfer.context)){
+      try{sessionStorage.removeItem(MIA_WORLD_HANDOFF_KEY)}catch(_){}
+      return transfer.context;
+    }
+  }
+  const own=mia2dRead(MIA_WORLD_2D_KEY);
+  return mia2dSafeObject(own?.context)?own.context:{};
 }
-function miaSaveSharedSession(){
-  try{const prior=miaLoadSharedSession()||{};localStorage.setItem(MIA_SHARED_SESSION_KEY,JSON.stringify({...prior,world:'2d',context,updatedAt:Date.now()}))}catch(_){}
+function miaSaveWorld2d(){
+  try{sessionStorage.setItem(MIA_WORLD_2D_KEY,JSON.stringify({context,at:Date.now()}))}catch(_){}
 }
-
-// Keep the same conversational context when the user moves between 2D and 3D.
-const __miaStoredSession=miaLoadSharedSession();
-if(__miaStoredSession?.context&&typeof __miaStoredSession.context==='object')context={...context,...__miaStoredSession.context};
-
-// Wrap ask so the backend context is persisted after every turn.
+function miaHandoff2d(to='any'){
+  miaSaveWorld2d();
+  try{sessionStorage.setItem(MIA_WORLD_HANDOFF_KEY,JSON.stringify({from:'2d',to,at:Date.now(),context}))}catch(_){}
+}
+context={...context,...mia2dInitialContext()};
 const __miaAskBase=ask;
-ask=async function(raw){try{return await __miaAskBase(raw)}finally{miaSaveSharedSession()}};
+ask=async function(raw){try{return await __miaAskBase(raw)}finally{miaSaveWorld2d()}};
+// Handoff exclusivamente al pulsar un enlace de NAVEGACIÓN entre mundos.
+document.addEventListener('click',(event)=>{
+  const a=event.target?.closest?.('a[href]');
+  if(!a||a.download||(a.target&&a.target!=='_self')||event.defaultPrevented||
+     event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
+  let url;try{url=new URL(a.href)}catch(_){return}
+  if(url.origin!==location.origin||!/\/(?:index|mia-2d)\.html$|\/src\/worlds\/(?:2d|3d|hologram)\/index\.html$/i.test(url.pathname))return;
+  const to=/\/src\/worlds\/hologram\/index\.html$/i.test(url.pathname)?'hologram':
+     /\/src\/worlds\/3d\/index\.html$/i.test(url.pathname)?'3d':'any';
+  miaHandoff2d(to);
+},true);
 
 // Voice output is generated server-side so the ElevenLabs key never reaches the browser.
 async function miaElevenLabsSpeak(text,finalState='sonriendo',returnState=null){
@@ -805,8 +829,7 @@ soundToggle.addEventListener('click',()=>{if(!speechEnabled&&miaCurrentAudio){mi
 document.querySelectorAll('[data-prompt]').forEach(btn=>btn.addEventListener('click',()=>ask(btn.dataset.prompt||'')));
 
 // Switch to the 3D world without dropping session context.
-document.getElementById('world3dLink')?.addEventListener('click',()=>miaSaveSharedSession());
-window.addEventListener('beforeunload',miaSaveSharedSession);
+window.addEventListener('beforeunload',miaSaveWorld2d);
 
 // Avoid broken-image UI if avatar assets are temporarily unavailable.
 [avatarA,avatarB].forEach(img=>img.addEventListener('error',()=>{img.style.visibility='hidden'}));

@@ -1,0 +1,80 @@
+{
+  "product": "mIA Sunset Beach Club | Holograma",
+  "version": "5.2.0",
+  "base": "V5.1 hybrid HG (requires prior V4.9 boot-loader core)",
+  "scope": "hologram-only (frontend 3D and 2D unchanged; GLB unchanged)",
+  "changed_hologram_files": 6,
+  "files": [
+    {
+      "path": "docs/INSTALAR_MIA_HOLOGRAMA_V5_2.md",
+      "bytes": 6319,
+      "sha256": "7573b6bbf388f4bb7372418c6d5823b4c2f2a236aa7307736f7a28b9a3870ab1"
+    },
+    {
+      "path": "docs/NOTAS_BROWSER.md",
+      "bytes": 658,
+      "sha256": "14f722f4e993df339592708f8b7a4151742d3af910681390a29737c169c6bd7d"
+    },
+    {
+      "path": "src/worlds/hologram/hologram-director-v52.js",
+      "bytes": 6186,
+      "sha256": "03a8c350ba102279eeca7522599d26a12657757a5e761988fcc1353d0c97499e"
+    },
+    {
+      "path": "src/worlds/hologram/hologram-material-v51.js",
+      "bytes": 9573,
+      "sha256": "f0a923934e11d02392fd36cc579c003fc368fedfc639adc862ee6f79250d6bab"
+    },
+    {
+      "path": "src/worlds/hologram/hologram-premium-v5.js",
+      "bytes": 11607,
+      "sha256": "ecbaf5af2514db2aaa1f09bc34b3b73a754476428d4de1aba57630d4102b9744"
+    },
+    {
+      "path": "src/worlds/hologram/hologram-projection-v52.css",
+      "bytes": 9715,
+      "sha256": "468597cc58fd5b9e08cc7cec45c4d61105a4af3f13e35b81547e339d0dbae179"
+    },
+    {
+      "path": "src/worlds/hologram/index.html",
+      "bytes": 3447,
+      "sha256": "abb44e2c53dadff2645af748aa68d082d9d3805ba02641dea9d8b479fecddd67"
+    },
+    {
+      "path": "src/worlds/hologram/main.js",
+      "bytes": 11632,
+      "sha256": "b7f68486fe7340f21d7aa98c8bc67db72baf878be5aefa87929adb401ae18866"
+    },
+    {
+      "path": "tests/browser_smoke_v52.py",
+      "bytes": 4395,
+      "sha256": "84225ecd87b36e5de4dd2b4a6da85aed2c2a102ab39a8cc4cdff58384326e893"
+    },
+    {
+      "path": "tests/mia-hologram-v5.test.mjs",
+      "bytes": 4323,
+      "sha256": "7e84f9cd7c8c8ad7cb59d0b09f07269c7195abaa0b02b0957d185c15c1c7d4bb"
+    },
+    {
+      "path": "tests/mia-hologram-v51.test.mjs",
+      "bytes": 5460,
+      "sha256": "79c332f9d1b79ccb70717cfa40dcc8231f7bcb2a524ad9269e2389a206f935e2"
+    },
+    {
+      "path": "tests/mia-hologram-v52.test.mjs",
+      "bytes": 8145,
+      "sha256": "653fa56f6acd83ee0d187a49a87447757099bd2e30e357679a34543e0717a373"
+    }
+  ],
+  "validation": {
+    "js_check": "passed",
+    "css_parse": "passed",
+    "node_unit_tests": "27 passed",
+    "chromium_layout": "passed four viewports, DOM fixture",
+    "chromium_voice_activation": "passed real click, one invocation, userActivation.isActive=true",
+    "glb_webgl_gpu": "not tested",
+    "ElevenLabs_real": "not tested",
+    "physical_fan": "not tested",
+    "vite_full_build": "not tested (project dependencies missing)"
+  }
+}

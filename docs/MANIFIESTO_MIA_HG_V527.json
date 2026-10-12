@@ -1,0 +1,59 @@
+{
+  "version": "5.2.7",
+  "baseline": "V5.2.5 or V5.2.6",
+  "scope": "Only src/worlds/hologram; no 2D, 3D, core, backend, GLB",
+  "validation": {
+    "js_syntax": "passed",
+    "node_tests": "19/19",
+    "chromium_mock": "passed",
+    "real_backend": "not tested",
+    "full_vite_build": "not tested"
+  },
+  "files": [
+    {
+      "path": "docs/NOTAS_V527.md",
+      "size": 528,
+      "sha256": "d6485d78511d03c1f8ce0e354ce34f0ae20443ebc754227d48e6432fa647b48f"
+    },
+    {
+      "path": "docs/INSTALAR_MIA_HG_V5_2_7.md",
+      "size": 5488,
+      "sha256": "42230aa8613ba054dad66e90fa3f989fa0e04a0df4d624904d5c64ad70b7d176"
+    },
+    {
+      "path": "tests/mia-hologram-v527.test.mjs",
+      "size": 9937,
+      "sha256": "55f4398d9c94319a97a4031a9ab670108c5b79fa985115cd9fe9161b40c915a1"
+    },
+    {
+      "path": "src/worlds/hologram/hologram-lifecycle-v523.js",
+      "size": 2802,
+      "sha256": "4df1d26b6729a1e8f4ceaef808f15aa4b5b12857d6613fdbee45a8da95513d3e"
+    },
+    {
+      "path": "src/worlds/hologram/hologram-integrity-v526.js",
+      "size": 4792,
+      "sha256": "9e9e642222f20500067f7a83c10e1f9dafba07f5bd923eb04bed5864f6cb50f0"
+    },
+    {
+      "path": "src/worlds/hologram/hologram-truth-v527.js",
+      "size": 5986,
+      "sha256": "bb61014b93c1e4d69849443c175c711f26eb6a85e2e12350fa816d93f8fe172f"
+    },
+    {
+      "path": "src/worlds/hologram/index.html",
+      "size": 3967,
+      "sha256": "bbc29792fb237b3408544542a11eb8c472da5c6c3870cbcd5629bf42e7e25836"
+    },
+    {
+      "path": "src/worlds/hologram/hologram-api-v525.js",
+      "size": 15208,
+      "sha256": "ca146dd7c52e285b1abe2d59ea8c1903dd14b728c365acbd598a7a2df46b523e"
+    },
+    {
+      "path": "src/worlds/hologram/main.js",
+      "size": 25651,
+      "sha256": "a3e43fa09a2b7f1dd15b7c5b43eb0556ef7dcd02a45f74a9b09eaa7f7e806f89"
+    }
+  ]
+}

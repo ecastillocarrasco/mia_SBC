@@ -56,6 +56,18 @@ export class MiaScene {
     this._headBone = null;
     this._headWorld = new THREE.Vector3();
 
+    // V4.6: soft head/neck aim correction after AnimationMixer has evaluated
+    // the original pose. The asset, rig weights and animation tracks remain
+    // unchanged. Only the world 3D (shadows=true) gets this correction.
+    this._facePose = {
+      enabled: Boolean(shadows), pitchDeg: 6, yawDeg: 4,
+      neckShare: 0.34, strength: 0.70, maxYawDeg: 17,
+    };
+    this._faceBones = null;
+    this._faceEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+    this._faceDelta = new THREE.Quaternion();
+    this._faceDesired = new THREE.Quaternion();
+
     this._lights(shadows);
     this._resize = () => this.resize();
     window.addEventListener("resize", this._resize);
@@ -160,6 +172,17 @@ export class MiaScene {
     this.model = model;
     this.mixer = new THREE.AnimationMixer(model);
 
+    const neck = model.getObjectByName('smartrig:Neck');
+    const head = model.getObjectByName('smartrig:Head');
+    if (neck?.isBone && head?.isBone) {
+      this._faceBones = [
+        { bone: neck, rest: neck.quaternion.clone(), share: this._facePose.neckShare },
+        { bone: head, rest: head.quaternion.clone(), share: 1 - this._facePose.neckShare },
+      ];
+    } else {
+      console.warn('[mIA V4.6] Ajuste de mirada desactivado: Head/Neck no encontrados');
+    }
+
     for (const clip of gltf.animations) {
       const base = inPlace(clip);
       this.actions.set(clip.name, this.mixer.clipAction(base));
@@ -183,6 +206,23 @@ export class MiaScene {
         if (idleSafe.tracks.length) {
           this.actions.set(idleSafe.name, this.mixer.clipAction(idleSafe));
         }
+      }
+    }
+
+    // The 84-clip greeting includes a final movement that looks forced.
+    // Keep the earlier, validated gesture; drop its last ~2.2 s and blend
+    // back to idle BEFORE the safe clip reaches its last keyframe.
+    const sourceGreeting = this.actions.get('mIA_SEQ_BIENVENIDA')?.getClip();
+    if (sourceGreeting && sourceGreeting.duration > 4.0) {
+      const fps = 30;
+      const cutTime = Math.max(3.0, Math.min(sourceGreeting.duration * 0.77,
+        sourceGreeting.duration - 2.1));
+      const safe = THREE.AnimationUtils.subclip(
+        sourceGreeting, 'mIA_SEQ_BIENVENIDA_SAFE', 0,
+        Math.floor(cutTime * fps), fps,
+      );
+      if (safe.tracks.length) {
+        this.actions.set(safe.name, this.mixer.clipAction(safe));
       }
     }
 
@@ -257,6 +297,52 @@ export class MiaScene {
     const acceptable = maxYaw < THREE.MathUtils.degToRad(36);
     this._frontRating.set(name, acceptable);
     return acceptable;
+  }
+
+  /** Non-destructive face-calibration knobs, available for 3D only. */
+  configureFacePose(options = {}) {
+    for (const key of ['pitchDeg', 'yawDeg', 'strength']) {
+      if (Number.isFinite(options[key])) this._facePose[key] = options[key];
+    }
+    if (typeof options.enabled === 'boolean') this._facePose.enabled = options.enabled;
+    this._facePose.pitchDeg = THREE.MathUtils.clamp(this._facePose.pitchDeg, -10, 14);
+    this._facePose.yawDeg = THREE.MathUtils.clamp(this._facePose.yawDeg, -12, 12);
+    this._facePose.strength = THREE.MathUtils.clamp(this._facePose.strength, 0, 1);
+  }
+
+  _adjustFacePose() {
+    if (!this._facePose.enabled || !this._faceBones || !this.mixer) return;
+    const clip = this.current?.getClip()?.name || '';
+    // Walking/turning/dancing must preserve their full authored orientation.
+    if (/WALK|RUN|TURN|DANCE|CATWALK|STRUT/i.test(clip)) return;
+    const opt = this._facePose;
+    const radians = THREE.MathUtils.degToRad;
+    const cameraYaw = THREE.MathUtils.clamp(
+      Math.atan2(this.camera.position.x - this._groundRoot.position.x,
+        this.camera.position.z - this._groundRoot.position.z) * 0.35,
+      radians(-8), radians(8),
+    );
+    for (const { bone, rest, share } of this._faceBones) {
+      // Evaluate the LOCAL deviation from this bone's imported rest pose.
+      this._faceDelta.copy(rest).invert().multiply(bone.quaternion);
+      this._faceEuler.setFromQuaternion(this._faceDelta, 'YXZ');
+      const e = this._faceEuler;
+      const yawLimit = radians(opt.maxYawDeg);
+      const intendedYaw = THREE.MathUtils.clamp(e.y, -yawLimit, yawLimit);
+      const intendedPitch = THREE.MathUtils.clamp(e.x, radians(-15), radians(18));
+      e.y = THREE.MathUtils.clamp(
+        intendedYaw + (radians(opt.yawDeg) + cameraYaw) * share,
+        -yawLimit, yawLimit,
+      );
+      // In the glTF's forward +Z convention, positive local X lowers gaze.
+      e.x = THREE.MathUtils.clamp(
+        intendedPitch + radians(opt.pitchDeg) * share,
+        radians(-15), radians(19),
+      );
+      this._faceDesired.copy(rest).multiply(this._faceDelta.setFromEuler(e));
+      bone.quaternion.slerp(this._faceDesired, opt.strength);
+    }
+    // Child bones see the modified parent transform on matrixWorld update.
   }
 
   clipDuration(name) {
@@ -398,6 +484,7 @@ export class MiaScene {
     this._raf = requestAnimationFrame(() => this._loop());
     const delta = this.clock.getDelta();
     this.mixer?.update(delta);
+    this._adjustFacePose();
     this._updateWaitOrbit(delta);
 
     // Do not add procedural body translation/rotation here: skeleton IDLE

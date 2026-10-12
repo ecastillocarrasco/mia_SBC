@@ -72,7 +72,7 @@ test('3D and hologram call dynamic boot loader and wait before the greeting',()=
     const js=read(path);
     assert.match(js,/new MiaBootLoader/);
     assert.match(js,/boot\.progress\(/);
-    assert.match(js,/await boot\.complete\(\)/);
+    assert.match(js,/await boot\.complete\(/);
     assert.match(js,/boot\.fail\(error\)/);
   }
   const scene=read('src/core/scene.js');

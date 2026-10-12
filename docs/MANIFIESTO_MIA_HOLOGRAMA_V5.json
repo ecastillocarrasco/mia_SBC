@@ -1,0 +1,45 @@
+{
+  "version": "5.0",
+  "base": "src/worlds/hologram files supplied 2026-10-12",
+  "scope": "hologram-only",
+  "files": [
+    {
+      "path": "docs/INSTALAR_MIA_HOLOGRAMA_V5.md",
+      "bytes": 3550,
+      "sha256": "edb702781ef0f4b9a3ee3a0aa23a5fdb02941192f2918e286c45fae7d0641139"
+    },
+    {
+      "path": "tests/mia-hologram-v5.test.mjs",
+      "bytes": 4314,
+      "sha256": "bd05ac1921793fdf381f4d8230acec1b6f87248fd4d603fbd57c5e293e7eb33e"
+    },
+    {
+      "path": "src/worlds/hologram/hologram-premium-v5.js",
+      "bytes": 10752,
+      "sha256": "c488c15cfc4aee2db3caf5daeff8cd665ea70e34a6a532c8596110a0471d24ba"
+    },
+    {
+      "path": "src/worlds/hologram/index.html",
+      "bytes": 3361,
+      "sha256": "a553158b8531567aa48b374ff538948c7b400cdf50cc6391b87f54fb739b6d1d"
+    },
+    {
+      "path": "src/worlds/hologram/hologram-premium-v5.css",
+      "bytes": 17723,
+      "sha256": "cdd993c80af00c0a1c83d8f33ada138178adc25657b15fe0206a8fa77f44f9dd"
+    },
+    {
+      "path": "src/worlds/hologram/main.js",
+      "bytes": 9294,
+      "sha256": "541cf6c2753010542e4cf1b523a20078b2a22f61c7705913a0aa376ca254ba44"
+    }
+  ],
+  "validation": {
+    "node_js_check": "passed",
+    "node_unit_tests": "8/8 passed",
+    "tinycss2": "passed",
+    "DOM_Chromium": "passed",
+    "Vite_complete_build": "not run - full project dependencies unavailable",
+    "GLB_GPU_real": "not run"
+  }
+}

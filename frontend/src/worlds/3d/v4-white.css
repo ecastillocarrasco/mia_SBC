@@ -394,12 +394,4 @@ body.mia-dock-open .mia-mic-launcher{display:none;}
 .mia45-donut-legend strong{margin-left:auto;color:#fff;}
 .mia45-line-wrap svg{width:100%;max-width:100%;height:auto;}
 .mia45-line-labels{display:flex;justify-content:space-between;font-size:10px;color:#b1cdcf;overflow:hidden;gap:8px;}
-.mia45-replay[hidden]{display:none!important;}
-.mia45-replay{
-  position:fixed;z-index:38;left:25px;bottom:25px;cursor:pointer;
-  border:1px solid rgba(23,82,90,.16);border-radius:999px;padding:11px 19px;
-  background:#fff;color:#275465;font:650 12px Aptos,'Segoe UI',Arial,sans-serif;
-  box-shadow:0 10px 25px rgba(32,67,73,.10);
-}
-.mia45-replay:hover{background:#edf8f8;}
-@media(max-width:700px){.mia45-donut{grid-template-columns:1fr}.mia45-donut svg{max-width:155px;margin:auto}.mia45-replay{bottom:90px;left:12px}}
+@media(max-width:700px){.mia45-donut{grid-template-columns:1fr}.mia45-donut svg{max-width:155px;margin:auto}}

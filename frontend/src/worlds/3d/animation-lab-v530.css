@@ -1,0 +1,21 @@
+/* Panel temporal no invasivo del visor 3D de mIA. */
+.mia-animation-lab{box-sizing:border-box;position:fixed;top:78px;right:22px;z-index:9000;width:min(320px,calc(100vw - 32px));padding:15px;border:1px solid rgba(141,184,194,.38);background:rgba(9,31,42,.95);backdrop-filter:blur(20px);box-shadow:0 20px 50px rgba(0,0,0,.28);border-radius:18px;color:#ecf7f6;font:13px/1.45 system-ui,sans-serif}
+.mia-animation-lab[hidden]{display:none!important}
+.mia-animation-lab *{box-sizing:border-box}
+.mia-animation-lab__header{display:flex;align-items:start;justify-content:space-between;gap:12px;margin-bottom:14px}
+.mia-animation-lab__header strong{display:block;font-size:16px;letter-spacing:-.02em}
+.mia-animation-lab__tag{display:block;font-size:9px;letter-spacing:.16em;color:#79c7bb;font-weight:800;margin-bottom:3px}
+.mia-animation-lab__header button{border:1px solid #355764;border-radius:8px;background:#1c3640;color:#cdeeed;font-size:18px;cursor:pointer;padding:0 9px}
+.mia-animation-lab>label,.mia-animation-lab__settings>label:not(.mia-animation-lab__check){display:block;font-size:11px;color:#c3d4d8;font-weight:700;margin-bottom:6px}
+.mia-animation-lab select{display:block;width:100%;padding:10px 8px;margin:0 0 12px;background:#112a36;color:#fff;border:1px solid #375b6a;border-radius:10px;outline-color:#81d7c9;font:12px system-ui,sans-serif}
+.mia-animation-lab__controls{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:13px}
+.mia-animation-lab__controls button{font-size:11px;padding:11px 6px;border-radius:10px;border:1px solid #477078;color:#f4ffff;background:#1c404b;cursor:pointer}
+.mia-animation-lab__controls button:first-child{background:#38766d;border-color:#63b4a6;font-weight:750}
+.mia-animation-lab button:disabled{opacity:.4;cursor:default}
+.mia-animation-lab__settings{display:grid;gap:5px}
+.mia-animation-lab__settings output{float:right;color:#87d8c5;font-variant-numeric:tabular-nums}
+.mia-animation-lab input[type=range]{width:100%;accent-color:#81d7c9}
+.mia-animation-lab__check{display:flex;align-items:center;gap:7px;margin-top:6px;font-size:11px;color:#c9d9df}
+.mia-animation-lab__check input{accent-color:#62bea9}
+.mia-animation-lab__meta{font-size:10px;line-height:1.5;color:#85a7af;margin:10px 0 0}
+@media(max-width:600px){.mia-animation-lab{top:55px;right:9px;width:min(300px,calc(100vw - 18px));max-height:65vh;overflow:auto}}

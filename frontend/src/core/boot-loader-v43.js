@@ -34,6 +34,14 @@ const html = (base) => `
         <span data-boot-step="1">Animaciones</span>
         <span data-boot-step="2">Listo</span>
       </div>
+      <div class="mia-boot__actions" data-boot-actions hidden>
+        <button class="mia-boot__continue" type="button" data-boot-continue>
+          Comenzar experiencia <span aria-hidden="true">→</span>
+        </button>
+        <button class="mia-boot__skip" type="button" data-boot-skip hidden>
+          Continuar sin sonido
+        </button>
+      </div>
       <button class="mia-boot__retry" type="button" hidden data-boot-retry>Reintentar carga</button>
     </section>
   </div>`;
@@ -61,6 +69,9 @@ export class MiaBootLoader {
     this.detailEl = this.node.querySelector('[data-boot-details]');
     this.progressEl = this.node.querySelector('[role="progressbar"]');
     this.retryEl = this.node.querySelector('[data-boot-retry]');
+    this.actionsEl = this.node.querySelector('[data-boot-actions]');
+    this.continueEl = this.node.querySelector('[data-boot-continue]');
+    this.skipEl = this.node.querySelector('[data-boot-skip]');
     this.steps = Array.from(this.node.querySelectorAll('[data-boot-step]'));
     this.retryEl.addEventListener('click', () => window.location.reload());
     this._render();
@@ -118,19 +129,78 @@ export class MiaBootLoader {
     }
   }
 
-  async complete() {
+  async _exit() {
+    if (!this.active) return;
+    this.node.classList.add('mia-boot--leaving');
+    await new Promise((resolve) => setTimeout(resolve, 290));
+    this.dispose();
+  }
+
+  /**
+   * Complete with an optional, REAL user gesture gate.
+   * onContinue must call audio.play()/speechSynthesis.speak() synchronously,
+   * before its first await. Never dispatch artificial clicks.
+   * For other worlds complete() retains the original hands-free behavior.
+   */
+  async complete({ onContinue = null } = {}) {
     if (!this.active || this.phase === 'error') return;
-    // Se alcanza 100 únicamente tras scene.load() y AnimationMixer listos.
     this.phase = 'done';
     this.target = this.displayed = 100;
     this.statusEl.textContent = '¡Todo listo para empezar!';
     this.detailEl.textContent = 'Mía está preparada';
     this._render();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    await new Promise((resolve) => setTimeout(resolve, 460));
-    this.node.classList.add('mia-boot--leaving');
-    await new Promise((resolve) => setTimeout(resolve, 480));
-    this.dispose();
+    if (typeof onContinue !== 'function') {
+      await new Promise((resolve) => setTimeout(resolve, 460));
+      await this._exit();
+      return { status: 'completed' };
+    }
+    if (!this.active) return { status: 'disposed' };
+    this.phase = 'ready-for-user';
+    this.actionsEl.hidden = false;
+    this.continueEl.hidden = false;
+    this.continueEl.disabled = false;
+    this.continueEl.focus?.({ preventScroll: true });
+    this.detailEl.textContent = 'Pulsa para conocer a Mía y escuchar su bienvenida';
+    return new Promise((resolve) => {
+      let inFlight = false;
+      const finish = (result) => {
+        if (!this.active) return;
+        this._exit().then(() => resolve(result));
+      };
+      const retry = () => {
+        inFlight = false;
+        if (!this.active) return;
+        this.continueEl.disabled = false;
+        this.continueEl.innerHTML = 'Intentar de nuevo con sonido <span aria-hidden="true">→</span>';
+        this.statusEl.textContent = 'No se ha podido reproducir el saludo';
+        this.detailEl.textContent = 'Puedes reintentar o continuar sin sonido';
+        this.skipEl.hidden = false;
+      };
+      this.continueEl.addEventListener('click', () => {
+        if (inFlight || !this.active) return;
+        inFlight = true;
+        this.continueEl.disabled = true;
+        let playing;
+        // Do NOT introduce any await or timer before this call. The caller
+        // starts the cached HTMLAudioElement within the trusted click event.
+        try { playing = onContinue(); }
+        catch (error) { console.warn('[mIA Boot] No se pudo iniciar voz:', error); retry(); return; }
+        Promise.resolve(playing).then((result) => {
+          if (result === false || ['blocked','unavailable','cancelled'].includes(result?.status)) retry();
+          else finish(result);
+        }).catch((error) => {
+          console.warn('[mIA Boot] Error de voz:', error);
+          retry();
+        });
+      });
+      this.skipEl.addEventListener('click', () => {
+        if (!this.active) return;
+        this.skipEl.disabled = true;
+        this.continueEl.disabled = true;
+        finish({ status: 'skipped-audio' });
+      });
+    });
   }
 
   fail(error) {

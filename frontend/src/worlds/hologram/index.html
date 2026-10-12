@@ -3,28 +3,85 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>mIA · Holograma</title>
+  <title>mIA · Proyección Holográfica | Sunset Beach Club</title>
   <link rel="icon" href="../../../favicon.svg" />
-  <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="./style.css?v=5.1" />
+  <link rel="stylesheet" href="./hologram-premium-v5.css?v=5.2" />
+  <link rel="stylesheet" href="./hologram-projection-v52.css?v=5.2.7" />
+  <link rel="stylesheet" href="./hologram-report-v529.css?v=5.3.0" />
+  <link rel="stylesheet" href="./hologram-voice-v531.css?v=5.3.1" />
 </head>
-<body>
-  <a class="back-link" href="../../../index.html">← mIA</a>
-  <div id="canvas-root" class="projection"></div>
+<body class="hg-v5">
+  <a class="back-link" href="../../../index.html" aria-label="Volver a la selección de mundos">← mIA</a>
+  <div id="canvas-root" class="projection" aria-label="Avatar holográfico de Mía"></div>
   <div class="scanlines" aria-hidden="true"></div>
 
-  <div class="hud">
-    <button id="miaWelcomeReplay" class="mia45-hg-replay" type="button" hidden>▶ Escuchar saludo</button>
-    <p id="caption" class="caption" aria-live="polite">Cargando la proyección…</p>
-    <div id="result" class="result"></div>
-    <span id="hgMicModeAnnounce" class="hg-visually-hidden" aria-live="polite">Micrófono desactivado</span>
-    <form id="composer" class="composer">
-      <input id="input" type="text" placeholder="Pregunta a Mía…" autocomplete="off" />
-      <button type="button" id="mic" class="mic" title="Micrófono desactivado · Pulsar para una pregunta"
-        aria-label="Activar micrófono" aria-pressed="false">🎤</button>
-      <button type="submit" id="send">↵</button>
-    </form>
+  <div class="hg-energy" aria-hidden="true">
+    <div class="hg-floor"></div>
+    <div class="hg-ring hg-ring-a"></div>
+    <div class="hg-ring hg-ring-b"></div>
+    <div class="hg-column"></div>
   </div>
 
-  <script type="module" src="./main.js"></script>
+  <main id="hgShell" class="hg-shell" data-state="welcome">
+    <div class="hg-brand">
+      <span class="hg-brand-mark" aria-hidden="true">✦</span>
+      <div>
+        <strong>mIA</strong>
+        <small>SUNSET BEACH CLUB · HOLOGRAPHIC EXPERIENCE</small>
+      </div>
+    </div>
+
+    <section class="hg-story" aria-labelledby="hgHeadline" role="status" aria-live="polite">
+      <div class="hg-overline"><span class="hg-status-led"></span><span id="hgEyebrow">BIENVENIDO</span></div>
+      <h1 id="hgHeadline">Preparando Mía…</h1>
+      <p id="hgNarrative">La proyección se está iniciando.</p>
+      <div class="hg-story-beam" aria-hidden="true"></div>
+      <div class="hg-waveform" aria-hidden="true">
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+      </div>
+    </section>
+
+    <section id="hgDataPanel" class="hg-panel" aria-label="Indicadores y gráficas">
+      <header class="hg-panel-top">
+        <span class="hg-status-led"></span>
+        <span id="hgState">ASISTENTE ACTIVA</span>
+      </header>
+      <div id="hgStandby" class="hg-standby" aria-hidden="true">
+        <div class="hg-radar"><span>mIA</span></div>
+        <p>UNA EXPERIENCIA MÁS ALLÁ DE LA PANTALLA</p>
+      </div>
+      <div id="hgGauge" class="hg-gauge" aria-label="Indicador porcentual"></div>
+      <div id="hgChart" class="hg-chart" aria-label="Comparativa numérica"></div>
+      <div id="result" class="result"></div>
+    </section>
+  </main>
+
+  <div class="hg-bottom-note" aria-hidden="true">
+    <span class="hg-status-led"></span>
+    PROYECCIÓN ACTIVA <span class="hg-dot-separator">·</span> SUNSET BEACH CLUB
+  </div>
+
+  <div class="hud">
+    <!-- Conservado para compatibilidad con eventos y accesibilidad del cliente. -->
+    <p id="caption" class="caption" aria-live="off">Cargando la proyección…</p>
+    <span id="hgMicModeAnnounce" class="hg-visually-hidden" aria-live="polite">Micrófono desactivado</span>
+    <div id="hgQueryMonitor" class="hg-query-monitor" role="status" aria-live="polite">
+      <span id="hgQueryStatus"></span>
+      <button id="hgCancelQuery" type="button" hidden>Cancelar espera</button>
+    </div>
+    <form id="composer" class="composer">
+      <input id="input" type="text" placeholder="Pregunta a Mía…" autocomplete="off" aria-label="Pregunta a Mía" />
+      <button type="button" id="mic" class="mic" title="Micrófono desactivado · Pulsar para una pregunta"
+        aria-label="Activar micrófono" aria-pressed="false">🎤</button>
+      <button type="submit" id="send" title="Enviar consulta" aria-label="Enviar consulta">↵</button>
+    </form>
+  </div>
+  <aside id="hgDiagPanel" class="hg-diag-panel" aria-label="Diagnóstico local del holograma">
+    <div class="hg-diag-header"><strong>HG v5.3.1 · Diagnóstico</strong>
+    <button type="button" id="hgDiagCopy">Copiar diagnóstico</button></div>
+    <pre id="hgDiagView">Preparado</pre>
+  </aside>
+  <script type="module" src="./main.js?v=5.3.1"></script>
 </body>
 </html>

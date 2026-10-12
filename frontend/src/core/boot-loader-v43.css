@@ -51,6 +51,22 @@
 .mia-boot__steps .active:before{background:#c88379;box-shadow:0 0 0 5px rgba(200,131,121,.13)}
 .mia-boot__steps .done{color:#6d8e84}
 .mia-boot__steps .done:before{background:#6ea990}
+/* V4.9: single genuine click after loading, never a synthetic event. */
+.mia-boot__actions{width:100%;display:flex;flex-direction:column;align-items:center;gap:12px;margin:22px 0 0}
+.mia-boot__actions[hidden],.mia-boot__actions [hidden]{display:none!important}
+.mia-boot__continue{
+  display:inline-flex;align-items:center;justify-content:center;gap:18px;
+  min-width:min(100%,275px);padding:15px 26px;border-radius:999px;
+  border:1px solid rgba(255,255,255,.28);background:#263851;
+  color:#fff;font:700 14px/1.2 Inter,Aptos,'Segoe UI',Arial,sans-serif;
+  cursor:pointer;box-shadow:0 12px 28px rgba(32,51,75,.17),inset 0 1px 0 rgba(255,255,255,.17);
+  transition:background .2s ease,transform .2s ease,box-shadow .2s ease;
+}
+.mia-boot__continue span{font-size:20px;line-height:10px}
+.mia-boot__continue:hover:not(:disabled){transform:translateY(-2px);background:#334b67;box-shadow:0 17px 31px rgba(32,51,75,.2)}
+.mia-boot__continue:focus-visible,.mia-boot__skip:focus-visible{outline:3px solid #bf7c75;outline-offset:4px}
+.mia-boot__continue:disabled{cursor:wait;opacity:.7}
+.mia-boot__skip{border:0;background:none;color:#758092;text-decoration:underline;cursor:pointer;font:600 12px/1.3 Inter,Aptos,'Segoe UI',Arial,sans-serif;padding:7px 14px}
 .mia-boot__retry{border:0;border-radius:15px;background:#263851;color:white;font-size:14px;font-weight:700;padding:12px 24px;margin:22px auto 0;cursor:pointer}
 .mia-boot__retry[hidden]{display:none!important}
 .mia-boot--error .mia-boot__ring-value{stroke:#bd5857}
@@ -71,6 +87,8 @@
   .mia-boot__bar{margin:11px 0 7px}
   .mia-boot__details{font-size:11px}
   .mia-boot__steps{margin-top:8px;font-size:10px}
+  .mia-boot__actions{margin-top:12px;gap:7px}
+  .mia-boot__continue{padding:12px 21px;font-size:13px}
 }
 @media(max-height:620px) and (min-width:851px){
   .mia-boot__layout{height:96dvh}

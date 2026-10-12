@@ -1,0 +1,50 @@
+{
+  "version": "5.2.5",
+  "base": "V5.2.4 only",
+  "scope": "hologram-only",
+  "source_2d": "MIA_FRONTEND_CODIGO.zip src\\worlds\\2d\\mia-2d.js",
+  "files": [
+    {
+      "name": "docs/INSTALAR_MIA_HOLOGRAMA_V5_2_5.md",
+      "bytes": 5081,
+      "sha256": "adda2520019f92d3bdd6f28cefbc36bbd9230343a4ed5e423fcf56a65c694240"
+    },
+    {
+      "name": "src/worlds/hologram/hologram-api-v525.js",
+      "bytes": 11475,
+      "sha256": "c063b629da0ae745d0a7d555e241365a53aefb82e0526b221b923afcce1a611f"
+    },
+    {
+      "name": "src/worlds/hologram/hologram-director-v52.js",
+      "bytes": 6542,
+      "sha256": "34726a0916a2cf46252880518a4b43d41a42c76bdfa882ed80b21a5020e46a73"
+    },
+    {
+      "name": "src/worlds/hologram/hologram-lifecycle-v523.js",
+      "bytes": 2677,
+      "sha256": "a2ed55ac01c5012b4e40948e201c33c5e18a5f005ea4f4f700f6dd577a42064b"
+    },
+    {
+      "name": "src/worlds/hologram/index.html",
+      "bytes": 3967,
+      "sha256": "6fec976b6633539e93fe5d9ebbb2b508f54eb9fcbdc66ef76ec3cf7ecb396a29"
+    },
+    {
+      "name": "src/worlds/hologram/main.js",
+      "bytes": 23785,
+      "sha256": "43a8ef17509dd0fcf66caa2619fc1022e585c2b89fd9748e2cb3ad681c67d947"
+    },
+    {
+      "name": "tests/mia-hologram-v525.test.mjs",
+      "bytes": 6936,
+      "sha256": "38655cd22025f6ef2addd3968d0bdfd3abf87fa01d81bed434aeede1841c45d2"
+    }
+  ],
+  "tests": {
+    "node": "9/9",
+    "chromium": "3/3 mocked routes",
+    "javascript_syntax": "passed",
+    "real_backend": "not tested",
+    "vite_build": "not run"
+  }
+}

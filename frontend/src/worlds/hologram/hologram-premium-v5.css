@@ -1,0 +1,718 @@
+/* mIA HOLOGRAMA V5 — solo se importa desde hologram/index.html
+ * La voz y los datos provienen del backend existente. No altera el mundo 3D.
+ */
+
+:root {
+  --hv-cyan: #6df5ff;
+  --hv-white: #e1feff;
+  --hv-muted: #8bc9d3;
+  --hv-line: rgba(93, 235, 251, .29);
+  --hv-glow: rgba(31, 216, 245, .27);
+  --hv-panel: rgba(1, 20, 30, .63);
+}
+
+body.hg-v5 {
+  background: #01070b;
+  color: var(--hv-white);
+  font-family: Aptos, "Segoe UI", Inter, Arial, sans-serif;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.hg-v5 .projection {
+  z-index: 3;
+  background:
+    radial-gradient(ellipse 19% 62% at 50% 57%, rgba(5, 114, 146, .17), transparent 96%),
+    linear-gradient(180deg, #000307, #001018 80%, #010509);
+}
+
+.hg-v5 .projection canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: auto;
+}
+
+/* El antiguo patrón cruzaba la cara con bandas visibles.
+   Perforamos la zona de la cabeza/torso y bajamos la opacidad. */
+.hg-v5 .scanlines {
+  z-index: 5;
+  opacity: .16;
+  background:
+    repeating-linear-gradient(0deg, rgba(114,247,255,.11) 0 1px, transparent 1px 6px),
+    linear-gradient(90deg, rgba(0,0,0,.65), transparent 27%, transparent 73%, rgba(0,0,0,.65));
+  mask-image:
+    radial-gradient(ellipse 18% 45% at 50% 38%, transparent 0%, transparent 58%, #000 95%);
+  animation: none;
+}
+
+/* Atmosfera independiente del material facial */
+.hg-energy {
+  position: fixed;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 38% 22% at 50% 94%, rgba(0,184,224,.12),transparent 100%),
+    radial-gradient(ellipse 21% 37% at 50% 55%, rgba(16,163,205,.10),transparent 100%);
+}
+
+.hg-floor {
+  position: absolute;
+  bottom: -15%;
+  left: -22%;
+  width: 144%;
+  height: 46%;
+  transform: perspective(440px) rotateX(66deg);
+  transform-origin: center bottom;
+  background-image:
+    linear-gradient(to right, rgba(63,221,255,.21) 1px, transparent 1px),
+    linear-gradient(rgba(63,221,255,.21) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: linear-gradient(transparent, #000 45%,transparent);
+  animation: hv-floor 15s linear infinite;
+}
+
+.hg-ring {
+  position: absolute;
+  left: 50%;
+  bottom: -8%;
+  border-radius: 50%;
+  transform: translateX(-50%) rotateX(70deg);
+  border: 1px solid rgba(89,242,255,.55);
+  box-shadow: 0 0 28px rgba(46,219,248,.23),inset 0 0 24px rgba(46,219,248,.16);
+}
+.hg-ring-a {
+  width: 365px;
+  height: 365px;
+  animation: hv-ring 5s ease-in-out infinite;
+}
+.hg-ring-b {
+  width: 535px;
+  height: 535px;
+  opacity: .53;
+  border-style: dashed;
+  animation: hv-ring 8s ease-in-out infinite reverse;
+}
+.hg-column {
+  position: absolute;
+  left: 50%;
+  bottom: 3%;
+  width: 30%;
+  height: 70%;
+  transform: translateX(-50%);
+  background: linear-gradient(to top, rgba(8,182,235,.12),transparent 80%);
+  clip-path: polygon(9% 100%,91% 100%,64% 0,36% 0);
+  animation: hv-ambient 6s ease-in-out infinite;
+}
+
+.hg-v5 .back-link {
+  top: 20px;
+  left: auto;
+  right: 26px;
+  z-index: 41;
+  padding: 8px 13px;
+  border-color: var(--hv-line);
+  background: rgba(0,27,38,.76);
+  color: #bbf8ff;
+  font-size: 12px;
+  backdrop-filter: blur(12px);
+}
+
+/* Hero zone and active data zones never cover the central avatar on desktop */
+.hg-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+}
+
+.hg-brand {
+  position: absolute;
+  left: clamp(26px,3.4vw,70px);
+  top: clamp(24px,3vw,45px);
+  display: flex;
+  gap: 15px;
+  align-items: center;
+}
+.hg-brand-mark {
+  color: #a4faff;
+  font-size: 28px;
+  text-shadow: 0 0 22px rgba(69,237,255,.73);
+  animation: hv-shine 5s ease-in-out infinite;
+}
+.hg-brand strong {
+  display: block;
+  color: #d7fdff;
+  font-size: 23px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: .10em;
+}
+.hg-brand small {
+  display: block;
+  margin-top: 7px;
+  color: #6bbaca;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: .20em;
+}
+
+/* Conversacion no se trata como caja de chat: una puesta en escena editorial */
+.hg-story {
+  position: absolute;
+  top: clamp(155px,25%,285px);
+  left: clamp(26px,3.8vw,80px);
+  width: min(29vw,460px);
+  min-width: 285px;
+  padding: clamp(20px,2.1vw,35px);
+  border-left: 2px solid rgba(75,227,252,.85);
+  border-top: 1px solid rgba(80,222,245,.21);
+  border-bottom: 1px solid rgba(80,222,245,.13);
+  background: linear-gradient(112deg,rgba(0,26,36,.78),rgba(0,16,25,.44) 72%,transparent);
+  backdrop-filter: blur(10px);
+  border-radius: 0 23px 23px 0;
+  box-shadow: -6px 0 28px rgba(0,223,252,.075),inset 2px 0 20px rgba(0,205,237,.035);
+}
+.hg-story::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: 24px;
+  height: 2px;
+  width: 42%;
+  background: linear-gradient(90deg,var(--hv-cyan), transparent);
+  box-shadow: 0 0 19px rgba(36,240,255,.7);
+}
+.hg-overline,.hg-panel-top {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: var(--hv-cyan);
+  font-size: clamp(9px,.78vw,11px);
+  font-weight: 780;
+  letter-spacing: .21em;
+  line-height: 1.45;
+}
+.hg-status-led {
+  display: inline-block;
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #7ffaff;
+  box-shadow: 0 0 15px #64eeff;
+  animation: hv-led 3s ease-in-out infinite;
+}
+#hgHeadline {
+  margin: 25px 0 13px;
+  color: #e3feff;
+  font-size: clamp(27px,3.1vw,52px);
+  font-weight: 730;
+  line-height: 1.12;
+  letter-spacing: -.035em;
+  overflow-wrap: anywhere;
+  text-shadow: 0 0 28px rgba(59,230,255,.27),0 5px 28px rgba(0,0,0,.5);
+}
+#hgNarrative {
+  margin: 0;
+  color: #a9e0e9;
+  font-size: clamp(14px,1.08vw,18px);
+  line-height: 1.64;
+  font-weight: 400;
+  /* Hologram is voice-first: the complete answer is spoken, not crammed into the fan */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.hg-story-beam {
+  margin-top: 23px;
+  height: 2px;
+  width: 92%;
+  background: linear-gradient(90deg,#72faff 0%,rgba(39,208,238,.25) 60%,transparent);
+  box-shadow: 0 0 18px rgba(45,237,255,.36);
+  transform-origin: left;
+  animation: hv-beam 1.2s ease both;
+}
+.hg-waveform {
+  height: 29px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+}
+.hg-waveform i {
+  display: block;
+  width: 3px;
+  height: 6px;
+  border-radius: 8px;
+  background: #72f9ff;
+  opacity: .38;
+  box-shadow: 0 0 8px #1ed1e6;
+  animation: hv-sound 1.35s ease-in-out infinite;
+  animation-play-state: paused;
+}
+.hg-speaking .hg-waveform i {animation-play-state: running;opacity: 1}
+.hg-waveform i:nth-child(3n){animation-delay:.24s}
+.hg-waveform i:nth-child(4n){animation-delay:.48s}
+.hg-waveform i:nth-child(5n){animation-delay:.10s}
+.hg-enter {animation: hv-reveal .85s cubic-bezier(.19,.86,.2,1) both}
+#hgNarrative.hg-enter{animation-delay:.15s}
+.hg-waiting .hg-story-beam {animation:hv-loading 2.7s ease-in-out infinite}
+.hg-waiting .hg-waveform i {animation-play-state: running;opacity:.52}
+
+/* Visualizaciones: datos reales en el lateral */
+.hg-panel {
+  position: absolute;
+  top: clamp(160px,23%,280px);
+  right: clamp(26px,3.3vw,75px);
+  width: min(30vw,468px);
+  max-height: min(60vh,610px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(104,232,244,.31) transparent;
+  border: 1px solid rgba(70,224,252,.15);
+  border-radius: 20px;
+  padding: 24px;
+  background: linear-gradient(144deg,rgba(0,33,45,.68),rgba(0,9,18,.45));
+  box-shadow: 0 0 45px rgba(1,182,219,.07),inset 0 1px 0 rgba(159,246,255,.12);
+  backdrop-filter: blur(11px);
+  pointer-events: auto;
+}
+.hg-panel::before {
+  content: "";
+  position: absolute;
+  left: 20px;
+  top: 0;
+  width: 40%;
+  height: 2px;
+  background: linear-gradient(90deg,#57e9ff,transparent);
+  box-shadow: 0 0 17px rgba(54,224,249,.55);
+}
+.hg-panel:not(.hg-with-data) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.hg-panel:not(.hg-with-data)::before{display:none}
+.hg-panel:not(.hg-with-data) .hg-panel-top{opacity:.65}
+
+.hg-standby {
+  display: grid;
+  justify-items: center;
+  gap: 29px;
+  padding: 26px 5px;
+  color: #76b7c3;
+}
+.hg-standby[hidden] {display:none}
+.hg-radar {
+  display: grid;
+  place-items: center;
+  width: min(17vw,220px);
+  height: min(17vw,220px);
+  min-width: 125px;
+  min-height: 125px;
+  border: 1px solid rgba(92,242,252,.54);
+  border-radius: 50%;
+  outline: 1px dashed rgba(104,250,255,.24);
+  outline-offset: 13px;
+  background: radial-gradient(circle,rgba(51,209,240,.12),transparent 64%);
+  box-shadow: inset 0 0 35px rgba(28,198,238,.10),0 0 26px rgba(25,207,237,.13);
+  animation: hv-ring 5s ease-in-out infinite;
+}
+.hg-radar span {
+  font-size: clamp(27px,3.4vw,41px);
+  font-weight: 850;
+  letter-spacing: .14em;
+  color: #c8fdff;
+  text-shadow: 0 0 22px #47e5ff;
+}
+.hg-standby p{
+  margin:0;
+  text-align:center;
+  font-size:9px;
+  font-weight:700;
+  line-height:1.8;
+  letter-spacing:.19em;
+}
+.hg-gauge {margin:19px 0 6px}
+.hg-gauge:empty {display:none}
+.hg-gauge-card {
+  display:flex;
+  align-items:center;
+  gap:23px;
+  border:1px solid rgba(100,244,255,.16);
+  border-radius:15px;
+  padding:13px 18px;
+  background:linear-gradient(115deg,rgba(1,94,117,.18),rgba(0,29,43,.16));
+}
+.hg-gauge-circle {
+  --percentage: 0%;
+  width:95px;
+  height:95px;
+  flex:0 0 95px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  background:
+    radial-gradient(closest-side,#01131c 81%,transparent 83%),
+    conic-gradient(#8dffff var(--percentage),rgba(51,202,232,.13) 0);
+  box-shadow:0 0 23px rgba(23,213,241,.10),inset 0 0 21px rgba(25,206,244,.11);
+}
+.hg-gauge-circle strong {font-size:22px;color:#e5ffff;letter-spacing:-.03em}
+.hg-gauge-name{font-size:15px;color:#b2edf5;font-weight:650;line-height:1.4}
+.hg-chart {margin-top:19px}
+.hg-chart:empty {display:none}
+.hg-chart-title{
+  margin: 0 0 16px;
+  color: #6eeef9;
+  font-size: 10px;
+  font-weight: 780;
+  letter-spacing: .19em;
+}
+.hg-chart-row {
+  display: grid;
+  grid-template-columns: minmax(65px,1fr) minmax(45px,1.4fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+}
+.hg-chart-name{
+  min-width:0;
+  color:#bfeef4;
+  font-size:11px;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+.hg-chart-track{
+  height:8px;
+  border-radius:9px;
+  background:rgba(73,218,240,.12);
+  overflow:hidden;
+}
+.hg-chart-fill {
+  display:block;
+  width:var(--hg-width,0%);
+  height:100%;
+  background:linear-gradient(90deg,#177e9c,#8afaff);
+  box-shadow:0 0 15px rgba(70,245,255,.65);
+  border-radius:8px;
+  transform-origin:left;
+  animation:hv-bar .95s ease both;
+  animation-delay:var(--hg-delay,0ms);
+}
+.hg-chart-value{
+  font-size:11px;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+  color:#f1feff;
+}
+
+/* Adaptacion NO destructiva de los componentes originales */
+.hg-v5 #result {
+  width:100%;
+  padding:0;
+  margin-top:16px;
+  max-height:none;
+  overflow:visible;
+}
+.hg-v5 #result:empty{display:none}
+.hg-v5 .hg-brief {
+  display:grid;
+  gap:17px;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+}
+.hg-v5 .hg-brief-head {
+  padding-bottom:14px;
+  border-bottom:1px solid rgba(66,229,253,.16);
+}
+.hg-v5 .hg-brief-head span {color:#65e7f7;letter-spacing:.21em;font-size:9px}
+.hg-v5 .hg-brief-head h2 {font:650 clamp(20px,1.8vw,27px)/1.15 Aptos,"Segoe UI",Arial,sans-serif;color:#e5ffff;margin-top:8px}
+.hg-v5 .hg-kpis {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+.hg-v5 .hg-kpi {
+  padding:17px 14px;
+  min-height:91px;
+  background:linear-gradient(135deg,rgba(11,116,141,.24),rgba(0,25,40,.62));
+  border:1px solid rgba(100,241,255,.20);
+  border-radius:14px;
+  box-shadow:inset 0 0 25px rgba(58,236,255,.03);
+  animation:hv-kpi .65s ease both;
+}
+.hg-v5 .hg-kpi:nth-child(2){animation-delay:100ms}
+.hg-v5 .hg-kpi:nth-child(3){animation-delay:180ms}
+.hg-v5 .hg-kpi:nth-child(4){animation-delay:260ms}
+.hg-v5 .hg-kpi span{color:#92dbe6;font-size:11px;line-height:1.35}
+.hg-v5 .hg-kpi strong {
+  font-size:clamp(24px,2.3vw,39px);
+  line-height:1.05;
+  letter-spacing:-.04em;
+  font-weight:760;
+  color:#e7fcff;
+  text-shadow:0 0 16px rgba(65,227,252,.25);
+}
+.hg-v5 .hg-kpi small{color:#74dfe9}
+.hg-v5 .hg-mini-table {
+  padding:11px;
+  border-radius:12px;
+  background:rgba(0,28,42,.3);
+  border-color:rgba(71,228,254,.15);
+}
+.hg-v5 .hg-mini-table table {min-width:100%;font-size:11px}
+.hg-v5 .hg-documents a{color:#bbfcff}
+.hg-bottom-note {
+  position: fixed;
+  z-index: 9;
+  bottom: 29px;
+  left: clamp(26px,3.8vw,80px);
+  display:flex;
+  gap:12px;
+  align-items:center;
+  font-size:9px;
+  font-weight:700;
+  letter-spacing:.19em;
+  color:#6fa5b3;
+  pointer-events:none;
+}
+.hg-dot-separator{color:#4fb9cb}
+
+/* El chat se desplaza a la esquina derecha. Nunca cruza el avatar. */
+.hg-v5 .hud {
+  position:fixed;
+  width:auto;
+  left:auto;
+  right:clamp(24px,3.3vw,75px);
+  bottom:clamp(15px,3vh,30px);
+  transform:none;
+  z-index:30;
+  pointer-events:none;
+  padding:0;
+}
+.hg-v5 #caption {
+  position:absolute!important;
+  width:1px!important;
+  height:1px!important;
+  margin:-1px!important;
+  overflow:hidden!important;
+  clip:rect(0 0 0 0)!important;
+  white-space:nowrap!important;
+}
+.hg-v5 .composer{
+  pointer-events:auto;
+  width:min(30vw,468px);
+  min-width:285px;
+  padding:7px 8px;
+  border:1px solid rgba(101,239,255,.35);
+  border-radius:60px;
+  background:rgba(0,19,27,.89);
+  box-shadow:0 5px 35px rgba(0,0,0,.41),0 0 25px rgba(29,200,234,.10);
+  backdrop-filter:blur(20px);
+  align-items:center;
+  gap:9px;
+}
+.hg-v5 .composer input{
+  min-width:0;
+  padding:11px 14px;
+  background:transparent;
+  border:0;
+  box-shadow:none;
+  font-family:inherit;
+  font-size:13px;
+}
+.hg-v5 .composer input:focus{box-shadow:none;border:0}
+.hg-v5 .composer input::placeholder{color:#82b4bf}
+.hg-v5 .composer button{
+  flex:0 0 42px;
+  height:42px;
+  width:42px;
+  display:grid;
+  place-items:center;
+  background:rgba(5,71,87,.49);
+  border:1px solid rgba(105,239,255,.31);
+  border-radius:50%;
+  font-weight:750;
+  transition:background .2s, box-shadow .2s;
+}
+.hg-v5 .composer button:hover:not(:disabled){
+  background:rgba(8,123,144,.62);
+  box-shadow:0 0 20px rgba(59,238,251,.24);
+}
+.hg-v5 .composer .mic[data-mic-mode="continuous"] {
+  box-shadow:0 0 0 3px rgba(34,216,241,.11);
+}
+
+/* Modo ventilador: sin barra, tablas ni controles; KPI + grafico + voz */
+.hg-fan .composer,
+.hg-fan .back-link,
+.hg-fan .hg-bottom-note,
+.hg-fan .hg-brand small,
+.hg-fan .hg-mini-table,
+.hg-fan .hg-documents {
+  display:none!important;
+}
+.hg-fan .hg-panel {
+  background:transparent;
+  backdrop-filter:none;
+  box-shadow:none;
+  border-color:rgba(82,239,255,.13);
+}
+.hg-fan .hg-story {
+  background:rgba(0,17,25,.21);
+  backdrop-filter:none;
+}
+.hg-fan #hgNarrative {-webkit-line-clamp:3;line-clamp:3;font-size:clamp(15px,1.5vw,23px)}
+.hg-fan .hg-panel:not(.hg-with-data){border:0}
+.hg-fan .hg-standby{display:none}
+
+/* Responsive; pantallas pequeñas priorizan al personaje */
+@media(max-width:1120px) {
+  .hg-v5 .hg-story {
+    left:2.5%;
+    width:31vw;
+    min-width:0;
+    padding:19px;
+  }
+  .hg-v5 .hg-panel {
+    right:2.5%;
+    width:31vw;
+    padding:17px;
+  }
+  .hg-v5 .hud{right:2.5%}
+  .hg-v5 .composer{width:31vw;min-width:0}
+  .hg-v5 .hg-kpis{gap:7px}
+  .hg-v5 .hg-kpi{padding:12px 9px}
+  .hg-v5 .hg-radar{width:14vw;height:14vw}
+  #hgHeadline{font-size:clamp(22px,3vw,36px)}
+}
+@media(max-width:760px){
+  .hg-v5 .hg-brand{
+    top:14px;
+    left:17px;
+  }
+  .hg-v5 .hg-brand strong{font-size:17px}
+  .hg-v5 .hg-brand small{font-size:7px}
+  .hg-v5 .back-link{right:12px;top:12px}
+  .hg-v5 .hg-story{
+    top:69px;
+    left:3%;
+    width:94%;
+    padding:11px 15px;
+    min-height:0;
+    max-height:24vh;
+    border-radius:11px;
+    background:rgba(0,18,26,.45);
+    overflow:hidden;
+  }
+  .hg-v5 .hg-overline{font-size:9px;letter-spacing:.14em}
+  .hg-v5 #hgHeadline{margin:8px 0 4px;font-size:clamp(20px,4.5vw,27px)}
+  .hg-v5 #hgNarrative{font-size:11px;line-height:1.3;-webkit-line-clamp:2;line-clamp:2}
+  .hg-v5 .hg-waveform,.hg-v5 .hg-story-beam{display:none}
+  .hg-v5 .hg-panel{
+    top:auto;
+    bottom:83px;
+    left:3%;
+    right:auto;
+    width:94%;
+    max-height:24vh;
+    padding:12px;
+    background:rgba(0,18,27,.66);
+  }
+  .hg-v5 .hg-panel:not(.hg-with-data){display:none}
+  .hg-v5 .hg-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hg-v5 .hg-kpi{min-height:64px}
+  .hg-v5 .hg-kpi strong{font-size:20px}
+  .hg-v5 .hg-chart{display:none}
+  .hg-v5 .hg-mini-table{display:none}
+  .hg-v5 .hg-bottom-note{display:none}
+  .hg-v5 .hud{bottom:9px;left:3%;right:3%}
+  .hg-v5 .composer{width:100%;min-width:0}
+  .hg-v5 .hg-ring-b{display:none}
+  .hg-v5 .hg-ring-a{bottom:-19%}
+  .hg-fan .hg-panel{bottom:8px;max-height:27vh}
+}
+
+/* Motion */
+@keyframes hv-reveal {
+  from{opacity:0;transform:translateY(22px);filter:blur(8px)}
+  to{opacity:1;transform:translateY(0);filter:blur(0)}
+}
+@keyframes hv-bar{
+  from{transform:scaleX(0);opacity:.3}
+  to{transform:scaleX(1);opacity:1}
+}
+@keyframes hv-kpi {
+  from{opacity:0;transform:translateY(12px) scale(.97)}
+  to{opacity:1;transform:none}
+}
+@keyframes hv-floor{to{background-position:0 56px}}
+@keyframes hv-ring{50%{opacity:.49;scale:1.06}}
+@keyframes hv-led{50%{opacity:.35;box-shadow:0 0 6px #78faff}}
+@keyframes hv-shine{50%{opacity:.55;text-shadow:0 0 10px #56e7ff}}
+@keyframes hv-ambient{50%{opacity:.37}}
+@keyframes hv-beam{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes hv-loading{0%,100%{transform:scaleX(.15)}50%{transform:scaleX(1)}}
+@keyframes hv-sound{0%,100%{height:5px}45%{height:26px}}
+@media(prefers-reduced-motion:reduce){
+  .hg-v5 *, .hg-v5 *::before, .hg-v5 *::after {
+    animation-duration:.01ms!important;
+    transition-duration:.01ms!important;
+  }
+}
+
+
+/* V5.1 · Holograma realzado. Únicamente en el mundo holograma. */
+.hg-avatar-hybrid .projection {
+  background:
+    radial-gradient(ellipse 25% 58% at 50% 49%,rgba(5,84,105,.10),transparent 92%),
+    #000509;
+}
+.hg-avatar-hybrid .scanlines {
+  /* Escaneos ambientales fuera de la cara: los escaneos del modelo van dentro del shader. */
+  opacity:.09;
+}
+.hg-avatar-classic .projection {
+  background:radial-gradient(ellipse 28% 58% at 50% 52%,#001820 0%,#00070c 72%,#000 100%);
+}
+.hg-avatar-classic .scanlines { opacity:.17; }
+.hg-avatar-hybrid .hg-ring-a {
+  border-color:rgba(83,247,255,.82);
+  box-shadow:0 0 35px rgba(16,226,255,.36),inset 0 0 29px rgba(25,236,255,.20);
+}
+.hg-avatar-hybrid .hg-column { opacity:.55; }
+
+/* El ventilador no proyecta un fondo negro: hay que enviar píxeles RGB=0. */
+body.hg-v5.hg-fan { background:#000!important; }
+.hg-fan .projection { background:#000!important; }
+.hg-fan .hg-energy,
+.hg-fan .scanlines,
+.hg-fan .hg-brand,
+.hg-fan .hg-standby,
+.hg-fan .hg-bottom-note,
+.hg-fan .hg-radar { display:none!important; }
+.hg-fan .hg-panel,
+.hg-fan .hg-story {
+  border-color:transparent!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  backdrop-filter:none!important;
+}
+.hg-fan .hg-story::before,
+.hg-fan .hg-panel::before {display:none}
+.hg-fan .hg-kpi,
+.hg-fan .hg-gauge-card { background:transparent; }
+.hg-fan .hg-story-beam {box-shadow:0 0 13px rgba(74,245,255,.30)}
+.hg-fan .hg-shell {background:transparent}

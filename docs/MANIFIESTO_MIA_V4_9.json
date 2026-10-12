@@ -1,0 +1,53 @@
+{
+  "version": "4.9",
+  "base": "V4.8",
+  "mode": "incremental",
+  "changes": "Click real sobre loading al 100%, inicia bienvenida y audio precargado; sin cambios GLB/2D/HG/backend",
+  "files": [
+    {
+      "path": "src/core/boot-loader-v43.js",
+      "bytes": 9785,
+      "sha256": "ce0243bf0f99f186ee0f266232b619560a27a9698236a977f42132a9be852559"
+    },
+    {
+      "path": "src/core/boot-loader-v43.css",
+      "bytes": 6683,
+      "sha256": "0e8567c95a3c224b012779745de0953e3cbc9033b97c6eb05283db42364adc8b"
+    },
+    {
+      "path": "src/worlds/3d/main.js",
+      "bytes": 23002,
+      "sha256": "cd60621d80fc30cb1acabb182040409f06e32bd102961a3d0883af6646fccf90"
+    },
+    {
+      "path": "tests/mia-v43-loader.test.mjs",
+      "bytes": 3759,
+      "sha256": "d37a6617cebac0fce61acc6880467f30ec44e49093fcb527c5d97ca71a69c5ee"
+    },
+    {
+      "path": "tests/mia-v45.test.mjs",
+      "bytes": 7710,
+      "sha256": "3b64691a5ddc05cbbeedeae6f09989d183fd7916afe436af845f60b2d467219d"
+    },
+    {
+      "path": "tests/mia-v46.test.mjs",
+      "bytes": 5789,
+      "sha256": "61b5a8eb0c080e94e5778a5269238e0cf6307c8f60f505b7d85c61d0c0b7ef07"
+    },
+    {
+      "path": "tests/mia-v47.test.mjs",
+      "bytes": 7009,
+      "sha256": "b61bf49942d3d59baa79c3cab92b57afdea47e0a1be36c08a874f3bbcb7df54f"
+    },
+    {
+      "path": "tests/mia-v49.test.mjs",
+      "bytes": 3964,
+      "sha256": "b1b68f20fb1c9c3ac5d4f2022a3f3c41efb196793ee9ed903325841fa6b4e82c"
+    },
+    {
+      "path": "docs/INSTALAR_MIA_V4_9_CONTINUAR_CON_VOZ.md",
+      "bytes": 3164,
+      "sha256": "bc86433841f05299c97f2e8e4b6ab090bb913e64daf0cf099b1411ddb1d0cacf"
+    }
+  ]
+}

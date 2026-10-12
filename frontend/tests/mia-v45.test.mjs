@@ -88,15 +88,14 @@ test('POINT is layered over frontal idle instead of rotating full character', ()
   b.destroy();
 });
 
-test('3D and hologram voice triggers on model load, not the submit function',()=>{
-  for(const mainFile of ['src/worlds/3d/main.js','src/worlds/hologram/main.js']){
-    const s=code(mainFile);
-    const loaderSection=s.slice(s.indexOf('scene.load('));
-    assert.match(loaderSection,/getWelcomeText\(/);
-    assert.match(loaderSection,/welcomeVoice\.start\(.*(greeting|welcomeMessage)\)/);
-    assert.match(s,/welcomeVoice\.cancel\(\)/);
-    assert.match(s,/onBlocked/);
-  }
+test('3D voice now starts on continue click; hologram retains load-time greeting',()=>{
+  const world3d=code('src/worlds/3d/main.js');
+  assert.match(world3d,/await boot\.complete\(\{ onContinue/);
+  assert.match(world3d,/welcomeVoice\.replay\(greeting\)/);
+  assert.match(world3d,/getWelcomeText\(/);
+  assert.match(world3d,/welcomeVoice\.cancel\(\)/);
+  const hg=code('src/worlds/hologram/main.js');
+  assert.match(hg.slice(hg.indexOf('scene.load(')), /welcomeAutostart\.start\(welcomeMessage\)/);
 });
 
 test('technical status strings still show user-facing Spanish',()=>{

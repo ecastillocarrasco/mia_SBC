@@ -1,0 +1,58 @@
+{
+  "version": "4.6",
+  "requires": "Mía SBC V4.5 ya instalada",
+  "scope": "3D+HG, no tocar 2D o GLB",
+  "validation": {
+    "mia-v44": {
+      "passed": 10,
+      "failed": 0
+    },
+    "mia-v45": {
+      "passed": 12,
+      "failed": 0
+    },
+    "mia-v46": {
+      "passed": 8,
+      "failed": 0
+    }
+  },
+  "webgl_visual": "pending browser",
+  "vite_build": "pending dependencies",
+  "files": [
+    {
+      "path": "src/core/scene.js",
+      "size": 21667,
+      "sha256": "aa473afafbacd56f5530aefff5763f3f395d7df38e6d8e4e3aa1dcd86cb674e8"
+    },
+    {
+      "path": "src/core/behavior-v4.js",
+      "size": 11533,
+      "sha256": "8cf49416ac192bb7a2eee6f0a9985b85464ec374110a3fd3d7392a6698f70eb0"
+    },
+    {
+      "path": "src/core/welcome-voice-v45.js",
+      "size": 6164,
+      "sha256": "e17c73f0b347ce190125adaac4783f98c9ee232b2c5724f61e0f9136c09bb6cc"
+    },
+    {
+      "path": "src/worlds/3d/main.js",
+      "size": 22347,
+      "sha256": "752c193fcaaa32dbb6656ea8d740418df06ce2666d92aad9b546d4cf14466321"
+    },
+    {
+      "path": "src/worlds/hologram/main.js",
+      "size": 10034,
+      "sha256": "97979c6696eb17d216404e58e6425459c204b3c42f88e0fdeb23795537776766"
+    },
+    {
+      "path": "tests/mia-v46.test.mjs",
+      "size": 5841,
+      "sha256": "fe12c16fec57df63d92e1f8ed89d03fa2d94abdd766e49a095d02ad9bbf6c5fa"
+    },
+    {
+      "path": "docs/INSTALAR_MIA_V4_6_CARA_SALUDO_VOZ.md",
+      "size": 4474,
+      "sha256": "6faf1174f2f13e1eb2b398f1d458e88c04e0f0f3a412c2e79c432ff8cd425bdd"
+    }
+  ]
+}

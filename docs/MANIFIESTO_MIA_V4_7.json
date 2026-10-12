@@ -1,0 +1,63 @@
+{
+  "version": "4.7",
+  "base": "4.6",
+  "files": [
+    {
+      "path": "src/core/welcome-autostart-v47.js",
+      "sha256": "03705b894e8b6798f443f1002bdb6e6e06c5b162b86d3a1b5a22d5c24c52a47a",
+      "bytes": 6197
+    },
+    {
+      "path": "src/worlds/3d/main.js",
+      "sha256": "e66bb575a386e4b0195dd7939afef53321d81a720c3441d4e0196b680e6a6d8c",
+      "bytes": 21943
+    },
+    {
+      "path": "src/worlds/3d/index.html",
+      "sha256": "4bdf62c57664a43cd5fc89ac51044a91e1ee4dad8379d9e2932b99aff9de63e3",
+      "bytes": 4333
+    },
+    {
+      "path": "src/worlds/3d/v4-white.css",
+      "sha256": "a12fd9f8e0941226a0247e3a6d80299b01c6aac55db3d1091a1e79a04a77c722",
+      "bytes": 19443
+    },
+    {
+      "path": "src/worlds/hologram/main.js",
+      "sha256": "4b81636d8682c5bf9d33115755ffcf3c62e855d77e0314fd06b22a73138dc05e",
+      "bytes": 10049
+    },
+    {
+      "path": "src/worlds/hologram/index.html",
+      "sha256": "4134494d624db3683a52483b357ba69bdf20ea7e431c011074ab11326fd2bed1",
+      "bytes": 1212
+    },
+    {
+      "path": "src/worlds/hologram/style.css",
+      "sha256": "c854d527cc1ed70d34006891478a6ec34809ed39a863c13da7217d9f5f5180b6",
+      "bytes": 7727
+    },
+    {
+      "path": "tests/mia-v45.test.mjs",
+      "sha256": "d19b26458a805905ddeecee534731321092fb6f87b23cb6809a5548ad141cd9c",
+      "bytes": 7689
+    },
+    {
+      "path": "tests/mia-v46.test.mjs",
+      "sha256": "3517f3fefdcb1a28b2c1fc940f205694d03bd7f89a84511e41afef7ac7059b4b",
+      "bytes": 5779
+    },
+    {
+      "path": "tests/mia-v47.test.mjs",
+      "sha256": "b2006ce59fbaf4d97a43174d65a33390b1acee4ead62f90befcaaabed37f300b",
+      "bytes": 6919
+    },
+    {
+      "path": "docs/INSTALAR_MIA_V4_7_BIENVENIDA_SIN_BOTON.md",
+      "sha256": "43611893ceea3a3797e3e2768bca26607eb0c698222ecdbbfe3fa64c313369ed",
+      "bytes": 3840
+    }
+  ],
+  "tests": "29/29 targeted, 69/71 full (2 pre-existing baseline failures)",
+  "build": "not run: vite not found"
+}

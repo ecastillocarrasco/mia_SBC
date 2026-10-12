@@ -94,9 +94,3 @@ html,body{overflow:hidden}
 .composer .mic[data-mic-mode="continuous"]::after{content:"∞";position:absolute;top:-7px;right:-7px;display:grid;place-items:center;width:23px;height:23px;border:1px solid #9cf2f4;border-radius:50%;background:#094c5b;color:#fff;font-size:17px;font-weight:800}
 .composer .mic[data-mic-mode="once"]::after{content:"1";position:absolute;top:-6px;right:-6px;display:grid;place-items:center;width:19px;height:19px;border:1px solid #baf7f8;border-radius:50%;background:#0e8791;color:#fff;font-size:11px;font-weight:800}
 .composer .mic.is-suspended{opacity:.7}
-
-/* mIA V4.5 — user-gesture fallback if browser forbids welcome autoplay. */
-.mia45-hg-replay[hidden]{display:none!important;}
-.mia45-hg-replay{align-self:center;width:auto!important;max-width:230px;padding:9px 18px;
-  border:1px solid rgba(113,233,241,.35);border-radius:999px;color:#c6ffff;
-  background:rgba(9,48,59,.65);cursor:pointer;font:600 12px Aptos,'Segoe UI',sans-serif;}

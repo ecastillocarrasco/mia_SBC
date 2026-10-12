@@ -149,7 +149,7 @@ export class MiaBehaviorV4 {
     this.onStateChange?.(next, context);
 
     if (next === 'greeting') {
-      this._start(this._available(['mIA_SEQ_BIENVENIDA', 'mIA_GREET']));
+      this._start(this._available(['mIA_SEQ_BIENVENIDA_SAFE', 'mIA_SEQ_BIENVENIDA', 'mIA_GREET']), { fade: 0.65 });
     } else if (next === 'farewell') {
       this._start(this._available(['mIA_SEQ_DESPEDIDA', 'mIA_WAVE']));
     } else if (next === 'presenting') {

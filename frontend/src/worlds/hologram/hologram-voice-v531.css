@@ -1,0 +1,19 @@
+/* Módulo aislado: no cambia layout ni funcionamiento de 2D/3D */
+.hg-voice-widget { display:flex; align-items:center; justify-content:center; gap:10px;
+  position:relative; z-index:120; pointer-events:auto; margin:4px auto 10px; padding:0 12px;
+  max-width:min(100%,740px); color:#eef9f8; font:12px/1.4 Aptos,"Segoe UI",sans-serif; }
+.hg-voice-listen { flex:0 0 auto; cursor:pointer; appearance:none; border:1px solid rgba(111,245,227,.35);
+  background:rgba(4,38,53,.92); color:#e3fcfc; padding:7px 13px; border-radius:999px;
+  font:600 12px/1.3 Aptos,"Segoe UI",sans-serif; transition:background .18s; }
+.hg-voice-listen:hover { background:rgba(9,82,95,.96); }
+.hg-voice-listen:disabled { opacity:.53; cursor:progress; }
+.hg-voice-listen:focus-visible { outline:2px solid #5df8da; outline-offset:2px; }
+.hg-voice-state { flex:1 1 auto; min-width:0; max-width:480px; overflow-wrap:anywhere;
+  color:#a7cacb; font-size:11px; }
+.hg-voice-widget[data-status="playback-blocked"] .hg-voice-state,
+.hg-voice-widget[data-status^="voice-"] .hg-voice-state,
+.hg-voice-widget[data-status="playback-error"] .hg-voice-state { color:#f7c38d; }
+@media (max-width:560px) { .hg-voice-widget{ flex-wrap:wrap; gap:5px; }
+  .hg-voice-state{ text-align:center; flex-basis:100%; font-size:10px; } }
+/* Proyección física sin HUD visual: teclado conectado, tecla V para reescuchar. */
+body.hg-fan .hg-voice-widget, body[data-hg-fan="1"] .hg-voice-widget {display:none;}

@@ -1,0 +1,322 @@
+/*
+ * Mía Holograma V5.2 — identidad autónoma.
+ * Solo importado en worlds/hologram/index.html.
+ * Negro puro + proyección circular segura + cara nítida y voz como canal principal.
+ */
+
+/* Entrada al holograma: misma clase boot del core, estética distinta del 3D. */
+.mia-boot[data-mode="hologram"] {
+  --boot-navy: #c7faff;
+  --boot-muted: #75c1ce;
+  --boot-coral: #43e4f2;
+  background: radial-gradient(ellipse 26% 55% at 35% 51%,rgba(0,129,155,.13),transparent 85%),#000;
+  color: #e5ffff;
+}
+.mia-boot[data-mode="hologram"] .mia-boot__layout {width:min(1170px,95vw);gap:clamp(20px,5vw,80px)}
+.mia-boot[data-mode="hologram"] .mia-boot__figure {
+  position:relative;
+  isolation:isolate;
+  background:radial-gradient(ellipse 42% 32% at 50% 55%,rgba(40,218,248,.12),transparent);
+}
+.mia-boot[data-mode="hologram"] .mia-boot__art {display:none}
+.mia-boot[data-mode="hologram"] .mia-boot__figure::before {
+  content:"✦";
+  display:grid;place-items:center;
+  position:absolute;left:50%;top:50%;width:min(50vw,360px);aspect-ratio:1;
+  border-radius:50%;color:#8bfaff;font-size:clamp(84px,13vw,175px);
+  transform:translate(-50%,-50%);
+  text-shadow:0 0 25px rgba(85,239,255,.72),0 0 130px rgba(55,206,255,.32);
+  box-shadow:0 0 35px rgba(0,214,253,.15),inset 0 0 40px rgba(0,214,253,.12);
+  border:1px solid rgba(89,236,252,.48);
+  animation:hg52-signal 5s ease-in-out infinite;
+}
+.mia-boot[data-mode="hologram"] .mia-boot__figure::after {
+  content:"";position:absolute;left:50%;top:50%;width:min(62vw,460px);aspect-ratio:1;
+  transform:translate(-50%,-50%);border:1px dashed rgba(61,202,245,.29);
+  border-radius:50%;pointer-events:none;
+}
+.mia-boot[data-mode="hologram"] .mia-boot__content h1 {
+  color:#d9fcff;
+  font-family:Aptos,'Segoe UI',Arial,sans-serif;
+  font-size:clamp(35px,4.1vw,62px);
+  font-weight:730;
+}
+.mia-boot[data-mode="hologram"] .mia-boot__content h1 em,
+.mia-boot[data-mode="hologram"] .mia-boot__eyebrow {color:#79f7ff}
+.mia-boot[data-mode="hologram"] .mia-boot__intro,
+.mia-boot[data-mode="hologram"] .mia-boot__details,
+.mia-boot[data-mode="hologram"] .mia-boot__steps {color:#83bac7}
+.mia-boot[data-mode="hologram"] .mia-boot__status,
+.mia-boot[data-mode="hologram"] .mia-boot__ring-number {color:#dcffff}
+.mia-boot[data-mode="hologram"] .mia-boot__ring-track {stroke:#132d3a}
+.mia-boot[data-mode="hologram"] .mia-boot__ring-value {
+  stroke:#68f0ff;filter:drop-shadow(0 0 6px rgba(70,224,251,.68));
+}
+.mia-boot[data-mode="hologram"] .mia-boot__bar {background:#11313c}
+.mia-boot[data-mode="hologram"] .mia-boot__bar span {
+  background:linear-gradient(90deg,#026d9b,#30cee6,#a0ffff);
+  box-shadow:0 0 15px rgba(32,220,249,.55);
+}
+.mia-boot[data-mode="hologram"] .mia-boot__steps span::before{background:#133441}
+.mia-boot[data-mode="hologram"] .mia-boot__steps .active {color:#90faff}
+.mia-boot[data-mode="hologram"] .mia-boot__steps .active::before {background:#63efff;box-shadow:0 0 0 4px rgba(42,211,245,.12)}
+.mia-boot[data-mode="hologram"] .mia-boot__steps .done {color:#6eccd5}
+.mia-boot[data-mode="hologram"] .mia-boot__steps .done::before {background:#44aab6}
+.mia-boot[data-mode="hologram"] .mia-boot__continue {
+  background:linear-gradient(135deg,#087c9b,#065678);
+  color:#e9ffff;border:1px solid rgba(112,247,255,.75);
+  box-shadow:0 0 26px rgba(15,192,236,.21),inset 0 1px 0 rgba(181,250,255,.23);
+  font-size:15px;
+}
+.mia-boot[data-mode="hologram"] .mia-boot__continue:hover:not(:disabled) {
+  background:linear-gradient(135deg,#0697b1,#04708f);
+  box-shadow:0 0 45px rgba(52,222,253,.29);
+}
+.mia-boot[data-mode="hologram"] .mia-boot__skip {color:#a8e3ed}
+.mia-boot[data-mode="hologram"] .mia-boot__retry {background:#064c66;color:#fff}
+.mia-boot[data-mode="hologram"] .mia-boot__logo {
+  max-height:110px;object-position:left center;
+  filter:drop-shadow(0 0 2px rgba(255,255,255,.28));
+}
+
+/* Pantalla de ensayo, conserva los efectos premium de V5.1. */
+body.hg-v5:not(.hg-fan) .hg-story {max-height:63vh;overflow:hidden}
+body.hg-v5:not(.hg-fan) .hg-brand strong {font-weight:850}
+body.hg-v5:not(.hg-fan) .hg-radar {animation-duration:6s}
+
+/* 
+ * FAN = salida LED real. Ni el fondo azul ni los scanlines llegan al ventilador.
+ * La imagen se constriñe al disco de 1:1 inscribible en la pantalla HDMI.
+ */
+html:has(body.hg-fan),
+body.hg-v5.hg-fan,
+body.hg-v5.hg-fan .projection {
+  background:#000!important;
+  background-color:#000!important;
+}
+body.hg-v5.hg-fan .hg-energy,
+body.hg-v5.hg-fan .scanlines,
+body.hg-v5.hg-fan .hg-brand,
+body.hg-v5.hg-fan .hg-bottom-note,
+body.hg-v5.hg-fan .back-link,
+body.hg-v5.hg-fan .hg-standby,
+body.hg-v5.hg-fan .hud,
+body.hg-v5.hg-fan .hg-panel-top,
+body.hg-v5.hg-fan .hg-gauge,
+body.hg-v5.hg-fan .hg-brief-head,
+body.hg-v5.hg-fan .hg-mini-table,
+body.hg-v5.hg-fan .hg-documents,
+body.hg-v5.hg-fan .hg-radar,
+body.hg-v5.hg-fan .hg-story::before,
+body.hg-v5.hg-fan .hg-story-beam,
+body.hg-v5.hg-fan .hg-waveform,
+body.hg-v5.hg-fan #hgNarrative,
+body.hg-v5.hg-fan .hg-overline {
+  display:none!important;
+}
+/* Para ensayos de control local: ?fan=1&controls=1.
+   La salida final sin este parámetro está limpia. */
+body.hg-v5.hg-fan.hg-fan-controls .hud {
+  display:block!important;
+  z-index:110;
+  right:15px;bottom:15px;left:auto;width:min(350px,35vw);
+}
+body.hg-v5.hg-fan.hg-fan-controls .composer {display:flex!important;width:100%;min-width:0}
+body.hg-v5.hg-fan .hg-shell {background:none!important}
+
+/* Texto de bienvenida de UNA línea dentro del disco circular, sin cajas. */
+body.hg-v5.hg-fan .hg-story {
+  display:block;
+  position:fixed;
+  z-index:12;
+  top:calc(50% - 43vmin);
+  left:50%;right:auto;bottom:auto;
+  transform:translateX(-50%);
+  width:min(58vmin,610px);min-width:0;
+  max-height:5vmin;
+  border:none;border-radius:0;padding:0;margin:0;
+  background:transparent;box-shadow:none;backdrop-filter:none;
+  text-align:center;overflow:hidden;
+}
+body.hg-v5.hg-fan #hgHeadline {
+  font-family:Aptos,'Segoe UI',Arial,sans-serif;
+  display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;
+  margin:0;padding:0;
+  font-size:clamp(16px,3vmin,34px);
+  font-weight:750;line-height:1.25;
+  letter-spacing:.025em;
+  color:#b3fbff;
+  text-shadow:0 0 15px rgba(69,233,255,.53);
+}
+/* Solo animar el rótulo, sin ocupar la imagen de Mía. */
+body.hg-v5.hg-fan .hg-story[data-hg-inactive="true"] {display:none}
+
+/* Si hay datos, se reparten a los lados del tronco. Máximo 2 KPIs. */
+body.hg-v5.hg-fan .hg-panel {
+  position:fixed;z-index:12;
+  top:40%;bottom:auto;left:50%;right:auto;
+  transform:translateX(-50%);
+  width:80vmin;max-width:80vmin;
+  min-height:0;max-height:32vmin;
+  border:0;border-radius:0;margin:0;padding:0;
+  background:transparent;box-shadow:none;backdrop-filter:none;
+  overflow:visible;pointer-events:none;
+}
+body.hg-v5.hg-fan .hg-panel:not(.hg-with-data) {display:none}
+body.hg-v5.hg-fan .hg-brief {
+  display:block;background:transparent;
+  border:none;box-shadow:none;padding:0;
+}
+body.hg-v5.hg-fan .hg-kpis {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:35vmin;
+  width:100%;
+}
+body.hg-v5.hg-fan .hg-kpi {
+  display:flex;flex-direction:column;justify-content:center;align-items:center;
+  flex:0 0 21vmin;
+  width:21vmin;min-height:12vmin;max-height:15vmin;
+  padding:clamp(5px,1vmin,14px);margin:0;
+  border:1px solid rgba(92,232,251,.38);border-radius:1.7vmin;
+  background:rgba(0,19,26,.18);
+  backdrop-filter:none;
+  box-shadow:inset 0 0 19px rgba(58,212,250,.075),0 0 17px rgba(58,212,250,.085);
+  text-align:center;
+}
+body.hg-v5.hg-fan .hg-kpi:nth-child(n+3) {display:none!important}
+body.hg-v5.hg-fan .hg-kpi span {
+  color:#9df6ff;
+  display:-webkit-box;-webkit-box-orient:vertical;
+  -webkit-line-clamp:2;line-clamp:2;overflow:hidden;
+  text-transform:uppercase;letter-spacing:.07em;
+  font-size:clamp(9px,1.35vmin,16px);line-height:1.2;
+}
+body.hg-v5.hg-fan .hg-kpi strong {
+  font-size:clamp(20px,3.3vmin,47px);
+  font-weight:850;line-height:1.04;
+  color:#e4ffff;text-shadow:0 0 20px rgba(85,246,255,.56);
+}
+body.hg-v5.hg-fan .hg-kpi small {font-size:clamp(9px,1.3vmin,14px)}
+body.hg-v5.hg-fan .hg-panel.hg-has-kpis .hg-chart {display:none!important}
+body.hg-v5.hg-fan .hg-chart {
+  position:absolute;top:6vmin;right:0;
+  width:23vmin;max-height:21vmin;
+  margin:0;overflow:hidden;
+}
+body.hg-v5.hg-fan .hg-chart-title {font-size:clamp(8px,1.1vmin,13px)}
+body.hg-v5.hg-fan .hg-chart-row {
+  grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;
+  margin:1.1vmin 0;gap:5px;
+}
+body.hg-v5.hg-fan .hg-chart-row:nth-of-type(n+5) {display:none}
+body.hg-v5.hg-fan .hg-chart-name,
+body.hg-v5.hg-fan .hg-chart-value {font-size:clamp(8px,1.0vmin,12px)}
+body.hg-v5.hg-fan .hg-chart-track {height:1vmin}
+
+/* Modo portrait para evaluar la nitidez del rostro en la instalación. */
+body.hg-v5.hg-fan[data-hg-motion="greeting"] .hg-story {animation:hg52-headline .85s ease both}
+@keyframes hg52-headline{from{opacity:0;filter:blur(6px)}to{opacity:1;filter:none}}
+@keyframes hg52-signal{50%{opacity:.72;box-shadow:0 0 65px rgba(0,208,251,.26),inset 0 0 47px rgba(35,208,240,.25)}}
+
+@media(max-width:850px) {
+  .mia-boot[data-mode="hologram"] .mia-boot__figure {display:none}
+  .mia-boot[data-mode="hologram"] .mia-boot__layout {
+    display:flex;flex-direction:column;justify-content:center;
+    width:min(92vw,500px);height:100dvh;
+  }
+  .mia-boot[data-mode="hologram"] .mia-boot__content {
+    width:100%;max-height:100dvh;overflow-y:auto;
+    align-items:center;padding:15px 6px;
+  }
+  .mia-boot[data-mode="hologram"] .mia-boot__logo {height:85px;object-position:center}
+}
+@media(prefers-reduced-motion:reduce) {
+  .mia-boot[data-mode="hologram"] *,
+  .hg-v5.hg-fan * {animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+
+/* V5.2.1 — no dejar el ventilador sin respuesta cuando el backend devuelve
+   documentos, datos sin KPI o una tabla no apta para proyectarse entera. */
+body.hg-v5.hg-fan .hg-fan-feedback {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:9vmin;
+  width:24vmin;
+  margin-left:auto;
+  padding:1.4vmin;
+  color:#b9ffff;
+  font:750 clamp(12px,1.7vmin,20px)/1.25 Aptos,"Segoe UI",Arial,sans-serif;
+  letter-spacing:.11em;
+  text-align:center;
+  border:1px solid rgba(103,245,255,.44);
+  border-radius:1.5vmin;
+  background:rgba(0,19,26,.13);
+  text-shadow:0 0 12px rgba(86,235,253,.5);
+}
+body.hg-v5.hg-fan .hg-result-status { display:none; }
+/* Solo se utiliza como fuente interna para dibujar barras trazables;
+   nunca se proyectan las filas sobre el ventilador. */
+body.hg-v5.hg-fan .hg-chart-source { display:none!important; }
+body.hg-v5:not(.hg-fan) .hg-result-status {
+  color:#b5eef6;
+  font-size:14px;
+  line-height:1.5;
+  padding:13px 0;
+}
+
+/* V5.2.2 — Un resultado o error siempre queda visible, sin bucles visuales. */
+body.hg-v5 .hg-error-visible {
+  border:1px solid rgba(240,180,143,.4);
+  border-radius:13px;
+  padding:20px;
+  margin:12px 0;
+  font:700 14px/1.4 Aptos,"Segoe UI",Arial,sans-serif;
+  color:#ffe9da;
+  text-align:center;
+  letter-spacing:.10em;
+  background:rgba(62,22,17,.42);
+  box-shadow:0 0 17px rgba(245,132,87,.12);
+}
+body.hg-v5.hg-fan .hg-error-visible {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:24vmin;
+  min-height:12vmin;
+  margin-left:auto;
+  padding:1vmin;
+  font-size:clamp(12px,1.65vmin,21px);
+  border:1px solid rgba(255,187,163,.58);
+  color:#ffebe2;
+  background:transparent;
+  text-shadow:0 0 12px rgba(246,151,101,.38);
+}
+body.hg-v5.hg-fan .hg-fallback-answer {
+  color:#d8fcff;
+  border-color:rgba(103,245,255,.52);
+}
+
+/* V5.2.3: monitor de progreso y cancelación, exclusivo HG */
+body.hg-v5 .hg-query-monitor {display:none;align-items:center;gap:9px;flex-wrap:wrap;
+  justify-content:flex-end;color:#b2f3fc;font:600 12px/1.4 Aptos,'Segoe UI',Arial,sans-serif;
+  text-shadow:0 0 8px rgba(38,213,249,.3);pointer-events:auto}
+body.hg-v5.hg-query-running .hg-query-monitor {display:flex}
+body.hg-v5 .hg-query-monitor button:not([hidden]) {display:inline-flex;padding:5px 11px;
+  background:rgba(4,80,105,.66);border:1px solid rgba(120,246,255,.44);border-radius:12px;
+  color:#dcffff;cursor:pointer;font-size:11px}
+body.hg-v5.hg-query-running .hud{gap:7px}
+body.hg-v5 .hg-diag-panel{display:none;position:fixed;z-index:150;top:72px;right:15px;
+  width:min(330px,90vw);padding:12px 15px;border:1px solid #61e3f6;border-radius:13px;
+  background:rgba(0,22,31,.92);color:#d8ffff;font:12px/1.35 monospace;
+  box-shadow:0 0 24px rgba(22,198,237,.21);pointer-events:auto}
+body.hg-v5.hg-diagnostics-on .hg-diag-panel{display:block}
+body.hg-v5 .hg-diag-header{display:flex;gap:10px;align-items:center;justify-content:space-between}
+body.hg-v5 .hg-diag-header button {border:1px solid #53bacb;background:#053749;color:#e2ffff;
+  font-size:10px;padding:5px;border-radius:7px;cursor:pointer}
+body.hg-v5 .hg-diag-panel pre{margin:9px 0 0;white-space:pre-wrap;word-break:break-word}
+/* fan=1: controles solo en ?controls=1; diagnóstico solo en ?diag=1 */
+body.hg-v5.hg-fan.hg-fan-controls.hg-query-running .hg-query-monitor {display:flex}
+@media(max-width:760px){body.hg-v5 .hg-query-monitor{font-size:11px}}

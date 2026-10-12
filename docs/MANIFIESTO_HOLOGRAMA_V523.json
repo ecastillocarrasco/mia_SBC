@@ -1,0 +1,47 @@
+{
+  "version": "5.2.3",
+  "base": "V5.2.2",
+  "scope": "solo src/worlds/hologram/",
+  "files": [
+    {
+      "path": "docs/INSTALAR_MIA_HOLOGRAMA_V5_2_3.md",
+      "bytes": 4914,
+      "sha256": "15cb4f1f7a3a5d93a165cf2e4f7f9c06dfae7d170da0295d63fcff163a99ba19"
+    },
+    {
+      "path": "src/worlds/hologram/hologram-lifecycle-v523.js",
+      "bytes": 2514,
+      "sha256": "836057fe4d63291df3e60d02396ba4c3668df8d5385dcd95e0efe80cd36aafb4"
+    },
+    {
+      "path": "src/worlds/hologram/hologram-projection-v52.css",
+      "bytes": 13119,
+      "sha256": "d112b25909863c4f1b00fa24a5cfe22799a0e5161fdd53d3b05690a467fab245"
+    },
+    {
+      "path": "src/worlds/hologram/hologram-turn-v523.js",
+      "bytes": 7464,
+      "sha256": "f4558f7e9893a2ec05701ff1249288bc994d98dade9265aef3efd2a27a4dd0fe"
+    },
+    {
+      "path": "src/worlds/hologram/index.html",
+      "bytes": 3967,
+      "sha256": "7ab063fb3c696f54e7126c9acff3a1215bdd314c0c9443efc498a80643b18fc5"
+    },
+    {
+      "path": "src/worlds/hologram/main.js",
+      "bytes": 20617,
+      "sha256": "71ae80edc812a4e60f9df1049cfbfe9d59601744c2c9855cb7cfda21c8ec3045"
+    },
+    {
+      "path": "tests/mia-hologram-v523.test.mjs",
+      "bytes": 4970,
+      "sha256": "c84ed17ddd158bf88b6fd6d228d39fcf83eb423387674b315c3408cea147ae1a"
+    }
+  ],
+  "validation": {
+    "node_tests": "8 passed",
+    "chromium_fake_backend": "4 scenarios passed",
+    "full_real_backend": "not available"
+  }
+}

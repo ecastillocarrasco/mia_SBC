@@ -1,0 +1,55 @@
+{
+  "version": "5.2.2",
+  "base": "5.2.1",
+  "scope": "hologram-only",
+  "tests": {
+    "unit": "13/13 passed",
+    "browser": "6/6 headless scenarios passed",
+    "js_syntax": "4/4 passed",
+    "css": "passed",
+    "vite_full_build": "not run",
+    "backend_live": "not tested"
+  },
+  "files": [
+    {
+      "file": "docs/INSTALAR_MIA_HOLOGRAMA_V5_2_2.md",
+      "size": 4533,
+      "sha256": "406a3c0bd0e315f1840cd5347542628e2fc8be764c607af7399863f2d6569e74"
+    },
+    {
+      "file": "src/worlds/hologram/hologram-executive-v522.js",
+      "size": 5489,
+      "sha256": "6a1834a6629f55afdad6477bcceddc62d5db53927b7bcff7df147cd9eb07e9ab"
+    },
+    {
+      "file": "src/worlds/hologram/hologram-projection-v52.css",
+      "size": 11542,
+      "sha256": "92f13b62af34af5294258d83ccf1196ad9fca8a4b3140f7f3d439cebfe08c405"
+    },
+    {
+      "file": "src/worlds/hologram/hologram-turn-v522.js",
+      "size": 6451,
+      "sha256": "c68315c01d26a409ec387d1a50f9033291f13cda5f1246fe4aec4f5029c52891"
+    },
+    {
+      "file": "src/worlds/hologram/hologram-voice-v522.js",
+      "size": 5016,
+      "sha256": "dcc095e1bd4420d91cdaefe40659c58ff102aff4937fa5e3820043b00bf22901"
+    },
+    {
+      "file": "src/worlds/hologram/index.html",
+      "size": 3451,
+      "sha256": "67ddf9e7a9283efebe70dcf6792e5625455e8ca51bfcee321dc59a44833f26ec"
+    },
+    {
+      "file": "src/worlds/hologram/main.js",
+      "size": 16377,
+      "sha256": "a48faa60d78eadd51a78675a3560f6a6f9770febb282391c072b26c83eb07a0d"
+    },
+    {
+      "file": "tests/mia-hologram-v522.test.mjs",
+      "size": 7045,
+      "sha256": "feac4d79e0e7beb8d15e614e07c6e207509e3de3575e8c0c0066b7ad15afb640"
+    }
+  ]
+}

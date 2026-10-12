@@ -1,0 +1,36 @@
+{
+  "version": "4.8",
+  "base": "V4.7",
+  "intent": "Preservar la activacion del clic de Entrada en 3D en el mismo documento",
+  "files": [
+    {
+      "path": "index.html",
+      "sha256": "0c171fe09f4369e4c8516a916757a60e76663581b73e8ea0b78d6fd22e96bb1e"
+    },
+    {
+      "path": "src/core/landing-world-entry-v48.js",
+      "sha256": "1f6c53c531b0215fd91864e0452e5d47466d01921b682c9f7c3a83f65242bd56"
+    },
+    {
+      "path": "src/landing-3d-v48.js",
+      "sha256": "6a34b356eebf72475d411243efa6d815cf87c7e1617083963b8beaf08b53376e"
+    },
+    {
+      "path": "src/core/welcome-autostart-v47.js",
+      "sha256": "6386bccfcf215b2d772e0925f2dde7ead624110b01246c38cb9d6ae7b8a609b7"
+    },
+    {
+      "path": "src/worlds/3d/main.js",
+      "sha256": "373c2bc7813359400a7ed4b926a70a95ff040399040ef60ab8b6574060aa596e"
+    },
+    {
+      "path": "tests/mia-v48.test.mjs",
+      "sha256": "4ab277aa4f88252f07bcc2f8b80e5f4c814fb0ec1985c883b2ef0aca07948e6b"
+    },
+    {
+      "path": "docs/INSTALAR_MIA_V4_8_ENTRADA_CON_VOZ.md",
+      "sha256": "5ff804a2958a5a7c0f343e3ff342eba93dcd3406c982972e94c7a7d67c219220"
+    }
+  ],
+  "validation": "36 Node unit tests passed; browser Chrome actual audio and vite build not validated"
+}

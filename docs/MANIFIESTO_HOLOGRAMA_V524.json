@@ -1,0 +1,44 @@
+{
+  "version": "5.2.4",
+  "based_on": "5.2.3",
+  "scope": "src/worlds/hologram only",
+  "files": [
+    {
+      "path": "docs/INSTALAR_MIA_HOLOGRAMA_V5_2_4.md",
+      "bytes": 4402,
+      "sha256": "df45a4057a95b83db9ce65196a5c5cd799c773eb4c281dfa811cebf30c098e27"
+    },
+    {
+      "path": "src/worlds/hologram/hologram-lifecycle-v523.js",
+      "bytes": 2625,
+      "sha256": "1c8f081c5e14fec1d3804bcfb39b2f2cf56e7c5d18b8069c1c6bbf13656caf16"
+    },
+    {
+      "path": "src/worlds/hologram/hologram-turn-v523.js",
+      "bytes": 7685,
+      "sha256": "4b938764a248845bd79ab06ac722c8ebf5a4f4d9de35fa91943ca3f24752d161"
+    },
+    {
+      "path": "src/worlds/hologram/index.html",
+      "bytes": 3967,
+      "sha256": "b786662deec100d0c9980b21d9fb6d71f31fb0a8775df29994e99ead84e15f7c"
+    },
+    {
+      "path": "src/worlds/hologram/main.js",
+      "bytes": 22934,
+      "sha256": "e43193f6a0b4eabb5b6b5e125d99966fcb42325241b5b4496bcad6291895fbdb"
+    },
+    {
+      "path": "tests/mia-hologram-v524.test.mjs",
+      "bytes": 5774,
+      "sha256": "7029d2d67b293befabbe49d24d361ed855e62f1d7374796800f6bd719ba5828f"
+    }
+  ],
+  "validation": {
+    "unit_node": "8 tests passed",
+    "chromium": "4 scenarios passed: real result despite simulated UI exception, backend SSE error, blocked fetch, silent stream",
+    "reproduced_523": "yes with simulated animation throw; no fetch, initial trace stuck",
+    "live_backend": "not tested",
+    "vite_build": "not tested"
+  }
+}

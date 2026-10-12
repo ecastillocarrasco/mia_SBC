@@ -1,6 +1,8 @@
+import { installMiaAnimationLab } from "./animation-lab-v530.js";
 import { MiaBootLoader } from "../../core/boot-loader-v43.js";
 import { getWelcomeText } from "../../core/identity-v45.js";
 import { MiaWelcomeVoiceV45 } from "../../core/welcome-voice-v45.js";
+import { MiaWelcomeAutostartV47 } from "../../core/welcome-autostart-v47.js";
 import { render2DTableExtras, summarizeCoverage, presentationCoverageLabel } from "../../core/presentation-parity-v45.js";
 import { completePresentations } from "../../core/answer-structure-v45.js";
 import { MiaClient } from "../../core/client.js";
@@ -35,13 +37,23 @@ const micLauncher = document.getElementById("miaMicLauncher");
 const micButton = document.getElementById("mic");
 const waitHud = document.getElementById("miaWaitProgress");
 const waitText = document.getElementById("miaWaitText");
-const welcomeReplay = document.getElementById("miaWelcomeReplay");
 const boot = new MiaBootLoader({ mode: "3d" });
 const scene = new MiaScene(document.getElementById("canvas-root"));
 // Fuller, eye-level framing; the floor is uniform white and has no horizon.
 scene.camera.position.set(0, 1.47, 3.88);
 scene.target.set(0, 1.18, 0);
+// V4.6: a modest, reversible face adjustment. For developer calibration use
+// ?facePitch=7&faceYaw=2 (only honoured in npm run dev).
+const faceQuery = new URLSearchParams(window.location.search);
+const faceNumber = (param, fallback) => import.meta.env.DEV && faceQuery.has(param)
+  && Number.isFinite(Number(faceQuery.get(param)))
+  ? Number(faceQuery.get(param)) : fallback;
+scene.configureFacePose({
+  enabled: true, pitchDeg: faceNumber('facePitch', 6),
+  yawDeg: faceNumber('faceYaw', 4), strength: 0.7,
+});
 const client = new MiaClient();
+const miaAnimationLab = installMiaAnimationLab(scene); // mIA V5.3.0, temporal
 const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
 const stage = new PresentationStage({ root: document.body, reducedMotion, mode: "3d" });
 
@@ -50,17 +62,46 @@ let busy = false;
 let behavior = null;
 let dockHideTimer = null;
 let greetingTimer = null;
-let welcomeMessage = "";
-const welcomeVoice = new MiaWelcomeVoiceV45({
+let welcomeMessage = getWelcomeText();
+let welcomeVoice = null;
+let welcomeAutostart = null;
+
+function scheduleGreetingEnd() {
+  window.clearTimeout(greetingTimer);
+  const duration = scene.clipDuration('mIA_SEQ_BIENVENIDA_SAFE') ||
+    scene.clipDuration('mIA_SEQ_BIENVENIDA') || 6;
+  // Start the crossfade BEFORE the end of the last safe frame.
+  const delay = Math.max(1500, duration * 1000 - 650);
+  greetingTimer = window.setTimeout(() => {
+    greetingTimer = null;
+    if (!busy && behavior?.state === 'greeting') {
+      behavior.enter('idle');
+      setStatus('Lista para ayudarte', 'idle');
+    }
+  }, delay);
+}
+
+welcomeVoice = new MiaWelcomeVoiceV45({
   apiBase: client.apiBase,
-  onBlocked: () => {
-    if (!busy && voiceEnabled && welcomeReplay) welcomeReplay.hidden = false;
+  onBlocked: () => welcomeAutostart?.blocked(),
+  onStart: () => {
+    welcomeAutostart?.markPlaying();
+    // Si la voz llega tras un bloqueo, reiniciar el gesto de bienvenida.
+    if (!busy && behavior && behavior.state !== 'greeting') {
+      behavior.enter('greeting');
+      scheduleGreetingEnd();
+    }
   },
 });
-welcomeReplay?.addEventListener("click", () => {
-  welcomeReplay.hidden = true;
-  if (welcomeMessage && !busy && voiceEnabled) void welcomeVoice.start(welcomeMessage);
+welcomeAutostart = new MiaWelcomeAutostartV47({
+  voice: welcomeVoice,
+  canSpeak: () => !busy && voiceEnabled && !document.hidden,
+  eventTarget: window,
 });
+// Preload ElevenLabs audio in parallel with the heavy 84-clip GLB.
+// The actual play attempt waits until Mía is visible.
+const initialWelcomeText = welcomeMessage;
+const initialWelcomeAudio = welcomeVoice.prepare(initialWelcomeText);
 let voice = null;
 let voiceIsListening = false;
 const narrative = new MiaNarrativeV42(caption);
@@ -137,6 +178,10 @@ document.addEventListener("keydown", (event) => {
   if (["Shift", "Control", "Alt", "Meta", "Tab", "CapsLock", "NumLock"].includes(event.key)
       || /^F\d{1,2}$/.test(event.key)) return;
   event.preventDefault();
+  if (welcomeAutostart?.pending) {
+    welcomeAutostart.cancel();
+    welcomeVoice.cancel();
+  }
   openDock({ focus: true });
   if (event.key.length === 1) input.value += event.key;
 });
@@ -149,7 +194,15 @@ document.addEventListener("pointerdown", (event) => {
   if (dock.hidden) openDock();
 }, { capture: true });
 
-textLauncher.addEventListener("click", () => openDock({ focus: true }));
+textLauncher.addEventListener("click", () => {
+  // No saludar de forma sorpresiva cuando el usuario ya esta iniciando
+  // una consulta. La bienvenida pertenece a la entrada a la experiencia.
+  if (welcomeAutostart?.pending) {
+    welcomeAutostart.cancel();
+    welcomeVoice.cancel();
+  }
+  openDock({ focus: true });
+});
 function micClick() {
   // Durante la respuesta permitimos apagar el modo continuo, pero nunca
   // activar una nueva escucha mientras suena el TTS de Mía.
@@ -280,8 +333,8 @@ voiceToggle.addEventListener("click", () => {
   voiceToggle.classList.toggle("is-muted", !voiceEnabled);
   if (!voiceEnabled) {
     client.stopSpeaking();
+    welcomeAutostart.cancel();
     welcomeVoice.cancel();
-    if (welcomeReplay) welcomeReplay.hidden = true;
   }
 });
 // Employee360 quick actions remain functional after an HTML render.
@@ -309,8 +362,8 @@ async function submit(text) {
   const question = String(text || "").trim();
   if (busy || !question) return;
   busy = true;
-  welcomeVoice.cancel(); // Una pregunta cancela también el TTS inicial pendiente.
-  if (welcomeReplay) welcomeReplay.hidden = true;
+  welcomeAutostart.cancel(); // Impide el saludo tardio si ya hay una consulta.
+  welcomeVoice.cancel();
   sendButton.disabled = true;
   // Una consulta: se apaga tras hablar. Continuo: pausa mientras responde,
   // sin perder la elección explícita del usuario.
@@ -388,30 +441,40 @@ scene.load((progress, detail) => {
   boot.progress(progress, detail);
   setStatus("Preparando a Mía…", "loading");
 }).then(async (names) => {
-  const sourceClipCount = names.filter((name) => name !== "mIA_IDLE_SAFE").length;
+  const sourceClipCount = names.filter((name) =>
+    !['mIA_IDLE_SAFE', 'mIA_SEQ_BIENVENIDA_SAFE'].includes(name)).length;
   if (sourceClipCount !== 84) console.warn(`[mIA V4] Se esperaban 84 clips originales; cargados ${sourceClipCount}`);
   behavior = new MiaBehaviorV4({ scene, mode: "3d" });
   clearPresentation();
-  await boot.complete();
-  // En npm run dev: "Hola Enrique". Cuando MSAL esté conectado se tomará
-  // given_name de la cuenta activa, nunca los apellidos ni un nombre inventado.
+  // The audio is downloaded while the GLB loads. At 100%, wait for the sound
+  // to be prepared BEFORE offering the one-click entrance. Avoid waiting
+  // forever if the voice service is unavailable: browser TTS remains possible.
   const greeting = getWelcomeText();
   welcomeMessage = greeting;
-  showCaption(greeting, { kind: "welcome" });
-  setStatus("Bienvenida a Sunset Beach Club", "greeting");
-  behavior.enter("greeting");
-  // Intentar TTS inmediatamente tras completar la carga del GLB, antes
-  // de que el usuario escriba. Si el navegador bloquea autoplay, ofrecer
-  // un botón explícito para escucharlo sin repetir la consulta.
-  if (voiceEnabled) void welcomeVoice.start(greeting);
-  // Ejecutado una sola vez tras el load. Pasar a reposo sin reiniciar saludo.
-  greetingTimer = window.setTimeout(() => {
-    greetingTimer = null;
-    if (!busy && behavior?.state === "greeting") {
-      behavior.enter("idle");
-      setStatus("Lista para ayudarte", "idle");
-    }
-  }, Math.max(2000, scene.clipDuration("mIA_SEQ_BIENVENIDA") * 1000 + 250));
+  const audioPromise = greeting === initialWelcomeText
+    ? initialWelcomeAudio : welcomeVoice.prepare(greeting);
+  let voiceTimeout = null;
+  const audioReady = await Promise.race([
+    audioPromise,
+    new Promise((resolve) => {
+      voiceTimeout = window.setTimeout(() => resolve({ status: 'timeout' }), 8000);
+    }),
+  ]);
+  window.clearTimeout(voiceTimeout);
+  if (audioReady?.status === 'timeout') welcomeVoice.cancel();
+  setStatus("Mía está preparada", "ready");
+  // V4.9: the REAL click on the loading screen starts cached audio.play()
+  // immediately. No async preparation, setTimeout, or simulated button click
+  // is allowed before the playback invocation.
+  await boot.complete({ onContinue: () => {
+    welcomeAutostart?.cancel();
+    showCaption(greeting, { kind: "welcome" });
+    setStatus("Bienvenida a Sunset Beach Club", "greeting");
+    behavior.enter("greeting");
+    scheduleGreetingEnd();
+    if (!voiceEnabled) return { status: 'skipped-audio' };
+    return welcomeVoice.replay(greeting);
+  }});
   scheduleIdleMotion();
 }).catch((error) => {
   boot.fail(error);
@@ -479,6 +542,7 @@ window.addEventListener("pagehide", () => {
   window.clearTimeout(greetingTimer);
   waiting.stop();
   client.stopSpeaking();
+  welcomeAutostart.dispose();
   welcomeVoice.dispose();
   voice?.destroy();
   behavior?.destroy();

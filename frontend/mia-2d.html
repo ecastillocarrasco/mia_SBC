@@ -1,6 +1,32 @@
 <!doctype html>
 <html lang="es">
 <head>
+<!-- mIA V5.3.1: bloqueo de primera pintura antes del mundo 2D -->
+<style id="mia2d-entry-paint-guard">
+html.mia2d-entry-loading body::before,
+html.mia2d-entry-loading body::after {
+  position:fixed!important; z-index:2147483640!important; pointer-events:auto!important;
+  box-sizing:border-box!important;
+}
+html.mia2d-entry-loading body::before {
+  content:""; inset:0; background:linear-gradient(145deg,#fffbf5,#f9ece2 55%,#eee0d3);
+}
+html.mia2d-entry-loading body::after {
+  content:"mIA\A SUNSET BEACH CLUB\A Preparando tu experiencia 2D";
+  left:50%;top:50%;width:min(85vw,420px);transform:translate(-50%,-50%);
+  text-align:center;white-space:pre-line;color:#6b3141;line-height:2.0;
+  font:700 clamp(15px,2.5vw,23px)/1.9 Aptos,"Segoe UI",sans-serif;
+  letter-spacing:.06em;
+}
+</style>
+<script>
+document.documentElement.classList.add('mia2d-entry-loading');
+window.__mia2dEntryGuardTimeout=window.setTimeout(function(){
+  document.documentElement.classList.remove('mia2d-entry-loading');
+},18000);
+</script>
+<script type="module" src="/src/worlds/2d/mia-entry-v530.js"></script>
+
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#ffffff">
@@ -137,5 +163,6 @@
   <div id="toastLayer" class="toast-layer" aria-live="polite"></div>
   <script src="/src/worlds/2D/mia-2d.js?v=2D-V4.2-ui-tuning"></script>
   <script src="/src/worlds/2D/mia-enhance.js"></script>
+  
 </body>
 </html>
