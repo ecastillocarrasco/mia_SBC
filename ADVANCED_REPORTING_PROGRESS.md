@@ -1097,6 +1097,199 @@ omitidas** (898 de la Fase H + 5 nuevas de este incremento).
 - **No se ha iniciado ningún cambio de sincronización ni de caché**, por instrucción explícita del
   usuario — queda fuera del alcance de este incremento de Fase I, no solo pendiente de probar.
 
+### Segundo incremento — cierre definitivo de Fase I
+
+El usuario aceptó los commits `82fe1dc`/`80bf32f`/`e4fe950` (903/903 pruebas) y pidió completar Fase I
+con seis bloques adicionales, sin reconstruir módulos ni abrir nuevas funcionalidades. Pruebas nuevas:
+`tests/test_fase_i_job_manager_correspondence.py` (5), `tests/test_fase_i_multidomain_formats.py`
+(16, parametrizada 4 dominios × 4 formatos), y `docs/FASE_I_VALIDACION_VISUAL_MANUAL.md` (protocolo,
+no código). **924/924 pruebas backend, 0 fallos** (XML JUnit real, `full_regression_fase_i_final.xml`).
+
+#### 1. Cobertura funcional final
+
+| Capacidad | Camino directo | Camino Job Manager | Formatos probados |
+|---|---|---|---|
+| Nóminas (análisis económico) | ✅ cifras exactas | ✅ cifras exactas, idénticas al directo | PDF/XLSX/PPTX/HTML |
+| Turnos | ✅ | — (no probado por Job Manager; `generar_informe` no distingue dominio, ver nota) | PDF/XLSX/PPTX/HTML |
+| Vacaciones | ✅ | — (idem) | PDF/XLSX/PPTX/HTML |
+| Plantilla | ✅ | — (idem) | PDF/XLSX/PPTX/HTML |
+| Ausencias | ✅ | — (idem) | PDF/XLSX/PPTX/HTML |
+
+Nota sobre la columna "Job Manager" de los 4 dominios no económicos: el Job Manager de la Fase G solo
+tiene un `kind` registrado (`informe_economico_nominas`, vía `informe_economico_en_segundo_plano`) —
+no existe (ni se ha creado en esta fase, por la instrucción de no abrir funcionalidades nuevas) un
+trabajo en segundo plano para Turnos/Vacaciones/Plantilla/Ausencias. Es una limitación real, no un
+hueco de pruebas: no hay nada que probar porque la capacidad no existe todavía para esos dominios.
+
+`generar_informe` (el renderizador PDF/XLSX/PPTX/HTML) **es genérico**, confirmado con las 16 pruebas
+nuevas: funciona igual de bien para cualquier dominio, porque construye el documento a partir de la
+última tabla recordada (`LAST_TABLE`), no de lógica específica de nóminas.
+
+#### 2. Pruebas superadas
+
+**924/924** pruebas de `tests/` (0 fallos, 0 omitidas; XML JUnit `full_regression_fase_i_final.xml`).
+Desglose de lo añadido en este cierre:
+- `test_fase_i_job_manager_correspondence.py` (5): cifras exactas camino directo↔Job Manager
+  (periodo/departamentos/porcentajes/total), NOM-005 enmascarado igual en ambos caminos, atribución de
+  usuario y procedencia del informe, revocación de permiso de un ROL mientras el trabajo espera en
+  cola (detectada correctamente), volumen de 45 nóminas a través del worker real.
+- `test_fase_i_multidomain_formats.py` (16): Ausencias/Turnos/Vacaciones/Plantilla × PDF/XLSX/PPTX/
+  HTML, correspondencia exacta pantalla↔documento descargado por cada combinación.
+- Frontend: `frontend/tests/mia-2d-build.test.mjs` sigue pasando (build real, recursos del mundo 2D
+  presentes en `dist/`) — confirmado de nuevo en esta ronda, sin cambios desde el commit `80bf32f`.
+
+#### 3. Limitaciones reales (no resueltas por este cierre, declaradas explícitamente)
+
+- **Snapshot de permisos de un trabajo en cola — ver bloque de seguridad (punto 7) para el veredicto
+  explícito pedido por el usuario.**
+- La cancelación de un trabajo `running` sigue siendo cooperativa: no interrumpe a mitad de ejecución
+  (documentado desde la Fase G, sin cambios).
+- El bloqueo semántico duro de `generar_informe` (coherencia de dominio/periodo contra el `ReportPlanner`)
+  sigue centrado solo en nóminas (Fase F, sección 18, punto 1) — confirmado sin cambios en este cierre.
+- Las afirmaciones narrativas sin campo `period` estructurado siguen sin verificar (no bloqueadas) —
+  sin cambios (Fase F, sección 18, punto 2).
+- El Job Manager solo tiene un `kind` de trabajo (`informe_economico_nominas`); no existe trabajo en
+  segundo plano para los otros 4 dominios (ver punto 1 de esta sección).
+- La incidencia V4 de Node (proceso bloqueado por un `setInterval` sin limpiar tras una aserción
+  fallida) sigue sin corregir — documentada de forma independiente en la sección 20, confirmada de
+  nuevo en esta ronda sin tocar 3D/HG.
+
+#### 4. Escenarios no comprobados (declarados explícitamente, no asumidos resueltos)
+
+- Correspondencia exacta de cifras económicas (no solo nombres de departamento) para el camino del Job
+  Manager en escenarios de MÁS de un mes o con `departamento` filtrado — solo se probó un mes completo
+  sin filtro.
+- Multi-mes (trimestral/anual) a través del Job Manager específicamente — el volumen grande probado
+  (45 nóminas) es de un único mes; el multi-mes grande sigue probado solo por el camino directo
+  (`test_large_multi_month_volume_has_no_silent_truncation`).
+- Trabajos parcialmente fallidos *dentro* del Job Manager con un volumen grande (p. ej. algunas
+  nóminas con PDF ilegible mezcladas con válidas, a gran escala) — el comportamiento de tolerancia a
+  fallos individuales está confirmado a nivel del motor económico (`_amounts`, captura de excepción
+  por nómina) pero no se ha repetido un escenario de volumen grande con fallos mezclados específicamente
+  a través del worker.
+- Consumo de memoria: **no medido**. No se ha usado ningún profiler (`tracemalloc`, `memory_profiler`)
+  en ninguna prueba de esta fase ni de las anteriores — cualquier afirmación sobre memoria sería una
+  suposición, así que no se hace ninguna.
+- Rendimiento bajo carga concurrente real (múltiples usuarios distintos enviando trabajos
+  simultáneamente contra un despliegue real, no SQLite en pruebas) — la concurrencia entre workers está
+  probada (Fase G), la concurrencia de MUCHOS usuarios distintos a la vez, no.
+- Validación visual en navegador real — ver punto 8.
+- El hueco de `dist/` resuelto en el commit `80bf32f` no se ha probado todavía contra un IIS real (el
+  usuario confirmó que hoy no lo usa); queda pendiente de esa prueba cuando exista ese despliegue.
+
+#### 5. Informes de muestra
+
+Informes reales, generados por las propias pruebas de este cierre y de las anteriores, quedan
+persistidos durante la ejecución de la suite (`tmp_path` de pytest, se limpian automáticamente al
+terminar — no se han conservado copias permanentes en el repositorio, por diseño: `informes/` no es
+un directorio versionado). Referencia de contenido verificado en esta ronda, con cifras reales:
+- Agosto 2026, coste de empresa, 3 departamentos (Cocina/Recepción/Mantenimiento con 1 persona
+  oculta): total general y por departamento con cifras en formato `"X.XXX,XX €"`, advertencia NOM-005
+  textual, en PDF — confirmado byte a byte igual entre el camino directo y el del Job Manager.
+- Mismo escenario sin departamento oculto, en PDF/XLSX/PPTX/HTML, con el KPI "Gasto total del periodo"
+  coincidiendo exactamente con la cifra del documento en los 4 formatos.
+- Ausencias (Eva Sol, 3-6 agosto), Turnos (Ana Ruiz Sanz, 3-10 agosto, incluye "Vacaciones"),
+  Vacaciones (agosto completo), Plantilla (listado activo) — cada uno en los 4 formatos, con el valor
+  identificador (nombre de persona o estado) confirmado en pantalla y en el documento.
+
+#### 6. Rendimiento medido (nunca supuesto)
+
+- 45 nóminas sintéticas, un mes, a través del worker real del Job Manager (claim→ejecución→
+  finalización): **≈570 ms** en este entorno de desarrollo (medido con `time.perf_counter()`, sin
+  concurrencia de otros trabajos).
+- Volumen multi-mes mayor (3 meses, julio-septiembre 2026) por el camino directo, ya medido en la
+  Fase G: **<5000 ms**, muy por debajo del timeout de 280 s de la propia herramienta (referencia de
+  entorno, no SLA — ver `test_large_multi_month_volume_has_no_silent_truncation`).
+- Suite completa de regresión backend (924 pruebas): **≈364 s** en este entorno.
+- Ningún otro número de rendimiento se declara: no se ha medido latencia bajo carga real, tiempo de
+  build de Vite en CI, ni tiempo de arranque del backend en esta ronda.
+
+#### 7. Seguridad — veredicto explícito sobre el snapshot de permisos en cola
+
+El usuario pidió una decisión clara: "si persiste el riesgo de permisos capturados que quedan obsoletos
+mientras un trabajo espera en cola, no autorices uso productivo de ese flujo sensible hasta resolverlo
+o aplicar un control equivalente verificable." Investigado con cuidado en esta ronda, distinguiendo dos
+casos que se comportan de forma DISTINTA (confirmado con una prueba real, no solo lectura de código):
+
+1. **Si cambia la definición de un rol** (`ROLE_PERMISSIONS`, p. ej. un administrador le quita
+   `NOMINAS_IMPORTES` al rol mientras el trabajo espera) — **SÍ se detecta correctamente**: la
+   comprobación de permiso vuelve a consultar `ROLE_PERMISSIONS` en el momento de ejecutar
+   (`src/mia/auth/context.py:84`), nunca una copia hecha al encolar. Confirmado con
+   `test_a_role_permission_revoked_while_a_job_is_queued_is_caught_at_execution`: el trabajo queda
+   `queued` con `error_message` de `permission_denied`, nunca `completed`.
+2. **Si a la persona que envió el trabajo se le retira ESE ROL EN CONCRETO** (p. ej. se le quita de un
+   grupo en el proveedor de identidad) entre el envío y la ejecución — **sigue sin poder detectarse**:
+   `_rebuild_user()` (`src/mia/modules/rrhh/informes/jobs.py`) reconstruye el usuario únicamente a
+   partir de los roles capturados en `params["_auth"]` en el momento del envío, sin consultar ningún
+   directorio de usuarios en vivo — y no existe tal directorio en este sistema (confirmado leyendo el
+   código: no hay ninguna llamada a un proveedor de identidad durante la ejecución del trabajo).
+
+**Veredicto, aplicando literalmente la instrucción del usuario**: el riesgo del caso 2 **persiste, sin
+resolver**. No se ha intentado una corrección en esta ronda porque la única corrección fiable
+identificada —etiquetar cada `Report` con el permiso que exige y volver a comprobarlo en el momento de
+la descarga, ya que la descarga (`GET /api/reports/{id}`) solo comprueba propiedad (`user_id`), nunca
+el permiso del dominio— exige añadir una columna nueva a `Report` y una migración, que es exactamente
+"reconstruir un módulo" y queda fuera del alcance que el propio usuario marcó para este cierre.
+
+**Por tanto, siguiendo la instrucción explícita: no se autoriza el uso productivo del flujo asíncrono
+del Job Manager para peticiones económicas/salariales (`NOMINAS_IMPORTES`) hasta que se aplique una de
+estas dos correcciones, cada una verificable de forma objetiva**:
+- (a) Añadir `Report.required_permission` (migración) y comprobarlo también en la descarga, con el
+  usuario autenticado en ese momento (no el capturado al enviar el trabajo); o
+- (b) Acotar la ventana de exposición con una garantía operativa verificable (p. ej. un
+  `lease_seconds`/intervalo de sondeo del worker lo bastante corto como para que, en la práctica, un
+  trabajo nunca permanezca en cola el tiempo que tardaría revocarse un acceso — esto requeriría medir y
+  documentar ese intervalo real en el despliegue, no solo asumirlo).
+
+El resto de la superficie de seguridad ya auditada en fases anteriores se reconfirma sin cambios en
+esta ronda (no se ha debilitado ninguna protección): Privacy Gateway y Narrative Guard (Fase F, sección
+17-18), k-anonimato/NOM-005 con supresión complementaria (Fase H/I, confirmado también a través del
+Job Manager en este cierre), aislamiento entre usuarios en consulta/cancelación/descarga/historial
+(Fase G/H, con la prueba nueva de cancelación añadida en la ronda del commit `80bf32f`), autorización
+de ejecución re-evaluada en el momento de ejecutar (Fase G, y el caso 1 de arriba), protección de
+cifras salariales en mensajes de error (`test_failure_messages_never_contain_salary_amounts`).
+
+#### 8. Validación visual
+
+**No ejecutada en este entorno** (sin navegador gráfico). Protocolo reproducible preparado en
+`docs/FASE_I_VALIDACION_VISUAL_MANUAL.md`, con pasos exactos y resultados esperados para que el usuario
+lo ejecute en su propio equipo, cubriendo: conversación simple, respuesta analítica (KPIs/gráficos/
+tabla/advertencias), tablas extensas, narrativa, Job Manager completo (tarjeta/progreso real/
+cancelación/recuperación tras refresco/historial), inspección visual de los 4 formatos de documento
+(logotipo, legibilidad, espaciado, paginación, gráficos, tablas, coherencia entre formatos), y
+responsive. **No se declara superada ninguna parte de la validación visual** — queda como pendiente de
+ejecución real, con el protocolo listo para no depender de memoria ni de pasos improvisados.
+
+#### 9. Estado de preparación para preproducción
+
+**No listo para producción con datos económicos reales a través del Job Manager** (ver punto 7 —
+bloqueo explícito del usuario, no levantado en esta ronda). El resto del Advanced Reporting Engine
+(camino directo síncrono, los 4 dominios no económicos, los 4 formatos de documento, el build de
+`dist/`) está respaldado por 924 pruebas automáticas reales y un hallazgo de empaquetado ya corregido y
+verificado — pero la validación visual en navegador real sigue sin ejecutarse, y eso también es una
+condición pendiente antes de cualquier despliegue de cara al usuario final. En resumen: **backend
+funcionalmente validado con evidencia real; Job Manager económico bloqueado por seguridad; validación
+visual pendiente de ejecución manual; mundo V4 con una incidencia independiente documentada, sin
+relación con este motor.**
+
+#### 10. Procedimiento de reversión
+
+Los tres commits de este bloque son independientes y reversibles por separado, en orden inverso:
+```
+git revert <commit del cierre de este punto 10, si se crea>
+git revert e4fe950   # Fase I, primer incremento
+git revert 80bf32f   # empaquetado de producción Vite (dist/)
+git revert 82fe1dc   # Fase H: Job Manager en el 2D real
+```
+Cada commit se probó de forma independiente antes de crearse (897→898→903→924 pruebas, sin ninguna
+regresión entre pasos), así que revertir solo el último no debería dejar el árbol en un estado
+inconsistente con los anteriores. Si se revierte `82fe1dc` (Fase H), debe revertirse también `80bf32f`
+y el commit de este punto 10 primero (dependen del Job Manager y de los ficheros de Fase H que
+`82fe1dc` introduce). Ningún archivo de `frontend/src/worlds/3d/`, `frontend/src/worlds/hologram/` ni
+Avatar Engine se ha tocado en ningún commit de este bloque — revertir estos commits nunca afecta a esos
+mundos. No hay migraciones de base de datos nuevas en este bloque (el Job Manager de la Fase G ya tenía
+la suya, migración 0008, sin cambios aquí) — revertir no requiere ninguna migración de reversión.
+
 ## 10. Cierre de Fases D y E (ronda de continuación tras el cierre de la validación de nóminas)
 
 **Fase D — verificado, no reconstruido**: los 8 tipos de bloque que pedía esta ronda (KPI, Table,
