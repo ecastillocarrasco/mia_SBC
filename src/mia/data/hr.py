@@ -184,7 +184,13 @@ class CvChunk(Base):
 
 # ---------------------------------------------------------------------- nóminas y documentos
 class Payslip(Base):
-    """Metadatos de una nómina (biblioteca Nominas). El contenido no se lee ni se guarda."""
+    """Metadatos de una nómina (biblioteca Nominas).
+
+    El contenido se lee en el momento para importes/análisis (no se guardan cifras sueltas fuera de
+    esos cálculos); desde la indexación de contenido sensible (``DataSettings.
+    index_sensitive_content``), el TEXTO completo del PDF también se extrae, fragmenta y persiste
+    (anonimizado antes de vectorizar, igual que los CVs) en ``hr_document_texts``/``hr_document_chunks``
+    para búsqueda semántica — decisión explícita, ver ``Permission.NOMINAS_IMPORTES``."""
 
     __tablename__ = "hr_payslips"
     __table_args__ = (Index("ix_hr_payslips_person_period", "person_key", "period"),)
@@ -200,11 +206,20 @@ class Payslip(Base):
     special: Mapped[bool] = mapped_column(Boolean, default=False)
     read: Mapped[bool | None] = mapped_column(Boolean)
     file_name: Mapped[str | None] = mapped_column(String(512))
+    modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    """Para detectar re-indexación por fichero editado (``DocumentIndexer``, igual que los CVs) —
+    SharePoint ``Modified``, nunca ``Created`` (que no cambia si el PDF se reemplaza)."""
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SignedDocument(Base):
-    """Documento firmado de una persona (biblioteca DocumentosFirmadosV2): solo existencia y tipo."""
+    """Documento firmado de una persona (biblioteca DocumentosFirmadosV2).
+
+    FIR-001 (metadatos: solo existencia y tipo, nunca contenido ni firma) sigue aplicando a las
+    herramientas de resumen. Desde la indexación de contenido sensible (``DataSettings.
+    index_sensitive_content``), el TEXTO del documento (incluido "Reconocimiento médico", con el mismo
+    anonimizado que el resto — sin excepción) también se extrae, fragmenta y persiste para búsqueda
+    semántica — decisión explícita, ver ``Permission.DOCUMENTOS_CONTENIDO``."""
 
     __tablename__ = "hr_signed_documents"
 
@@ -213,7 +228,52 @@ class SignedDocument(Base):
     doc_type: Mapped[str] = mapped_column(String(64))
     file_name: Mapped[str | None] = mapped_column(String(512))
     doc_year: Mapped[int | None] = mapped_column(Integer)
+    modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    """Para detectar re-indexación por fichero editado (``DocumentIndexer``, igual que los CVs) —
+    SharePoint ``Modified``, nunca ``Created`` (que no cambia si el fichero se reemplaza)."""
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ------------------------------------------------------------- indexación de contenido (genérica)
+class HrDocumentText(Base):
+    """Texto extraído de un documento sensible (nóminas o documentos firmados), para búsqueda
+    semántica — mismo propósito que ``CvText``, generalizado a varios dominios con una clave
+    compuesta: ``sp_id`` NO es único entre bibliotecas de SharePoint distintas (``hr_payslips`` y
+    ``hr_signed_documents`` pueden coincidir en el mismo número), así que el dominio forma parte de
+    la identidad del documento, nunca solo ``document_id``."""
+
+    __tablename__ = "hr_document_texts"
+
+    domain: Mapped[str] = mapped_column(String(32), primary_key=True)
+    """``"nominas"`` o ``"documentos_firmados"``."""
+    document_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    person_key: Mapped[str | None] = mapped_column(String(64), index=True)
+    source_modified: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(32))
+    """ok · empty · unsupported · too_large · error"""
+    text: Mapped[str | None] = mapped_column(Text)
+    detail: Mapped[str | None] = mapped_column(Text)
+    extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class HrDocumentChunk(Base):
+    """Fragmento con embedding de un documento sensible — mismo propósito que ``CvChunk``,
+    generalizado por dominio (ver ``HrDocumentText``)."""
+
+    __tablename__ = "hr_document_chunks"
+    __table_args__ = (
+        Index("ix_hr_document_chunks_domain_document", "domain", "document_id"),
+        Index("ix_hr_document_chunks_domain_person", "domain", "person_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    domain: Mapped[str] = mapped_column(String(32))
+    document_id: Mapped[int] = mapped_column(Integer)
+    person_key: Mapped[str | None] = mapped_column(String(64))
+    position: Mapped[int] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[bytes | None] = mapped_column(LargeBinary)
+    """float32 empaquetado; la búsqueda se hace en memoria, igual que ``CvChunk``."""
 
 
 # ---------------------------------------------------------------------- trabajo temporal

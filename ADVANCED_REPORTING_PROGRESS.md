@@ -2013,3 +2013,61 @@ la ejecución completa más reciente).
   modificarse; `mia/query/` y `mia/modules/rrhh/informes/executive.py` son los únicos tocados hasta
   ahora (catálogo/periodos ampliados de forma aditiva; executive.py solo ganó pruebas, su código de
   producción no ha cambiado todavía).
+
+## 11. Indexación de contenido sensible (nóminas y documentos firmados) — decisión explícita de política
+
+**Decisión del usuario, con conocimiento de causa, que anula dos invariantes de seguridad previas**:
+`Permission.NOMINAS_IMPORTES` ("se lee en el momento... y nunca se guarda") y la regla FIR-001 de
+`documentos/tools.py` ("el contenido nunca se guarda: se descarga, se extrae el texto y se descarta").
+A partir de esta ronda, con `DataSettings.index_sensitive_content=True` (por defecto `False`), el
+contenido de Nóminas y DocumentosFirmadosV2 (incluido "Reconocimiento médico", sin excepción) se
+extrae, fragmenta, vectoriza y persiste — exactamente igual que los CVs (`CvIndexer`/`CvSearchIndex`).
+La lectura en el momento (`nomina_importes`, `evolucion_nominas`, `leer_documento`) sigue existiendo
+sin cambios: esto es una vía ADICIONAL, nunca una sustitución.
+
+- **Utilidades compartidas extraídas** de `curriculums/indexer.py` a
+  `mia/modules/rrhh/document_indexing.py` (mecánico, sin cambiar comportamiento): `clean_text`,
+  `extract_text`, `chunk_text`, `pack`, `image_media_type`, `render_pdf_pages`, `OCR_INSTRUCTION`,
+  `OCR_MAX_PAGES`. `curriculums/indexer.py` y `content.py` las importan ahora desde ahí; los tests que
+  ya las importaban por su ruta original (`tests/test_phase4_sources.py`,
+  `tests/test_phase4_domains.py`) siguen funcionando sin cambios porque quedan re-exportadas.
+- **`DocumentIndexer`** (mismo módulo): generalización de `CvIndexer` parametrizada por `domain`
+  ("nominas" / "documentos_firmados"), `list_title` y el modelo SQLAlchemy (`Payslip`/`SignedDocument`).
+  Usa `download_item_file` (nunca `download` con una ruta, que puede contener un DNI) y persiste en
+  dos tablas nuevas, genéricas por dominio: `HrDocumentText`/`HrDocumentChunk` (migración `0010`),
+  con clave compuesta `(domain, document_id)` — `sp_id` NO es único entre bibliotecas de SharePoint
+  distintas, así que nunca se usa solo `document_id`.
+  `Payslip`/`SignedDocument` ganaron `modified_at` (SharePoint `Modified`, nunca `Created`) para
+  detectar re-indexación de un fichero editado, igual que `CvText.source_modified`.
+- **`DocumentSearchIndex`** (`document_search.py`): mismo patrón en memoria que `CvSearchIndex`, una
+  instancia por dominio, filtrando por `document_id` ya acotado por metadatos (persona/periodo/tipo).
+- **Dos herramientas conversacionales nuevas**, solo registradas cuando
+  `index_sensitive_content=True` (igual que el Job Manager económico solo se registra con sus propios
+  gates): `buscar_en_nominas` (`Permission.NOMINAS_IMPORTES`) y `buscar_en_documentos`
+  (`Permission.DOCUMENTOS_CONTENIDO`), ambas con `audit_resource`.
+- **Documentación actualizada** en los 5 puntos que afirmaban "nunca se guarda" sin excepción:
+  `Permission.NOMINAS_IMPORTES` y `Permission.DOCUMENTOS_CONTENIDO` (`auth/context.py`), el docstring
+  de módulo y `RULE`/FIR-001 de `documentos/tools.py`, el docstring de módulo y `AMOUNTS_RULE`/NOM-003
+  de `nominas/tools.py`, y el docstring de módulo de `content.py` — todas ahora describen la lectura
+  puntual (que sigue sin persistirse) Y la indexación adicional (que sí persiste) como dos vías
+  distintas, sin contradecirse.
+- **Sincronización** (`mia/ingestion/sync/__main__.py`): nueva `_index_sensitive_documents()`, llamada
+  junto a `_index_cvs()` solo si `settings.data.index_sensitive_content` está activo.
+- **Nuance de anonimización, verificada, no asumida**: `PrivacyGatewayLLM._anonymize_for_embedding()`
+  protege el texto que viaja a la API de embeddings externa, pero NO anonimiza el `text` crudo de cada
+  `HrDocumentChunk` persistido en Postgres — exactamente el mismo comportamiento que ya tenía `CvChunk`
+  (no es una categoría de riesgo nueva introducida por esta ronda, es la misma superficie que los CVs
+  ya tenían).
+- **6 pruebas nuevas** en `tests/test_document_indexing.py`: PDF normal, PDF escaneado (OCR), DOCX,
+  tipo no soportado, re-indexación al cambiar `modified_at`, y aislamiento entre dominios cuando
+  `sp_id` coincide numéricamente entre una nómina y un documento firmado.
+- **Incidente real durante la validación de esta ronda**: la comprobación de la bandera nueva en
+  `register_amounts()`/`documentos.tools.register()` usaba
+  `getattr(deps.settings, "data", None) and deps.settings.data.index_sensitive_content` — varios tests
+  existentes (`test_job_manager_economic_integration.py`, `test_report_routing_semantic_validation.py`,
+  `test_privacy_gateway_reporting_contract.py`) construyen un `settings` de prueba con
+  `SimpleNamespace(data=SimpleNamespace(content_enabled=True))`, sin `index_sensitive_content`, lo que
+  rompía con `AttributeError` en el registro de herramientas (14 pruebas en rojo). Corregido a
+  `getattr(getattr(deps.settings, "data", None), "index_sensitive_content", False)` — defensivo ante
+  objetos de configuración parciales, igual que el resto del código ya hace con `getattr(jobs_settings,
+  "enabled", False)`. Regresión completa repetida tras la corrección: en verde.

@@ -171,7 +171,7 @@ NOMINAS = SourceDefinition(
     key="nominas",
     list_title="Nominas",
     select=(
-        "ID,FileSystemObjectType,FileLeafRef,FileRef,FileDirRef,Title,MesNomina,Leido,Created,"
+        "ID,FileSystemObjectType,FileLeafRef,FileRef,FileDirRef,Title,MesNomina,Leido,Created,Modified,"
         "UsuarioNomina/Title,UsuarioNomina/EMail"
     ),
     expand="UsuarioNomina",
@@ -185,7 +185,7 @@ NOMINAS = SourceDefinition(
 DOCUMENTOS_FIRMADOS = SourceDefinition(
     key="documentos_firmados",
     list_title="DocumentosFirmadosV2",
-    select="ID,FileSystemObjectType,FileLeafRef,FileRef,FileDirRef,Created",
+    select="ID,FileSystemObjectType,FileLeafRef,FileRef,FileDirRef,Created,Modified",
     model=SignedDocument,
     mapper=docs.signed_document,
     owner_column="sp_id",

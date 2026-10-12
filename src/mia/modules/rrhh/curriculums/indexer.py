@@ -7,26 +7,31 @@ lotes), así que el coste de embeddings se paga una vez por CV.
 from __future__ import annotations
 
 import asyncio
-import io
 import logging
-import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-import numpy as np
 from sqlalchemy import and_, delete, or_, select
 
 from mia.connectors.sharepoint import SharePointClient, SharePointError
 from mia.data import CvChunk, CvDocument, CvText, Database
 from mia.llm import LLMProvider
+from mia.modules.rrhh.document_indexing import (
+    OCR_INSTRUCTION,
+    OCR_MAX_PAGES,
+    chunk_text,
+    clean_text,
+    extract_text,
+    image_media_type,
+    pack,
+    render_pdf_pages,
+)
 from mia.observability import get_logger
 
 log = get_logger(__name__)
 logging.getLogger("pypdf").setLevel(logging.ERROR)  # PDF mal formados: el estado ya lo refleja
 
-CHUNK_CHARS = 1200
-CHUNK_OVERLAP = 150
 EMBED_BATCH = 64
 
 
@@ -38,102 +43,6 @@ class IndexReport:
     removed: int = 0
     pending: int = 0
     statuses: dict[str, int] = field(default_factory=dict)
-
-
-_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
-_IMAGE_MAGIC = (b"\xff\xd8\xff", b"\x89PNG", b"GIF8", b"II*\x00", b"MM\x00*")
-
-
-OCR_INSTRUCTION = (
-    "Transcribe literalmente el texto de este currículum (datos, experiencia, formación, idiomas). "
-    "No añadas comentarios ni valoraciones."
-)
-_MEDIA = {b"\xff\xd8\xff": "image/jpeg", b"\x89PNG": "image/png", b"GIF8": "image/gif"}
-
-
-def image_media_type(content: bytes) -> str | None:
-    return next((media for magic, media in _MEDIA.items() if content.startswith(magic)), None)
-
-
-OCR_MAX_PAGES = 3
-
-
-def render_pdf_pages(content: bytes, max_pages: int) -> list[bytes]:
-    """Primeras páginas de un PDF como PNG (para CVs escaneados)."""
-    import pypdfium2 as pdfium  # noqa: PLC0415
-
-    pdf = pdfium.PdfDocument(content)
-    images = []
-    try:
-        for index in range(min(len(pdf), max_pages)):
-            bitmap = pdf[index].render(scale=1.6)
-            buffer = io.BytesIO()
-            bitmap.to_pil().save(buffer, format="PNG")
-            images.append(buffer.getvalue())
-    finally:
-        pdf.close()
-    return images
-
-
-def clean_text(text: str) -> str:
-    """Quita caracteres de control (p. ej. NUL), que PostgreSQL no admite en texto."""
-    return " ".join(_CONTROL.sub(" ", text).split())
-
-
-def extract_text(content: bytes, file_name: str) -> tuple[str, str]:
-    """(estado, texto). Estados: ok · empty · unsupported.
-
-    El tipo se decide por el contenido antes que por la extensión: hay imágenes
-    guardadas como «.pdf».
-    """
-    if content.startswith(_IMAGE_MAGIC):
-        return "unsupported", ""
-    lower = file_name.lower()
-    if content[:4] == b"%PDF":
-        kind: str | None = "pdf"
-    elif content[:2] == b"PK":
-        kind = "docx"
-    elif lower.endswith((".pdf", ".docx")):
-        return "unsupported", ""  # la extensión no coincide con el contenido
-    else:
-        kind = None
-    if kind == "pdf":
-        from pypdf import PdfReader  # noqa: PLC0415
-
-        reader = PdfReader(io.BytesIO(content))
-        text = "\n".join((page.extract_text() or "") for page in reader.pages)
-    elif kind == "docx":
-        import docx  # noqa: PLC0415
-
-        document = docx.Document(io.BytesIO(content))
-        parts = [p.text for p in document.paragraphs]
-        for tbl in document.tables:
-            parts.extend(cell.text for row in tbl.rows for cell in row.cells)
-        text = "\n".join(parts)
-    else:
-        return "unsupported", ""
-    text = clean_text(text)
-    return ("ok", text) if len(text) >= 40 else ("empty", text)
-
-
-def chunk_text(text: str) -> list[str]:
-    chunks, start = [], 0
-    while start < len(text):
-        end = min(len(text), start + CHUNK_CHARS)
-        if end < len(text):
-            cut = text.rfind(" ", start + CHUNK_CHARS // 2, end)
-            end = cut if cut > 0 else end
-        chunks.append(text[start:end].strip())
-        if end >= len(text):
-            break
-        start = max(end - CHUNK_OVERLAP, start + 1)
-    return [c for c in chunks if c]
-
-
-def pack(vector: list[float]) -> bytes:
-    array = np.asarray(vector, dtype=np.float32)
-    norm = float(np.linalg.norm(array)) or 1.0
-    return (array / norm).astype(np.float32).tobytes()
 
 
 class CvIndexer:

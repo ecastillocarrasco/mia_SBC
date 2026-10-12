@@ -20,7 +20,7 @@ from sqlalchemy import select
 
 from mia.api.services import build_graph_client
 from mia.connectors.sharepoint import SharePointClient
-from mia.data import Database, SourceSyncState
+from mia.data import Database, Payslip, SignedDocument, SourceSyncState
 from mia.data.schema import schema_problem
 from mia.ingestion import SourceDefinition, all_sources
 from mia.ingestion.discovery import discover_calendar_sources
@@ -28,6 +28,7 @@ from mia.ingestion.sync.factory import build_portal_client, build_runner, build_
 from mia.ingestion.sync.runner import SyncMode
 from mia.llm import build_llm_provider
 from mia.modules.rrhh.curriculums.indexer import CvIndexer
+from mia.modules.rrhh.document_indexing import DocumentIndexer
 from mia.observability import configure_logging
 from mia.settings import Settings, get_settings
 
@@ -108,6 +109,35 @@ async def _index_cvs(settings: Settings, db: Database, client: SharePointClient)
     )
 
 
+async def _index_sensitive_documents(settings: Settings, db: Database, client: SharePointClient) -> None:
+    """Indexación persistente de nóminas y documentos firmados (decisión explícita, ver ``DataSettings.
+    index_sensitive_content``): mismo flujo que los CVs, generalizado por dominio."""
+    llm = build_llm_provider(settings.llm, settings.privacy_gateway)
+    try:
+        for domain, list_title, model in (
+            ("nominas", "Nominas", Payslip),
+            ("documentos_firmados", "DocumentosFirmadosV2", SignedDocument),
+        ):
+            indexer = DocumentIndexer(
+                domain=domain,
+                list_title=list_title,
+                model=model,
+                db=db,
+                client=client,
+                llm=llm,
+                embedding_model=settings.curriculums.embedding_model,
+                batch=settings.curriculums.index_batch,
+                max_bytes=settings.curriculums.max_file_mb * 1024 * 1024,
+            )
+            r = await indexer.run(progress=lambda done, total, d=domain: print(f"  indexando {d}… {done}/{total}", flush=True))
+            print(
+                f"{'indexación de ' + domain:28} procesados {r.processed:>5}  indexados {r.indexed:>5}  "
+                f"errores {r.failed:>4}  pendientes {r.pending:>5}  {r.statuses}"
+            )
+    finally:
+        await llm.aclose()
+
+
 async def _main(args: argparse.Namespace) -> int:
     settings = get_settings()
     configure_logging(settings.observability.log_level, settings.observability.log_json)
@@ -146,6 +176,8 @@ async def _main(args: argparse.Namespace) -> int:
                     )
                 if "curriculums" in settings.domains.enabled and not args.no_index:
                     await _index_cvs(settings, db, client)
+                if settings.data.index_sensitive_content and not args.no_index:
+                    await _index_sensitive_documents(settings, db, client)
                 if not args.loop:
                     return 0 if all(r.status == "ok" for r in reports) else 1
                 mode = SyncMode.AUTO

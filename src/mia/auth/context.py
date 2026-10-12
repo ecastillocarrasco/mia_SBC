@@ -20,9 +20,15 @@ class Permission(StrEnum):
     VACACIONES_LEER = "vacaciones:leer"
     NOMINAS_LEER = "nominas:leer"
     NOMINAS_IMPORTES = "nominas:importes"
-    """Contenido económico de las nóminas: se lee en el momento, se audita y nunca se guarda."""
+    """Contenido económico de las nóminas: se lee en el momento y se audita. Desde la decisión explícita
+    de indexación de contenido sensible (``DataSettings.index_sensitive_content``), el texto completo de
+    la nómina también se extrae, fragmenta y persiste para búsqueda semántica (``buscar_en_nominas``,
+    ``mia.modules.rrhh.document_indexing``), igual que los CVs — ya no es cierto que "nunca se guarda"."""
     DOCUMENTOS_LEER = "documentos:leer"
     DOCUMENTOS_CONTENIDO = "documentos:contenido"
+    """Contenido de documentos firmados (incluido "Reconocimiento médico"): lectura en el momento
+    (``leer_documento``) y, si ``DataSettings.index_sensitive_content`` está activo, también indexación
+    persistente para búsqueda semántica (``buscar_en_documentos``), igual que los CVs."""
     CURRICULUMS_LEER = "curriculums:leer"
     TRABAJO_TEMPORAL_LEER = "trabajo_temporal:leer"
     CORREO_LEER = "correo:leer"

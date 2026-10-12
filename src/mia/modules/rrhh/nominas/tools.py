@@ -1,7 +1,10 @@
 """Nóminas: qué nóminas existen, de qué periodo y si se han leído.
 
-NOM-002: el contenido de las nóminas (importes) no se lee ni se guarda. mIA
-informa de existencia, periodo y lectura; para importes hay que abrir la nómina.
+NOM-002: ``nominas_persona``, ``nominas_periodo`` y ``anomalias_nominas`` informan solo de existencia,
+periodo y lectura; nunca de importes. Para importes hay que usar ``nomina_importes``/``evolucion_nominas``
+(NOM-003, lectura en el momento sin persistir cifras) o, si la indexación de contenido sensible está
+activa (``DataSettings.index_sensitive_content``), la búsqueda semántica sobre el texto persistido
+(``buscar_en_nominas``) — decisión explícita, ver ``mia.modules.rrhh.document_indexing``.
 """
 
 from __future__ import annotations
@@ -12,7 +15,7 @@ from collections import Counter
 from datetime import date
 from typing import Any
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, or_, select
 
 from mia.auth import Permission
@@ -37,6 +40,7 @@ from mia.modules.rrhh.common import (
     wants_previous,
 )
 from mia.modules.rrhh.content import MAX_BYTES, content_unavailable, pdf_lines
+from mia.modules.rrhh.document_search import DocumentSearchIndex
 from mia.modules.rrhh.nominas.parser import parse_payslip
 from mia.text import normalize_key
 
@@ -351,7 +355,11 @@ def register(registry: ToolRegistry, deps: Deps) -> None:
 
 
 # ------------------------------------------------------------------ importes (NOM-003)
-AMOUNTS_RULE = "NOM-003: importes leídos en el momento del PDF de la nómina; no se guardan. No los digas en voz alta."
+AMOUNTS_RULE = (
+    "NOM-003: estos importes se leen en el momento del PDF de la nómina; esta herramienta no los guarda. "
+    "No los digas en voz alta. (El texto completo de la nómina puede estar indexado aparte para búsqueda "
+    "semántica si DataSettings.index_sensitive_content está activo: ver buscar_en_nominas.)"
+)
 
 
 async def _read_amounts(deps: Deps, slip: Payslip) -> dict[str, Any]:
@@ -514,6 +522,77 @@ def evolucion_nominas(deps: Deps) -> Tool:
     )
 
 
+# ------------------------------------------------------------------ búsqueda semántica (indexación de contenido sensible)
+class BuscarEnNominasParams(BaseModel):
+    consulta: str = Field(description="Qué buscar en el texto de las nóminas, descrito en general")
+    nombre: str | None = Field(default=None, description="Limitar la búsqueda a una persona (opcional)")
+    periodo: str | None = Field(default=None, description="Limitar a un periodo AAAA-MM (opcional)")
+    limite: int = Field(default=10, ge=1, le=30)
+
+
+def buscar_en_nominas(deps: Deps) -> Tool:
+    index: DocumentSearchIndex = deps.services.setdefault("nominas_search_index", DocumentSearchIndex("nominas"))
+
+    async def handler(p: BuscarEnNominasParams, ctx: ToolContext) -> ToolResult:
+        if deps.llm is None:
+            return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, "La búsqueda semántica no está configurada")
+        async with deps.db.session() as db:
+            allowed: set[int] | None = None
+            if p.nombre or p.periodo:
+                stmt = select(Payslip.sp_id)
+                if p.nombre:
+                    match = await resolve_person(db, PersonaParams(nombre=p.nombre))
+                    if match.employee is None:
+                        return person_problem(match, p.nombre)
+                    stmt = stmt.where(_belongs(match.employee))
+                if p.periodo:
+                    stmt = stmt.where(Payslip.period == p.periodo)
+                allowed = set((await db.scalars(stmt)).all())
+                if not allowed:
+                    return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": "No hay nóminas que encajen con ese filtro."})
+            model = deps.settings.curriculums.embedding_model if deps.settings else "text-embedding-3-small"
+            vector = (await deps.llm.embed([p.consulta], model))[0]
+            hits = await index.search(db, vector, allowed=allowed, limit=p.limite)
+            fresh = await deps.freshness(db, "nominas")
+            if not hits:
+                return ToolResult(
+                    ToolStatus.NOT_FOUND, {"mensaje": "Ninguna nómina indexada encaja con la búsqueda.", **fresh}
+                )
+            slips = {
+                s.sp_id: s
+                for s in (
+                    await db.scalars(select(Payslip).where(Payslip.sp_id.in_([h.document_id for h in hits])))
+                ).all()
+            }
+        results = [
+            {
+                "persona": slips[h.document_id].employee_name,
+                "periodo": slips[h.document_id].period,
+                "evidencia": h.evidence,
+                "enlace": f"/api/documents/nomina/{h.document_id}",
+            }
+            for h in hits
+            if h.document_id in slips
+        ]
+        rows = [[r["persona"], r["periodo"], r["evidencia"][:160]] for r in results]
+        return ToolResult(
+            ToolStatus.OK,
+            {"consulta": p.consulta, "coincidencias": results, "regla": AMOUNTS_RULE, **fresh},
+            table(f"Nóminas: {p.consulta}", ["Persona", "Periodo", "Evidencia"], rows),
+        )
+
+    return Tool(
+        "buscar_en_nominas",
+        "Busca por significado en el TEXTO completo de las nóminas indexadas (no solo importes): "
+        "conceptos, cláusulas o datos que no se preguntan con nomina_importes/evolucion_nominas. "
+        "Solo disponible si la indexación de contenido sensible está activa.",
+        BuscarEnNominasParams,
+        handler,
+        permission=Permission.NOMINAS_IMPORTES,
+        audit_resource="nominas_importes",
+    )
+
+
 def register_amounts(registry: ToolRegistry, deps: Deps) -> None:
     from mia.modules.rrhh.informes.jobs import informe_economico_en_segundo_plano  # noqa: PLC0415
     from mia.modules.rrhh.nominas.analisis_economico import analisis_economico_nominas  # noqa: PLC0415
@@ -527,6 +606,10 @@ def register_amounts(registry: ToolRegistry, deps: Deps) -> None:
         analisis_economico_nominas,
     ):
         registry.register(factory(deps))
+    # NOM-003/FIR-001 ya no significan "nunca se guarda" (decisión explícita): con la indexación de
+    # contenido sensible activa, el texto de las nóminas está persistido y se puede buscar por significado.
+    if getattr(getattr(deps.settings, "data", None), "index_sensitive_content", False):
+        registry.register(buscar_en_nominas(deps))
     # Solo se ofrece si el worker en segundo plano está activo (MIA_JOBS__ENABLED=true, ver
     # src/mia/main.py): un trabajo encolado sin ningún worker que lo reclame se quedaría "en cola"
     # para siempre — nunca un botón que promete algo que el despliegue actual no puede cumplir. Y

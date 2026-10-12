@@ -142,6 +142,14 @@ class DataSettings(BaseModel):
     """Lectura en el momento del contenido de nóminas y documentos (con permiso propio y auditoría)."""
     """A partir de cuántos minutos sin sincronizar avisa mIA de que los datos pueden no estar al día."""
     """Hora local de la sincronización completa diaria (detecta borrados y corrige derivas)."""
+    index_sensitive_content: bool = False
+    """Activa la indexación persistente (texto + fragmentos + embeddings, igual que los CVs) del
+    contenido de nóminas y de documentos firmados (``MIA_DATA__INDEX_SENSITIVE_CONTENT=true``). Por
+    defecto ``False``. Decisión explícita y ya tomada: con esto activo, ``Permission.NOMINAS_IMPORTES``
+    y la regla FIR-001 dejan de significar "nunca se guarda" — el contenido pasa a extraerse,
+    fragmentarse y persistirse para búsqueda semántica, igual que ya ocurre con los CVs. La lectura en
+    el momento (``leer_documento``, importes de nómina) sigue existiendo sin cambios; esto es una vía
+    ADICIONAL, no una sustitución."""
 
 
 ALL_DOMAINS = (

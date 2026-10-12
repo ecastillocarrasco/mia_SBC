@@ -1,6 +1,11 @@
 """Documentación firmada: qué documentos tiene cada persona y a quién le falta alguno.
 
-FIR-001: solo se informa de la existencia y el tipo; nunca del contenido ni de las firmas.
+FIR-001: las herramientas de resumen (``documentos_persona``, ``documentos_faltantes``,
+``cobertura_documental``) solo informan de existencia y tipo; nunca del contenido ni de las firmas.
+Desde la indexación de contenido sensible (``DataSettings.index_sensitive_content``), el TEXTO del
+documento se extrae, fragmenta y persiste para búsqueda semántica (``buscar_en_documentos``) por una
+vía adicional — decisión explícita, ver ``mia.modules.rrhh.document_indexing``. Las firmas en sí
+(imagen/validez) nunca se analizan ni se guardan, con o sin indexación.
 """
 
 from __future__ import annotations
@@ -32,9 +37,14 @@ from mia.modules.rrhh.common import (
     wants_previous,
 )
 from mia.modules.rrhh.content import MAX_BYTES, content_unavailable, document_text
+from mia.modules.rrhh.document_search import DocumentSearchIndex
 from mia.text import normalize_key
 
-RULE = "FIR-001: solo existencia y tipo del documento; nunca su contenido ni la firma."
+RULE = (
+    "FIR-001: estas herramientas de resumen dan solo existencia y tipo del documento, nunca su "
+    "contenido ni la firma. El contenido puede estar indexado para búsqueda semántica (buscar_en_documentos) "
+    "si DataSettings.index_sensitive_content está activo; la firma nunca se analiza ni se guarda."
+)
 TYPES = (
     "Contrato, Prórroga contractual, Anexo contractual, Protección de datos, Prevención, Normativa, "
     "Comunicación, Formación, Reconocimiento médico, Otros"
@@ -303,9 +313,88 @@ def cobertura_documental(deps: Deps) -> Tool:
     )
 
 
+# ------------------------------------------------------------------ búsqueda semántica (indexación de contenido sensible)
+class BuscarEnDocumentosParams(BaseModel):
+    consulta: str = Field(description="Qué buscar en el texto de los documentos, descrito en general")
+    nombre: str | None = Field(default=None, description="Limitar la búsqueda a una persona (opcional)")
+    tipo: str | None = Field(default=None, description=f"Limitar a un tipo (opcional): {TYPES}")
+    limite: int = Field(default=10, ge=1, le=30)
+
+
+def buscar_en_documentos(deps: Deps) -> Tool:
+    index: DocumentSearchIndex = deps.services.setdefault(
+        "documentos_search_index", DocumentSearchIndex("documentos_firmados")
+    )
+
+    async def handler(p: BuscarEnDocumentosParams, ctx: ToolContext) -> ToolResult:
+        if deps.llm is None:
+            return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, "La búsqueda semántica no está configurada")
+        async with deps.db.session() as db:
+            allowed: set[int] | None = None
+            if p.nombre or p.tipo:
+                stmt = select(SignedDocument.sp_id)
+                if p.nombre:
+                    match = await resolve_person(db, PersonaParams(nombre=p.nombre))
+                    if match.employee is None:
+                        return person_problem(match, p.nombre)
+                    if not match.employee.person_key:
+                        return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": "No hay documentos para esa persona."})
+                    stmt = stmt.where(SignedDocument.person_key == match.employee.person_key)
+                if p.tipo:
+                    stmt = stmt.where(SignedDocument.doc_type.ilike(f"%{p.tipo}%"))
+                allowed = set((await db.scalars(stmt)).all())
+                if not allowed:
+                    return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": "No hay documentos que encajen con ese filtro."})
+            model = deps.settings.curriculums.embedding_model if deps.settings else "text-embedding-3-small"
+            vector = (await deps.llm.embed([p.consulta], model))[0]
+            hits = await index.search(db, vector, allowed=allowed, limit=p.limite)
+            fresh = await deps.freshness(db, "documentos_firmados")
+            if not hits:
+                return ToolResult(
+                    ToolStatus.NOT_FOUND, {"mensaje": "Ningún documento indexado encaja con la búsqueda.", **fresh}
+                )
+            docs = {
+                d.sp_id: d
+                for d in (
+                    await db.scalars(select(SignedDocument).where(SignedDocument.sp_id.in_([h.document_id for h in hits])))
+                ).all()
+            }
+        results = [
+            {
+                "documento": docs[h.document_id].file_name or docs[h.document_id].doc_type,
+                "tipo": docs[h.document_id].doc_type,
+                "evidencia": h.evidence,
+                "enlace": f"/api/documents/documento/{h.document_id}",
+            }
+            for h in hits
+            if h.document_id in docs
+        ]
+        rows = [[r["documento"], r["tipo"], r["evidencia"][:160]] for r in results]
+        return ToolResult(
+            ToolStatus.OK,
+            {"consulta": p.consulta, "coincidencias": results, "regla": RULE, **fresh},
+            table(f"Documentos: {p.consulta}", ["Documento", "Tipo", "Evidencia"], rows),
+        )
+
+    return Tool(
+        "buscar_en_documentos",
+        "Busca por significado en el TEXTO completo de los documentos firmados indexados (contratos, "
+        "protección de datos, reconocimiento médico, normativa…), incluida la ficha médica con el mismo "
+        "anonimizado que el resto. Solo disponible si la indexación de contenido sensible está activa.",
+        BuscarEnDocumentosParams,
+        handler,
+        permission=Permission.DOCUMENTOS_CONTENIDO,
+        audit_resource="documentos_contenido",
+    )
+
+
 def register(registry: ToolRegistry, deps: Deps) -> None:
     for factory in (documentos_persona, documentos_faltantes, leer_documento, maestros, cobertura_documental):
         registry.register(factory(deps))
+    # FIR-001 ya no significa "nunca se guarda" (decisión explícita): con la indexación de contenido
+    # sensible activa, el texto de los documentos está persistido y se puede buscar por significado.
+    if getattr(getattr(deps.settings, "data", None), "index_sensitive_content", False):
+        registry.register(buscar_en_documentos(deps))
 
 
 class LeerParams(PersonaParams):

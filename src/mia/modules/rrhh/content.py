@@ -1,6 +1,9 @@
 """Lectura en el momento de documentos de bibliotecas (nóminas, documentos firmados).
 
-El contenido nunca se guarda: se descarga, se extrae el texto y se descarta.
+Esta lectura puntual se descarta tras responder (no se guarda aquí). Desde la indexación de
+contenido sensible (``DataSettings.index_sensitive_content``, ver ``mia.modules.rrhh.document_indexing``),
+el mismo contenido SÍ se persiste por una vía adicional — extraído, fragmentado y vectorizado para
+búsqueda semántica, igual que los CVs —, así que "nunca se guarda" ya no describe el sistema completo.
 """
 
 from __future__ import annotations
@@ -9,7 +12,7 @@ import io
 from typing import Any
 
 from mia.conversation import ToolResult, ToolStatus
-from mia.modules.rrhh.curriculums.indexer import clean_text
+from mia.modules.rrhh.document_indexing import clean_text
 
 MAX_BYTES = 15 * 1024 * 1024
 

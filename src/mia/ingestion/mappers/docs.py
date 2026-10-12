@@ -192,6 +192,7 @@ def payslip(item: dict[str, Any], ctx: MapContext) -> list[Row]:
             "special": special,
             "read": boolean(item.get("Leido")) if item.get("Leido") is not None else None,
             "file_name": file_name,
+            "modified_at": sp_datetime(item.get("Modified")),
             "created_at": sp_datetime(item.get("Created")),
         }
     ]
@@ -249,6 +250,7 @@ def signed_document(item: dict[str, Any], ctx: MapContext) -> list[Row]:
             "doc_type": document_type(file_name),
             "file_name": file_name,
             "doc_year": int(year.group(1)) if year else None,
+            "modified_at": sp_datetime(item.get("Modified")),
             "created_at": sp_datetime(item.get("Created")),
         }
     ]
