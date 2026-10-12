@@ -45,6 +45,24 @@ _QUARTER_MONTHS: dict[int, tuple[int, int]] = {
     1: (1, 3), 2: (4, 6), 3: (7, 9), 4: (10, 12)
 }
 
+_MONTH_NAMES_ES = [
+    "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+]
+
+
+def _month_label(d: date) -> str:
+    """"agosto 2026" — SIEMPRE en español, nunca ``strftime('%B')``: su resultado depende del locale
+    del proceso (en un servidor sin locale español configurado, devuelve el nombre en inglés). Dos
+    periodos que representan el MISMO mes deben producir SIEMPRE la MISMA etiqueta sin importar qué
+    rama de ``resolve()`` los construyó — si no, una comparación de etiquetas entre dos resoluciones
+    del mismo mes (p. ej. la guarda de coherencia temporal de `generar_informe`, que compara el
+    periodo que el usuario pidió contra el periodo real del análisis) falla con un falso positivo de
+    "periodo distinto" para el MISMO mes (incidencia real, trace mia-20261012-115403-bad97707: "2026-
+    08" vía esta función daba "August 2026" con el locale del servidor en inglés, mientras que "agosto
+    de 2026" ya daba "Agosto 2026" — nunca coincidían)."""
+    return f"{_MONTH_NAMES_ES[d.month]} {d.year}"
+
 _WORD_NUM_ES: dict[str, int] = {
     "un": 1, "una": 1, "uno": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5, "seis": 6,
     "siete": 7, "ocho": 8, "nueve": 9, "diez": 10, "once": 11, "doce": 12,
@@ -147,12 +165,12 @@ class PeriodEngine:
             return ResolvedPeriod(monday, sunday, "semana pasada")
         if n in ("este mes", "mes actual", "el mes actual"):
             start = ref.replace(day=1)
-            return ResolvedPeriod(start, ref, f"{ref.strftime('%B %Y')}")
+            return ResolvedPeriod(start, ref, _month_label(ref))
         if n in ("mes pasado", "el mes pasado", "mes anterior", "ultimo mes", "el ultimo mes"):
             first_this = ref.replace(day=1)
             last_month = first_this - timedelta(days=1)
             start = last_month.replace(day=1)
-            return ResolvedPeriod(start, last_month, f"{last_month.strftime('%B %Y')}")
+            return ResolvedPeriod(start, last_month, _month_label(last_month))
         if n in ("este ano", "este año", "el ano actual", "el año actual"):
             start = ref.replace(month=1, day=1)
             return ResolvedPeriod(start, ref, str(ref.year))
@@ -255,7 +273,7 @@ class PeriodEngine:
             year, month = int(m.group(1)), int(m.group(2))
             start = date(year, month, 1)
             end = min(_month_end(year, month), ref)
-            return ResolvedPeriod(start, end, f"{start.strftime('%B %Y')}")
+            return ResolvedPeriod(start, end, _month_label(start))
         return None
 
     def _named_month(self, n: str, ref: date) -> ResolvedPeriod | None:

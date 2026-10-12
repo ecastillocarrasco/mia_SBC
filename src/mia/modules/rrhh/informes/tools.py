@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from mia.assets import resolve_logo
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
-from mia.conversation.tools import LAST_TABLE
+from mia.conversation.tools import LAST_TABLE, remember_table
 from mia.text import normalize_key
 from mia.data import Report
 from mia.data.models import _uuid
@@ -317,6 +317,20 @@ async def _redirect_to_economic_analysis(
         # El propio mensaje de analisis_economico_nominas (sin datos, permiso denegado…) ya es correcto
         # y específico — nunca se sustituye por el informe ejecutivo genérico ni por un error distinto.
         return eco_result
+    # Incidencia real (trace mia-20261012-115403-bad97707): el resultado de ESTE informe es un
+    # `{"type": "download"}` (ya persistido en disco) — `remember_table()` lo descarta a propósito
+    # (no hay nada más que "re-exportar" de un documento ya generado). Pero eso significa que la TABLA
+    # real del análisis económico (`eco_result.presentation`, con KPIs/gráficos/departamentos) nunca
+    # llegaba a `session_state`, solo vivía en esta variable local — así que una petición posterior en
+    # OTRO turno ("exporta a PDF el informe anterior", "ahora en Excel"…) no encontraba nada que
+    # exportar (`generar_informe` devolvía `NOT_FOUND`, con ``data``/``presentations`` vacíos: el
+    # síntoma exacto de la incidencia). Se recuerda aquí explícitamente — el mismo patrón que ya usa
+    # `run_informe_economico_nominas` (Job Manager) por la misma razón.
+    max_rows = getattr(getattr(deps.settings, "reports", None), "max_rows", 5000)
+    remember_table(
+        ctx.session_state, eco_result.presentation, max_rows, eco_result.summary,
+        source_tool="analisis_economico_nominas",
+    )
     return await _build_report_result(
         deps,
         ctx,

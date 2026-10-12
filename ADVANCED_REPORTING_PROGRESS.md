@@ -1415,6 +1415,137 @@ sin cambios: re-evalúa permisos en cada turno real, como siempre. La descarga d
 económico, generado por cualquier camino, ahora exige el permiso vigente en el momento de descargar,
 no solo ser el propietario.
 
+## 23. Incidencia real — TOOL_CALL_ERROR/invalid_arguments en `generar_informe` ("exporta a pdf el informe anterior")
+
+Trace de la incidencia: `mia-20261012-115403-bad97707` (session `1125c7b3a7594545bd5a797a94dabf2f`).
+El usuario pidió «exporta a pdf el informe anterior» tras generar correctamente la comparativa de
+costes de agosto de 2026; la respuesta llegó con estado HTTP/operativo "ok" pero sin presentaciones ni
+archivo generado.
+
+### Prioridad 1 — recuperación del error interno
+
+La traza histórica **no se pudo recuperar**: `DiagnosticsStore` (`src/mia/diagnostics/store.py`) es
+un almacén **solo en memoria** (`OrderedDict`, sin persistencia a disco ni tabla de base de datos), y
+no existe ningún fichero de log en el repositorio — confirmado con una búsqueda exhaustiva. La traza
+de un proceso ya reiniciado es, por diseño de este sistema, irrecuperable. Siguiendo la instrucción
+explícita del usuario ("reproduce la misma conversación mediante el flujo real"), se reprodujo con el
+flujo conversacional real (`ConversationEngine` completo, `/api/mia/chat`, dos turnos reales, misma
+sesión) — nunca una excepción inventada.
+
+El usuario aportó después, en un mensaje posterior, la traza REAL cruda de una reproducción en su
+propio entorno (mismo `session_id` que la incidencia original), que permitió confirmar la causa exacta
+con evidencia directa en vez de solo por reproducción propia — ver más abajo.
+
+### Dos causas raíz distintas, ambas reales y ambas corregidas
+
+**Causa raíz 1 (confirmada con la traza real aportada por el usuario) — etiquetas de periodo
+inconsistentes entre ramas de `PeriodEngine`.**
+
+La traza real mostraba: `analisis_economico_nominas` resuelto con argumento `"periodo":"2026-08"` →
+`"periodo_interpretado":"August 2026"` (**en inglés**); después, `generar_informe` con
+`status":"invalid_arguments"`. Causa exacta, localizada leyendo `src/mia/query/period.py`:
+- `_named_month()` (dispara con texto "agosto de 2026", como lo escribe el usuario) construye la
+  etiqueta como `f"{month_name.capitalize()} {year}"` → **"Agosto 2026"** — español, fijo.
+- `_numeric_month()` (dispara con "2026-08", como normalizó el propio LLM al construir el argumento
+  de la herramienta) construía la etiqueta con `f"{start.strftime('%B %Y')}"` → **dependiente del
+  locale del proceso**. Verificado empíricamente en este mismo entorno: `date(2026,8,1).strftime('%B
+  %Y')` devuelve `'August 2026'` AUNQUE `locale.getlocale()` informe `('es_ES', 'cp1252')` — en Windows,
+  `strftime('%B')` no sigue automáticamente el locale de Python sin una llamada explícita adicional
+  (`locale.setlocale(locale.LC_TIME, ...)` con el nombre específico de Windows, que este proyecto
+  nunca hace). La guarda de coherencia temporal de Fase F (`generar()`,
+  `src/mia/modules/rrhh/informes/tools.py`) compara ambas etiquetas con `normalize_key()` — "agosto
+  2026" nunca es igual a "august 2026", así que rechaza como "periodo distinto" una petición que en
+  realidad es del MISMO mes.
+
+Corrección: `src/mia/query/period.py` añade `_MONTH_NAMES_ES`/`_month_label()` (igual de simple que
+la ya usada por `_named_month()`, nunca `strftime`) y sustituye los 3 usos de
+`strftime('%B %Y')` (`_exact`: "este mes"/"mes pasado"; `_numeric_month`) — ninguna etiqueta depende
+ya del locale del proceso, sin excepción.
+
+**Causa raíz 2 (encontrada durante la propia investigación, distinta pero relacionada) — la tabla del
+análisis económico se perdía tras una redirección.** Cuando el router eligió
+`generar_informe_ejecutivo` (no `analisis_economico_nominas` directamente) para "genera un informe
+completo...", la redirección real de la sección 15 generaba el PDF correcto en ESE turno — pero
+`eco_result.presentation` (la tabla real, con KPIs/gráficos/departamentos) solo vivía en una variable
+local de `_redirect_to_economic_analysis()`; nunca llegaba a `session_state` (`remember_table()`
+descarta a propósito el resultado `{"type":"download"}` del propio informe ejecutivo, que ya está
+generado). Una petición posterior en otro turno no encontraba nada que exportar — reproducido de
+verdad con el flujo conversacional completo (dos turnos HTTP reales, misma sesión), confirmando con la
+traza de diagnóstico que `generar_informe` devolvía `status: not_found` (nunca una excepción, un
+resultado vacío en silencio: el mismo síntoma — HTTP "ok", `presentations` vacío — con una causa
+distinta).
+
+Corrección: `_redirect_to_economic_analysis()` ahora llama a `remember_table()` con la tabla real del
+análisis antes de renderizar el informe ejecutivo — el mismo patrón que ya usa
+`run_informe_economico_nominas` (Job Manager, Fase G) por la misma razón exacta.
+
+**Error de programación propio, encontrado y corregido durante esta misma investigación**: la primera
+versión de la corrección nº2 usaba `deps.settings.reports.max_rows` sin `getattr` defensivo, lo que
+rompió `test_incident_request_through_the_real_chat_entry_point_delivers_the_real_report` (fixture con
+un `SimpleNamespace` sin ese atributo) — detectado por la propia regresión completa, corregido antes
+de declarar nada terminado.
+
+### Prioridad 2 — verificación del resultado anterior
+
+Confirmado con las dos causas raíz: el resultado SÍ puede perderse entre turnos (causa 2), y una
+validación SÍ puede rechazar su procedencia por una razón ajena a los datos reales (causa 1 — un falso
+positivo de la guarda de periodo, no un rechazo legítimo). La protección `__source_tool__` en sí
+**no estaba debilitada ni era la causa** — de hecho, la corrección de la causa 2 la usa correctamente
+(`source_tool="analisis_economico_nominas"`), fortaleciendo su cobertura al aplicarla también en el
+camino de redirección, que antes la omitía por completo.
+
+### Prioridad 3 — etapa del fallo
+
+Aislada con precisión en ambos casos, sin duplicar instrumentación ya existente: causa 1 en la
+VALIDACIÓN DE PERIODO (etapa 5 de las 10 listadas) dentro de `generar()`; causa 2 en la RECUPERACIÓN
+DEL RESULTADO (etapa 2) dentro de `_redirect_to_economic_analysis()`. Ninguna de las dos llega a
+CONSTRUCCIÓN DE DOCUMENT, NARRATIVA, RENDERIZADO ni PERSISTENCIA — ambas se detienen antes, lo que
+explica por qué nunca hay un archivo generado pero tampoco una excepción visible al usuario.
+
+### Prioridad 4 — corrección mínima y conversación de aceptación
+
+Ambas correcciones son mínimas y quirúrgicas (una función auxiliar + 3 sustituciones en
+`period.py`; una llamada a una función ya existente en `tools.py`) — ningún motor reconstruido.
+`tests/test_incident_narrative_export_multiturn.py::test_acceptance_conversation_all_five_turns_
+export_the_same_authorized_analysis` reproduce LITERALMENTE los 5 turnos pedidos (análisis → PDF →
+PowerPoint → Excel → HTML, vía la redirección ejecutiva real) con datos sintéticos controlados (nunca
+el importe real de 598.223,35 € de la incidencia) y comprueba que las cifras exactas en euros, los
+departamentos y la advertencia NOM-005 coinciden literalmente en los 4 documentos descargados.
+`tests/test_period_label_locale_consistency.py::test_exact_trace_sequence_no_longer_rejects_the_
+export` reproduce la secuencia EXACTA de la traza real (periodo numérico "2026-08", mismo turno,
+`analisis_economico_nominas` → `generar_informe`) y confirma que ya no se rechaza.
+
+### Prioridad 5 — diagnóstico de errores de herramientas
+
+`src/mia/conversation/tools.py` (`ToolRegistry._run()`/`execute()`): una excepción real ahora añade
+`exception_type` (p. ej. `"ValueError"`) y `exception_location` (archivo:línea DENTRO de `src/mia/`,
+nunca de una librería externa) al ÚNICO evento `TOOL_CALL_ERROR` ya existente — nunca un segundo
+evento duplicado, nunca el mensaje de la excepción ni ningún argumento (que podrían contener importes
+o nombres). Verificado con `tests/test_tool_error_diagnostics.py` (2 pruebas): una excepción real se
+puede diagnosticar sin que su mensaje sensible aparezca en ningún campo de la traza, y el camino sin
+excepción sigue emitiendo exactamente un evento, nunca dos.
+
+Distinción pedida (petición HTTP / herramienta / documento / error funcional), aplicada a la
+incidencia real: petición HTTP atendida correctamente (sí, status 200/ok); herramienta ejecutada
+correctamente (`analisis_economico_nominas`: sí; `generar_informe`: no, `invalid_arguments`); documento
+generado correctamente (no, nunca se llegó a renderizar); causa — error funcional de una guarda de
+seguridad (coherencia temporal) con un falso positivo, no un fallo técnico. No existía ninguna
+sugerencia de mIA de "prueba con PowerPoint" ante este fallo (revisado explícitamente el mensaje de
+rechazo de `generar()`) — y, de haber existido, habría sido igual de equívoca, porque la causa es
+independiente del formato (afecta a cualquier llamada a `generar_informe` tras una llamada numérica a
+`analisis_economico_nominas`, sea PDF, PPTX, XLSX o HTML).
+
+### Cierre
+
+Regresión completa de `tests/`: **940 pruebas, 0 fallos** (XML JUnit real,
+`full_regression_truly_final.xml`). Pruebas nuevas de esta investigación:
+`test_incident_tool_call_error_repro.py` (1, regresión permanente de la causa 2),
+`test_incident_narrative_export_multiturn.py` (1, los 5 turnos de aceptación completos),
+`test_period_label_locale_consistency.py` (4, causa 1 a nivel de `PeriodEngine` y de extremo a
+extremo), `test_tool_error_diagnostics.py` (2, mejora de diagnóstico de la Prioridad 5). Ningún motor
+reconstruido; ningún archivo de `frontend/src/worlds/3d/`, `frontend/src/worlds/hologram/` ni Avatar
+Engine tocado.
+
 ## 10. Cierre de Fases D y E (ronda de continuación tras el cierre de la validación de nóminas)
 
 **Fase D — verificado, no reconstruido**: los 8 tipos de bloque que pedía esta ronda (KPI, Table,

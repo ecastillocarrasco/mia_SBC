@@ -13,6 +13,7 @@ import json
 import os
 import time
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -27,6 +28,28 @@ from mia.llm import ToolCall, ToolSchema
 from mia.observability import get_logger
 
 log = get_logger(__name__)
+
+# Diagnóstico de incidencias (ver _run()): tipo/ubicación (nunca el mensaje) de la última excepción
+# real capturada en ESTA tarea async — execute() lo lee justo después de llamar a _run() y lo añade
+# a su único evento TOOL_CALL_ERROR, nunca como un segundo evento duplicado.
+_diag_last_exception: ContextVar[dict[str, Any] | None] = ContextVar("_diag_last_exception", default=None)
+
+
+def _mia_frame_location(exc: BaseException) -> str | None:
+    """Archivo:línea del último frame DENTRO de ``src/mia/`` en la pila de la excepción — nunca de una
+    librería externa, y nunca el mensaje de la excepción (que podría contener datos sensibles)."""
+    tb = exc.__traceback__
+    last_mia_frame = None
+    while tb is not None:
+        filename = tb.tb_frame.f_code.co_filename.replace("\\", "/")
+        if "/src/mia/" in filename or filename.startswith("src/mia/"):
+            last_mia_frame = tb
+        tb = tb.tb_next
+    if last_mia_frame is None:
+        return None
+    filename = last_mia_frame.tb_frame.f_code.co_filename.replace("\\", "/")
+    idx = filename.find("/src/")
+    return f"{filename[idx + 1 :] if idx >= 0 else filename}:{last_mia_frame.tb_lineno}"
 
 
 class ToolStatus(StrEnum):
@@ -183,21 +206,27 @@ class ToolRegistry:
 
         # Fijar el call_id en el ContextVar para que el código de dominio pueda linkear nodos SQL
         _call_id_token = _diag_call_id.set(call.call_id) if trace is not None else None
+        _exc_token = _diag_last_exception.set(None)
         try:
             result = await self._run(tool, call, ctx)
+            exception_info = _diag_last_exception.get()
         finally:
             if _call_id_token is not None:
                 _diag_call_id.reset(_call_id_token)
+            _diag_last_exception.reset(_exc_token)
 
         elapsed = int((time.perf_counter() - started) * 1000)
         is_error = result.status.value in ("error", "source_unavailable", "permission_denied")
 
         if trace is not None:
+            event_data: dict[str, Any] = {"tool": call.name, "status": result.status.value}
+            if exception_info:
+                event_data.update(exception_info)
             trace.emit(
                 EventStage.TOOL_CALL_ERROR if is_error else EventStage.TOOL_CALL_COMPLETE,
                 status=EventStatus.ERROR if is_error else EventStatus.SUCCESS,
                 duration_ms=elapsed,
-                data={"tool": call.name, "status": result.status.value},
+                data=event_data,
             )
             # Añadir nodo al grafo de ejecución
             args_preview = ", ".join(
@@ -238,8 +267,18 @@ class ToolRegistry:
             return await asyncio.wait_for(tool.handler(params, ctx), timeout=tool.timeout_seconds)
         except TimeoutError:
             return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, "La fuente de datos no respondió a tiempo")
-        except Exception:
+        except Exception as exc:
             log.exception("tool.failed", tool=tool.name)
+            # Diagnóstico de incidencias (trace mia-20261012-115403-bad97707): el mensaje/traceback
+            # REAL ya iba a `log.exception` (server-side), pero nunca a la traza de diagnóstico —
+            # para reconstruir una incidencia había que reproducirla a ciegas. Se guarda aquí solo el
+            # TIPO de excepción y su ubicación (archivo:línea del propio código de mIA, nunca de
+            # librerías externas) para que `execute()` lo añada a SU ÚNICO evento TOOL_CALL_ERROR
+            # (nunca un segundo evento duplicado) — nunca el mensaje ni ningún argumento, que podrían
+            # contener datos sensibles (importes, nombres…) que sí pueden aparecer en ``str(exc)``.
+            _diag_last_exception.set(
+                {"exception_type": type(exc).__name__, "exception_location": _mia_frame_location(exc)}
+            )
             return ToolResult(ToolStatus.ERROR, "Error técnico al consultar la fuente de datos")
 
 
