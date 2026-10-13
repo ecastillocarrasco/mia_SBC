@@ -30,6 +30,11 @@ _MULTI_MONTH_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Umbral de confianza semántica por debajo del cual un resultado de búsqueda RAG/documental se marca
+# como posible ruido: misma referencia que ya usa el propio código para "posible" en CVs
+# (``mia.modules.rrhh.curriculums.requirements.SEMANTIC_THRESHOLD``), no un valor inventado aparte.
+_RAG_LOW_CONFIDENCE_THRESHOLD = 0.45
+
 
 def _implies_multiple_months(periodo: str) -> bool:
     m = re.search(r"\b(?:ultimos?|pasados?)\s+(\d+)\s+meses\b", periodo, re.IGNORECASE)
@@ -99,6 +104,10 @@ def analyze(record: TraceRecord) -> None:
 
     # El periodo pedido (trimestre, rango, año…) se resolvió a menos meses de los que implicaba
     _detect_period_range_truncated(record, existing_types)
+
+    # Búsqueda semántica (RAG/documental): sin resultados o con confianza baja
+    _detect_rag_no_results(record, existing_types)
+    _detect_rag_low_confidence(record, existing_types)
 
 
 def _detect_temporal_constraint_dropped(record: TraceRecord, existing_types: set[str]) -> None:
@@ -176,6 +185,51 @@ def _detect_period_range_truncated(record: TraceRecord, existing_types: set[str]
             )
 
 
+def _detect_rag_no_results(record: TraceRecord, existing_types: set[str]) -> None:
+    """Una búsqueda semántica (RAG_SEARCH_COMPLETE) que no encontró ningún resultado — p. ej.
+    ``buscar_en_nominas``/``buscar_en_documentos``/``candidatos_parecidos`` devolvieron 0 coincidencias."""
+    if DiagnosticIssueType.RAG_NO_RESULTS in existing_types:
+        return
+    for event in record.events:
+        if event.stage != EventStage.RAG_SEARCH_COMPLETE:
+            continue
+        if event.data.get("hits") == 0:
+            record.issues.append(
+                _issue(
+                    DiagnosticIssueType.RAG_NO_RESULTS,
+                    f"La búsqueda semántica en «{event.data.get('dominio', '?')}» no encontró ningún resultado.",
+                    dominio=event.data.get("dominio"),
+                )
+            )
+            return
+
+
+def _detect_rag_low_confidence(record: TraceRecord, existing_types: set[str]) -> None:
+    """Una búsqueda semántica encontró resultados, pero el mejor de ellos queda por debajo del umbral
+    de confianza (``_RAG_LOW_CONFIDENCE_THRESHOLD``) — posible ruido, no una coincidencia real."""
+    if DiagnosticIssueType.RAG_LOW_CONFIDENCE in existing_types:
+        return
+    for event in record.events:
+        if event.stage != EventStage.RAG_SEARCH_COMPLETE:
+            continue
+        hits = event.data.get("hits")
+        top_score = event.data.get("top_score")
+        if not hits or top_score is None:
+            continue
+        if top_score < _RAG_LOW_CONFIDENCE_THRESHOLD:
+            record.issues.append(
+                _issue(
+                    DiagnosticIssueType.RAG_LOW_CONFIDENCE,
+                    f"La búsqueda semántica en «{event.data.get('dominio', '?')}» solo encontró resultados de "
+                    f"baja confianza (mejor score {top_score} < {_RAG_LOW_CONFIDENCE_THRESHOLD}).",
+                    dominio=event.data.get("dominio"),
+                    top_score=top_score,
+                    threshold=_RAG_LOW_CONFIDENCE_THRESHOLD,
+                )
+            )
+            return
+
+
 def assess(record: TraceRecord) -> dict[str, Any]:
     """Devuelve un resumen de diagnóstico automático para el panel."""
     analyze(record)
@@ -226,6 +280,8 @@ def _primary_issue(issues: list[Any]) -> str | None:
         DiagnosticIssueType.DATA_MISSING,
         DiagnosticIssueType.TOOL_ERROR,
         DiagnosticIssueType.LLM_ERROR,
+        DiagnosticIssueType.RAG_NO_RESULTS,
+        DiagnosticIssueType.RAG_LOW_CONFIDENCE,
         DiagnosticIssueType.PERFORMANCE_WARNING,
         DiagnosticIssueType.TOOL_NOT_SELECTED,
     ]

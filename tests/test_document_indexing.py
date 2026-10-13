@@ -16,7 +16,7 @@ from reportlab.pdfgen import canvas
 from sqlalchemy import select
 
 from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
-from mia.data import Database, HrDocumentChunk, HrDocumentText, Payslip, SignedDocument
+from mia.data import Database, Employee, HrDocumentChunk, HrDocumentText, Payslip, SignedDocument
 from mia.llm.fake import FakeLLMProvider
 from mia.modules.rrhh.document_indexing import DocumentIndexer
 from mia.modules.rrhh.document_search import DocumentSearchIndex
@@ -208,6 +208,84 @@ async def test_changed_modified_at_triggers_reindexing(db: Database) -> None:
     async with db.session() as s:
         text = (await s.scalars(select(HrDocumentText))).one()
     assert "idiomas" in text.text and "transporte" not in text.text
+
+
+async def test_buscar_en_nominas_emits_rag_and_document_diagnostic_events(db: Database) -> None:
+    """La herramienta conversacional ``buscar_en_nominas`` debe emitir RAG_SEARCH_START/COMPLETE y
+    DOCUMENT_SEARCH/DOCUMENT_RETRIEVAL durante una búsqueda real (no solo en la ruta de error), para que
+    un panel de diagnóstico pueda ver qué dominio se consultó, cuántos resultados hubo y con qué confianza."""
+    import json
+    from types import SimpleNamespace
+
+    from mia.auth import UserContext
+    from mia.conversation import ToolContext
+    from mia.diagnostics import EventStage
+    from mia.diagnostics.store import DiagnosticsStore
+    from mia.diagnostics.streaming import LiveBroadcaster
+    from mia.diagnostics.trace import begin_trace
+    from mia.llm import ToolCall
+    from mia.modules.rrhh import build_registry
+    from mia.settings import DiagnosticsSettings
+
+    async with db.session() as s:
+        s.add_all(
+            [
+                Employee(
+                    sp_id=801, name="Ana", name_key="ana", active=True, department="Pisos",
+                    department_key="pisos", position="Camarera", person_key="pk-ana",
+                ),
+                Payslip(
+                    sp_id=801,
+                    person_key="pk-ana",
+                    employee_name="Ana",
+                    period="2026-07",
+                    modified_at=datetime(2026, 7, 1, tzinfo=UTC),
+                ),
+            ]
+        )
+    client = SharePointClient(
+        site_url="https://x/sites/rrhh",
+        tokens=StaticTokenProvider(),
+        transport=_files_transport(
+            {("Nominas", 801): _pdf("Esta nomina incluye un plus de dietas por desplazamiento al centro.")}
+        ),
+    )
+    await DocumentIndexer(
+        domain="nominas", list_title="Nominas", model=Payslip, db=db, client=client, llm=FakeLLMProvider(),
+        embedding_model="x",
+    ).run()
+
+    llm = FakeLLMProvider()
+    settings = SimpleNamespace(
+        data=SimpleNamespace(index_sensitive_content=True, content_enabled=True),
+        curriculums=SimpleNamespace(embedding_model="x"),
+    )
+    registry = build_registry(db, settings=settings, llm=llm, sharepoint=client)
+    admin = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
+    ctx = ToolContext(user=admin, request_id=None, now=None, session_state={})  # type: ignore[arg-type]
+
+    store = DiagnosticsStore(DiagnosticsSettings(enabled=True))
+    broadcaster = LiveBroadcaster()
+    async with begin_trace(query="prueba", user_id="u", store=store, broadcaster=broadcaster) as trace:
+        assert trace is not None
+        execution = await registry.execute(
+            ToolCall("c1", "buscar_en_nominas", json.dumps({"consulta": "dietas", "nombre": "Ana"})), ctx
+        )
+    await client.aclose()
+    assert execution.result.status.value == "ok"
+
+    saved = store.get(trace.trace_id)
+    assert saved is not None
+    start_events = [e for e in saved.events if e.stage == EventStage.RAG_SEARCH_START]
+    complete_events = [e for e in saved.events if e.stage == EventStage.RAG_SEARCH_COMPLETE]
+    search_events = [e for e in saved.events if e.stage == EventStage.DOCUMENT_SEARCH]
+    retrieval_events = [e for e in saved.events if e.stage == EventStage.DOCUMENT_RETRIEVAL]
+    assert len(start_events) == 1 and start_events[0].data["dominio"] == "nominas"
+    assert len(complete_events) == 1
+    assert complete_events[0].data["hits"] == 1
+    assert complete_events[0].data["top_score"] is not None
+    assert len(search_events) == 1 and search_events[0].data["filtro_nombre"] is True
+    assert len(retrieval_events) == 1 and retrieval_events[0].data["documentos_recuperados"] == 1
 
 
 async def test_domains_are_isolated_when_sp_id_collides(db: Database) -> None:

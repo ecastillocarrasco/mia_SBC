@@ -576,3 +576,109 @@ async def test_begin_trace_internal_exception_does_not_swallow_original():
     finally:
         d._store = None
         d._broadcaster = None
+
+
+# ── PHASE 3: RAG / BÚSQUEDA SEMÁNTICA ────────────────────────────────────────
+
+def test_rag_no_results_detected():
+    """RAG_SEARCH_COMPLETE con hits=0 debe marcar RAG_NO_RESULTS."""
+    from mia.diagnostics.analyzer import analyze
+    from mia.diagnostics.models import DiagnosticIssueType, EventStage, DiagnosticEvent
+    from datetime import UTC, datetime
+
+    record = _make_trace("busca en las nominas algo sobre dietas")
+    record.status = "completed"
+    record.events.append(
+        DiagnosticEvent(
+            trace_id=record.trace_id,
+            timestamp=datetime.now(UTC),
+            stage=EventStage.RAG_SEARCH_COMPLETE,
+            data={"dominio": "nominas", "hits": 0, "top_score": None},
+        )
+    )
+    analyze(record)
+    types = [i.type for i in record.issues]
+    assert DiagnosticIssueType.RAG_NO_RESULTS in types
+
+
+def test_rag_no_results_not_flagged_when_hits_present():
+    from mia.diagnostics.analyzer import analyze
+    from mia.diagnostics.models import DiagnosticIssueType, EventStage, DiagnosticEvent
+    from datetime import UTC, datetime
+
+    record = _make_trace("busca en las nominas algo sobre dietas")
+    record.status = "completed"
+    record.events.append(
+        DiagnosticEvent(
+            trace_id=record.trace_id,
+            timestamp=datetime.now(UTC),
+            stage=EventStage.RAG_SEARCH_COMPLETE,
+            data={"dominio": "nominas", "hits": 3, "top_score": 0.8},
+        )
+    )
+    analyze(record)
+    types = [i.type for i in record.issues]
+    assert DiagnosticIssueType.RAG_NO_RESULTS not in types
+
+
+def test_rag_low_confidence_detected_below_threshold():
+    """RAG_SEARCH_COMPLETE con hits>0 pero top_score por debajo del umbral debe marcar RAG_LOW_CONFIDENCE."""
+    from mia.diagnostics.analyzer import analyze
+    from mia.diagnostics.models import DiagnosticIssueType, EventStage, DiagnosticEvent
+    from datetime import UTC, datetime
+
+    record = _make_trace("busca en los documentos algo sobre vacaciones")
+    record.status = "completed"
+    record.events.append(
+        DiagnosticEvent(
+            trace_id=record.trace_id,
+            timestamp=datetime.now(UTC),
+            stage=EventStage.RAG_SEARCH_COMPLETE,
+            data={"dominio": "documentos_firmados", "hits": 2, "top_score": 0.2},
+        )
+    )
+    analyze(record)
+    types = [i.type for i in record.issues]
+    assert DiagnosticIssueType.RAG_LOW_CONFIDENCE in types
+
+
+def test_rag_low_confidence_not_flagged_above_threshold():
+    from mia.diagnostics.analyzer import analyze
+    from mia.diagnostics.models import DiagnosticIssueType, EventStage, DiagnosticEvent
+    from datetime import UTC, datetime
+
+    record = _make_trace("busca en los documentos algo sobre vacaciones")
+    record.status = "completed"
+    record.events.append(
+        DiagnosticEvent(
+            trace_id=record.trace_id,
+            timestamp=datetime.now(UTC),
+            stage=EventStage.RAG_SEARCH_COMPLETE,
+            data={"dominio": "documentos_firmados", "hits": 2, "top_score": 0.9},
+        )
+    )
+    analyze(record)
+    types = [i.type for i in record.issues]
+    assert DiagnosticIssueType.RAG_LOW_CONFIDENCE not in types
+
+
+def test_rag_issues_not_duplicated_across_multiple_searches_in_same_trace():
+    """Dos búsquedas RAG sin resultados en la misma traza deben producir un único issue RAG_NO_RESULTS."""
+    from mia.diagnostics.analyzer import analyze
+    from mia.diagnostics.models import DiagnosticIssueType, EventStage, DiagnosticEvent
+    from datetime import UTC, datetime
+
+    record = _make_trace("busca en nominas y documentos algo sobre dietas")
+    record.status = "completed"
+    for dominio in ("nominas", "documentos_firmados"):
+        record.events.append(
+            DiagnosticEvent(
+                trace_id=record.trace_id,
+                timestamp=datetime.now(UTC),
+                stage=EventStage.RAG_SEARCH_COMPLETE,
+                data={"dominio": dominio, "hits": 0, "top_score": None},
+            )
+        )
+    analyze(record)
+    types = [i.type for i in record.issues]
+    assert types.count(DiagnosticIssueType.RAG_NO_RESULTS) == 1

@@ -19,6 +19,7 @@ from sqlalchemy import select
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.data import DocumentTypeConfig, Employee, SignedDocument
+from mia.diagnostics import EventStage, current_call_id, emit as diag_emit
 from mia.modules.rrhh.common import (
     MAX_ROWS_FOR_MODEL,
     CohortParams,
@@ -327,7 +328,13 @@ def buscar_en_documentos(deps: Deps) -> Tool:
     )
 
     async def handler(p: BuscarEnDocumentosParams, ctx: ToolContext) -> ToolResult:
+        call_id = current_call_id()
         if deps.llm is None:
+            diag_emit(
+                EventStage.RAG_SEARCH_ERROR,
+                data={"dominio": "documentos_firmados", "motivo": "llm_no_configurado"},
+                call_id=call_id,
+            )
             return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, "La búsqueda semántica no está configurada")
         async with deps.db.session() as db:
             allowed: set[int] | None = None
@@ -343,11 +350,47 @@ def buscar_en_documentos(deps: Deps) -> Tool:
                 if p.tipo:
                     stmt = stmt.where(SignedDocument.doc_type.ilike(f"%{p.tipo}%"))
                 allowed = set((await db.scalars(stmt)).all())
+                diag_emit(
+                    EventStage.DOCUMENT_SEARCH,
+                    data={
+                        "dominio": "documentos_firmados",
+                        "filtro_nombre": bool(p.nombre),
+                        "filtro_tipo": bool(p.tipo),
+                        "documentos_permitidos": len(allowed),
+                    },
+                    call_id=call_id,
+                )
                 if not allowed:
                     return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": "No hay documentos que encajen con ese filtro."})
             model = deps.settings.curriculums.embedding_model if deps.settings else "text-embedding-3-small"
-            vector = (await deps.llm.embed([p.consulta], model))[0]
+            diag_emit(
+                EventStage.RAG_SEARCH_START,
+                data={"dominio": "documentos_firmados", "consulta_chars": len(p.consulta)},
+                call_id=call_id,
+            )
+            try:
+                vector = (await deps.llm.embed([p.consulta], model))[0]
+            except Exception as exc:
+                diag_emit(
+                    EventStage.RAG_SEARCH_ERROR,
+                    data={
+                        "dominio": "documentos_firmados",
+                        "motivo": "embed_fallido",
+                        "exception_type": type(exc).__name__,
+                    },
+                    call_id=call_id,
+                )
+                raise
             hits = await index.search(db, vector, allowed=allowed, limit=p.limite)
+            diag_emit(
+                EventStage.RAG_SEARCH_COMPLETE,
+                data={
+                    "dominio": "documentos_firmados",
+                    "hits": len(hits),
+                    "top_score": hits[0].score if hits else None,
+                },
+                call_id=call_id,
+            )
             fresh = await deps.freshness(db, "documentos_firmados")
             if not hits:
                 return ToolResult(
@@ -359,6 +402,11 @@ def buscar_en_documentos(deps: Deps) -> Tool:
                     await db.scalars(select(SignedDocument).where(SignedDocument.sp_id.in_([h.document_id for h in hits])))
                 ).all()
             }
+            diag_emit(
+                EventStage.DOCUMENT_RETRIEVAL,
+                data={"dominio": "documentos_firmados", "documentos_recuperados": len(docs)},
+                call_id=call_id,
+            )
         results = [
             {
                 "documento": docs[h.document_id].file_name or docs[h.document_id].doc_type,
