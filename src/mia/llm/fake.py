@@ -44,12 +44,18 @@ class FakeLLMProvider:
             yield event
 
     async def embed(self, texts: list[str], model: str) -> list[list[float]]:
-        """Embeddings deterministas de bolsa de palabras (suficiente para probar la búsqueda)."""
+        """Embeddings deterministas de bolsa de palabras (suficiente para probar la búsqueda).
+
+        1536 dimensiones a propósito: es lo que declara la columna ``vector(1536)`` de
+        ``hr_cv_chunks``/``hr_document_chunks`` (``text-embedding-3-small`` real). Contra Postgres
+        real, pgvector rechaza cualquier otra dimensión; en SQLite esto no se comprobaba antes.
+        """
+        dim = 1536
         vectors = []
         for text in texts:
-            vector = [0.0] * 64
+            vector = [0.0] * dim
             for word in normalize_key(text).split():
-                vector[int(hashlib.md5(word.encode()).hexdigest(), 16) % 64] += 1.0  # noqa: S324
+                vector[int(hashlib.md5(word.encode()).hexdigest(), 16) % dim] += 1.0  # noqa: S324
             vectors.append(vector)
         return vectors
 
