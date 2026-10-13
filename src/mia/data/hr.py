@@ -10,10 +10,14 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, Date, DateTime, Float, Index, Integer, LargeBinary, String, Text
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import Boolean, Date, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mia.data.models import Base
+
+EMBEDDING_DIM = 1536
+"""Dimensión de ``text-embedding-3-small`` (OpenAI/Azure OpenAI) — la única usada hoy para indexar."""
 
 
 class Employee(Base):
@@ -178,8 +182,8 @@ class CvChunk(Base):
     candidate_id: Mapped[int | None] = mapped_column(Integer, index=True)
     position: Mapped[int] = mapped_column(Integer)
     text: Mapped[str] = mapped_column(Text)
-    embedding: Mapped[bytes | None] = mapped_column(LargeBinary)
-    """float32 empaquetado; la búsqueda se hace en memoria (≈1.400 CVs)."""
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM))
+    """Búsqueda por índice HNSW en Postgres (pgvector), no en memoria — ver ``curriculums/search.py``."""
 
 
 # ---------------------------------------------------------------------- nóminas y documentos
@@ -272,8 +276,8 @@ class HrDocumentChunk(Base):
     person_key: Mapped[str | None] = mapped_column(String(64))
     position: Mapped[int] = mapped_column(Integer)
     text: Mapped[str] = mapped_column(Text)
-    embedding: Mapped[bytes | None] = mapped_column(LargeBinary)
-    """float32 empaquetado; la búsqueda se hace en memoria, igual que ``CvChunk``."""
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM))
+    """Búsqueda por índice HNSW en Postgres (pgvector), igual que ``CvChunk`` — ver ``document_search.py``."""
 
 
 # ---------------------------------------------------------------------- trabajo temporal

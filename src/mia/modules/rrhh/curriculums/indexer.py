@@ -24,7 +24,7 @@ from mia.modules.rrhh.document_indexing import (
     clean_text,
     extract_text,
     image_media_type,
-    pack,
+    normalize,
     render_pdf_pages,
 )
 from mia.observability import get_logger
@@ -177,7 +177,7 @@ class CvIndexer:
                     candidate_id=document.candidate_id,
                     position=i,
                     text=chunk,
-                    embedding=pack(vector),
+                    embedding=normalize(vector),
                 )
                 for i, (chunk, vector) in enumerate(zip(chunks, vectors, strict=True))
             )

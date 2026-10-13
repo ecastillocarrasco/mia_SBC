@@ -23,6 +23,7 @@ dependencies = [
     "pyjwt[crypto]>=2.9,<3",
     "cryptography>=43",
     "numpy>=1.26",
+    "pgvector>=0.5,<1",
     "pypdf>=4",
     "python-docx>=1.1",
     "openpyxl>=3.1",

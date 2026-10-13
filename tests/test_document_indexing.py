@@ -20,7 +20,11 @@ from mia.data import Database, Employee, HrDocumentChunk, HrDocumentText, Paysli
 from mia.llm.fake import FakeLLMProvider
 from mia.modules.rrhh.document_indexing import DocumentIndexer
 from mia.modules.rrhh.document_search import DocumentSearchIndex
-from tests.dbutil import fresh_database
+from tests.dbutil import POSTGRES_URL, fresh_database
+
+requires_postgres = pytest.mark.skipif(
+    not POSTGRES_URL, reason="pgvector (cosine_distance / DISTINCT ON) solo funciona contra Postgres real"
+)
 
 
 def _pdf(text: str) -> bytes:
@@ -71,6 +75,7 @@ async def db(tmp_path: Path) -> AsyncIterator[Database]:
     await database.dispose()
 
 
+@requires_postgres
 async def test_payslip_pdf_is_extracted_chunked_and_searchable(db: Database) -> None:
     async with db.session() as s:
         s.add(
@@ -210,6 +215,7 @@ async def test_changed_modified_at_triggers_reindexing(db: Database) -> None:
     assert "idiomas" in text.text and "transporte" not in text.text
 
 
+@requires_postgres
 async def test_buscar_en_nominas_emits_rag_and_document_diagnostic_events(db: Database) -> None:
     """La herramienta conversacional ``buscar_en_nominas`` debe emitir RAG_SEARCH_START/COMPLETE y
     DOCUMENT_SEARCH/DOCUMENT_RETRIEVAL durante una búsqueda real (no solo en la ruta de error), para que
@@ -288,6 +294,7 @@ async def test_buscar_en_nominas_emits_rag_and_document_diagnostic_events(db: Da
     assert len(retrieval_events) == 1 and retrieval_events[0].data["documentos_recuperados"] == 1
 
 
+@requires_postgres
 async def test_domains_are_isolated_when_sp_id_collides(db: Database) -> None:
     """sp_id NO es único entre bibliotecas: una nómina y un documento firmado pueden compartir el mismo ID."""
     async with db.session() as s:

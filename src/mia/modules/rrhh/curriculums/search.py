@@ -1,20 +1,20 @@
-"""Búsqueda semántica de CVs en memoria (≈1.400 CVs: milisegundos, sin extensiones de base de datos).
+"""Búsqueda semántica de CVs — índice HNSW de pgvector sobre ``hr_cv_chunks.embedding``.
 
-El índice se recarga solo cuando cambian los fragmentos. Cuando el volumen lo pida
-se sustituye por pgvector sin tocar las herramientas.
+Antes de la migración a pgvector esto cargaba todos los fragmentos en memoria (viable con ≈1.400
+CVs). Con el volumen real actual (nóminas y documentos firmados comparten la misma infraestructura
+de indexación y ya superan los 100.000 fragmentos entre los tres dominios), la búsqueda se empuja a
+Postgres: nunca se trae a memoria más que los resultados ya filtrados.
 """
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 
-import numpy as np
-from sqlalchemy import func, select
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.data import CvChunk
-from mia.modules.rrhh.curriculums.indexer import pack
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,67 +24,36 @@ class Hit:
     evidence: str
 
 
+def _best_per_candidate_query(query_vector: list[float], candidate_ids: set[int] | None):
+    """``DISTINCT ON (candidate_id)``: el fragmento más parecido de cada candidatura, ordenado por
+    distancia coseno — equivalente SQL de "mejor fragmento por candidato", calculado por el índice
+    HNSW en vez de en memoria."""
+    distance = CvChunk.embedding.cosine_distance(query_vector)
+    stmt = (
+        select(CvChunk.candidate_id, CvChunk.text, distance.label("distance"))
+        .where(CvChunk.embedding.is_not(None), CvChunk.candidate_id.is_not(None))
+        .ext(distinct_on(CvChunk.candidate_id))
+        .order_by(CvChunk.candidate_id, distance)
+    )
+    if candidate_ids is not None:
+        stmt = stmt.where(CvChunk.candidate_id.in_(candidate_ids))
+    return stmt
+
+
 class CvSearchIndex:
-    def __init__(self) -> None:
-        self._signature: tuple[int, int] | None = None
-        self._matrix = np.zeros((0, 1), dtype=np.float32)
-        self._candidates: list[int] = []
-        self._texts: list[str] = []
-        self._lock = asyncio.Lock()
-
-    async def _ensure(self, db: AsyncSession) -> None:
-        count, last = (await db.execute(select(func.count(CvChunk.id), func.max(CvChunk.id)))).one()
-        signature = (int(count or 0), int(last or 0))
-        if signature == self._signature:
-            return
-        async with self._lock:
-            rows = (
-                await db.execute(
-                    select(CvChunk.candidate_id, CvChunk.text, CvChunk.embedding).where(
-                        CvChunk.embedding.is_not(None), CvChunk.candidate_id.is_not(None)
-                    )
-                )
-            ).all()
-            vectors = [np.frombuffer(r.embedding, dtype=np.float32) for r in rows]
-            self._matrix = np.vstack(vectors) if vectors else np.zeros((0, 1), dtype=np.float32)
-            self._candidates = [int(r.candidate_id) for r in rows]
-            self._texts = [str(r.text) for r in rows]
-            self._signature = signature
-
     async def search(
         self, db: AsyncSession, query_vector: list[float], *, allowed: set[int] | None, limit: int
     ) -> list[Hit]:
-        await self._ensure(db)
-        if not self._candidates:
-            return []
-        query = np.frombuffer(pack(query_vector), dtype=np.float32)
-        if query.shape[0] != self._matrix.shape[1]:
-            return []
-        scores = self._matrix @ query
-        best: dict[int, tuple[float, int]] = {}
-        for row in np.argsort(-scores):
-            candidate = self._candidates[row]
-            if allowed is not None and candidate not in allowed:
-                continue
-            if candidate not in best:
-                best[candidate] = (float(scores[row]), int(row))
-                if len(best) >= limit:
-                    break
-        return [Hit(c, round(s, 3), self._texts[i][:400]) for c, (s, i) in best.items()]
+        inner = _best_per_candidate_query(query_vector, allowed).subquery()
+        stmt = select(inner.c.candidate_id, inner.c.text, inner.c.distance).order_by(inner.c.distance).limit(limit)
+        rows = (await db.execute(stmt)).all()
+        return [Hit(r.candidate_id, round(1 - r.distance, 3), r.text[:400]) for r in rows]
 
     async def best_per_candidate(
         self, db: AsyncSession, query_vector: list[float], candidates: set[int]
     ) -> dict[int, tuple[float, str]]:
         """Para cada candidato, su fragmento de CV más parecido a la consulta: {id: (similitud, texto)}."""
-        await self._ensure(db)
-        if not self._candidates or not candidates:
+        if not candidates:
             return {}
-        query = np.frombuffer(pack(query_vector), dtype=np.float32)
-        if query.shape[0] != self._matrix.shape[1]:
-            return {}
-        scores = self._matrix @ query
-        best: dict[int, tuple[float, str]] = {}
-        for row, candidate in enumerate(self._candidates):
-            if candidate in candidates and (candidate not in best or scores[row] > best[candidate][0]):
-                best[candidate] = (float(scores[row]), self._texts[row])
-        return best
+        rows = (await db.execute(_best_per_candidate_query(query_vector, candidates))).all()
+        return {r.candidate_id: (1 - r.distance, r.text) for r in rows}

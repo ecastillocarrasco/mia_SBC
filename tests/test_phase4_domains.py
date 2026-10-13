@@ -30,10 +30,14 @@ from mia.data import (
 from mia.llm import ToolCall
 from mia.llm.fake import FakeLLMProvider
 from mia.modules.rrhh import build_registry
-from mia.modules.rrhh.curriculums.indexer import pack
+from mia.modules.rrhh.curriculums.indexer import normalize
 from mia.settings import Environment, Settings
 from mia.text import normalize_key
-from tests.dbutil import fresh_database
+from tests.dbutil import POSTGRES_URL, fresh_database
+
+requires_postgres = pytest.mark.skipif(
+    not POSTGRES_URL, reason="pgvector (cosine_distance / DISTINCT ON) solo funciona contra Postgres real"
+)
 
 NOW = datetime(2026, 9, 15, 10, 0, tzinfo=ZoneInfo("Europe/Madrid"))
 ADMIN = UserContext("u1", "Enrique", roles=frozenset({"mia.admin"}))
@@ -71,7 +75,7 @@ async def _seed(db: Database, llm: FakeLLMProvider) -> None:
         )
         rows.append(CvText(document_id=cid, candidate_id=cid, status="ok", text=text))
         vector = (await llm.embed([text], "x"))[0]
-        rows.append(CvChunk(document_id=cid, candidate_id=cid, position=0, text=text, embedding=pack(vector)))
+        rows.append(CvChunk(document_id=cid, candidate_id=cid, position=0, text=text, embedding=normalize(vector)))
     for month in (1, 2, 3, 5, 6, 7, 8):
         rows.append(
             Payslip(
@@ -152,6 +156,7 @@ async def call(
     return execution.result
 
 
+@requires_postgres
 async def test_cv_search_returns_evidence_not_a_ranking(env: Any) -> None:
     registry, _, _ = env
     result = await call(registry, "candidatos_parecidos", consulta="recepcionista con alemán fluido")
@@ -329,6 +334,7 @@ async def test_discarded_draft_cannot_be_sent(env: Any) -> None:
     assert result.status is ToolStatus.NOT_FOUND and fake.sent == []
 
 
+@requires_postgres
 async def test_filter_candidates_with_and_or_not_and_unique_people(env: Any) -> None:
     registry, db, _ = env
     async with db.session() as s:
@@ -351,6 +357,7 @@ async def test_filter_candidates_with_and_or_not_and_unique_people(env: Any) -> 
     assert both.summary["cumplen_todos"] == 2 and both.summary["personas_unicas"] == 1
 
 
+@requires_postgres
 async def test_requirements_check_metadata_first_then_the_cv(env: Any) -> None:
     """Caso real: «cocina, inglés y cocina japonesa» solo encontraba el inglés y no miraba los CV."""
     registry, db, _ = env

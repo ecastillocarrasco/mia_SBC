@@ -8,6 +8,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import create_engine, inspect
 
 from mia.data import Base
@@ -21,12 +22,22 @@ def _config(url: str) -> Config:
     return config
 
 
+def _ignore_vector_type_on_sqlite(context, inspected_column, metadata_column, inspected_type, metadata_type):
+    """SQLite no tiene el tipo ``vector`` de pgvector: lo refleja como ``NUMERIC`` genérico, que
+    ``compare_metadata`` nunca reconocerá como igual al ``Vector`` declarado en los modelos — no es
+    una discrepancia real de esquema (en Postgres, donde esto sí se ejecuta, coinciden exactamente)."""
+    if isinstance(metadata_type, Vector):
+        return False
+    return None
+
+
 def test_upgrade_matches_models(tmp_path: Path) -> None:
     db_file = tmp_path / "mig.db"
     command.upgrade(_config(f"sqlite+aiosqlite:///{db_file}"), "head")
     engine = create_engine(f"sqlite:///{db_file}")
     with engine.connect() as conn:
-        diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)
+        ctx = MigrationContext.configure(conn, opts={"compare_type": _ignore_vector_type_on_sqlite})
+        diff = compare_metadata(ctx, Base.metadata)
     engine.dispose()
     assert diff == []
 

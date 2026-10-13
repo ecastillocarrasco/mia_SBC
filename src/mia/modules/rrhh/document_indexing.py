@@ -136,10 +136,12 @@ def chunk_text(text: str) -> list[str]:
     return [c for c in chunks if c]
 
 
-def pack(vector: list[float]) -> bytes:
+def normalize(vector: list[float]) -> list[float]:
+    """Normaliza L2 antes de guardar/comparar — pgvector calcula la distancia coseno igual sin esto,
+    pero se mantiene por consistencia con los vectores ya persistidos antes de la migración a pgvector."""
     array = np.asarray(vector, dtype=np.float32)
     norm = float(np.linalg.norm(array)) or 1.0
-    return (array / norm).astype(np.float32).tobytes()
+    return (array / norm).tolist()
 
 
 class DocumentIndexer:
@@ -313,7 +315,7 @@ class DocumentIndexer:
                     person_key=document.person_key,
                     position=i,
                     text=chunk,
-                    embedding=pack(vector),
+                    embedding=normalize(vector),
                 )
                 for i, (chunk, vector) in enumerate(zip(chunks, vectors, strict=True))
             )
