@@ -43,20 +43,20 @@ class TokenVault:
         fernet_key = key.encode("utf-8") if key and len(key) == 44 else _derive_fernet_key(key or "mia-dev-only")
         self._fernet = Fernet(fernet_key)
         self._ttl = ttl_seconds
-        self._entries: dict[str, _Entry] = {}
+        self._entries: dict[tuple[str, str, str], _Entry] = {}
         self._lock = threading.Lock()
 
     def store(self, token: str, value: str, *, user_id: str, operation_id: str) -> None:
         ciphertext = self._fernet.encrypt(value.encode("utf-8"))
         entry = _Entry(ciphertext, time.monotonic() + self._ttl, user_id, operation_id)
         with self._lock:
-            self._entries[token] = entry
+            self._entries[(user_id, operation_id, token)] = entry
 
     def resolve(self, token: str, *, user_id: str, operation_id: str) -> str | None:
         """Devuelve el valor original, o None si el token no existe/caducó/no pertenece a este contexto.
         Nunca lanza para un token simplemente ausente: eso es el caso normal de texto que no es un token."""
         with self._lock:
-            entry = self._entries.get(token)
+            entry = self._entries.get((user_id, operation_id, token))
         if entry is None:
             return None
         if entry.expires_at < time.monotonic() or entry.user_id != user_id or entry.operation_id != operation_id:
@@ -69,16 +69,16 @@ class TokenVault:
     def purge_operation(self, operation_id: str) -> None:
         """Borra todas las entradas de una operación al terminar el turno: limpieza inmediata, no solo TTL."""
         with self._lock:
-            stale = [t for t, e in self._entries.items() if e.operation_id == operation_id]
-            for t in stale:
-                del self._entries[t]
+            stale = [key for key, e in self._entries.items() if e.operation_id == operation_id]
+            for key in stale:
+                del self._entries[key]
 
     def purge_expired(self) -> None:
         now = time.monotonic()
         with self._lock:
-            stale = [t for t, e in self._entries.items() if e.expires_at < now]
-            for t in stale:
-                del self._entries[t]
+            stale = [key for key, e in self._entries.items() if e.expires_at < now]
+            for key in stale:
+                del self._entries[key]
 
     def __len__(self) -> int:
         return len(self._entries)

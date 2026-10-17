@@ -14,10 +14,11 @@ hasta validar la protección real por etapas.
 from __future__ import annotations
 
 from collections import Counter
+import json
 from collections.abc import AsyncIterator
 from dataclasses import replace
 
-from mia.llm.base import LLMEvent, LLMProvider, LLMRequest, TextDelta
+from mia.llm.base import LLMEvent, LLMProvider, LLMRequest, TextDelta, ToolCall, ToolCallRequested
 from mia.privacy_gateway import audit
 from mia.privacy_gateway.context_manager import current_operation
 from mia.privacy_gateway.economic_minimization import redact_individual_amounts
@@ -29,7 +30,7 @@ from mia.privacy_gateway.presidio_engine import DetectedEntity, PresidioEngine, 
 from mia.privacy_gateway.prompt_injection_guard import scan as scan_injection
 from mia.privacy_gateway.prompt_injection_guard import wrap_untrusted
 from mia.privacy_gateway.token_vault import TokenVault
-from mia.privacy_gateway.tokenizer import Tokenizer
+from mia.privacy_gateway.tokenizer import Tokenizer, _TOKEN_RE
 from mia.settings import PrivacyGatewaySettings
 
 _OPEN_BRACKET = "["
@@ -109,8 +110,27 @@ class PrivacyGateway(LLMProvider):
             return wrap_untrusted(minimized)
 
         new_system = _process(request.system)
+
+        def _protect_call_arguments(arguments: str) -> str:
+            # Las llamadas a herramientas ejecutadas internamente contienen valores reales. La
+            # siguiente ronda del LLM ve el historial de function_call: también hay que proteger
+            # sus argumentos, NO solo Message.content. Conservar JSON válido y nombres de claves.
+            try:
+                value = json.loads(arguments or "{}")
+            except (ValueError, TypeError):
+                return _process(arguments)  # un JSON inválido seguirá inválido, pero no saldrá sin filtrar
+            return json.dumps(self._map_json_strings(value, _process), ensure_ascii=False)
+
         new_messages = [
-            replace(m, content=_process(m.content, untrusted=m.role == "tool")) for m in request.messages
+            replace(
+                m,
+                content=_process(m.content, untrusted=m.role == "tool"),
+                tool_calls=tuple(
+                    replace(call, arguments=_protect_call_arguments(call.arguments))
+                    for call in m.tool_calls
+                ),
+            )
+            for m in request.messages
         ]
         audit.record_inspection(
             operation_id=operation_id,
@@ -123,6 +143,49 @@ class PrivacyGateway(LLMProvider):
             secrets_redacted=secrets_redacted,
         )
         return replace(request, system=new_system, messages=new_messages)
+
+
+    @staticmethod
+    def _map_json_strings(value, transform):
+        """Transforma solo VALORES textuales, no claves; preserva JSON, Unicode y tipos."""
+        if isinstance(value, str):
+            return transform(value)
+        if isinstance(value, list):
+            return [PrivacyGateway._map_json_strings(item, transform) for item in value]
+        if isinstance(value, dict):
+            return {key: PrivacyGateway._map_json_strings(item, transform) for key, item in value.items()}
+        return value
+
+    def _restore_tool_call(self, call: ToolCall, *, user_id: str, operation_id: str) -> tuple[ToolCall, int]:
+        """Restaura argumentos ÚNICAMENTE tras recibirlos, para ejecución local autorizada.
+
+        Evita sustitución sobre JSON serializado (nombres con comillas/saltos de línea lo
+        corromperían). Tokens desconocidos o de otro turno se rechazan: NUNCA se ejecuta una
+        búsqueda con un placeholder de identidad de origen desconocido.
+        """
+        try:
+            arguments = json.loads(call.arguments or "{}")
+        except (ValueError, TypeError):
+            # Mantener contrato original: ToolRegistry validará el JSON erróneo. Pero no
+            # permitir ejecutar texto inválido que contenga identificadores tokenizados.
+            if _TOKEN_RE.search(call.arguments or ""):
+                raise UnsafeContentBlockedError("Argumentos de herramienta inválidos con token protegido")
+            return call, 0
+
+        count = 0
+
+        def _restore(value: str) -> str:
+            nonlocal count
+            restored, n = self._tokenizer.restore(  # type: ignore[union-attr]
+                value, user_id=user_id, operation_id=operation_id
+            )
+            if _TOKEN_RE.search(restored):
+                raise UnsafeContentBlockedError("Token de herramienta desconocido, caducado o ajeno")
+            count += n
+            return restored
+
+        restored_args = self._map_json_strings(arguments, _restore)
+        return replace(call, arguments=json.dumps(restored_args, ensure_ascii=False)), count
 
     async def stream(self, request: LLMRequest) -> AsyncIterator[LLMEvent]:
         if not self._settings.enabled or self._tokenizer is None:
@@ -163,6 +226,19 @@ class PrivacyGateway(LLMProvider):
                 delta = _emit(safe_chunk)
                 if delta is not None:
                     yield delta
+                continue
+            if isinstance(event, ToolCallRequested):
+                try:
+                    call, restored = self._restore_tool_call(
+                        event.call, user_id=user_id, operation_id=operation_id
+                    )
+                except Exception as exc:
+                    audit.record_blocked(operation_id=operation_id, reason=type(exc).__name__)
+                    raise UnsafeContentBlockedError(
+                        "No se pudo validar la restauración de argumentos de herramienta"
+                    ) from exc
+                restored_total += restored
+                yield ToolCallRequested(call)
                 continue
             yield event
 
