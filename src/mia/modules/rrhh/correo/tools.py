@@ -8,6 +8,7 @@ desactivado salvo que se habilite en la configuración.
 
 from __future__ import annotations
 
+import base64
 import re
 from typing import Any
 
@@ -19,6 +20,12 @@ from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolSt
 from mia.modules.rrhh.common import Deps, table
 from mia.modules.rrhh.correo.htmltext import plain_text
 from mia.modules.rrhh.correo.mailbox import resolve_mailbox
+from mia.observability import get_logger
+
+log = get_logger(__name__)
+
+MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
+"""Mismo límite que ``mia.modules.rrhh.content`` para documentos de bibliotecas."""
 
 _CONFIRM = re.compile(r"\b(s[ií]|env[ií]a(lo)?|adelante|confirm[oa]|de acuerdo|vale|ok)\b", re.IGNORECASE)
 _NOREPLY = re.compile(
@@ -186,6 +193,32 @@ def buscar(deps: Deps) -> Tool:
     )
 
 
+def _attachment_text(attachment: dict[str, Any]) -> str | None:
+    """Texto extraído de un adjunto de tipo fichero (``#microsoft.graph.fileAttachment``).
+
+    ``None`` si no se puede leer: no es un fichero adjunto (p. ej. un correo reenviado como
+    adjunto), supera ``MAX_ATTACHMENT_BYTES``, o el tipo no tiene parser (reutiliza los mismos
+    parsers que los adjuntos del chat, ``mia.attachments.parsers`` — nunca una segunda
+    implementación de extracción de texto).
+    """
+    from mia.attachments.intelligence import _parse_sync  # noqa: PLC0415
+
+    content_bytes = attachment.get("contentBytes")
+    if not content_bytes or attachment.get("@odata.type") != "#microsoft.graph.fileAttachment":
+        return None
+    if int(attachment.get("size") or 0) > MAX_ATTACHMENT_BYTES:
+        return "(adjunto demasiado grande para leer)"
+    try:
+        raw = base64.b64decode(content_bytes)
+        content = _parse_sync(str(attachment.get("contentType") or ""), raw)
+    except ValueError:
+        return None  # tipo sin parser (p. ej. .zip, .exe): se omite, no es un error
+    except Exception as exc:  # adjunto corrupto o mal formado
+        log.warning("correo.adjunto_illegible", nombre=attachment.get("name"), error=str(exc)[:200])
+        return "(no se ha podido leer este adjunto)"
+    return content.full_text[:4000] or None
+
+
 class LeerParams(BaseModel):
     ref: str = Field(description="Referencia del correo (c1, c2…) de una lista anterior")
 
@@ -209,7 +242,7 @@ def leer(deps: Deps) -> Tool:
                     await deps.graph.request(
                         "GET",
                         f"{_mailbox(deps, ctx)}/messages/{message_id}/attachments",
-                        params={"$select": "name,size"},
+                        params={"$select": "name,size,contentType,contentBytes"},
                     )
                 ).get("value", [])
         except GraphError as exc:
@@ -221,13 +254,16 @@ def leer(deps: Deps) -> Tool:
             "asunto": message.get("subject"),
             "recibido": message.get("receivedDateTime"),
             "texto": _plain(message.get("body"))[:8000],
-            "adjuntos": [a.get("name") for a in attachments],
+            "adjuntos": [
+                {"nombre": a.get("name"), "contenido": _attachment_text(a)} for a in attachments
+            ],
         }
         return ToolResult(ToolStatus.OK, view, {"type": "mail", **view})
 
     return Tool(
         "leer_correo",
-        "Contenido de un correo concreto (por su referencia).",
+        "Contenido de un correo concreto (por su referencia), incluido el texto de sus adjuntos "
+        "(PDF, Word, Excel, CSV, texto) cuando se pueden leer.",
         LeerParams,
         handler,
         permission=Permission.CORREO_LEER,

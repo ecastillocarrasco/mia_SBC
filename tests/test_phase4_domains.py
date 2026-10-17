@@ -289,6 +289,67 @@ async def test_mail_send_requires_a_previous_draft_and_explicit_confirmation(env
     await graph.aclose()
 
 
+async def test_leer_correo_reads_attachment_text(env: Any) -> None:
+    """``leer_correo`` debe devolver tambien el texto de los adjuntos legibles, no solo su nombre."""
+    import base64
+
+    _, db, settings = env
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/mailFolders/inbox/messages"):
+            return httpx.Response(
+                200,
+                json={
+                    "value": [
+                        {
+                            "id": "AAMk-2",
+                            "subject": "Contrato",
+                            "isRead": False,
+                            "from": {"emailAddress": {"name": "Ana", "address": "a@x"}},
+                            "bodyPreview": "Adjunto el documento",
+                        }
+                    ]
+                },
+            )
+        if "/messages/AAMk-2/attachments" in path:
+            content = base64.b64encode(b"Clausula de confidencialidad del contrato.").decode()
+            return httpx.Response(
+                200,
+                json={
+                    "value": [
+                        {
+                            "@odata.type": "#microsoft.graph.fileAttachment",
+                            "name": "contrato.txt",
+                            "size": 42,
+                            "contentType": "text/plain",
+                            "contentBytes": content,
+                        }
+                    ]
+                },
+            )
+        if "/messages/AAMk-2" in path:
+            return httpx.Response(
+                200,
+                json={
+                    "subject": "Contrato",
+                    "body": {"contentType": "text", "content": "Adjunto el documento"},
+                    "hasAttachments": True,
+                },
+            )
+        return httpx.Response(404)
+
+    graph = GraphClient(StaticTokenProvider(), transport=httpx.MockTransport(handler))
+    registry = build_registry(db, settings=settings, graph=graph)
+    state: dict[str, Any] = {}
+    await call(registry, "correos_sin_leer", state)
+    read = await call(registry, "leer_correo", state, ref="c1")
+    await graph.aclose()
+    assert read.summary["adjuntos"] == [
+        {"nombre": "contrato.txt", "contenido": "Clausula de confidencialidad del contrato."}
+    ]
+
+
 async def test_disabled_domain_is_not_offered(env: Any) -> None:
     _, db, settings = env
     registry = build_registry(db, settings=settings, enabled=["empleados"])
