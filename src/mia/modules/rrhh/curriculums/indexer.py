@@ -18,14 +18,16 @@ from mia.connectors.sharepoint import SharePointClient, SharePointError
 from mia.data import CvChunk, CvDocument, CvText, Database
 from mia.llm import LLMProvider
 from mia.modules.rrhh.document_indexing import (
-    OCR_INSTRUCTION,
+    OCR_INSTRUCTION,  # compatibilidad: importaciones anteriores desde curriculums.indexer
     OCR_MAX_PAGES,
+    LocalOCRError,
     chunk_text,
     clean_text,
+    extract_document_text_local,
     extract_text,
     image_media_type,
     normalize,
-    render_pdf_pages,
+    render_pdf_pages,  # lo usa el modulo de adjuntos/vision
 )
 from mia.observability import get_logger
 
@@ -111,22 +113,13 @@ class CvIndexer:
         text = ""
         try:
             content = await self._client.download(document.file_ref, self._max_bytes)
-            status, text = extract_text(content, document.file_name)
-            media = image_media_type(content)
-            if status == "unsupported" and media:
-                text = clean_text(await self._llm.read_image(content, media, OCR_INSTRUCTION))
-                status, detail = ("ok" if len(text) >= 40 else "empty"), "ocr: imagen"
-            elif status == "unsupported":
-                detail = "ocr: formato no soportado (p. ej. .doc antiguo)"
-            elif status == "empty" and content[:4] == b"%PDF":
-                # PDF escaneado (sin capa de texto): se renderizan las primeras páginas y se leen.
-                pages = await asyncio.to_thread(render_pdf_pages, content, OCR_MAX_PAGES)
-                parts = [await self._llm.read_image(png, "image/png", OCR_INSTRUCTION) for png in pages]
-                text = clean_text("\n".join(parts))
-                status, detail = (
-                    ("ok" if len(text) >= 40 else "empty"),
-                    f"ocr: pdf escaneado ({len(pages)} págs.)",
-                )
+            status, text, detail = await asyncio.to_thread(
+                extract_document_text_local, content, document.file_name
+            )
+        except LocalOCRError as exc:
+            # Fail closed y conserva cualquier indice previo.
+            log.warning("cv_index.local_ocr_failed", document=document.sp_id, reason=str(exc))
+            return "error"
         except SharePointError as exc:
             status, detail = ("too_large" if "demasiado grande" in str(exc) else "error"), str(exc)[:300]
         except Exception as exc:  # PDF o DOCX corrupto
