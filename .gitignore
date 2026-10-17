@@ -23,5 +23,6 @@ htmlcov/
 dist/
 build/
 
-# Informes generados en tiempo de ejecución (nunca código)
-informes/
+# Informes generados en tiempo de ejecución (nunca código) — anclado a la raíz: sin la "/" inicial
+# también ignoraba silenciosamente src/mia/modules/rrhh/informes/ (código, no salida generada).
+/informes/

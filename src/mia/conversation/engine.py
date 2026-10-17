@@ -14,7 +14,7 @@ import re
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
@@ -62,6 +62,10 @@ from mia.observability import current_request_id, get_logger
 from mia.presentation.intent import build_presentation_hint, classify_query
 from mia.privacy_gateway.context_manager import set_operation_context
 from mia.reporting.planner import planner
+from mia.reporting.delivery import download_formats, merge_report_sources, resolve_export_request
+from mia.reporting.comparisons import (
+    LAST_PAYROLL_COMPARISON, explicit_month_comparison, is_export_followup, remembered_comparison,
+)
 from mia.rules import rules_for_prompt
 
 log = get_logger(__name__)
@@ -117,12 +121,34 @@ def _report_hint(message: str, user: UserContext, today: date) -> str:
     if not described:
         return ""
     period_note = f" Periodo detectado: {plan.period.label}." if plan.period else ""
-    compare_note = " Parece una comparativa entre periodos o grupos." if plan.compare else ""
+    explicit_pair = explicit_month_comparison(message)
+    payroll_request = any(m.field.domain == "payroll" for m in plan.metrics)
+    if explicit_pair and payroll_request:
+        compare_note = (
+            f" Comparativa de nóminas entre {explicit_pair[0]} y {explicit_pair[1]}: "
+            "llama a generar_informe (o generar_informe_ejecutivo) en el formato solicitado. "
+            "El motor consulta y consolida ambos periodos automáticamente; NO necesitan "
+            "estar activos a la vez en la sesión. No afirmes lo contrario."
+        )
+    else:
+        compare_note = " Parece una comparativa entre periodos o grupos." if plan.compare else ""
     return (
         "\n\n## Pista de datos detectados\nEsta petición parece referirse a: "
         f"{'; '.join(described)}.{period_note}{compare_note} Usa la herramienta real que calcula ese "
         "dato — nunca sustituyas por un informe genérico de plantilla si el dato pedido no está en él."
     )
+
+
+def _payroll_comparison_spec(message: str, user: UserContext, today: date) -> dict | None:
+    periods = explicit_month_comparison(message)
+    if periods is None:
+        return None
+    plan = planner.plan(message, user=user, today=today)
+    field_names = sorted({m.field.name for m in plan.metrics if m.field.domain == "payroll"})
+    if not field_names:
+        return None
+    # Solamente metadatos: el contexto NO persiste importes salariales.
+    return {"periodos": list(periods), "campos": field_names}
 
 
 @dataclass(slots=True)
@@ -292,6 +318,28 @@ class ConversationEngine:
                 await repo.add_turn(session_id=session.id, request_id=request_id, role="user", content=message)
                 turn = _TurnState(time.perf_counter(), session.id, dict(session.state or {}))
 
+            # Un usuario puede analizar los dos ejercicios y solicitar el PDF en el turno siguiente.
+            # Recuperar únicamente la última intención comparativa explícita (sin importes), nunca
+            # depender de que ambos resultados estén «activos» en el buffer de una sola tabla.
+            local_today = datetime.now(self._tz).date()
+            current_plan = planner.plan(message, user=user, today=local_today)
+            competing_domain = any(m.field.domain != "payroll" for m in current_plan.metrics)
+            if competing_domain or (current_plan.period and not explicit_month_comparison(message)):
+                turn.state.pop(LAST_PAYROLL_COMPARISON, None)
+            latest = _payroll_comparison_spec(message, user, local_today)
+            if latest is not None:
+                turn.state[LAST_PAYROLL_COMPARISON] = latest
+            elif is_export_followup(message) and not competing_domain and LAST_PAYROLL_COMPARISON not in turn.state:
+                for previous in reversed(history):
+                    if previous.role != "user":
+                        continue
+                    if is_export_followup(previous.content):
+                        continue
+                    latest = _payroll_comparison_spec(previous.content, user, local_today)
+                    if latest is not None:
+                        turn.state[LAST_PAYROLL_COMPARISON] = latest
+                    break
+
             diag_emit(EventStage.USER_CONTEXT, data={
                 "user_id": user.user_id,
                 "display_name": user.display_name,
@@ -345,6 +393,11 @@ class ConversationEngine:
                     self.persona.hint_for(message, mailbox)
                     + _module_hint(selected_modules)
                     + _report_hint(message, user, now.date())
+                    + ("\n\n## Continuación de comparativa salarial\n"
+                       "El usuario pide exportar la comparativa previa de nóminas. Ejecuta "
+                       "generar_informe: recuperará los dos periodos de la petición anterior y "
+                       "consultará ambas fuentes sin que deban estar simultáneamente activas."
+                       if remembered_comparison(turn.state, message) else "")
                     + ("\n" + _pres_hint if _pres_hint else "")
                 ).strip(),
             )
@@ -385,12 +438,19 @@ class ConversationEngine:
                 attachment_service=attachment_service,
             )
 
+            # Si se solicitan archivos, posponer cualquier afirmación hablada
+            # del LLM hasta comprobar que existen descargas reales.
+            export_request = resolve_export_request(message, history)
             status: Literal["ok", "error"] = "ok"
             try:
                 final: FinalAnswer | None = None
                 async for event in self._reason(system, messages, ctx, turn, modules=selected_modules):
                     if isinstance(event, FinalAnswer):
                         final = event
+                    elif export_request and isinstance(event, SpeechEvent) and not event.filler:
+                        # El LLM podría decir "ya está creado" antes de que
+                        # el backend haya persistido nada.
+                        continue
                     else:
                         yield event
                 assert final is not None  # noqa: S101
@@ -400,6 +460,82 @@ class ConversationEngine:
                 status = "error"
                 final = FinalAnswer(self.persona.error_phrase, AvatarState.CONFUNDIDA.value, self.persona.error_phrase)
                 yield SpeechEvent(text=final.speech)
+
+            # Contrato de entrega: el texto del LLM NUNCA demuestra que existan
+            # archivos. Si se pidieron varios formatos, intentar exportarlos desde
+            # los mismos resultados y exigir una presentación download por formato.
+            if export_request:
+                original_request, formats = export_request
+                verified = download_formats(turn.executions)
+                missing = [fmt for fmt in formats if fmt not in verified]
+                if missing:
+                    # Varias tablas por departamento se guardaban separadas; la
+                    # última pisaba las anteriores. Consolidar las de la MISMA
+                    # herramienta con sus etiquetas antes de exportar.
+                    merged = merge_report_sources(
+                        turn.executions, title=original_request,
+                    )
+                    if merged is not None:
+                        source = next(e.call.name for e in turn.executions
+                                      if e.result.presentation and
+                                      e.result.presentation.get("type") in {"table", "dashboard"})
+                        remember_table(turn.state, merged, self._max_report_rows,
+                                       source_tool=source)
+                    can_export = bool(merged) or (
+                        message != original_request and bool(turn.state.get("ultima_presentacion"))
+                    )
+                    if can_export:
+                        export_ctx = replace(ctx, user_message=original_request)
+                        for fmt in missing:
+                            execution = await self._tools.execute(
+                                ToolCall(f"delivery:{uuid.uuid4().hex}", "generar_informe",
+                                         json.dumps({"formato": fmt}, ensure_ascii=False)),
+                                export_ctx,
+                            )
+                            turn.executions.append(execution)
+                            yield ToolEvent(
+                                name=execution.call.name,
+                                status=execution.result.status.value,
+                                elapsed_ms=execution.elapsed_ms,
+                            )
+                verified = download_formats(turn.executions)
+                successes = [(fmt, verified[fmt]) for fmt in formats if fmt in verified]
+                missing = [fmt for fmt in formats if fmt not in verified]
+                labels = {"pdf": "PDF", "pptx": "PowerPoint", "xlsx": "Excel"}
+                lines = [
+                    f"- [{labels[fmt]}]({presentation['url']})"
+                    for fmt, presentation in successes
+                ]
+                if missing:
+                    lines.append(
+                        "No se han generado: " + ", ".join(labels[f] for f in missing)
+                        + ". No se confirma una entrega que no existe."
+                    )
+                    failures = [
+                        str(e.result.summary.get("mensaje", ""))[:220]
+                        for e in turn.executions
+                        if e.call.name == "generar_informe"
+                        and e.result.status.value != "ok"
+                        and isinstance(e.result.summary, dict)
+                    ]
+                    if failures:
+                        lines.append("Motivo comunicado por el motor: " + failures[-1])
+                    elif not successes:
+                        lines.append(
+                            "No hay datos verificables y completos para exportar desde esta ejecución."
+                        )
+                else:
+                    lines.insert(0, "Archivos generados y disponibles para descargar:")
+                confirmed = "\n".join(lines)
+                spoken = (
+                    "Los archivos solicitados están generados y disponibles para descargar."
+                    if not missing else
+                    "No se han podido entregar todos los documentos solicitados. Consulta el detalle en pantalla."
+                )
+                final = FinalAnswer(spoken, final.avatar_state, confirmed)
+                if missing and not successes:
+                    status = "error"
+                yield SpeechEvent(text=spoken)
 
             yield AvatarEvent(state=final.avatar_state)
             result = TurnResult(
@@ -555,7 +691,32 @@ class ConversationEngine:
                 yield SpeechEvent(text=self.persona.next_waiting_phrase(), filler=True)
             yield ProgressEvent(stage="tools", message="Consultando " + ", ".join(c.name for c in calls))
 
-            executions = await self._tools.execute_all(calls, ctx)
+            # Las exportaciones consumen una presentación producida por otra herramienta.
+            # Si GPT solicita ambas en la misma ronda, ejecutar primero las fuentes y
+            # guardar sus resultados en la sesión ANTES de llamar al exportador.
+            # No se cambia el orden de las respuestas al LLM ni sus call_id.
+            report_names = {"generar_informe", "generar_informe_ejecutivo"}
+            sources = [c for c in calls if c.name not in report_names]
+            exports = [c for c in calls if c.name in report_names]
+            if sources and exports:
+                source_execs = await self._tools.execute_all(sources, ctx)
+                for source_exec in source_execs:
+                    turn.state.update(source_exec.result.state_updates)
+                    remember_table(
+                        turn.state, source_exec.result.presentation, self._max_report_rows,
+                        source_exec.result.summary, source_tool=source_exec.call.name,
+                    )
+                # Un exportador puede depender del resultado del informe autónomo
+                # anterior. Evitar también concurrencia entre exportadores.
+                export_execs = []
+                for export_call in exports:
+                    export_exec = await self._tools.execute(export_call, ctx)
+                    export_execs.append(export_exec)
+                    turn.state.update(export_exec.result.state_updates)
+                by_id = {e.call.call_id: e for e in (*source_execs, *export_execs)}
+                executions = [by_id[c.call_id] for c in calls]
+            else:
+                executions = await self._tools.execute_all(calls, ctx)
             turn.executions.extend(executions)
             messages.append(Message(role="assistant", content="".join(raw), tool_calls=tuple(calls)))
             for execution in executions:

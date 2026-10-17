@@ -102,6 +102,14 @@ def _pct(part: float, total: float) -> float | None:
 
 
 class AnalisisEconomicoParams(ActivosParams):
+    incluir_inactivos: bool = Field(
+        default=True,
+        description=(
+            "Para análisis históricos incluir también empleados hoy inactivos que tuvieron nómina "
+            "en el periodo. True por defecto para no eliminar costes históricos; False solo si "
+            "se solicita expresamente la población actualmente activa."
+        ),
+    )
     periodo: str = Field(
         description=(
             "Expresión temporal: 'último trimestre', 'T3 2026', 'tercer trimestre', "
@@ -151,17 +159,19 @@ def _group_stats(values: list[float], people_count: int, hidden: bool, min_group
     ``hidden`` lo decide el llamador (sobre PERSONAS distintas, no sobre observaciones persona×mes: un
     grupo de 2 personas con varios meses de datos sigue siendo un grupo de 2 a efectos de NOM-005).
     """
-    n = len(values)
+    observations = len(values)
     if hidden:
         return {
-            "personas_con_nomina": n,
+            "personas_con_nomina": people_count,
+            "observaciones_nomina": observations,
             "personas_del_grupo": people_count,
             "importes": f"ocultos: grupo por debajo del mínimo de {min_group} personas (protección de datos)",
         }
-    if n == 0:
-        return {"personas_con_nomina": 0, "personas_del_grupo": people_count, "importes": "sin datos"}
+    if observations == 0:
+        return {"personas_con_nomina": 0, "observaciones_nomina": 0, "personas_del_grupo": people_count, "importes": "sin datos"}
     return {
-        "personas_con_nomina": n,
+        "personas_con_nomina": people_count,
+        "observaciones_nomina": observations,
         "personas_del_grupo": people_count,
         "total": round(sum(values), 2),
         "media": round(mean(values), 2),
@@ -400,12 +410,12 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
         table_rows.append(total_row)
 
         # 6. Tabla estadísticas salariales por departamento
-        stats_cols = ["Departamento", "Personas", "Media", "Mediana", "Mínimo", "Máximo"]
+        stats_cols = ["Departamento", "Personas distintas", "Media por nómina", "Mediana por nómina", "Mínimo", "Máximo"]
         stats_rows: list[list[Any]] = []
         for dk in dept_keys_sorted:
             display = dept_display.get(dk, dk)
             all_vals = dept_all_values.get(dk, [])
-            grp = _group_stats(all_vals, dept_people.get(dk, 0), dk in hidden_keys, min_grp)
+            grp = _group_stats(all_vals, len(dept_distinct_people.get(dk, ())), dk in hidden_keys, min_grp)
             if "total" in grp:
                 stats_rows.append([
                     display,
@@ -553,7 +563,7 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
                     dk,
                     meses,
                     dept_all_values.get(dk, []),
-                    dept_people.get(dk, 0),
+                    len(dept_distinct_people.get(dk, ())),
                     dk in hidden_keys,
                     min_grp,
                 )

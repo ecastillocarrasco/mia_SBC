@@ -356,21 +356,38 @@ def cobertura(deps: Deps) -> Tool:
             "personas_activas_sin_turnos_publicados": dict(unpublished.most_common()),
             **fresh,
         }
-        cols = ["Fecha", "Trabajo", "Mañana", "Tarde", "Noche", "Descanso", "Vacaciones", "Baja/IT"]
-        rows = [
-            [
-                v["fecha"],
-                v.get("Trabajo", 0),
-                v.get("franja mañana", 0),
-                v.get("franja tarde", 0),
-                v.get("franja noche", 0),
-                v.get("Descanso", 0),
-                v.get("Vacaciones", 0),
-                v.get("Baja/IT", 0),
-            ]
-            for v in view
-        ]
-        return ToolResult(ToolStatus.OK, summary, table("Cobertura semanal", cols, rows))
+        # La consulta original perdía el departamento en el resultado. Al pedir
+        # 8 departamentos, el 2D fusionaba 8 x 7 filas SIN saber a qué grupo
+        # correspondían. Agrupar ahora en la propia fuente, antes de presentar o
+        # exportar: la dimensión Departamento queda explícita en cada fila.
+        grouped: dict[str, dict[date, Counter[str]]] = defaultdict(lambda: defaultdict(Counter))
+        labels: dict[str, str] = {}
+        for shift in shifts:
+            key = shift.department_key or normalize_key(shift.department or "Sin departamento")
+            labels[key] = shift.department or shift.department_key or "Sin departamento"
+            counts = grouped[key][shift.day]
+            counts[shift.kind] += 1
+            if shift.kind == ShiftKind.TRABAJO:
+                counts[f"franja {franja_of(shift) or 'sin horario'}"] += 1
+        cols = ["Departamento", "Fecha", "Trabajo", "Mañana", "Tarde", "Noche", "Descanso", "Vacaciones", "Baja/IT"]
+        rows = []
+        for key in sorted(grouped, key=lambda k: labels[k].casefold()):
+            for offset in range(7):
+                day = start + timedelta(days=offset)
+                c = grouped[key][day]
+                rows.append([
+                    labels[key], day.isoformat(), c[ShiftKind.TRABAJO],
+                    c["franja mañana"], c["franja tarde"], c["franja noche"],
+                    c["Descanso"], c["Vacaciones"], c["Baja/IT"],
+                ])
+        if not rows:
+            # Un departamento sin turnos NO equivale a siete días de
+            # cobertura cero confirmada. Informar de la ausencia de registros.
+            summary["advertencias"] = ["No hay turnos publicados en este periodo o filtro."]
+        if fresh.get("al_dia") is False and fresh.get("aviso"):
+            summary.setdefault("advertencias", []).append(str(fresh["aviso"]))
+        summary["departamentos_en_turnos"] = sorted(labels.values(), key=str.casefold)
+        return ToolResult(ToolStatus.OK, summary, table("Cobertura semanal por departamento", cols, rows))
 
     return Tool(
         "cobertura_semanal",

@@ -25,6 +25,10 @@ from mia.modules.rrhh.common import Deps, department_problem, resolve_department
 from mia.modules.rrhh.informes.document import Document, to_document
 from mia.modules.rrhh.informes.render import RENDERERS
 from mia.reporting.narrative_generation import generate_narrative_block
+from mia.reporting.content_composer import MissingReportEvidence, compose_for_request
+from mia.reporting.comparisons import (
+    explicit_month_comparison, merge_payroll_comparison, remembered_comparison,
+)
 from mia.reporting.planner import planner
 
 
@@ -117,6 +121,17 @@ async def _build_report_result(
         )
         if narrative is not None:
             document.blocks.append(narrative)
+    try:
+        document = await compose_for_request(
+            document, ctx.user_message, deps.llm,
+            llm_settings=getattr(deps.settings, "llm", None),
+        )
+    except MissingReportEvidence as exc:
+        return ToolResult(
+            ToolStatus.INVALID_ARGUMENTS,
+            {"mensaje": "No hay evidencia suficiente para cumplir toda la petición; no se genera un informe incompleto.",
+             "requisitos_pendientes": exc.missing},
+        )
     logo_path = settings.logo_path if settings else None
     content = await asyncio.to_thread(_render, formato, document, ctx.now, logo_path)
     report_id = _uuid()
@@ -129,7 +144,10 @@ async def _build_report_result(
     # usuario que esté autenticado ENTONCES — nunca solo la propiedad, que es lo único que comprobaba
     # antes `GET /api/reports/{id}`. El resto de dominios queda exactamente igual que siempre (`None`).
     required_permission = (
-        Permission.NOMINAS_IMPORTES.value if presentation.get("__source_tool__") in _PAYROLL_SOURCE_TOOLS else None
+        Permission.NOMINAS_IMPORTES.value
+        if presentation.get("__source_tool__") in _PAYROLL_SOURCE_TOOLS
+        or "analisis_economico_nominas" in tool_name
+        else None
     )
     async with deps.db.session() as db:
         db.add(
@@ -166,6 +184,27 @@ async def _build_report_result(
 
 
 _PAYROLL_SOURCE_TOOLS = frozenset({"analisis_economico_nominas"})
+
+
+def _contextual_payroll_concept(state: dict) -> str | None:
+    """El último resultado económico puede aportar el concepto, nunca cifras o periodos nuevos.
+
+    Útil para seguimientos como «PDF de la comparación agosto 2025 y 2026»,
+    donde el usuario no repite «nóminas», pero la tabla reciente está auditada
+    como resultado salarial. El motor SIEMPRE vuelve a consultar ambos meses.
+    """
+    last = state.get(LAST_TABLE)
+    if not isinstance(last, dict) or last.get("__source_tool__") not in _PAYROLL_SOURCE_TOOLS:
+        return None
+    summary = last.get("__summary__") or {}
+    if not isinstance(summary, dict):
+        return None
+    label = normalize_key(summary.get("concepto_economico", ""))
+    return {
+        "coste empresa": "coste_empresa",
+        "devengado bruto": "devengado",
+        "liquido neto": "liquido",
+    }.get(label)
 """Herramientas cuyo resultado SÍ puede contener coste salarial real. Si la petición original pide un
 dato económico de nómina pero la última tabla no viene de ninguna de estas, exportarla sería entregar
 un informe semánticamente distinto del que se pidió (ver sección 15/incidencia de costes por
@@ -174,11 +213,54 @@ departamento) — se rechaza en vez de exportar en silencio."""
 
 def generar(deps: Deps) -> Tool:
     async def handler(p: InformeParams, ctx: ToolContext) -> ToolResult:
+        # Si hay dos meses explícitos de nóminas, no exportar la última
+        # ejecución aislada como si fuera una comparativa. Recalcular ambos
+        # periodos por la MISMA herramienta autorizada y consolidarlos.
+        if ctx.user_message:
+            request_plan = planner.plan(ctx.user_message, user=ctx.user, today=ctx.now.date())
+            has_payroll = any(m.field.domain == "payroll" for m in request_plan.metrics)
+            comparison = explicit_month_comparison(ctx.user_message)
+            remembered = None
+            if comparison is None and not any(m.field.domain != "payroll" for m in request_plan.metrics):
+                remembered = remembered_comparison(ctx.session_state, ctx.user_message)
+                if remembered:
+                    comparison = remembered[0]
+            if has_payroll and request_plan.compare and not comparison and len(set(re.findall(r"\b20\d{2}\b", ctx.user_message))) >= 2:
+                return ToolResult(
+                    ToolStatus.INVALID_ARGUMENTS,
+                    {"mensaje": (
+                        "La petición compara dos ejercicios, pero no se han identificado dos meses concretos "
+                        "con año. No exportaré un solo periodo como si fuera una comparativa. "
+                        "Indica ambos meses explícitamente, por ejemplo 'agosto 2025 y agosto 2026'."
+                    )},
+                )
+            contextual_concept = _contextual_payroll_concept(ctx.session_state)
+            if comparison and (has_payroll or remembered or
+                               (contextual_concept and not request_plan.metrics)):
+                payroll_names = (remembered[1] if remembered else
+                                 {m.field.name for m in request_plan.metrics if m.field.domain == "payroll"})
+                concepto = (_infer_concepto(payroll_names) if payroll_names else contextual_concept)
+                return await _run_economic_comparison(
+                    deps, ctx, comparison, formato=p.formato, titulo=p.titulo,
+                    incluir_detalle=p.incluir_detalle, incluir_grafico=p.incluir_grafico,
+                    incluir_narrativa=p.incluir_narrativa, concepto=concepto,
+                )
         presentation = ctx.session_state.get(LAST_TABLE)
         if not presentation:
             return ToolResult(
                 ToolStatus.NOT_FOUND,
                 "No hay ningún resultado reciente (tabla, panel o ficha) para el informe.",
+            )
+        export_meta = presentation.get("__export_meta__") or {}
+        if export_meta.get("truncated"):
+            names = ", ".join(item["table"] for item in export_meta.get("tables", []))
+            return ToolResult(
+                ToolStatus.INVALID_ARGUMENTS,
+                {"mensaje": (
+                    "No se puede generar un informe íntegro desde el resultado abreviado de la sesión "
+                    f"({names}). Vuelve a ejecutar la consulta con una fuente de exportación completa; "
+                    "no se publicará un documento que omita filas sin advertirlo."
+                )},
             )
         # Fase F, punto 1 (revisado: "procedencia del análisis económico"): el plan de la petición no
         # es solo una sugerencia para el LLM — se valida contra la EJECUCIÓN que de verdad produjo lo
@@ -243,14 +325,17 @@ def generar(deps: Deps) -> Tool:
 
     return Tool(
         "generar_informe",
-        "Genera un PDF, Excel o PowerPoint (plantilla corporativa) con el último resultado de la "
-        "conversación: una tabla, el panel de RRHH, una ficha 360, una búsqueda de candidatos… "
-        "y devuelve el enlace. Úsalo para «dame un Excel de los candidatos encontrados» o "
-        "«exporta esta tabla a PDF».",
+        "Genera informes PDF, Excel, PowerPoint y HTML con marca corporativa. Si el usuario "
+        "pide comparar nóminas o costes de un mes en dos años, consulta internamente ambos periodos "
+        "en la fuente autorizada y produce un ÚNICO informe comparativo; NO exige que los dos "
+        "resultados estén activos ni almacenados en la sesión. También permite exportar la "
+        "última tabla, panel o ficha ya calculada. Nunca inventes que deben activarse dos "
+        "resultados a la vez. Ejemplo: «PDF de costes por departamento de agosto 2025 y 2026».",
         InformeParams,
         handler,
         permission=Permission.INFORMES_GENERAR,
         audit_resource="informes",
+        timeout_seconds=600,
     )
 
 
@@ -290,6 +375,64 @@ def _infer_concepto(payroll_field_names: set[str]) -> str:
     return "liquido"
 
 
+async def _run_economic_comparison(
+    deps: Deps,
+    ctx: ToolContext,
+    periods: tuple[str, str],
+    *,
+    formato: str,
+    titulo: str | None,
+    incluir_detalle: bool,
+    incluir_grafico: bool,
+    incluir_narrativa: bool,
+    departamento: str | None = None,
+    concepto: str = "coste_empresa",
+) -> ToolResult:
+    """Consulta los dos meses por el ToolRegistry y compone un solo informe.
+
+    No se usa ningún segundo motor, SQL sin autorización, ni restas de grupos
+    ocultos. Las consultas usan la misma herramienta real y sus controles NOM-005.
+    """
+    from mia.llm import ToolCall  # noqa: PLC0415
+
+    registry: ToolRegistry | None = deps.services.get("registry")
+    if registry is None:
+        return ToolResult(ToolStatus.ERROR, "El registro de herramientas no está disponible.")
+    results = []
+    for index, period in enumerate(periods):
+        call = ToolCall(
+            f"reporte-comparativo-{index}",
+            "analisis_economico_nominas",
+            json.dumps({"periodo": period, "concepto": concepto,
+                        "departamento": departamento, "incluir_inactivos": True}),
+        )
+        execution = await registry.execute(call, ctx)
+        if execution.result.status is not ToolStatus.OK:
+            return execution.result
+        if not isinstance(execution.result.summary, dict):
+            return ToolResult(ToolStatus.ERROR, "La fuente económica no devolvió un resumen verificable.")
+        results.append(execution.result)
+    try:
+        presentation, summary = merge_payroll_comparison(
+            results[0].summary, results[1].summary, periods,
+        )
+    except ValueError as exc:
+        return ToolResult(ToolStatus.INVALID_ARGUMENTS, {"mensaje": str(exc)})
+    presentation["__source_tool__"] = "analisis_economico_nominas"
+    presentation["__summary__"] = summary
+    remember_table(
+        ctx.session_state, presentation,
+        getattr(getattr(deps.settings, "reports", None), "max_rows", 5000), summary,
+        source_tool="analisis_economico_nominas",
+    )
+    return await _build_report_result(
+        deps, ctx, presentation, formato=formato, titulo=titulo,
+        incluir_detalle=incluir_detalle, incluir_grafico=incluir_grafico,
+        incluir_narrativa=incluir_narrativa,
+        tool_name="generar_informe->analisis_economico_nominas_comparativa",
+    )
+
+
 async def _redirect_to_economic_analysis(
     deps: Deps, ctx: ToolContext, p: InformeEjecutivoParams, lo: date, hi: date, concepto: str
 ) -> ToolResult:
@@ -304,6 +447,30 @@ async def _redirect_to_economic_analysis(
         return ToolResult(
             ToolStatus.ERROR,
             "No se puede redirigir al análisis económico: el registro de herramientas no está disponible.",
+        )
+    request_plan = planner.plan(ctx.user_message, user=ctx.user, today=ctx.now.date()) if ctx.user_message else None
+    comparison = explicit_month_comparison(ctx.user_message) if request_plan else None
+    remembered = None
+    if comparison is None and request_plan is not None and not any(
+        m.field.domain != "payroll" for m in request_plan.metrics
+    ):
+        remembered = remembered_comparison(ctx.session_state, ctx.user_message)
+        if remembered:
+            comparison = remembered[0]
+            concepto = _infer_concepto(remembered[1])
+    if request_plan and request_plan.compare and not comparison and len(set(re.findall(r"\b20\d{2}\b", ctx.user_message))) >= 2:
+        return ToolResult(
+            ToolStatus.INVALID_ARGUMENTS,
+            {"mensaje": (
+                "No se puede generar una comparativa salarial fiable: hay dos ejercicios en la petición "
+                "pero no se han identificado dos meses completos. Especifica los dos meses y años."
+            )},
+        )
+    if comparison:
+        return await _run_economic_comparison(
+            deps, ctx, comparison, formato=p.formato, titulo=p.titulo,
+            incluir_detalle=True, incluir_grafico=True, incluir_narrativa=False,
+            departamento=p.departamento, concepto=concepto,
         )
     periodo = f"{lo:%Y-%m} a {hi:%Y-%m}"
     eco_call = ToolCall(
@@ -334,7 +501,8 @@ async def _redirect_to_economic_analysis(
     return await _build_report_result(
         deps,
         ctx,
-        eco_result.presentation,
+        {**eco_result.presentation, "__source_tool__": "analisis_economico_nominas",
+         "__summary__": eco_result.summary},
         formato=p.formato,
         titulo=p.titulo,
         incluir_detalle=True,
@@ -369,8 +537,18 @@ def generar_ejecutivo(deps: Deps) -> Tool:
         # técnico ni una mera indicación de qué herramienta usar.
         if request_plan is not None:
             payroll_names = {m.field.name for m in request_plan.metrics if m.field.domain == "payroll"}
-            if payroll_names:
-                return await _redirect_to_economic_analysis(deps, ctx, p, lo, hi, _infer_concepto(payroll_names))
+            previous_pair = None
+            if not any(m.field.domain != "payroll" for m in request_plan.metrics):
+                previous_pair = remembered_comparison(ctx.session_state, ctx.user_message)
+            contextual_concept = None
+            if (not payroll_names and not previous_pair and not request_plan.metrics
+                    and explicit_month_comparison(ctx.user_message)):
+                contextual_concept = _contextual_payroll_concept(ctx.session_state)
+            if payroll_names or previous_pair or contextual_concept:
+                if previous_pair and not payroll_names:
+                    payroll_names = previous_pair[1]
+                concepto = _infer_concepto(payroll_names) if payroll_names else contextual_concept
+                return await _redirect_to_economic_analysis(deps, ctx, p, lo, hi, concepto)
 
         dept_key: str | None = None
         dept_name: str | None = None
@@ -385,6 +563,17 @@ def generar_ejecutivo(deps: Deps) -> Tool:
         document = await build_executive_report(deps, lo, hi, today, dept_key, dept_name)
         if p.titulo:
             document.title = p.titulo
+        try:
+            document = await compose_for_request(
+                document, ctx.user_message, deps.llm,
+                llm_settings=getattr(deps.settings, "llm", None),
+            )
+        except MissingReportEvidence as exc:
+            return ToolResult(
+                ToolStatus.INVALID_ARGUMENTS,
+                {"mensaje": "El informe no dispone de todos los indicadores solicitados.",
+                 "requisitos_pendientes": exc.missing},
+            )
 
         settings = deps.settings.reports if deps.settings else None
         directory = Path(settings.directory if settings else "informes")
@@ -447,7 +636,7 @@ def generar_ejecutivo(deps: Deps) -> Tool:
         handler,
         permission=Permission.INFORMES_GENERAR,
         audit_resource="informes",
-        timeout_seconds=90,
+        timeout_seconds=600,
     )
 
 

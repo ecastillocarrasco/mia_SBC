@@ -279,11 +279,21 @@ async def _collect_blocks(
 
         # Tendencia mensual — agregado total por mes (chartable)
         by_month: Counter[str] = Counter()
-        months_es = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
-        for x in absence_data:
-            # Cuenta días dentro del periodo por mes de inicio
-            by_month[months_es[x.start.month - 1]] += x.days_within(lo, hi)
-        trend_rows = [[mes, by_month.get(mes, 0)] for mes in months_es if by_month.get(mes, 0) > 0]
+        cursor = lo.replace(day=1)
+        while cursor <= hi:
+            if cursor.month == 12:
+                next_month = cursor.replace(year=cursor.year + 1, month=1)
+            else:
+                next_month = cursor.replace(month=cursor.month + 1)
+            month_end = min(hi, next_month - timedelta(days=1))
+            month_start = max(lo, cursor)
+            # Misma lógica de solapamiento de absence_periods.days_within,
+            # pero acotada a cada mes natural; la suma debe coincidir con el periodo.
+            days = sum(x.days_within(month_start, month_end) for x in absence_data)
+            if days:
+                by_month[cursor.strftime("%Y-%m")] = days
+            cursor = next_month
+        trend_rows = [[mes, days] for mes, days in sorted(by_month.items())]
         if trend_rows:
             blocks.append(
                 Block(

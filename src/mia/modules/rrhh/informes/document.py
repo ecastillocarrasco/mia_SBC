@@ -290,8 +290,19 @@ def to_document(
         # primera clase (Block(kind="chart"), Fase D) — ya calculados por el backend, nunca re-derivados.
         explicit_charts = presentation.get("charts")
         if include_chart and isinstance(explicit_charts, list) and explicit_charts:
+            seen_chart_values: set[str] = set()
             for spec in explicit_charts:
                 if isinstance(spec, dict) and spec.get("labels") and spec.get("series"):
+                    # Ranking y donut de la misma distribución no aportan dos lecturas
+                    # distintas al informe y ocupaban páginas completas duplicadas.
+                    import json
+                    signature = json.dumps(
+                        [spec["labels"], [s.get("values") for s in spec["series"]]],
+                        ensure_ascii=False, sort_keys=True, default=str,
+                    )
+                    if signature in seen_chart_values:
+                        continue
+                    seen_chart_values.add(signature)
                     doc.blocks.append(Block("chart", str(spec.get("title") or doc.title), spec))
         elif include_chart:
             # Chart block from summary distribution data (comportamiento existente, sin tocar)
@@ -315,7 +326,7 @@ def to_document(
 
         # Estadísticas adjuntas (p. ej. percentiles salariales): tabla adicional, no se pierden.
         stats = presentation.get("stats")
-        if isinstance(stats, dict) and stats.get("rows"):
+        if include_detail and isinstance(stats, dict) and stats.get("rows"):
             doc.blocks.append(Block("table", str(stats.get("title") or "Estadísticas"), stats))
 
         return doc

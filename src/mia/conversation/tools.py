@@ -304,10 +304,26 @@ def remember_table(
     if not presentation or presentation.get("type") in {None, "download"}:
         return
     stored = dict(presentation)
+    truncated: list[dict[str, Any]] = []
+    limit = max(0, int(max_rows))
     if stored.get("type") == "table":
-        stored["rows"] = list(stored.get("rows") or [])[:max_rows]
+        source_rows = list(stored.get("rows") or [])
+        if len(source_rows) > limit:
+            truncated.append({"table": str(stored.get("title", "principal")), "total": len(source_rows), "stored": limit})
+        stored["rows"] = source_rows[:limit]
+    copied_tables = []
     for sub_table in stored.get("tables") or []:
-        sub_table["rows"] = list(sub_table.get("rows") or [])[:max_rows]
+        copied = dict(sub_table)
+        source_rows = list(copied.get("rows") or [])
+        if len(source_rows) > limit:
+            truncated.append({"table": str(copied.get("title", "secundaria")), "total": len(source_rows), "stored": limit})
+        copied["rows"] = source_rows[:limit]
+        copied_tables.append(copied)
+    if "tables" in stored:
+        stored["tables"] = copied_tables
+    # El buffer de conversación NO es un almacén de datasets completos. El
+    # exportador debe rechazar una fuente incompleta, nunca generar cifras parciales.
+    stored["__export_meta__"] = {"truncated": bool(truncated), "tables": truncated}
     if isinstance(summary, dict):
         stored["__summary__"] = dict(summary)
     if source_tool:

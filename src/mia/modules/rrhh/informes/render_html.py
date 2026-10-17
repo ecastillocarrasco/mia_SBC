@@ -22,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from mia.assets import resolve_logo
 from mia.modules.rrhh.charts import chart_spec
 from mia.modules.rrhh.informes.document import Block, Document
 
@@ -59,21 +60,41 @@ def _logo_data_uri(logo: Path | None) -> str | None:
 # ------------------------------------------------------------------ gráficos SVG (sin JS, sin CDN)
 def _svg_bar(spec: dict[str, Any], *, horizontal: bool = False) -> str:
     labels = spec["labels"]
-    series = spec["series"][:1]
-    values = [v or 0.0 for v in series[0]["values"]] if series else []
-    width, height = 560, 60 + 32 * len(labels)
-    if not values:
+    series = spec.get("series", [])
+    if not series:
         return ""
-    vmax = max(values) or 1.0
+    n = len(series)
+    row_h = max(38, 18 + 20 * n)
+    width, height = 650, 42 + row_h * len(labels)
+    values = [float(v or 0) for s in series for v in s["values"]]
+    vmax = max([1.0, *[abs(v) for v in values]])
+    has_negative = any(v < 0 for v in values)
+    zero_x = 330 if has_negative else 152
+    positive_width, negative_width = (210, 170) if has_negative else (340, 0)
     bars = []
-    for i, (label, value) in enumerate(zip(labels, values, strict=True)):
-        y = 20 + i * 32
-        bar_w = max(2.0, (value / vmax) * 380)
-        bars.append(
-            f'<text x="0" y="{y + 14}" font-size="11" fill="{MUTED}">{_esc(label)[:28]}</text>'
-            f'<rect x="150" y="{y}" width="{bar_w:.1f}" height="20" rx="3" fill="{PALETTE[i % len(PALETTE)]}" />'
-            f'<text x="{150 + bar_w + 6:.1f}" y="{y + 14}" font-size="11" fill="{NAVY}">{_esc(round(value, 2))}</text>'
+    if has_negative:
+        bars.append(f'<line x1="{zero_x}" x2="{zero_x}" y1="3" y2="{height-10}" stroke="{LINE}" stroke-width="1.5" />')
+    for i, label in enumerate(labels):
+        y = 16 + i * row_h
+        bars.append(f'<text x="0" y="{y + 12}" font-size="11" fill="{MUTED}">{_esc(str(label)[:22])}</text>')
+        for j, s in enumerate(series):
+            value = float(s["values"][i] or 0)
+            bar_w = max(1.0, abs(value) / vmax * (negative_width if value < 0 else positive_width))
+            bar_y = y + 16 + j * 19
+            bar_x = zero_x - bar_w if value < 0 else zero_x
+            label_x = bar_x - 6 if value < 0 else bar_x + bar_w + 8
+            anchor = "end" if value < 0 else "start"
+            bars.append(
+                f'<rect x="{bar_x:.1f}" y="{bar_y}" width="{bar_w:.1f}" height="14" rx="2" fill="{PALETTE[j % len(PALETTE)]}" />'
+                f'<text x="{label_x:.1f}" y="{bar_y + 11}" font-size="10" text-anchor="{anchor}" fill="{NAVY}">{_esc(round(value, 2))}</text>'
+            )
+    if n > 1:
+        legend = " ".join(
+            f'<span class="legend-dot" style="background:{PALETTE[j % len(PALETTE)]}"></span>{_esc(str(s.get("name", f"Serie {j+1}")))}'
+            for j, s in enumerate(series)
         )
+        bars.append(f'<foreignObject x="0" y="{height - 5}" width="650" height="1"></foreignObject>')
+        return f'<div><div class="legend">{legend}</div><svg viewBox="0 0 {width} {height}" width="100%" role="img" aria-label="{_esc(spec.get("title"))}">' + "".join(bars) + "</svg></div>"
     return f'<svg viewBox="0 0 {width} {height}" width="100%" role="img" aria-label="{_esc(spec.get("title"))}">' + "".join(bars) + "</svg>"
 
 
@@ -138,12 +159,19 @@ def _svg_line(spec: dict[str, Any], *, area: bool = False) -> str:
     for i, label in enumerate(labels):
         x = pad + i * step
         parts.append(f'<text x="{x:.1f}" y="{height - 8}" font-size="10" fill="{MUTED}" text-anchor="middle">{_esc(label)[:10]}</text>')
-    return f'<svg viewBox="0 0 {width} {height}" width="100%" role="img" aria-label="{_esc(spec.get("title"))}">' + "".join(parts) + "</svg>"
+    svg = f'<svg viewBox="0 0 {width} {height}" width="100%" role="img" aria-label="{_esc(spec.get("title"))}">' + "".join(parts) + "</svg>"
+    if len(series) > 1:
+        legend = " ".join(
+            f'<span class="legend-dot" style="background:{PALETTE[i % len(PALETTE)]}"></span>{_esc(str(s.get("name", f"Serie {i + 1}")))}'
+            for i, s in enumerate(series)
+        )
+        return f'<div><div class="legend">{legend}</div>{svg}</div>'
+    return svg
 
 
 def _chart_svg(spec: dict[str, Any]) -> str:
     kind = spec.get("type")
-    if kind == "donut":
+    if kind == "donut" and len(spec.get("series", [])) == 1:
         return _svg_donut(spec)
     if kind in ("line",):
         return _svg_line(spec, area=False)
@@ -237,56 +265,62 @@ def _render_block(block: Block, *, chart_of: Any) -> str:
 
 _STYLE = f"""
 :root {{ --navy:{NAVY}; --gold:{GOLD}; --light:{LIGHT}; --line:{LINE}; --muted:{MUTED}; }}
-* {{ box-sizing: border-box; }}
-body {{ margin:0; font-family: Helvetica, Arial, sans-serif; color:#222; background:#fff; }}
-.page {{ max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }}
-.header {{ display:flex; align-items:center; gap:16px; border-bottom:3px solid var(--gold); padding-bottom:12px; margin-bottom:24px; }}
-.header img {{ height:56px; }}
-.header h1 {{ color:var(--navy); font-size:1.6rem; margin:0; }}
-.header .meta {{ color:var(--muted); font-size:0.9rem; }}
-.block {{ margin-bottom:32px; page-break-inside: avoid; }}
-.block h2 {{ color:var(--navy); font-size:1.15rem; border-left:4px solid var(--gold); padding-left:10px; margin-bottom:12px; }}
-.kpi-grid {{ display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:12px; }}
-.kpi-card {{ background:var(--light); border:1px solid var(--line); border-radius:8px; padding:14px; text-align:center; }}
-.kpi-value {{ color:var(--navy); font-weight:bold; font-size:1.3rem; }}
-.kpi-label {{ color:var(--muted); font-size:0.78rem; margin-top:4px; }}
-.section-list {{ display:grid; grid-template-columns: max-content 1fr; gap:6px 16px; }}
-.section-list dt {{ color:var(--muted); font-weight:bold; font-size:0.85rem; }}
-.section-list dd {{ margin:0; }}
-.table-wrap {{ overflow-x:auto; }}
-table {{ width:100%; border-collapse:collapse; font-size:0.88rem; }}
-th {{ background:var(--navy); color:#fff; text-align:left; padding:8px; position:sticky; top:0; }}
-td {{ padding:7px 8px; border-bottom:1px solid var(--line); }}
-tbody tr:nth-child(even) {{ background:var(--light); }}
-.warning-list, .narrative-list, .methodology-list {{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px; }}
-.warning-item {{ border-left:4px solid var(--muted); background:var(--light); padding:8px 12px; border-radius:4px; }}
-.warning-badge, .narrative-badge {{ font-weight:bold; font-size:0.78rem; }}
-.narrative-item {{ border-left:4px solid var(--gold); background:var(--light); padding:8px 12px; border-radius:4px; }}
-.narrative-item .evidence {{ color:var(--muted); font-size:0.78rem; font-style:italic; margin:4px 0 0; }}
-.methodology-list {{ list-style:decimal; padding-left:1.2rem; }}
-.annex-notice {{ color:var(--gold); font-style:italic; font-size:0.85rem; }}
-.donut-wrap {{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; }}
-.legend-dot {{ display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }}
-.legend {{ font-size:0.85rem; }}
-footer {{ color:var(--muted); font-size:0.78rem; text-align:right; margin-top:32px; }}
-@media (max-width: 600px) {{
-  .header {{ flex-direction:column; align-items:flex-start; }}
-  .kpi-grid {{ grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }}
-}}
-@media print {{
-  .block {{ page-break-inside: avoid; }}
-  body {{ background:#fff; }}
-}}
+* {{ box-sizing:border-box; }}
+html {{ scroll-behavior:smooth; }}
+body {{ margin:0; font-family:'Aptos','Segoe UI',system-ui,-apple-system,sans-serif; color:#283045; background:#f2f4f8; line-height:1.55; }}
+.page {{ max-width:1120px; margin:32px auto; background:#fff; padding:42px 44px 52px; box-shadow:0 16px 60px rgba(27,37,89,.09); border:1px solid #e6e8ed; border-radius:22px; }}
+.header {{ display:flex; align-items:center; gap:26px; padding:0 0 28px; border-bottom:2px solid var(--gold); margin-bottom:30px; }}
+.header img {{ height:84px; width:auto; max-width:180px; object-fit:contain; flex-shrink:0; }}
+.header h1 {{ color:var(--navy); letter-spacing:-.03em; font-weight:750; font-size:clamp(1.65rem,3vw,2.25rem); line-height:1.15; margin:0 0 12px; overflow-wrap:anywhere; }}
+.header .meta {{ color:var(--muted); font-size:.9rem; }}
+.block {{ margin-bottom:34px; break-inside:auto; }}
+.block h2 {{ color:var(--navy); font-weight:700; font-size:1.22rem; letter-spacing:-.015em; border-left:5px solid var(--gold); padding-left:14px; margin:0 0 20px; }}
+.kpi-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(205px,1fr)); gap:14px; }}
+.kpi-card {{ background:linear-gradient(145deg,#fff 0%,#f7f5f2 100%); border:1px solid var(--line); border-top:3px solid var(--gold); border-radius:14px; padding:22px 21px 19px; min-height:118px; box-shadow:0 5px 14px rgba(27,37,89,.04); text-align:left; overflow-wrap:anywhere; }}
+.kpi-value {{ color:var(--navy); font-weight:760; font-size:clamp(1.4rem,2.6vw,2rem); letter-spacing:-.035em; line-height:1.2; font-variant-numeric:tabular-nums; }}
+.kpi-label {{ color:var(--muted); font-weight:550; font-size:.82rem; margin-top:13px; }}
+.section-list {{ display:grid; grid-template-columns:minmax(150px,30%) minmax(0,1fr); gap:0 22px; border-top:1px solid var(--line); }}
+.section-list dt,.section-list dd {{ border-bottom:1px solid var(--line); padding:12px 0; }}
+.section-list dt {{ color:var(--muted); font-weight:650; font-size:.88rem; }}
+.section-list dd {{ margin:0; overflow-wrap:anywhere; }}
+.chart {{ background:#fff; border:1px solid var(--line); border-radius:16px; padding:20px 22px; overflow:auto; }}
+.chart svg {{ max-width:100%; height:auto; }}
+.table-wrap {{ overflow-x:auto; border-radius:12px; border:1px solid var(--line); }}
+table {{ width:100%; border-collapse:separate; border-spacing:0; font-size:.9rem; font-variant-numeric:tabular-nums; }}
+th {{ background:var(--navy); color:#fff; text-align:left; padding:12px 15px; position:sticky; top:0; z-index:1; white-space:normal; font-weight:650; }}
+td {{ padding:12px 15px; border-bottom:1px solid var(--line); overflow-wrap:anywhere; vertical-align:middle; }}
+tbody tr:nth-child(even) {{ background:#f8f6f3; }}
+tbody tr:hover {{ background:#f3f4fa; }}
+tbody tr:last-child td {{ border-bottom:0; }}
+td:first-child {{ color:var(--navy); font-weight:640; }}
+.warning-list,.narrative-list,.methodology-list {{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:13px; }}
+.warning-item {{ border-left:4px solid var(--muted); background:var(--light); padding:16px 20px; border-radius:10px; }}
+.warning-item p,.narrative-item p {{ margin:8px 0 0; }}
+.warning-badge,.narrative-badge {{ font-weight:750; font-size:.72rem; letter-spacing:.055em; }}
+.narrative-item {{ border-left:4px solid var(--gold); background:var(--light); padding:17px 21px; border-radius:10px; }}
+.narrative-item .evidence {{ color:var(--muted); font-size:.8rem; font-style:italic; margin:8px 0 0; }}
+.methodology-list {{ list-style:decimal; padding-left:1.8rem; }}
+.annex-notice {{ color:#8b5f26; font-size:.85rem; font-weight:600; }}
+.donut-wrap {{ display:flex; align-items:center; gap:28px; flex-wrap:wrap; }}
+.legend-dot {{ display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:7px; }}
+.legend {{ font-size:.85rem; display:flex; flex-wrap:wrap; column-gap:18px; row-gap:9px; color:var(--muted); }}
+footer {{ color:var(--muted); border-top:1px solid var(--line); padding-top:18px; font-size:.78rem; text-align:right; margin-top:34px; }}
+@media (max-width:700px) {{ .page{{margin:0;padding:24px 16px;border-radius:0;box-shadow:none;}} .header{{gap:15px;align-items:flex-start;flex-direction:column;}} .header img{{height:60px;}} .kpi-grid{{grid-template-columns:repeat(auto-fit,minmax(145px,1fr));}} .section-list{{grid-template-columns:1fr;}} .section-list dt{{border-bottom:none;padding-bottom:0;}} .section-list dd{{padding-top:2px;}} }}
+@media print {{ @page{{margin:16mm;}} body{{background:#fff;}} .page{{max-width:none;margin:0;border:0;padding:0;box-shadow:none;}} .header,.kpi-card,.warning-item,.narrative-item{{break-inside:avoid;}} .block{{break-inside:auto;}} tr{{break-inside:avoid;}} th{{position:static;}} .chart{{break-inside:avoid;}} }}
 """
 
 
 def to_html(doc: Document, generated: datetime, logo: Path | None = None) -> bytes:
-    logo_uri = _logo_data_uri(logo)
-    logo_html = f'<img src="{logo_uri}" alt="Logotipo Sunset Beach Club" />' if logo_uri else ""
+    # Ningun HTML corporativo debe salir sin el logotipo embebido.
+    logo_uri = _logo_data_uri(resolve_logo(logo))
+    if not logo_uri:
+        raise FileNotFoundError("El logotipo de Sunset Beach Club es obligatorio")
+    logo_html = f'<img src="{logo_uri}" alt="Logotipo Sunset Beach Club" />' 
     meta = "  ·  ".join(x for x in [doc.subtitle, *doc.badges] if x)
+    has_explicit_chart = any(b.kind == "chart" for b in doc.blocks)
 
     def chart_of(block: Block) -> dict[str, Any] | None:
-        if block.kind != "table":
+        if block.kind != "table" or has_explicit_chart:
             return None
         columns, rows = _rows(block)
         return chart_spec(block.title, columns, rows)
