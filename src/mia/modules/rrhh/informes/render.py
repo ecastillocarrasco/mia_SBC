@@ -145,11 +145,19 @@ def to_xlsx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
     wb.remove(wb.active)
     has_explicit_chart = any(b.kind == "chart" for b in doc.blocks)
     for index, block in enumerate(doc.blocks or [Block("section", "Informe", {})], 1):
-        base_name = (block.title or f"Hoja {index}")[:25].replace("/", "-").replace("\\", "-").replace(":", "-")
+        raw_title = block.title or f"Hoja {index}"
+        for bad_char in r"/\:?*[]":
+            raw_title = raw_title.replace(bad_char, "-")
+        # 31 es el límite real de Excel para un nombre de hoja (no una cifra arbitraria más corta):
+        # truncar antes de eso recortaba títulos que sí cabían (p. ej. "Plantilla por departamento",
+        # 26 caracteres, perdía la última letra). El sufijo de desambiguación " (N)" se descuenta de
+        # ese mismo límite, nunca de uno más corto.
+        base_name = raw_title[:31]
         name = base_name or f"Hoja {index}"
         suffix = 2
         while name in wb.sheetnames:
-            name = f"{base_name[:25]} ({suffix})"
+            tag = f" ({suffix})"
+            name = f"{base_name[:31 - len(tag)]}{tag}"
             suffix += 1
         ws = wb.create_sheet(name)
         ws.sheet_view.showGridLines = False
