@@ -231,6 +231,10 @@ def test_report_planner_resolves_domains_beyond_payroll() -> None:
         "resumen de absentismo por turnos este trimestre": "shift",
         "saldo de vacaciones del equipo": "vacation",
         "plantilla por departamento": "employee",
+        # Incidencia real (variante sin "costes"/"nóminas"): "Genera importe de gastos por
+        # departamento en 2026" no reconocía ningún campo económico y el guard de generar_informe
+        # nunca se activaba, exportando en silencio la última tabla ajena de la sesión.
+        "Genera importe de gastos por departamento en 2026": "payroll",
     }
     for text, expected_domain in cases.items():
         plan = planner.plan(text, user=ADMIN, today=today)

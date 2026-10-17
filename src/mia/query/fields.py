@@ -275,7 +275,13 @@ def _build_default() -> SemanticFieldRegistry:
         ("coste empresa", "coste total", "coste laboral", "coste de personal",
          "gasto de personal", "coste patron", "coste patronal", "coste salarial", "costes salariales",
          "coste de los salarios", "coste en nominas", "costes en nominas", "coste de nomina",
-         "costes de nomina", "gasto en nominas", "gastos en nominas"),
+         "costes de nomina", "gasto en nominas", "gastos en nominas",
+         # Sin "en nominas"/"de personal": hoy no hay ninguna otra fuente de gasto conectada
+         # (finanzas sigue sin backend real), así que "gasto"/"gastos" a secas también es esto —
+         # ver incidencia real: "importe de gastos por departamento" no coincidía con ningún
+         # sinónimo, el plan salía sin métricas de nómina y el guardián de exportación (sección 15)
+         # nunca se activaba, exportando en silencio la última tabla ajena de la sesión.
+         "gasto", "gastos", "importe de gastos", "gastos por departamento", "gasto por departamento"),
         ("sum", "mean", "median", "min", "max"),
         permission="NOMINAS_IMPORTES",
         unit="€",

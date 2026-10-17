@@ -279,6 +279,34 @@ async def test_generar_informe_rejects_a_payroll_request_exported_from_an_unrela
     assert "analisis_economico_nominas" in execution.result.summary["mensaje"]
 
 
+async def test_generar_informe_rejects_bare_gastos_phrasing_exported_from_ficha_empleado(q3_registry) -> None:
+    """Incidencia real: "Genera importe de gastos por departamento en 2026" (sin "costes"/"nóminas") no
+    reconocía ningún campo económico en el ReportPlanner — su vocabulario solo tenía "gasto de
+    personal"/"gasto en nóminas", nunca "gasto"/"gastos" a secas. Este guard (el mismo de arriba) nunca
+    se activaba, así que `generar_informe` exportaba en silencio la ficha de un empleado que seguía
+    siendo la última tabla de la sesión (de una consulta anterior, no relacionada), con un título nuevo
+    que sonaba a lo pedido pero un contenido que no tenía nada que ver. Corregido ampliando los
+    sinónimos de `coste_empresa` en mia.query.fields."""
+    from mia.conversation.tools import remember_table
+    from mia.conversation import ToolContext, ToolStatus as TS
+    from mia.llm import ToolCall as TC
+    import json as _json
+
+    ctx = ToolContext(
+        user=ADMIN, request_id=None, now=Q3_NOW, session_state={},
+        user_message="Genera importe de gastos por departamento en 2026",
+    )
+    ficha_presentation = {
+        "type": "profile", "title": "Ficha laboral",
+        "columns": ["Campo", "Valor"],
+        "rows": [["Departamento", "RRHH"], ["Saldo vacaciones", "9"]],
+    }
+    remember_table(ctx.session_state, ficha_presentation, 5000, {}, source_tool="ficha_empleado")
+    execution = await q3_registry.execute(TC("c", "generar_informe", _json.dumps({"formato": "pdf"})), ctx)
+    assert execution.result.status is TS.INVALID_ARGUMENTS
+    assert "analisis_economico_nominas" in execution.result.summary["mensaje"]
+
+
 async def test_generar_informe_still_exports_normally_when_the_source_tool_matches_the_request(
     q3_registry,
 ) -> None:
