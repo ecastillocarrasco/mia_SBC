@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: normaliza ausencia de configuracion
+ok 1 - normaliza ausencia de configuracion
+  ---
+  duration_ms: 1.244859
+  type: 'test'
+  ...
+# Subtest: rechaza atajo invalido, valores excesivos y voz activada por error
+ok 2 - rechaza atajo invalido, valores excesivos y voz activada por error
+  ---
+  duration_ms: 1.29829
+  type: 'test'
+  ...
+# Subtest: acepta personalizacion valida
+ok 3 - acepta personalizacion valida
+  ---
+  duration_ms: 0.567687
+  type: 'test'
+  ...
+# Subtest: situa ventana secundaria dentro del area de trabajo, incluso en monitor con origen negativo
+ok 4 - situa ventana secundaria dentro del area de trabajo, incluso en monitor con origen negativo
+  ---
+  duration_ms: 0.228364
+  type: 'test'
+  ...
+# Subtest: clamp conserva limites
+ok 5 - clamp conserva limites
+  ---
+  duration_ms: 0.103656
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 74.929348

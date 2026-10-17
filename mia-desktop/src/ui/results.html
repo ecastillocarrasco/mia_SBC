@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' mia:; connect-src 'none'; object-src 'none'">
+<title>mIA Desktop — Resultados</title>
+<link rel="stylesheet" href="common.css"><link rel="stylesheet" href="results.css">
+</head><body>
+<header class="hero">
+  <div class="hero-glow" aria-hidden="true"></div>
+  <div class="hero-toolbar">
+    <div class="brand-head"><img class="mia-header-logo" src="../../assets/branding/mia-wordmark.svg" data-mia-logo alt="Logotipo mIA"><div class="brand-copy"><strong>mIA <span>DESKTOP</span></strong><small>SUNSET BEACH CLUB · BUSINESS INTELLIGENCE</small></div></div>
+    <div class="hero-right"><span class="header-chip" id="state" role="status">Esperando consulta</span>
+      <div class="sbc-brand" data-sbc-wrap><img data-sbc-logo class="sbc-header-logo" alt="Logotipo oficial Sunset Beach Club"><span class="brand-fallback">Sunset<br>Beach Club</span></div>
+    </div>
+  </div>
+  <div class="hero-heading"><div><div class="eyebrow">ESPACIO DE ANÁLISIS · mIA SBC</div><h1>La información,<br><em>en otra dimensión.</em></h1><p>Resultados de tus consultas empresariales, presentados con claridad y elegancia.</p></div>
+    <div class="hero-emblem" aria-hidden="true"><span>m</span><i>IA</i></div>
+  </div>
+  <div class="hero-stats" aria-label="Contenido recibido en esta respuesta">
+    <div class="stat"><span class="stat-icon" aria-hidden="true">▤</span><div><strong id="statRows">—</strong><small>Filas de datos recibidas</small></div></div>
+    <div class="stat"><span class="stat-icon" aria-hidden="true">▥</span><div><strong id="statTables">—</strong><small>Tablas disponibles</small></div></div>
+    <div class="stat"><span class="stat-icon" aria-hidden="true">◈</span><div><strong id="statKpis">—</strong><small>Indicadores del backend</small></div></div>
+  </div>
+</header>
+<main>
+  <section class="intro-grid" aria-label="Consulta y respuesta">
+    <article class="query-card"><div class="section-overline"><span class="section-dot"></span> TU CONSULTA</div><p id="query">Sin consulta introducida.</p><div class="query-decoration" aria-hidden="true">“</div></article>
+    <article class="answer-card"><div class="section-overline"><span class="section-dot gold"></span> RESPUESTA DE mIA</div><p id="answer">Todavía no se ha recibido una respuesta.</p><div class="answer-footer"><span class="live-dot"></span><span>Basada en la respuesta del sistema mIA SBC</span></div></article>
+  </section>
+  <div id="notices" role="status" class="notices" hidden></div>
+  <section class="data-section" id="dashboard"><div class="section-title"><div><div class="eyebrow dark">INDICADORES</div><h2>Resumen ejecutivo</h2></div><p>Únicamente cifras remitidas por el backend.</p></div><div id="cards" class="kpis" hidden></div><div id="cardsEmpty" class="hint-panel" hidden>Esta consulta no incluye indicadores KPI. No se generan métricas de negocio artificiales.</div></section>
+  <section class="data-section" id="details"><div class="section-title"><div><div class="eyebrow dark">DATOS EXPLORABLES</div><h2>Detalle y visualizaciones</h2></div><p>Busca, ordena, representa y exporta los registros recibidos.</p></div><div id="tables" class="table-stack"></div></section>
+  <section id="empty" class="empty-card"><span class="empty-icon">⌕</span><strong>No se han recibido registros para mostrar.</strong><p>Que una respuesta diga «se muestra en pantalla» no significa que haya entregado la tabla. No se crean datos inexistentes.</p></section>
+  <footer class="app-footer"><div><b>mIA Desktop</b> · Sunset Beach Club</div><div>Las exportaciones contienen únicamente información recibida de la consulta autorizada.</div></footer>
+</main>
+<script defer src="brand.js"></script><script defer src="../../dist/results.js"></script>
+</body></html>

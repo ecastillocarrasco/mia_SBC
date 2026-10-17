@@ -1,0 +1,26 @@
+html,body{background:#f8f4f5;min-height:100%;font-size:12px}
+header{padding:22px 30px 12px;background:linear-gradient(115deg,#fff,#f5ebf1);border-bottom:1px solid #eddee6}
+h1{font:700 25px Georgia,serif;color:#692440;margin:8px 0 5px}header p{color:#8e7884;line-height:1.5;font-size:12px;margin:0}
+main{padding:14px 25px 27px;display:flex;flex-direction:column;gap:9px}
+.panel{padding:13px 17px;background:#fff;border-radius:15px;border:1px solid #ebdee4;box-shadow:0 3px 12px #48213807}
+h2{font:700 15px Georgia,serif;color:#6c2845;margin:0 0 6px}
+p{line-height:1.4;margin:0 0 9px}label{font-weight:600;display:block;margin:8px 0 5px}
+input:not([type=checkbox]),select{width:100%;border:1px solid #e1d2dc;border-radius:8px;padding:9px;background:#fff;color:#47323d}
+small{font-size:10px;color:#a18794;display:block;margin-top:5px}
+.flex{display:flex;align-items:center;gap:12px}.status{color:#937684;font-size:11px;line-height:1.35}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:8px 0}
+.row input{accent-color:#762b48;transform:scale(1.1)}
+.disabled{opacity:.68}.save{width:100%;padding:12px}
+#feedback{min-height:12px;color:#7b354d;line-height:1.35}
+body{height:100vh;overflow-y:auto}
+main{padding-bottom:32px}
+.panel .row span{max-width:345px;font-weight:500}
+.panel small{line-height:1.4}
+
+.brand-head{display:flex;align-items:center;gap:15px;min-width:0}.mia-header-logo{width:54px;height:54px;object-fit:contain}.sbc-header-logo{width:92px;max-height:85px;object-fit:contain;align-self:center}header{align-items:center}
+
+/* V0.2.3 */
+.mia-header-logo{width:81px;height:46px;object-fit:contain;object-position:left center}
+.sbc-header-logo{width:56px;max-height:34px;object-fit:contain;opacity:.72;margin-left:auto}
+.diagnostic-buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.diagnostic-result{margin-top:8px;font-size:11px;color:#74425b;line-height:1.4}

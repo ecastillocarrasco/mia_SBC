@@ -1,0 +1,55 @@
+<!doctype html><html lang="es"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: mia:; media-src blob:; connect-src 'none'; object-src 'none'">
+<title>Conversar con mIA SBC</title><link rel="stylesheet" href="common.css"><link rel="stylesheet" href="bubble.css">
+</head><body>
+<section class="bubble" role="dialog" aria-label="Conversar con mIA">
+  <div class="glass-light" aria-hidden="true"></div>
+  <div class="top">
+    <img class="mia-logo" src="../../assets/branding/mia-wordmark.svg" data-mia-logo alt="Logotipo mIA">
+    <div class="top-copy"><strong>mIA Desktop</strong><span>Asistente de Sunset Beach Club</span></div><div class="brand-logo-wrap"><img data-sbc-logo alt="Logotipo oficial Sunset Beach Club"></div>
+    <button class="icon-button" id="settings" title="Configuración" aria-label="Configuración">⚙</button>
+    <button class="icon-button" id="minimize" title="Minimizar mIA a la bandeja" aria-label="Minimizar mIA">−</button>
+    <button class="icon-button" id="close" title="Cerrar bocadillo" aria-label="Cerrar bocadillo">×</button>
+  </div>
+  <div class="content">
+    <div class="tag"><span class="status-dot" aria-hidden="true"></span> ASISTENTE DE ESCRITORIO</div>
+    <h1>¿En qué puedo ayudarte?</h1>
+    <p>Escribe o habla con mIA sin abrir los mundos web.</p>
+    <div class="mic-mode-row" role="group" aria-label="Control del micrófono">
+      <label for="chatMicMode">Micrófono</label>
+      <select id="chatMicMode" aria-label="Modo del micrófono">
+        <option value="off">Desactivado</option>
+        <option value="once">Activado · una pregunta</option>
+        <option value="conversation">Conversación abierta</option>
+      </select>
+      <span class="mic-indicator" id="micIndicator" data-status="off" aria-live="polite">APAGADO</span>
+    </div>
+    <div id="voiceStatus class="voice-status" role="status">Micrófono apagado · Pulsa «Hablar» para activarlo.</div>
+    <div id="conversationToolbar" class="conversation-toolbar" hidden><span>Conversación abierta · mIA escuchará por turnos</span><button class="btn-soft" id="stopConversation" type="button">Terminar conversación</button></div>
+    <div class="thread" id="thread" aria-live="polite">
+      <span class="notice">Conexión al backend configurable · No hay respuestas simuladas.</span>
+    </div>
+    <div class="transcription" id="transcription" hidden><small id="transcriptionInfo"></small><div id="alternatives" class="alternatives"></div></div>
+    <div class="composer" aria-label="Escribir a mIA">
+      <textarea id="prompt" maxlength="2000" rows="2" placeholder="Pregunta a mIA…" aria-label="Escribe tu consulta"></textarea>
+      <div class="actions">
+        <button class="btn-soft" id="preview" title="Abrir ventana con los resultados reales">Resultados</button>
+        <div class="right-actions">
+          <button class="btn-soft mic-btn" id="mic" title="Dictar con el micrófono de Windows" aria-label="Hablar a mIA">🎙 Hablar una vez</button>
+          <button class="btn" id="send">Enviar ↗</button>
+        </div>
+      </div>
+    </div>
+  </div>
+<div class="window-grip" data-resize="n" aria-hidden="true"></div>
+<div class="window-grip" data-resize="e" aria-hidden="true"></div>
+<div class="window-grip" data-resize="s" aria-hidden="true"></div>
+<div class="window-grip" data-resize="w" aria-hidden="true"></div>
+<div class="window-grip" data-resize="nw" aria-hidden="true"></div>
+<div class="window-grip" data-resize="ne" aria-hidden="true"></div>
+<div class="window-grip" data-resize="sw" aria-hidden="true"></div>
+<button class="resize-handle" data-resize="se" id="resizeBubble" title="Cambiar tamaño del bocadillo" aria-label="Arrastra para cambiar el tamaño"></button>
+</section>
+<script defer src="brand.js"></script><script defer src="../../dist/bubble.js"></script>
+</body></html>

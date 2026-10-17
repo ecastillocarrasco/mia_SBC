@@ -1,0 +1,1 @@
+El logo original de Sunset Beach Club se descarga una vez de https://www.sunsetbeachclub.com/img/logo.png y se almacena en la carpeta local de datos de la aplicación. Para instalar una copia corporativa aprobada sin Internet, pon el PNG original aquí con nombre sunset-logo.png. No se genera ni altera el logotipo oficial.

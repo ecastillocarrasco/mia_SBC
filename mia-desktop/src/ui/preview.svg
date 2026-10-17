@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 345">
+ <defs>
+  <linearGradient id="navy" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#253b58"/><stop offset="1" stop-color="#111d33"/></linearGradient>
+  <linearGradient id="skin" x1="0" y1="0" x2="1" y2=".6"><stop stop-color="#e4ab86"/><stop offset=".55" stop-color="#f2c19e"/><stop offset="1" stop-color="#d98e78"/></linearGradient>
+ </defs>
+ <path d="M102 231 L91 339 L117 339 L135 260 L146 339 L170 339 L168 226 Z" fill="url(#navy)"/>
+ <path d="M94 334 Q106 331 119 337 L119 344 L90 344Z M145 336 Q160 331 172 338 L172 344 L143 344Z" fill="#172137"/>
+ <path d="M80 141 Q74 124 115 119 L152 122 Q175 127 179 146 L192 224 Q178 234 164 220 L158 191 L166 246 L96 246 L98 191 L85 221 Q71 225 63 214Z" fill="#f1ede8"/>
+ <path d="M81 147 Q76 143 73 169 L64 223 Q60 234 70 238 Q80 241 84 229 L95 170Z" fill="url(#skin)"/>
+ <path d="M176 145 Q182 146 186 170 L197 220 Q199 234 189 237 Q177 238 174 224 L165 171Z" fill="url(#skin)"/>
+ <path d="M116 118 L115 136 Q128 154 142 133 L139 117Z" fill="url(#skin)"/>
+ <path d="M94 72 Q84 32 110 22 Q137 10 157 37 Q167 54 160 92 L174 129 Q149 136 143 106Z" fill="#4a2934"/>
+ <ellipse cx="128" cy="77" rx="36" ry="45" fill="url(#skin)"/>
+ <path d="M93 71 Q88 39 103 29 Q112 20 130 23 Q153 22 165 54 Q151 51 140 40 Q128 57 107 54Z" fill="#4b2d33"/>
+ <path d="M103 78 Q112 75 119 79 M137 78 Q145 75 152 79" stroke="#634441" stroke-width="2" fill="none" stroke-linecap="round"/>
+ <path d="M125 98 Q135 103 143 96" fill="none" stroke="#a45560" stroke-width="2.2" stroke-linecap="round"/>
+ <path d="M105 144 Q130 159 151 143" stroke="#bdc6cb" stroke-width="2" fill="none"/>
+ <text x="123" y="190" font-family="Arial,sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#6c2548">mIA</text>
+</svg>

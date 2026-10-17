@@ -1,0 +1,60 @@
+<!doctype html><html lang="es"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: mia:; connect-src 'none'; object-src 'none'">
+<title>mIA Desktop — Configuración</title><link rel="stylesheet" href="common.css"><link rel="stylesheet" href="settings.css">
+</head><body>
+<header><div class="brand-head"><img class="mia-header-logo" src="../../assets/branding/mia-wordmark.svg" data-mia-logo alt="Logotipo mIA"><div><div class="tag">mIA DESKTOP · SUNSET BEACH CLUB</div><h1>Configuración de mIA Desktop</h1><p>El avatar y la voz se activan según tus preferencias.</p></div></div><img data-sbc-logo class="sbc-header-logo" alt="Logotipo Sunset Beach Club"></header>
+<main>
+ <section class="panel"><h2>Identidad visual mIA</h2>
+  <p class="muted">El logotipo original de mIA puede importarse como PNG. Mientras tanto se utiliza una firma tipográfica mIA, no el antiguo icono «m».</p>
+  <div class="flex"><button class="btn-soft" id="chooseMiaLogo">Seleccionar logotipo mIA (PNG)...</button><span id="miaLogoState" class="status">Comprobando…</span></div>
+  <small>El logo Sunset Beach Club se presenta en tamaño reducido, sin deformar su proporción.</small>
+ </section>
+ <section class="panel"><h2>Personaje 3D</h2><p class="muted">Carga una copia del GLB original. No se toca el proyecto web.</p>
+  <div class="flex"><button class="btn-soft" id="model">Seleccionar archivo GLB…</button><span id="modelState" class="status">Comprobando…</span></div>
+ </section>
+ <section class="panel"><h2>Activación y minimización</h2>
+  <label for="shortcut">Atajo global</label><input id="shortcut" placeholder="CommandOrControl+Alt+M" autocomplete="off">
+  <small>Abre mIA y su bocadillo; si está abierto, la minimiza a la bandeja.</small>
+  <label class="row"><span>Iniciar junto con Windows</span><input type="checkbox" id="login"></label>
+  <label class="row"><span>Mostrar siempre encima de otras ventanas</span><input type="checkbox" id="alwaysOnTop"></label>
+  <label class="row"><span>Animaciones de reposo espontáneas</span><input type="checkbox" id="subtleMovement"></label>
+  <label class="row"><span>Caminar en círculo (mIA_WALK_CIRCLE)</span><input type="checkbox" id="idleWalkCircle"></label>
+  <label class="row"><span>Espera aburrida (mIA_SEQ_ESPERA)</span><input type="checkbox" id="idleBored"></label>
+  <label class="row"><span>Saludar al iniciar mIA Desktop</span><input type="checkbox" id="startupGreeting"></label>
+  <label for="greetingName">Nombre para el saludo (opcional)</label><input id="greetingName" maxlength="40" placeholder="Por ejemplo: Enrique">
+  <label for="size">Tamaño de mIA</label><select id="size"><option value="small">Pequeña</option><option value="medium">Mediana</option><option value="large">Grande</option></select>
+ </section>
+ <section class="panel"><h2>Micrófono y frase de activación</h2>
+  <label class="row"><span>Activar mIA al reconocer una frase</span><input type="checkbox" id="wakePhraseEnabled"></label>
+  <label for="voiceMode">Modo de escucha</label><select id="voiceMode">
+    <option value="off">Desactivado — sin abrir el micrófono</option>
+    <option value="once">Estándar — escuchar una vez</option>
+    <option value="conversation">Manos libres — conversación por turnos</option>
+  </select>
+  <small>El modo elegido en Configuración también aparece en el chat. La conversación no se inicia por sí sola al abrir la aplicación: se activa expresamente desde el chat. «Desactivado» libera el dispositivo de captura y desactiva los comandos por voz.</small>
+  <label for="wakePhrase">Frase para mostrar</label><input id="wakePhrase" maxlength="48" placeholder="Hola mIA">
+  <label for="hidePhrase">Frase para ocultar</label><input id="hidePhrase" maxlength="48" placeholder="Oculta mIA">
+  <label for="exitPhrase">Frase para salir completamente</label><input id="exitPhrase" maxlength="48" placeholder="Cierra mIA">
+  <small>El comando para cerrar solicita confirmación. Los comandos se reconocen con Vosk local y no se envían al chat.</small>
+  <small>Voz V0.3: Vosk para comandos y faster-whisper para dictado. Instala previamente los modelos con INSTALAR_VOZ_LOCAL.cmd (descarga inicial voluntaria).</small>
+  <small>Mostrar mIA con la frase o el atajo nunca inicia una transcripción. El modo se elige desde el propio chat.</small>
+  <label class="row"><span>Enviar automáticamente el dictado local (puedes desactivarlo para revisar nombres)</span><input type="checkbox" id="autoSendDictation"></label>
+  <small>Whisper no entrega una puntuación de confianza equivalente a los reconocedores clásicos. Con envío automático desactivado, siempre podrás revisar el texto antes de enviarlo.</small>
+ </section>
+ <section class="panel"><h2>Backend y voz original de mIA</h2>
+  <label for="backendBase">Dirección del backend SBC</label><input id="backendBase" placeholder="http://127.0.0.1:5001" spellcheck="false">
+  <small>HTTP únicamente en localhost. Para otro equipo, utilizar HTTPS. No se guardan claves de ElevenLabs aquí.</small>
+  <label class="row"><span>Reproducir la voz ElevenLabs del backend</span><input type="checkbox" id="voiceEnabled"></label>
+  <label class="row"><span>Si ElevenLabs falla, usar una voz local de Windows (identificada como respaldo)</span><input type="checkbox" id="voiceFallbackEnabled"></label>
+  <small>El backend debe ofrecer /api/mia/voice. Un HTTP 503 es un error del servicio de voz: revisa los registros del backend o sus credenciales de ElevenLabs. El respaldo local no usa la voz original.</small>
+ </section>
+ <section class="panel"><h2>Diagnóstico de voz y aplicación</h2>
+  <p>Comprueba el motor Vosk + faster-whisper local. Instala los componentes con INSTALAR_VOZ_LOCAL.cmd desde la raíz de mIA Desktop. Ningún audio se envía a Internet.</p>
+  <div class="diagnostic-buttons"><button class="btn-soft" id="probeVoice">Comprobar motor local</button><button class="btn-soft" id="openLogs">Abrir carpeta de diagnósticos</button></div>
+  <div class="diagnostic-result" id="diagnosticResult" role="status"></div>
+  <small>Los registros técnicos no guardan voz, transcripciones, preguntas, respuestas, nóminas ni datos de empleados.</small>
+ </section>
+ <div id="feedback" role="status"></div><button class="btn save" id="save">Guardar configuración</button>
+</main><script defer src="brand.js"></script><script defer src="../../dist/settings.js"></script>
+</body></html>
