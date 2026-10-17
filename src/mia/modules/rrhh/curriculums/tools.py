@@ -31,6 +31,13 @@ from mia.text import normalize_key
 
 RULE = "SEL-001: resultados por coincidencia con la búsqueda, no un ranking de idoneidad. No descartes a nadie."
 
+KEYWORDS = (
+    "curriculum", "currículum", "curriculums", "currículums", "cv", "candidato", "candidatos",
+    "candidatura", "candidaturas", "seleccion", "selección", "entrevista", "vacante",
+    "puesto vacante", "proceso de seleccion",
+)
+"""Ver `empleados.tools.KEYWORDS` para el criterio."""
+
 
 def _candidate_view(c: Candidate) -> dict[str, Any]:
     return {

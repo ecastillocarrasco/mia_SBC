@@ -43,6 +43,13 @@ from mia.text import normalize_key
 
 ESTADOS = {"aceptadas": "aceptada", "pendientes": "pendiente", "rechazadas": "rechazada"}
 
+KEYWORDS = (
+    "vacacion", "vacaciones", "saldo de vacaciones", "dias libres", "días libres",
+    "asuntos propios", "conflicto de vacaciones", "solicitud de vacaciones", "reincorporacion",
+    "reincorporación", "vuelve de vacaciones",
+)
+"""Ver `empleados.tools.KEYWORDS` para el criterio."""
+
 
 class _OptionalPerson(BaseModel):
     empleado_id: int | None = Field(default=None, description="ID de la persona (foco o búsqueda previa)")

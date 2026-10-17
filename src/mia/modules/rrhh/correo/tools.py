@@ -27,6 +27,13 @@ log = get_logger(__name__)
 MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
 """Mismo límite que ``mia.modules.rrhh.content`` para documentos de bibliotecas."""
 
+KEYWORDS = (
+    "correo", "correos", "email", "emails", "e-mail", "buzon", "buzón", "bandeja de entrada",
+    "mensaje", "mensajes", "borrador", "borradores", "responder correo", "enviar correo",
+    "correo sin leer",
+)
+"""Ver `empleados.tools.KEYWORDS` para el criterio."""
+
 _CONFIRM = re.compile(r"\b(s[ií]|env[ií]a(lo)?|adelante|confirm[oa]|de acuerdo|vale|ok)\b", re.IGNORECASE)
 _NOREPLY = re.compile(
     r"no[-_.]?reply|do[-_.]?not[-_.]?reply|no[-_.]?responder|no[-_.]?contestar|no[-_.]?contestes", re.IGNORECASE

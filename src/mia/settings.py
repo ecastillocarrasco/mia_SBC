@@ -299,7 +299,13 @@ class Settings(BaseSettings):
     timezone: str = "Europe/Madrid"
     database_url: str = "postgresql+asyncpg://mia:mia@localhost:5432/mia"
     cors_origins: list[str] = Field(default_factory=lambda: ["http://127.0.0.1:5173", "http://localhost:5173"])
-    history_turns: int = 20
+    history_turns: int = 8
+    """Turnos (mensajes individuales, no pares) que se reenvían al LLM en cada petición. Antes 20:
+    sin límite de tokens, solo de cantidad, cada turno podía sumar decenas de miles de tokens de
+    historial por sí solo. La continuidad semántica real («y de esos cuántos...») no depende de
+    esto: vive en ``session.state`` (foco de persona/departamento/periodo, última llamada), que no
+    se ve afectado por este valor. Bajar esto reduce el coste/latencia de CADA turno de la
+    conversación, no solo de los largos."""
 
     llm: LLMSettings = Field(default_factory=LLMSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)

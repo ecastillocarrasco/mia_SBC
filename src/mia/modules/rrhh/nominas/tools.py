@@ -47,6 +47,14 @@ from mia.text import normalize_key
 
 RULE = "Metadatos (existencia, periodo, lectura). Para importes: nomina_importes o evolucion_nominas (NOM-002)."
 
+KEYWORDS = (
+    "nomina", "nómina", "nominas", "nóminas", "salario", "salarios", "sueldo", "sueldos",
+    "retribucion", "retribución", "coste salarial", "paga extra", "pagas extra",
+    "paga extraordinaria", "irpf", "importe de la nomina", "nomina no leida", "ranking salarial",
+    "estadisticas salariales", "cobra", "cobro", "cobró", "cobrar", "cuanto gana", "cuánto gana",
+)
+"""Ver `empleados.tools.KEYWORDS` para el criterio."""
+
 
 def _belongs(e: Employee) -> Any:
     """La carpeta (DNI seudonimizado) manda; UsuarioNomina solo se usa si la nómina no está en carpeta."""

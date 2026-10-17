@@ -45,6 +45,15 @@ from mia.modules.rrhh.turnos.periods import ABSENCE_KINDS, AbsencePeriod, absenc
 from mia.modules.rrhh.turnos.returns import collect_returns
 from mia.text import normalize_key
 
+KEYWORDS = (
+    "turno", "turnos", "horario", "horarios", "trabajando", "disponibilidad", "disponible",
+    "descanso", "descansos", "ausencia", "ausencias", "baja", "bajas", "reincorporacion",
+    "reincorporaciones", "reincorporación", "publicacion de turnos", "compañero de turno",
+    "companeros de turno", "horas trabajadas", "cobertura semanal", "quien trabaja",
+    "quién trabaja", "franja", "mañana tarde noche",
+)
+"""Ver `empleados.tools.KEYWORDS` para el criterio (generoso: falso negativo nunca rompe nada)."""
+
 DAY_NAMES = {
     "L": "lunes",
     "M": "martes",

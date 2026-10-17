@@ -40,6 +40,15 @@ from mia.text import normalize_key
 ACCEPTED = "aceptada"
 PENDING = "pendiente"
 
+KEYWORDS = (
+    "ficha", "empleado", "empleados", "trabajador", "trabajadores", "plantilla", "persona",
+    "personas", "organigrama", "estructura del departamento", "cumpleanos", "cumpleaños",
+    "responsable", "responsables", "contacto", "contactos", "edad", "antiguedad", "antigüedad",
+)
+"""Vocabulario del módulo para el enrutado determinista (ver `conversation/orchestrator.py`).
+Deliberadamente generoso: un falso positivo solo añade herramientas de más (coste, no ruptura);
+un falso negativo cae al catálogo completo (ver `select_modules`), nunca deja sin herramienta."""
+
 
 def age(birth: date | None, today: date) -> int | None:
     if birth is None:

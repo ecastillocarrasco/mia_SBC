@@ -29,6 +29,16 @@ from mia.modules.rrhh.turnos.periods import absence_periods
 from mia.modules.rrhh.turnos.tools import franja_of
 from mia.text import normalize_key
 
+KEYWORDS = (
+    "panel", "panel de rrhh", "analitica", "analítica", "comparar departamentos",
+    "comparativa", "tendencia", "absentismo", "cruce de datos", "cruzar datos",
+    "consulta cruzada", "ranking de absentismo", "jubilacion", "jubilación",
+    "distribucion de plantilla", "distribución de plantilla", "calidad de los datos",
+    "ficha del departamento", "analizar departamento", "altas de empleados",
+    "rotacion", "rotación", "indicadores de rrhh", "kpis de rrhh",
+)
+"""Ver `empleados.tools.KEYWORDS` para el criterio."""
+
 
 async def _department_snapshot(db: AsyncSession, day: date, dept_key: str | None) -> dict[str, Any]:
     employees = select(Employee).where(Employee.active.is_(True))

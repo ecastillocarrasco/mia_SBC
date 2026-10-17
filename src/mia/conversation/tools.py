@@ -12,7 +12,8 @@ import inspect
 import json
 import os
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -123,23 +124,37 @@ class ToolExecution:
 
 
 DEFAULT_MODULE = "rrhh"
-"""Módulo al que se asigna una herramienta registrada sin indicar otro explícitamente — hoy
-todas lo son. El único módulo que de verdad importa que se declare aparte es uno sin
-herramientas reales todavía (ver mia.modules.finanzas): nada que filtrar, nada que romper."""
+"""Módulo de las herramientas registradas fuera de un dominio real (``sistema``: capacidades,
+operar sobre el resultado anterior…) — pequeño y siempre disponible, nunca filtrado."""
 
 
 class ToolRegistry:
     def __init__(self, pending_domains: tuple[str, ...] = ()) -> None:
         self._tools: dict[str, Tool] = {}
         self._module_of: dict[str, str] = {}
+        self._current_module = DEFAULT_MODULE
+        """Módulo que usan los `register()` sin indicar uno explícito — ver `using_module()`."""
         self.pending_domains = pending_domains
         """Dominios que mIA todavía no puede consultar (se declaran para que no los prometa)."""
 
-    def register(self, tool: Tool, *, module: str = DEFAULT_MODULE) -> None:
+    @contextmanager
+    def using_module(self, module: str) -> Iterator[None]:
+        """Etiqueta con ``module`` toda herramienta que se registre dentro del bloque, sin que cada
+        ``register(registry, deps)`` de cada dominio (turnos, nóminas…) tenga que indicarlo él mismo
+        en cada llamada — un solo sitio (``build_registry``) decide la etiqueta real, nunca ~15
+        ficheros de tools dispersos. Restaura el módulo anterior incluso si falla el registro."""
+        previous = self._current_module
+        self._current_module = module
+        try:
+            yield
+        finally:
+            self._current_module = previous
+
+    def register(self, tool: Tool, *, module: str | None = None) -> None:
         if tool.name in self._tools:
             raise ValueError(f"Herramienta duplicada: {tool.name}")
         self._tools[tool.name] = tool
-        self._module_of[tool.name] = module
+        self._module_of[tool.name] = module or self._current_module
 
     def names(self) -> list[str]:
         return sorted(self._tools)

@@ -31,6 +31,13 @@ from mia.reporting.comparisons import (
 )
 from mia.reporting.planner import planner
 
+KEYWORDS = (
+    "informe", "informes", "pdf", "excel", "xlsx", "powerpoint", "pptx", "exporta",
+    "exportar", "descarga", "descargar", "genera el informe", "informe ejecutivo", "reporte",
+    "hoja de calculo", "hoja de cálculo",
+)
+"""Ver `empleados.tools.KEYWORDS` para el criterio."""
+
 
 class InformeParams(BaseModel):
     formato: Literal["pdf", "xlsx", "pptx", "html"] = Field(description="pdf, xlsx (Excel), pptx (PowerPoint) o html")

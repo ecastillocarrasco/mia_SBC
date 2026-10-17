@@ -2,9 +2,9 @@ from mia.conversation import ToolRegistry
 from mia.modules.rrhh.common import Deps
 from mia.modules.rrhh.turnos import historico
 from mia.modules.rrhh.turnos.periods import ABSENCE_KINDS, AbsencePeriod, absence_periods
-from mia.modules.rrhh.turnos.tools import register as _register_tools
+from mia.modules.rrhh.turnos.tools import KEYWORDS, register as _register_tools
 
-__all__ = ["ABSENCE_KINDS", "AbsencePeriod", "absence_periods", "register"]
+__all__ = ["ABSENCE_KINDS", "AbsencePeriod", "KEYWORDS", "absence_periods", "register"]
 
 
 def register(registry: ToolRegistry, deps: Deps) -> None:

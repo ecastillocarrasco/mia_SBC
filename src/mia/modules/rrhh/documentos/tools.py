@@ -51,6 +51,14 @@ TYPES = (
     "Comunicación, Formación, Reconocimiento médico, Otros"
 )
 
+KEYWORDS = (
+    "documento", "documentos", "contrato", "contratos", "firma", "firmado", "firmados",
+    "lopd", "rgpd", "reconocimiento medico", "reconocimiento médico", "proteccion de datos",
+    "protección de datos", "normativa", "documentos firmados", "documentacion",
+    "documentación", "documentos faltantes",
+)
+"""Ver `empleados.tools.KEYWORDS` para el criterio."""
+
 
 class DocumentosPersonaParams(PersonaParams):
     tipo: str | None = Field(default=None, description=f"Tipo: {TYPES}")

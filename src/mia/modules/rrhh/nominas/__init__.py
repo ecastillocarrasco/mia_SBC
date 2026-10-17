@@ -1,3 +1,3 @@
-from mia.modules.rrhh.nominas.tools import register
+from mia.modules.rrhh.nominas.tools import KEYWORDS, register
 
-__all__ = ["register"]
+__all__ = ["KEYWORDS", "register"]

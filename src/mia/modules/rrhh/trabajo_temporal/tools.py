@@ -16,6 +16,13 @@ from mia.modules.rrhh.common import MAX_ROWS_FOR_MODEL, Deps, Periodo, fmt_date,
 from mia.modules.rrhh.content import MAX_BYTES, content_unavailable, document_text
 from mia.text import normalize_key
 
+KEYWORDS = (
+    "ett", "trabajo temporal", "boletin", "boletín", "boletines", "empresa de trabajo temporal",
+    "tarifa tt", "trabajador cedido", "trabajadores cedidos", "variacion de coste tt",
+    "estimar coste tt", "trabajador temporal", "trabajadores temporales",
+)
+"""Ver `empleados.tools.KEYWORDS` para el criterio."""
+
 
 class TrabajadoresParams(BaseModel):
     empresa: str | None = None

@@ -16,6 +16,7 @@ import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
+from functools import lru_cache
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -57,7 +58,6 @@ from mia.llm import (
     WebSources,
 )
 from mia.diagnostics import EventStage, EventStatus, begin_trace, emit as diag_emit
-from mia.modules.finanzas import KEYWORDS as _FINANZAS_KEYWORDS
 from mia.observability import current_request_id, get_logger
 from mia.presentation.intent import build_presentation_hint, classify_query
 from mia.privacy_gateway.context_manager import set_operation_context
@@ -74,9 +74,45 @@ MAX_MESSAGE_CHARS = 4000
 NEUTRAL_SPEECH = "Te lo dejo en pantalla."
 MAX_WEB_SOURCES = 12
 
-MODULE_KEYWORDS: dict[str, tuple[str, ...]] = {"finanzas": _FINANZAS_KEYWORDS}
-"""Vocabulario de cada módulo sin herramientas reales todavía, para el orquestador
-(`select_modules`). `rrhh` no necesita entrada: siempre se incluye por defecto."""
+@lru_cache(maxsize=1)
+def _module_keywords() -> dict[str, tuple[str, ...]]:
+    """Vocabulario de cada dominio real, para el orquestador (`select_modules`). `rrhh` (las 3
+    herramientas de `sistema`) no necesita entrada: siempre se incluye por defecto. Reducir cuánto
+    catálogo se ofrece por turno es el motivo de esto (82 herramientas → ~21.000 tokens siempre,
+    confirmado por medición real); el diseño de `select_modules` hace que un vocabulario incompleto
+    nunca rompa nada, solo deje de ahorrar en ese mensaje (cae al catálogo completo).
+
+    Import diferido (no al nivel de módulo): cada dominio de ``mia.modules.rrhh`` importa de
+    ``mia.conversation`` (Tool, ToolRegistry…) para definirse, así que importarlos aquí arriba, en
+    un módulo que es parte de ``mia.conversation``, crearía un ciclo. Al llamarse ya con la app
+    arrancada, ``mia.conversation`` está completamente inicializado y la importación es segura;
+    ``lru_cache`` evita repetirla en cada turno.
+    """
+    from mia.modules.finanzas import KEYWORDS as finanzas
+    from mia.modules.rrhh.analitica import KEYWORDS as analitica
+    from mia.modules.rrhh.correo import KEYWORDS as correo
+    from mia.modules.rrhh.curriculums import KEYWORDS as curriculums
+    from mia.modules.rrhh.documentos import KEYWORDS as documentos
+    from mia.modules.rrhh.empleados import KEYWORDS as empleados
+    from mia.modules.rrhh.informes import KEYWORDS as informes
+    from mia.modules.rrhh.nominas import KEYWORDS as nominas
+    from mia.modules.rrhh.trabajo_temporal import KEYWORDS as trabajo_temporal
+    from mia.modules.rrhh.turnos import KEYWORDS as turnos
+    from mia.modules.rrhh.vacaciones import KEYWORDS as vacaciones
+
+    return {
+        "finanzas": finanzas,
+        "empleados": empleados,
+        "turnos": turnos,
+        "vacaciones": vacaciones,
+        "nominas": nominas,
+        "documentos": documentos,
+        "curriculums": curriculums,
+        "trabajo_temporal": trabajo_temporal,
+        "correo": correo,
+        "analitica": analitica,
+        "informes": informes,
+    }
 
 
 def _module_hint(selected: set[str]) -> str:
@@ -364,7 +400,7 @@ class ConversationEngine:
             if trace is not None:
                 trace.record.now_local = now.isoformat()
             mailbox = self._mailbox_for(user) or "" if self._mailbox_for else ""
-            selected_modules = select_modules(message, MODULE_KEYWORDS)
+            selected_modules = select_modules(message, _module_keywords())
             qa = classify_query(message)
 
             diag_emit(EventStage.DOMAIN_DETECTION, data={"modules": list(selected_modules)})

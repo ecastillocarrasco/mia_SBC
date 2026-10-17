@@ -29,10 +29,12 @@ MANIFEST = ModuleManifest(
 
 KEYWORDS = (
     "factura",
+    "facturas",
     "facturacion",
     "facturación",
     "contabilidad",
     "presupuesto",
+    "presupuestos",
     "tesoreria",
     "tesorería",
     "balance",
