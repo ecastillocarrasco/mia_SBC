@@ -26,3 +26,6 @@ build/
 # Informes generados en tiempo de ejecución (nunca código) — anclado a la raíz: sin la "/" inicial
 # también ignoraba silenciosamente src/mia/modules/rrhh/informes/ (código, no salida generada).
 /informes/
+
+# Archivo comprimido grande (169 MB) que no debe versionarse: supera el límite de GitHub (100 MB).
+frontend.zip
