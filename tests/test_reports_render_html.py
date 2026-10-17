@@ -34,7 +34,7 @@ def test_html_is_well_formed_and_responsive_and_accessible() -> None:
     assert '<html lang="es">' in out
     assert '<meta name="viewport" content="width=device-width, initial-scale=1" />' in out
     assert "@media print" in out
-    assert "@media (max-width: 600px)" in out
+    assert "@media (max-width:700px)" in out
     assert "<title>Informe de prueba</title>" in out
 
 
@@ -46,9 +46,13 @@ def test_logo_is_embedded_as_base64_not_referenced_by_path() -> None:
     assert 'alt="Logotipo Sunset Beach Club"' in out
 
 
-def test_html_without_logo_degrades_gracefully() -> None:
+def test_html_without_logo_falls_back_to_the_default_sbc_logo() -> None:
+    """``resolve_logo()`` exige marca SBC en todo informe (``to_html()``: "Ningún HTML corporativo
+    debe salir sin el logotipo embebido") — sin ``logo`` explícito no se omite el `<img>`, se usa el
+    logotipo de Sunset Beach Club incluido en el paquete."""
     out = _html(Document(title="Sin logo"), logo=None)
-    assert "<img" not in out
+    assert "<img" in out
+    assert "data:image/png;base64," in out
 
 
 def test_xss_in_table_cells_and_titles_is_neutralized() -> None:
@@ -98,7 +102,11 @@ def test_all_eight_block_kinds_render_with_real_content() -> None:
         "Anexo", "Mostrando 3 de 10",
     ):
         assert expected in out, f"falta {expected!r} en el HTML"
-    assert out.count("<svg") >= 2  # el donut explícito + el derivado de la tabla Depto/Personas
+    # Un gráfico explícito en el documento suprime la auto-derivación heurística para CUALQUIER otra
+    # tabla (to_html(): has_explicit_chart, mismo criterio en los 4 renderizadores) — para no mezclar
+    # una visualización que el backend decidió a propósito con otras que el renderizador adivinó por
+    # su cuenta. Con "Distribución" como chart explícito, "Detalle" NO debe dibujar un segundo SVG.
+    assert out.count("<svg") == 1
 
 
 def test_bar_and_line_charts_render_as_svg() -> None:

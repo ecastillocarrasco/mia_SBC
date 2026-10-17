@@ -25,6 +25,7 @@ económico (Turnos), con un dato operativo transcrito literalmente.
 from __future__ import annotations
 
 import io
+import re
 
 import httpx
 import pytest
@@ -148,6 +149,12 @@ async def test_screen_kpi_figure_matches_the_downloaded_document_exactly(tmp_pat
         if formato == "pdf":
             text = "".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(content)).pages)
         elif formato == "xlsx":
+            # A diferencia de PDF/PPTX/HTML, un KPI numérico en Excel es una celda NUMÉRICA con un
+            # number_format aplicado (p. ej. 16225.14 con formato #,##0.00 "€") — "16.225,14 €" es solo
+            # cómo Excel lo MUESTRA, nunca un texto literal dentro del archivo; openpyxl siempre
+            # devuelve el valor numérico subyacente. Comparar la cadena formateada contra esos valores
+            # exige deshacer el mismo formato (coma decimal, separador de miles, símbolo €), no buscarla
+            # como subcadena — eso nunca podría encontrarla aunque el dato fuera correcto.
             wb = load_workbook(io.BytesIO(content))
             text = " ".join(str(c.value) for ws in wb.worksheets for row in ws.iter_rows() for c in row if c.value is not None)
         elif formato == "pptx":
@@ -165,10 +172,25 @@ async def test_screen_kpi_figure_matches_the_downloaded_document_exactly(tmp_pat
 
         assert "Cocina" in text
         assert "Recepción" in text
-        assert screen_figure in text, (
-            f"la cifra mostrada en pantalla ({screen_figure!r}) no aparece literalmente en el "
-            f"documento {formato} descargado — posible sustitución o inconsistencia de cifras"
-        )
+        if formato == "xlsx":
+            euro = re.fullmatch(r"(-?)(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{1,2}))?\s*€", screen_figure.strip())
+            assert euro, f"cifra de pantalla con formato inesperado: {screen_figure!r}"
+            integer, decimals = euro.group(2).replace(".", ""), (euro.group(3) or "0").ljust(2, "0")
+            expected = float(f"{euro.group(1)}{integer}.{decimals}")
+            cell_numbers = {
+                c.value for ws in wb.worksheets for row in ws.iter_rows() for c in row
+                if isinstance(c.value, int | float) and not isinstance(c.value, bool)
+            }
+            assert any(abs(n - expected) < 0.005 for n in cell_numbers), (
+                f"la cifra mostrada en pantalla ({screen_figure!r} = {expected}) no aparece como valor "
+                f"numérico en ninguna celda del documento xlsx descargado — posible sustitución o "
+                f"inconsistencia de cifras"
+            )
+        else:
+            assert screen_figure in text, (
+                f"la cifra mostrada en pantalla ({screen_figure!r}) no aparece literalmente en el "
+                f"documento {formato} descargado — posible sustitución o inconsistencia de cifras"
+            )
     finally:
         await sp.aclose()
         await db.dispose()

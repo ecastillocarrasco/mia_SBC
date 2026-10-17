@@ -73,7 +73,17 @@ async def test_salary_cost_comparison_request_end_to_end_three_formats(q3_regist
     kinds = [b.kind for b in doc.blocks]
     assert "kpis" in kinds
     assert "warnings" in kinds
-    assert kinds.count("chart") == len(presentation["charts"])
+    # Deduplicación deliberada (to_document(), "Ranking y donut de la misma distribución no aportan
+    # dos lecturas distintas"): de los 3 gráficos que calcula analisis_economico_nominas para esta
+    # petición, el donut y el ranking de barras comparten EXACTAMENTE las mismas etiquetas y valores
+    # (misma distribución, dos formas de dibujarla) — correcto que solo uno sobreviva al documento;
+    # el tercero (evolución mensual) tiene datos propios y siempre se conserva. No es un recuento 1:1
+    # con presentation["charts"]: verificar la deduplicación real, no pelearse con ella.
+    chart_signatures = {
+        json.dumps([c["labels"], [s.get("values") for s in c["series"]]], sort_keys=True)
+        for c in presentation["charts"]
+    }
+    assert kinds.count("chart") == len(chart_signatures) == 2
 
     warnings_items = next(b.data["items"] for b in doc.blocks if b.kind == "warnings")
     assert any("NOM-005" in w["message"] or "no cumplen el mínimo" in w["message"] for w in warnings_items)

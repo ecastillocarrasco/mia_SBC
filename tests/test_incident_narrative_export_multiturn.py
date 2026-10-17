@@ -33,7 +33,7 @@ from pypdf import PdfReader
 
 from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.data import Payslip
-from mia.llm.base import LLMRequest, ToolCall, ToolCallRequested
+from mia.llm.base import LLMCompleted, LLMRequest, TextDelta, ToolCall, ToolCallRequested
 from mia.llm.fake import FakeLLMProvider, final_answer, tool_call
 from mia.main import create_app
 from tests.conftest import make_settings
@@ -54,8 +54,23 @@ def _extract_text(formato: str, content: bytes) -> str:
     if formato == "pdf":
         return "".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(content)).pages)
     if formato == "xlsx":
+        # A diferencia de PDF/PPTX/HTML, una celda numérica en Excel guarda el VALOR nativo (p. ej.
+        # 2392.19) más un number_format (p. ej. '#,##0.00 "€"') — el texto "2.392,19 €" es solo cómo
+        # Excel lo MUESTRA, nunca un literal en el archivo. Para poder comparar contra el texto
+        # extraído de los otros formatos, se reconstruye aquí esa misma representación con formato
+        # español para las celdas que llevan ese number_format, en vez de buscar el texto formateado
+        # como si fuera a aparecer tal cual (nunca podría encontrarlo, aunque el dato fuera correcto).
         wb = load_workbook(io.BytesIO(content))
-        return " ".join(str(c.value) for ws in wb.worksheets for row in ws.iter_rows() for c in row if c.value is not None)
+        parts: list[str] = []
+        for ws in wb.worksheets:
+            for row in ws.iter_rows():
+                for c in row:
+                    if c.value is None:
+                        continue
+                    parts.append(str(c.value))
+                    if isinstance(c.value, int | float) and not isinstance(c.value, bool) and "€" in (c.number_format or ""):
+                        parts.append(f"{c.value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " €")
+        return " ".join(parts)
     if formato == "pptx":
         parts: list[str] = []
         for slide in Presentation(io.BytesIO(content)).slides:
@@ -113,6 +128,19 @@ async def acceptance_app(tmp_path):
     FORMATS_BY_TURN = {2: "pdf", 3: "pptx", 4: "xlsx", 5: "html"}
 
     def scripted(req: LLMRequest):
+        # compose_for_request() (motor documental, content_composer.py) hace su PROPIA llamada al LLM
+        # para elegir qué bloques incluir — independiente del bucle principal de herramientas de este
+        # guion, y la dispara el turno 1 (no encaja en ninguna de las frases de "solo reexporta" que
+        # omiten esa llamada). Reconocerla por su response_schema propio (selected_indices/unavailable)
+        # evita que este guion la confunda con el inicio de un turno nuevo y corrompa turn["n"].
+        schema_props = (req.response_schema or {}).get("properties") or {}
+        if "selected_indices" in schema_props:
+            import json as _json
+
+            inventory = _json.loads(req.messages[0].content)["bloques"]
+            decision = _json.dumps({"selected_indices": [b["index"] for b in inventory], "unavailable": []})
+            return [TextDelta(decision), LLMCompleted()]
+
         tool_rounds = [m for m in req.messages if m.role == "tool"]
         if not tool_rounds:
             turn["n"] += 1

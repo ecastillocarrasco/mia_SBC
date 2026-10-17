@@ -82,7 +82,8 @@ async def test_executive_report_absence_breakdown_by_kind(tmp_path: Path) -> Non
 async def test_executive_report_monthly_absence_trend(tmp_path: Path) -> None:
     doc = await _report(tmp_path)
     trend = _block(doc, "Tendencia mensual de absentismo").data
-    assert trend["rows"] == [["ago", 7]]  # las dos ausencias empiezan en agosto: 5 + 2
+    # Clave de mes ISO ("%Y-%m"), determinista y sin depender del locale del proceso — no "ago"/"Aug".
+    assert trend["rows"] == [["2026-08", 7]]  # las dos ausencias empiezan en agosto: 5 + 2
 
 
 async def test_executive_report_vacation_balance_distribution(tmp_path: Path) -> None:
@@ -130,7 +131,8 @@ async def test_executive_report_monthly_trend_includes_a_second_month_with_a_ver
     doc = await build_executive_report(deps, date(2026, 7, 1), date(2026, 8, 31), TODAY, None, None)
 
     trend = _block(doc, "Tendencia mensual de absentismo").data
-    assert trend["rows"] == [["jul", 5], ["ago", 7]]  # 7 = 5 (Ana Ruiz) + 2 (Eva Sol), como antes
+    # Clave de mes ISO ("%Y-%m"), determinista y sin depender del locale del proceso — no "jul"/"ago".
+    assert trend["rows"] == [["2026-07", 5], ["2026-08", 7]]  # 7 = 5 (Ana Ruiz) + 2 (Eva Sol), como antes
 
     findings = _block(doc, "Hallazgos · Absentismo").data
     assert findings  # el bloque solo se añade si from_time_series() devolvió algo verificable

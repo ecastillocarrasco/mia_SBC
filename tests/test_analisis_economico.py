@@ -506,7 +506,12 @@ async def test_scales_to_332_employees_without_artificial_rejection(
     for i, size in enumerate(sizes):
         dept = result.summary["por_departamento"][f"Depto{i + 1}"]
         assert dept["total"] == size * n_months * NET_PER_PERSON_SCALE
-        assert dept["personas_con_nomina"] == size * n_months  # ninguna observación duplicada
+        # personas_con_nomina cuenta PERSONAS distintas (a propósito: un grupo de 2 personas con 6
+        # meses de datos sigue siendo un grupo de 2 a efectos de NOM-005, ver _group_stats()) — no
+        # escala con los meses. La observación "ninguna duplicada" la verifica observaciones_nomina
+        # (una por persona y mes), que sí debe escalar.
+        assert dept["personas_con_nomina"] == size
+        assert dept["observaciones_nomina"] == size * n_months
 
 
 async def test_scales_to_500_employees_twelve_months_without_artificial_rejection(
