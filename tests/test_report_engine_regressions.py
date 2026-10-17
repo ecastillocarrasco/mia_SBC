@@ -15,6 +15,7 @@ import types
 from pathlib import Path
 from typing import Any
 ROOT = Path(__file__).resolve().parents[1] / "src/mia"
+_STUBBED_PACKAGES = ("mia.modules", "mia.modules.rrhh", "mia.modules.rrhh.informes")
 for fullname, path in [("mia.modules", ROOT / "modules"),
                        ("mia.modules.rrhh", ROOT / "modules/rrhh"),
                        ("mia.modules.rrhh.informes", ROOT / "modules/rrhh/informes")]:
@@ -24,6 +25,13 @@ for fullname, path in [("mia.modules", ROOT / "modules"),
 from mia.modules.rrhh.informes.document import Block, Document, to_document
 from mia.modules.rrhh.informes.render import to_pdf, to_pptx, to_xlsx
 from mia.modules.rrhh.informes.render_html import to_html
+# Deshacer el stub ahora que ya tenemos las referencias que necesitábamos: dejarlo puesto
+# envenena sys.modules para el resto de la sesión de pytest (otros test_*.py, recogidos después
+# en el mismo proceso, harían `from mia.modules.rrhh import build_registry` contra este stub sin
+# build_registry y fallarían). Los submódulos ya importados (document/render/render_html) quedan
+# bien cacheados bajo su propia clave; solo se retiran los 3 paquetes contenedores stubeados.
+for _fullname in _STUBBED_PACKAGES:
+    sys.modules.pop(_fullname, None)
 
 
 def extract_function(path, name):
@@ -120,16 +128,24 @@ def test_long_pptx_cells_are_not_truncated():
     assert "".join(rendered) == long
 
 
-def test_composer_selects_only_requested_blocks_and_preserves_warnings():
-    # La selección usa el proveedor ya inyectado; se simula su API sin conexión externa.
-    import asyncio
-    import dataclasses
+@pytest.fixture(scope="module")
+def _fake_llm_stack():
+    """Stub de mia.llm/mia.settings para probar mia.reporting.content_composer sin red ni
+    credenciales reales. Restaura sys.modules al salir (teardown): dejar el stub puesto rompería a
+    cualquier otro test_*.py recogido después en la misma sesión de pytest que necesite el mia.llm
+    real (p. ej. uno que haga ``from mia.llm import ToolCall`` de verdad)."""
     import importlib
-    import json
     import sys
     import types
-    from enum import Enum
+    import dataclasses
 
+    saved = {
+        name: sys.modules.get(name)
+        for name in (
+            "mia.llm", "mia.llm.base", "mia.llm.tiers", "mia.settings",
+            "mia.reporting.content_composer",
+        )
+    }
     llm_root = types.ModuleType("mia.llm")
     llm_root.__path__ = [str(ROOT / "llm")]
     sys.modules["mia.llm"] = llm_root
@@ -160,6 +176,23 @@ def test_composer_selects_only_requested_blocks_and_preserves_warnings():
     sys.modules.pop("mia.reporting.content_composer", None)
     composer = importlib.import_module("mia.reporting.content_composer")
 
+    yield composer
+
+    for name, module in saved.items():
+        if module is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = module
+
+
+def test_composer_selects_only_requested_blocks_and_preserves_warnings(_fake_llm_stack):
+    # La selección usa el proveedor ya inyectado; se simula su API sin conexión externa.
+    import asyncio
+    import json
+
+    composer = _fake_llm_stack
+    from mia.llm.base import TextDelta
+
     doc = Document("Informe RRHH", [
         Block("table", "Plantilla por departamento", {"columns": ["D", "N"], "rows": [["A", 10]]}),
         Block("table", "Absentismo", {"columns": ["Tipo", "Dias"], "rows": [["IT", 20]]}),
@@ -177,11 +210,11 @@ def test_composer_selects_only_requested_blocks_and_preserves_warnings():
     assert len(doc.blocks) == 3  # copia inmutable
 
 
-def test_composer_fails_closed_for_unavailable_requested_metrics():
+def test_composer_fails_closed_for_unavailable_requested_metrics(_fake_llm_stack):
     import asyncio
     import json
-    import importlib
-    composer = importlib.import_module("mia.reporting.content_composer")
+
+    composer = _fake_llm_stack
     from mia.llm.base import TextDelta
 
     class FakeLLM:
