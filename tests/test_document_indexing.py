@@ -38,12 +38,30 @@ def _pdf(text: str) -> bytes:
     return buffer.getvalue()
 
 
-def _scanned_pdf() -> bytes:
-    buffer = io.BytesIO()
-    pdf = canvas.Canvas(buffer)
-    pdf.rect(50, 50, 400, 600, fill=1)  # «escaneo»: solo imagen, sin capa de texto
-    pdf.save()
-    return buffer.getvalue()
+def _scanned_pdf(text: str = "NOMINA DE JULIO CON PLUS DE NOCTURNIDAD INCLUIDO") -> bytes:
+    """PDF «escaneado»: el texto vive solo como píxeles de una imagen incrustada (sin capa de
+    texto nativa) — desde que el OCR es local (Tesseract, no un LLM al que baste con darle un
+    guion), la imagen debe contener texto real y reconocible (>=40 caracteres: el umbral de
+    ``extract_document_text_local`` para «ok» frente a «empty») para que el test tenga sentido."""
+    import pymupdf
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.new("RGB", (1300, 310), "white")
+    draw = ImageDraw.Draw(image)
+    try:
+        font = ImageFont.truetype("arial.ttf", 42)
+    except OSError:
+        font = ImageFont.truetype("DejaVuSans.ttf", 42)
+    draw.text((30, 120), text, fill="black", font=font)
+    png = io.BytesIO()
+    image.save(png, format="PNG")
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=1300, height=310)
+    page.insert_image(page.rect, stream=png.getvalue())
+    data = doc.tobytes()
+    doc.close()
+    return data
 
 
 def _docx(text: str) -> bytes:
@@ -130,7 +148,8 @@ async def test_scanned_payslip_pdf_is_read_visually(db: Database) -> None:
     assert report.statuses == {"ok": 1}
     async with db.session() as s:
         text = (await s.scalars(select(HrDocumentText))).one()
-    assert text.detail is not None and text.detail.startswith("ocr: pdf escaneado")
+    assert text.detail is not None and text.detail.startswith("ocr_local:pdf")
+    assert "NOCTURNIDAD" in text.text.upper()
 
 
 async def test_signed_document_docx_is_indexed(db: Database) -> None:

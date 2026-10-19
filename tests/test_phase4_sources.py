@@ -166,6 +166,13 @@ def test_images_named_pdf_are_unsupported() -> None:
 
 
 async def test_one_bad_cv_does_not_stop_the_rest(tmp_path: Path) -> None:
+    """Un CV genuinamente corrupto (no solo "sin texto") no debe impedir que el resto se indexe.
+
+    "1.pdf" trae solo la cabecera mágica de un JPEG, sin datos de imagen reales: el OCR local
+    (PIL/Tesseract) no puede decodificarlo y queda en "error" (se reintentará más adelante) — ya
+    no en "ok" como con el antiguo OCR multimodal, que no necesitaba decodificar la imagen de
+    verdad para devolver un texto de guion. Lo que este test protege es que ese fallo no bloquee
+    "2.docx", que sí debe quedar "ok"."""
     db = await fresh_database(tmp_path, "bad.db")
     fake = FakeSharePoint(page_size=10)
     fake.put(
@@ -183,25 +190,43 @@ async def test_one_bad_cv_does_not_stop_the_rest(tmp_path: Path) -> None:
     report = await CvIndexer(db=db, client=client, llm=FakeLLMProvider(), embedding_model="x").run()
     await client.aclose()
     await db.dispose()
-    # La imagen se lee con el modelo multimodal (antes quedaba como no soportada).
-    assert report.statuses == {"ok": 2}
+    assert report.statuses == {"error": 1, "ok": 1}
+
+
+def _scanned_cv_pdf(text: str = "CAMARERA DE PISOS CON EXPERIENCIA EN HOTELES") -> bytes:
+    """PDF «escaneado»: el texto vive solo como píxeles de una imagen incrustada (sin capa de
+    texto nativa) — el OCR es local (Tesseract), así que la imagen debe contener texto real y
+    reconocible (>=40 caracteres: el umbral de ``extract_document_text_local`` para «ok»)."""
+    import pymupdf
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.new("RGB", (1300, 310), "white")
+    draw = ImageDraw.Draw(image)
+    try:
+        font = ImageFont.truetype("arial.ttf", 42)
+    except OSError:
+        font = ImageFont.truetype("DejaVuSans.ttf", 42)
+    draw.text((30, 120), text, fill="black", font=font)
+    png = io.BytesIO()
+    image.save(png, format="PNG")
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=1300, height=310)
+    page.insert_image(page.rect, stream=png.getvalue())
+    data = doc.tobytes()
+    doc.close()
+    return data
 
 
 async def test_scanned_pdf_is_read_visually_and_old_empties_are_retried(tmp_path: Path) -> None:
-    """Parte de los CVs reales son PDF escaneados sin texto: se renderizan y se leen como imagen."""
-    from reportlab.pdfgen import canvas  # noqa: PLC0415
-
-    buffer = io.BytesIO()
-    pdf = canvas.Canvas(buffer)
-    pdf.rect(50, 50, 400, 600, fill=1)  # «escaneo»: solo imagen, sin texto
-    pdf.save()
+    """Parte de los CVs reales son PDF escaneados sin texto: se renderizan y se leen con OCR local."""
     db = await fresh_database(tmp_path, "scan.db")
     fake = FakeSharePoint(page_size=10)
     fake.put(
         "CVDocs",
         {"ID": 1, "FileLeafRef": "77.pdf", "FileRef": "/CVDocs/77.pdf", "Modified": "2026-09-01T10:00:00Z"},
     )
-    fake.files["/CVDocs/77.pdf"] = buffer.getvalue()
+    fake.files["/CVDocs/77.pdf"] = _scanned_cv_pdf()
     client = SharePointClient(site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=fake.transport())
     await SyncRunner(db=db, client=client, pseudonymize=Pseudonymizer("k")).run(definitions.CV_DOCS)
     async with db.session() as s:  # simula un CV que quedó «empty» antes de existir la lectura visual
@@ -213,4 +238,5 @@ async def test_scanned_pdf_is_read_visually_and_old_empties_are_retried(tmp_path
         text = (await s.scalars(select(CvText))).one()
     await db.dispose()
     assert report.statuses == {"ok": 1} and again.processed == 0
-    assert text.detail.startswith("ocr: pdf escaneado")
+    assert text.detail.startswith("ocr_local:pdf")
+    assert "HOTELES" in text.text.upper()
