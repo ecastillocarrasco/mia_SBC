@@ -2,6 +2,7 @@ from mia.data.db import Database
 from mia.data.hr import (
     CalendarShift,
     Candidate,
+    ClockMark,
     CvChunk,
     CvDocument,
     CvText,
@@ -45,6 +46,7 @@ __all__ = [
     "Base",
     "CalendarShift",
     "Candidate",
+    "ClockMark",
     "ConversationSession",
     "ConversationTurn",
     "CvChunk",

@@ -155,6 +155,7 @@ class DataSettings(BaseModel):
 ALL_DOMAINS = (
     "empleados",
     "turnos",
+    "fichajes",
     "vacaciones",
     "curriculums",
     "correo",

@@ -20,6 +20,7 @@ from mia.modules.rrhh import (
     curriculums,
     documentos,
     empleados,
+    fichajes,
     informes,
     nominas,
     sistema,
@@ -37,12 +38,14 @@ if TYPE_CHECKING:
 
 MANIFEST = ModuleManifest(
     name="rrhh",
-    description="Recursos Humanos: empleados y organización, turnos y ausencias, vacaciones, "
-    "nóminas, documentación firmada, correo del buzón de RRHH, selección y currículums, "
+    description="Recursos Humanos: empleados y organización, turnos y ausencias, fichajes y su "
+    "cruce con los turnos, vacaciones, nóminas, documentación firmada, correo del buzón de RRHH, "
+    "selección y currículums, "
     "trabajo temporal, analítica e informes.",
     permissions=(
         Permission.EMPLEADOS_LEER,
         Permission.TURNOS_LEER,
+        Permission.FICHAJES_LEER,
         Permission.VACACIONES_LEER,
         Permission.NOMINAS_LEER,
         Permission.NOMINAS_IMPORTES,
@@ -61,6 +64,7 @@ MANIFEST = ModuleManifest(
     sources=(
         "sharepoint:Empleados",
         "sharepoint:Turnos",
+        "file:conectia_excel",
         "sharepoint:Vacaciones",
         "sharepoint:Nominas",
         "sharepoint:DocumentosFirmados",
@@ -73,6 +77,7 @@ MANIFEST = ModuleManifest(
 DOMAINS: dict[str, tuple[str, Callable[[ToolRegistry, Deps], None]]] = {
     "empleados": ("empleados y organización", empleados.register),
     "turnos": ("turnos y ausencias", turnos.register),
+    "fichajes": ("control de presencia (fichajes)", fichajes.register),
     "vacaciones": ("vacaciones y saldos", vacaciones.register),
     "curriculums": ("selección y currículums", curriculums.register),
     "correo": ("correo del buzón de RRHH", correo.register),

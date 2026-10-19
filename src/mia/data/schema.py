@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 from mia.data.db import Database
 
-EXPECTED_REVISION = "0011"
+EXPECTED_REVISION = "0012"
 """Última migración de Alembic (migrations/versions). Un test comprueba que coincide con la real."""
 
 

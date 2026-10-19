@@ -17,6 +17,10 @@ from enum import StrEnum
 class Permission(StrEnum):
     EMPLEADOS_LEER = "empleados:leer"
     TURNOS_LEER = "turnos:leer"
+    FICHAJES_LEER = "fichajes:leer"
+    """Control de presencia (fichajes): marcas de entrada/salida y su cruce con los turnos
+    planificados. Fuente actual: importación manual del Excel de Conectia (A3), solo en
+    entornos de prueba — ver ``mia.modules.rrhh.fichajes``."""
     VACACIONES_LEER = "vacaciones:leer"
     NOMINAS_LEER = "nominas:leer"
     NOMINAS_IMPORTES = "nominas:importes"
@@ -42,6 +46,7 @@ _LECTURA_RRHH = frozenset(
     {
         Permission.EMPLEADOS_LEER,
         Permission.TURNOS_LEER,
+        Permission.FICHAJES_LEER,
         Permission.VACACIONES_LEER,
         Permission.DOCUMENTOS_LEER,
         Permission.TRABAJO_TEMPORAL_LEER,

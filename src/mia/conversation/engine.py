@@ -94,6 +94,7 @@ def _module_keywords() -> dict[str, tuple[str, ...]]:
     from mia.modules.rrhh.curriculums import KEYWORDS as curriculums
     from mia.modules.rrhh.documentos import KEYWORDS as documentos
     from mia.modules.rrhh.empleados import KEYWORDS as empleados
+    from mia.modules.rrhh.fichajes import KEYWORDS as fichajes
     from mia.modules.rrhh.informes import KEYWORDS as informes
     from mia.modules.rrhh.nominas import KEYWORDS as nominas
     from mia.modules.rrhh.trabajo_temporal import KEYWORDS as trabajo_temporal
@@ -104,6 +105,7 @@ def _module_keywords() -> dict[str, tuple[str, ...]]:
         "finanzas": finanzas,
         "empleados": empleados,
         "turnos": turnos,
+        "fichajes": fichajes,
         "vacaciones": vacaciones,
         "nominas": nominas,
         "documentos": documentos,

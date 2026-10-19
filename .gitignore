@@ -10,6 +10,7 @@
 *.sqlite3
 *.db
 tests/parity/corpus/
+/data/fichajes_conectia/
 
 # Entorno
 .venv/

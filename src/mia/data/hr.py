@@ -469,6 +469,32 @@ class ShiftTemplate(Base):
     week: Mapped[int | None] = mapped_column(Integer)
 
 
+class ClockMark(Base):
+    """Un fichaje (marca de entrada o salida) de control de presencia.
+
+    Fuente actual: exportación Excel de Conectia (A3 Wolters Kluwer), vía importación manual
+    — ``source="excel_conectia"`` lo distingue desde ya de una futura API real (``TimeClockConnector``,
+    ``mia.connectors.a3``) sin romper nada cuando esa API exista. El emparejamiento entrada/salida y el
+    cálculo de horas NO se guardan aquí: viven en ``mia.modules.rrhh.fichajes.pairing`` como función
+    pura sobre la secuencia de marcas de una persona, igual que ``parse_payslip`` nunca mezcla lectura
+    y cálculo — evita una segunda tabla derivada que se pueda desincronizar de esta.
+    """
+
+    __tablename__ = "hr_clock_marks"
+    __table_args__ = (Index("ix_hr_clock_marks_person_at", "person_key", "at"),)
+
+    person_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    origin: Mapped[str | None] = mapped_column(String(64))
+    """"Origen del marcaje" (Conectia): «Normal» salvo corrección manual futura."""
+    device_type: Mapped[str | None] = mapped_column(String(32))
+    """"Tipo marcaje": «Reloj», «App», «App offline»."""
+    terminal_name: Mapped[str | None] = mapped_column(String(128))
+    source: Mapped[str] = mapped_column(String(32))
+    """«excel_conectia» hoy; reservado para distinguir una futura fuente (API real) sin migrar datos."""
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class WeekComment(Base):
     """ComentariosTurnosSemanas: contexto de departamento/semana. Nunca se atribuye a una persona."""
 
