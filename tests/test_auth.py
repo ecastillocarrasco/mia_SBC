@@ -38,6 +38,58 @@ def test_roles_map_to_permissions() -> None:
     assert user.has(None)
 
 
+# ------------------------------------------------------------------ App Roles reales de Entra ID
+def test_global_app_role_has_every_permission() -> None:
+    user = UserContext("u", "U", roles=frozenset({"Global"}))
+    assert user.permissions == frozenset(Permission)
+
+
+def test_rrhh_app_role_matches_the_dev_equivalent() -> None:
+    """"RRHH" (App Role real) y "mia.rrhh" (rol de desarrollo) deben dar exactamente el mismo
+    acceso: son el mismo conjunto de permisos bajo dos nombres, nunca dos definiciones que puedan
+    divergir en silencio."""
+    rrhh = UserContext("u", "U", roles=frozenset({"RRHH"}))
+    dev_rrhh = UserContext("u", "U", roles=frozenset({"mia.rrhh"}))
+    assert rrhh.permissions == dev_rrhh.permissions
+
+
+def test_rrhh_no_nominas_app_role_excludes_only_nominas() -> None:
+    con_nominas = UserContext("u", "U", roles=frozenset({"RRHH"}))
+    sin_nominas = UserContext("u", "U", roles=frozenset({"RRHH.NoNominas"}))
+    assert sin_nominas.has(Permission.EMPLEADOS_LEER)
+    assert sin_nominas.has(Permission.DOCUMENTOS_CONTENIDO)
+    assert not sin_nominas.has(Permission.NOMINAS_LEER)
+    assert not sin_nominas.has(Permission.NOMINAS_IMPORTES)
+    # La única diferencia entre ambos roles son los dos permisos de nóminas.
+    assert con_nominas.permissions - sin_nominas.permissions == {
+        Permission.NOMINAS_LEER,
+        Permission.NOMINAS_IMPORTES,
+    }
+
+
+def test_legal_and_administracion_app_roles_are_scoped_not_blanket_access() -> None:
+    """Alcance confirmado por el usuario: "Administracion" ve empleados y nóminas; "Legal" ve
+    documentos (contratos y similares) pero nunca el contenido de reconocimientos médicos."""
+    legal = UserContext("u", "U", roles=frozenset({"Legal"}))
+    assert legal.has(Permission.DOCUMENTOS_LEER)
+    assert legal.has(Permission.DOCUMENTOS_CONTENIDO)
+    assert not legal.has(Permission.DOCUMENTOS_CONTENIDO_MEDICO)
+    assert not legal.has(Permission.NOMINAS_LEER)
+    assert not legal.has(Permission.EMPLEADOS_LEER)
+
+    administracion = UserContext("u", "U", roles=frozenset({"Administracion"}))
+    assert administracion.has(Permission.NOMINAS_LEER)
+    assert administracion.has(Permission.NOMINAS_IMPORTES)
+    assert not administracion.has(Permission.DOCUMENTOS_CONTENIDO)
+
+
+def test_rrhh_keeps_medical_document_content_access() -> None:
+    """La nueva distinción "contenido médico" no debe quitarle nada a RRHH: solo restringe a
+    "Legal", que nunca tuvo ese contenido."""
+    assert UserContext("u", "U", roles=frozenset({"RRHH"})).has(Permission.DOCUMENTOS_CONTENIDO_MEDICO)
+    assert UserContext("u", "U", roles=frozenset({"mia.rrhh"})).has(Permission.DOCUMENTOS_CONTENIDO_MEDICO)
+
+
 async def test_easyauth_reads_platform_identity() -> None:
     header = _principal(
         [
@@ -99,6 +151,15 @@ async def test_entra_token_maps_to_user_and_permissions() -> None:
     assert user.display_name == "Enrique"
     assert user.email == "enrique@example.com"
     assert user.has(Permission.NOMINAS_LEER)  # mia.rrhh
+
+
+async def test_entra_token_with_a_real_app_role_name_maps_to_permissions() -> None:
+    """El token trae literalmente "RRHH" (el App Role tal como se definiría en el manifiesto de
+    Entra ID), no el rol interno de desarrollo "mia.rrhh"."""
+    token = _entra_token(roles=["RRHH"])
+    user = await _entra_provider().authenticate(_Request({"authorization": f"Bearer {token}"}))  # type: ignore[arg-type]
+    assert user.has(Permission.NOMINAS_LEER)
+    assert user.has(Permission.EMPLEADOS_LEER)
 
 
 async def test_entra_without_header_is_rejected() -> None:

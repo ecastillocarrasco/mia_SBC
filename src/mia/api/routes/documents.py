@@ -17,6 +17,7 @@ from mia.auth import Permission
 from mia.data import CvDocument, Payslip, SignedDocument
 from mia.data.repositories import AuditRepository
 from mia.modules.rrhh.content import MAX_BYTES
+from mia.modules.rrhh.documentos import is_medical_document_type
 from mia.observability import current_request_id
 
 router = APIRouter(prefix="/api/documents", tags=["documentos"])
@@ -49,6 +50,13 @@ async def download(kind: str, item_id: int, services: ServicesDep, user: UserDep
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "SharePoint no está configurado")
     async with services.db.session() as db:
         record = await db.get(model, item_id)
+        if (
+            kind == "documento"
+            and isinstance(record, SignedDocument)
+            and is_medical_document_type(record.doc_type)
+            and not user.has(Permission.DOCUMENTOS_CONTENIDO_MEDICO)
+        ):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "No tienes permiso para abrir documentos de reconocimiento médico")
         outcome = "ok" if record is not None else "not_found"
         await AuditRepository(db).record(
             user_id=user.user_id,

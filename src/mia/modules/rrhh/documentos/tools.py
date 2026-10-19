@@ -59,6 +59,16 @@ KEYWORDS = (
 )
 """Ver `empleados.tools.KEYWORDS` para el criterio."""
 
+_MEDICAL_DOC_TYPE_KEY = normalize_key("Reconocimiento médico")
+
+
+def is_medical_document_type(doc_type: str | None) -> bool:
+    """«Reconocimiento médico» exige ``Permission.DOCUMENTOS_CONTENIDO_MEDICO`` además de
+    ``DOCUMENTOS_CONTENIDO`` para leer o buscar su CONTENIDO — decisión de negocio: el rol "Legal"
+    ve documentos (existencia/tipo, ``DOCUMENTOS_LEER``, sin distinción) pero nunca el contenido de
+    reconocimientos médicos. No afecta a la existencia/tipo del documento, solo a su contenido."""
+    return doc_type is not None and normalize_key(doc_type) == _MEDICAL_DOC_TYPE_KEY
+
 
 class DocumentosPersonaParams(PersonaParams):
     tipo: str | None = Field(default=None, description=f"Tipo: {TYPES}")
@@ -102,6 +112,9 @@ def documentos_persona(deps: Deps) -> Tool:
             f"Documentos de {e.name}", ["Tipo", "Documento", "Año", "Enlace"], [list(i.values()) for i in items]
         )
         if ctx.user.has(Permission.DOCUMENTOS_CONTENIDO):
+            visible = docs
+            if not ctx.user.has(Permission.DOCUMENTOS_CONTENIDO_MEDICO):
+                visible = [d for d in docs if not is_medical_document_type(d.doc_type)]
             view["documents"] = [
                 document_entry(
                     "documento",
@@ -110,7 +123,7 @@ def documentos_persona(deps: Deps) -> Tool:
                     subtitle=d.doc_type,
                     date=str(d.doc_year) if d.doc_year else None,
                 )
-                for d in docs[:36]
+                for d in visible[:36]
             ]
         return ToolResult(ToolStatus.OK, summary, view, focus_person(e))
 
@@ -346,8 +359,9 @@ def buscar_en_documentos(deps: Deps) -> Tool:
             return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, "La búsqueda semántica no está configurada")
         async with deps.db.session() as db:
             allowed: set[int] | None = None
-            if p.nombre or p.tipo:
-                stmt = select(SignedDocument.sp_id)
+            exclude_medical = not ctx.user.has(Permission.DOCUMENTOS_CONTENIDO_MEDICO)
+            if p.nombre or p.tipo or exclude_medical:
+                stmt = select(SignedDocument.sp_id, SignedDocument.doc_type)
                 if p.nombre:
                     match = await resolve_person(db, PersonaParams(nombre=p.nombre))
                     if match.employee is None:
@@ -357,7 +371,10 @@ def buscar_en_documentos(deps: Deps) -> Tool:
                     stmt = stmt.where(SignedDocument.person_key == match.employee.person_key)
                 if p.tipo:
                     stmt = stmt.where(SignedDocument.doc_type.ilike(f"%{p.tipo}%"))
-                allowed = set((await db.scalars(stmt)).all())
+                rows = (await db.execute(stmt)).all()
+                if exclude_medical:
+                    rows = [r for r in rows if not is_medical_document_type(r.doc_type)]
+                allowed = {r.sp_id for r in rows}
                 diag_emit(
                     EventStage.DOCUMENT_SEARCH,
                     data={
@@ -490,6 +507,10 @@ def leer_documento(deps: Deps) -> Tool:
                 },
             )
         doc = docs[0]
+        if is_medical_document_type(doc.doc_type) and not ctx.user.has(Permission.DOCUMENTOS_CONTENIDO_MEDICO):
+            return ToolResult(
+                ToolStatus.PERMISSION_DENIED, "No tienes permiso para leer el contenido de reconocimientos médicos"
+            )
         try:
             content = await deps.sharepoint.download_item_file("DocumentosFirmadosV2", doc.sp_id, MAX_BYTES)
             text = document_text(content)
