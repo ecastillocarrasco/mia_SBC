@@ -173,7 +173,14 @@ def extract_document_text_local(content: bytes, file_name: str) -> tuple[str, st
     page_texts: list[str] = []
     pages_without_text: list[int] = []
     for index, page in enumerate(reader.pages):
-        text = clean_text(page.extract_text() or "")
+        try:
+            text = clean_text(page.extract_text() or "")
+        except Exception:
+            # pypdf puede lanzar (p. ej. KeyError en fuentes CID sin '/DescendantFonts') ante una
+            # página con una fuente mal formada — una sola página así no debe tirar el documento
+            # entero: se trata como "sin texto nativo" y el fallback de OCR local por página (ya
+            # existente más abajo) la cubre igual que a una página genuinamente escaneada.
+            text = ""
         page_texts.append(text)
         if len(text) < LOCAL_OCR_MIN_NATIVE_CHARS:
             pages_without_text.append(index)
