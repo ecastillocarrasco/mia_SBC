@@ -7,6 +7,8 @@
  * devuelve audio en streaming para un texto dado.
  */
 
+import { getAccessToken } from "./auth-gate.js";
+
 export const AVATAR_STATES = [
   "reposo", "escuchando", "pensando", "concentrada", "hablando", "sonriendo", "saludando",
   "guinando", "sorprendida", "confundida", "entusiasmada", "celebrando", "avisando",
@@ -57,6 +59,13 @@ export class MiaClient extends EventTarget {
     this.dispatchEvent(new CustomEvent(name, { detail }));
   }
 
+  /** Cabecera Authorization (Bearer) si hay sesión Entra activa; objeto vacío en modo dev/easyauth,
+   * donde `getAccessToken()` devuelve `null` porque nunca se inicializó MSAL (ver auth-gate.js). */
+  async _authHeaders() {
+    const token = await getAccessToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   /** Envía un mensaje y va emitiendo eventos según llegan; devuelve el TurnResult final. */
   async send(message, { attachmentIds = [] } = {}) {
     this._emit("sending", { message });
@@ -64,7 +73,7 @@ export class MiaClient extends EventTarget {
     if (attachmentIds.length) body.attachment_ids = attachmentIds;
     const response = await fetch(`${this.apiBase}/api/chat/stream`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(await this._authHeaders()) },
       body: JSON.stringify(body),
     });
     if (!response.ok || !response.body) {
@@ -108,7 +117,7 @@ export class MiaClient extends EventTarget {
     try {
       const response = await fetch(`${this.apiBase}/api/voice/stream`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await this._authHeaders()) },
         body: JSON.stringify({ text }),
       });
       if (!response.ok) throw new Error(`voice/stream HTTP ${response.status}`);

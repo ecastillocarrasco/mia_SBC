@@ -82,12 +82,20 @@
   var $ = { root: function () { return (typeof context !== 'undefined' && context) || window.context || {}; } };
   function sessionId() { return $.root().session_id || null; }
 
-  function mailApi(action, payload) {
+  async function mailApi(action, payload) {
     var body = Object.assign({ session_id: sessionId() }, payload || {});
-    return fetch('/api/mia/mail/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Respuesta no válida del servidor (' + r.status + ')' }; }); })
-      .then(function (j) { if (j && j.session_id) { try { $.root().session_id = j.session_id; } catch (e) { /* noop */ } } return j; })
-      .catch(function () { return { ok: false, error: 'No he podido conectar con el servidor.' }; });
+    try {
+      // Script clasico: lee el token via el global que auth-gate.js expone (ver mia-2d.js, miaAuthHeaders).
+      var token = typeof window.miaGetAccessToken === 'function' ? await window.miaGetAccessToken() : null;
+      var headers = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = 'Bearer ' + token;
+      var r = await fetch('/api/mia/mail/' + action, { method: 'POST', headers: headers, body: JSON.stringify(body) });
+      var j = await r.json().catch(function () { return { ok: false, error: 'Respuesta no válida del servidor (' + r.status + ')' }; });
+      if (j && j.session_id) { try { $.root().session_id = j.session_id; } catch (e) { /* noop */ } }
+      return j;
+    } catch (e) {
+      return { ok: false, error: 'No he podido conectar con el servidor.' };
+    }
   }
 
   var openModals = [];
