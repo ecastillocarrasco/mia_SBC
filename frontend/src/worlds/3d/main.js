@@ -1,3 +1,7 @@
+import './sbc-logo-assembly-v2.css';
+import './sbc-logo-assembly-v3.css';
+import { SbcIntroDirectorV2 } from './sbc-intro-director-v2.js';
+import { sbcAssemblyMarkup } from '../../core/sbc-logo-assembly-v2.js';
 import { installMiaAnimationLab } from "./animation-lab-v530.js";
 import { MiaBootLoader } from "../../core/boot-loader-v43.js";
 import { getWelcomeText } from "../../core/identity-v45.js";
@@ -13,6 +17,7 @@ import { renderPresentation } from "../../core/present.js";
 import { buildStatisticalPresentation } from "../../core/statistical-visuals.js";
 import { MiaScene } from "../../core/scene.js";
 import { PresentationStage } from "../../core/presentation-stage.js";
+import { HolographicResults3D } from "./holographic-results-v1.js";
 import { MiaBehaviorV4 } from "../../core/behavior-v4.js";
 import { enhancePremiumTables, hasPresentationData, presentationType } from "../../core/premium-tables.js";
 import {
@@ -20,6 +25,18 @@ import {
   buildEmployee360Presentation,
   renderEmployee360PresentationHtml,
 } from "../../core/employee360-presentation.js";
+import { ensureAuthenticated, ensureAuthorized } from "../../core/auth-gate.js";
+
+// Si MIA_AUTH__MODE=entra exige login y ya hay sesión (p. ej. iniciada desde el portal), sigue
+// sin tocar nada. Si no hay sesión, `interactive: false` NUNCA inicia aquí su propio login (cada
+// página tendría su propia redirectUri que registrar en Entra ID aparte) — en vez de eso vuelve
+// al portal, que es el único punto con login real: el mundo 3D nunca llega a montarse en ese
+// caso, ni siquiera si alguien navega directo a esta página (o a mia-3d.html, que solo reenvía
+// aquí) sin pasar antes por el portal.
+await ensureAuthenticated({ interactive: false });
+// Login correcto no es lo mismo que tener acceso: sin ningún permiso asignado, esto sustituye
+// la página entera por el aviso correspondiente y tampoco resuelve nunca.
+await ensureAuthorized();
 
 const conversation = document.getElementById("conversation");
 const composer = document.getElementById("composer");
@@ -37,7 +54,7 @@ const micLauncher = document.getElementById("miaMicLauncher");
 const micButton = document.getElementById("mic");
 const waitHud = document.getElementById("miaWaitProgress");
 const waitText = document.getElementById("miaWaitText");
-const boot = new MiaBootLoader({ mode: "3d" });
+const boot = new MiaBootLoader({ mode: "3d", variant: "sbc-assembly", markup: sbcAssemblyMarkup });
 const scene = new MiaScene(document.getElementById("canvas-root"));
 // Fuller, eye-level framing; the floor is uniform white and has no horizon.
 scene.camera.position.set(0, 1.47, 3.88);
@@ -55,7 +72,9 @@ scene.configureFacePose({
 const client = new MiaClient();
 const miaAnimationLab = installMiaAnimationLab(scene); // mIA V5.3.0, temporal
 const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+const introDirector = new SbcIntroDirectorV2(boot.node, { reducedMotion });
 const stage = new PresentationStage({ root: document.body, reducedMotion, mode: "3d" });
+const holographicResults = new HolographicResults3D({ scene, panel, reducedMotion });
 
 let voiceEnabled = true;
 let busy = false;
@@ -238,6 +257,7 @@ function clearPresentation() {
   panel.dataset.presentation = "conversation";
   document.body.dataset.presentation = "conversation";
   stage.reset();
+  holographicResults.reset();
   conversation.replaceChildren();
   scene.setPresentationLayout(false);
   narrative.clear();
@@ -281,6 +301,7 @@ async function revealData(result, answer, query, presentations, kind) {
   document.body.dataset.presentation = kind;
   stage.prepare(kind);
   scene.setPresentationLayout(true);
+  holographicResults.prepare();
 
   const statistical = ["analytics", "comparison", "data"].includes(kind)
     ? buildStatisticalPresentation(presentations, { query, answer })
@@ -309,6 +330,7 @@ async function revealData(result, answer, query, presentations, kind) {
 
   enhancePremiumTables(conversation, { pageSize: 20, search: true, download: true });
   stage.reveal();
+  holographicResults.reveal();
   animateCounters(conversation);
   await sleep(180);
   conversation.scrollTop = 0;
@@ -463,6 +485,7 @@ scene.load((progress, detail) => {
   window.clearTimeout(voiceTimeout);
   if (audioReady?.status === 'timeout') welcomeVoice.cancel();
   setStatus("Mía está preparada", "ready");
+  await boot.revealAvatar(scene);
   // V4.9: the REAL click on the loading screen starts cached audio.play()
   // immediately. No async preparation, setTimeout, or simulated button click
   // is allowed before the playback invocation.
@@ -475,8 +498,10 @@ scene.load((progress, detail) => {
     if (!voiceEnabled) return { status: 'skipped-audio' };
     return welcomeVoice.replay(greeting);
   }});
+  introDirector.dispose();
   scheduleIdleMotion();
 }).catch((error) => {
+  introDirector.dispose();
   boot.fail(error);
   console.error("[mIA V4] No se pudo cargar el GLB", error);
   setStatus("No se ha podido cargar el modelo 3D", "error");
@@ -538,6 +563,7 @@ if (!voice.available) {
   micLauncher.title = micButton.title = "El navegador no permite dictado";
 }
 window.addEventListener("pagehide", () => {
+  introDirector.dispose();
   boot.dispose();
   window.clearTimeout(greetingTimer);
   waiting.stop();

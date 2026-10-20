@@ -21,6 +21,15 @@ import { createHologramTurnGuard, sanitizeHologramTrace } from "./hologram-lifec
 import { isReportGenerationIntent } from "./hologram-api-v525.js";
 import { readHologramWorldContext, saveHologramWorldContext, bindHologramWorldNavigation } from "./hologram-session-v529.js";
 import { extractHologramJob, pollHologramJob, reportDownloadHref, getJobStatusLabel, jobIsActive } from "./hologram-jobs-v529.js";
+import { ensureAuthenticated, ensureAuthorized } from "../../core/auth-gate.js";
+
+// Si MIA_AUTH__MODE=entra exige login y no hay sesión, `interactive: false` vuelve al portal (el
+// único punto con login real — ver auth-gate.js) en vez de iniciar aquí su propio redirect a
+// Microsoft: el mundo holograma nunca llega a montarse en ese caso.
+await ensureAuthenticated({ interactive: false });
+// Login correcto no es lo mismo que tener acceso: sin ningún permiso asignado, esto sustituye
+// la página entera por el aviso correspondiente y tampoco resuelve nunca.
+await ensureAuthorized();
 
 const caption = document.getElementById("caption");
 const resultEl = document.getElementById("result");

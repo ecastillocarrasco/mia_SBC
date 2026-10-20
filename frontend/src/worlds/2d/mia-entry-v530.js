@@ -4,7 +4,7 @@
  * DOM readiness + actual image load/error events drive the progress.
  */
 import { MiaBootLoader } from '../../core/boot-loader-v43.js';
-import { ensureAuthenticated } from '../../core/auth-gate.js';
+import { ensureAuthenticated, ensureAuthorized } from '../../core/auth-gate.js';
 import './mia-entry-v530.css';
 
 export function install2DEntry({ root = document.body } = {}) {
@@ -96,6 +96,9 @@ if (typeof document !== 'undefined') {
   // a Microsoft: el mundo 2D (boot loader, avatar, chat…) nunca llega a montarse en ese caso —
   // ni siquiera si alguien navega directo a mia-2d.html sin pasar por el portal.
   await ensureAuthenticated({ interactive: false });
+  // Igual que el login: si la cuenta no tiene ningún permiso, esto sustituye la página entera
+  // (levantando la misma cortina de pintura) y nunca resuelve — install2DEntry() nunca se llama.
+  await ensureAuthorized();
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => install2DEntry(), {once:true});
   } else install2DEntry();

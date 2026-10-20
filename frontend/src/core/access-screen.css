@@ -1,0 +1,39 @@
+/* mIA — pantalla de acceso no autorizado / error de acceso (ver auth-gate.js, ensureAuthorized()).
+   Mismo lenguaje visual que boot-loader-v43.css (misma paleta, tipografías y botón píldora),
+   independiente de ese fichero: esta pantalla sustituye a toda la página, incluido lo que ya
+   hubiera montado el mundo (boot loader, avatar, chat…). */
+.mia-access,.mia-access *{box-sizing:border-box}
+.mia-access{
+  position:fixed;inset:0;z-index:999990;display:flex;align-items:center;justify-content:center;
+  background:#fff;color:#1c2944;font-family:Inter,Aptos,'Segoe UI',Arial,sans-serif;
+  padding:24px;text-align:center;
+}
+.mia-access__card{display:flex;flex-direction:column;align-items:center;max-width:480px}
+.mia-access__logo{width:clamp(140px,15vw,200px);height:auto;object-fit:contain;margin:0 0 22px}
+.mia-access__eyebrow{letter-spacing:.19em;font-size:11px;font-weight:750;color:#bb7e65;margin:0 0 10px}
+.mia-access--error .mia-access__eyebrow{color:#bd5857}
+.mia-access h1{
+  margin:0 0 14px;color:#243148;font-family:Georgia,'Times New Roman',serif;
+  font-size:clamp(28px,3.4vw,40px);font-weight:400;letter-spacing:-.03em;line-height:1.1;
+}
+.mia-access h1 em{font-style:normal;color:#c77c6b}
+.mia-access--error h1 em{color:#bd5857}
+.mia-access__body{font-size:15px;line-height:1.6;color:#778293;margin:0 0 10px}
+.mia-access__who{font-size:13px;color:#98a0ab;margin:0 0 26px}
+.mia-access__who strong{color:#5c6675}
+.mia-access__actions{display:flex;flex-wrap:wrap;justify-content:center;gap:12px;margin-top:6px}
+.mia-access__btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  padding:13px 24px;border-radius:999px;border:1px solid rgba(255,255,255,.28);
+  background:#263851;color:#fff;font:700 13px/1.2 Inter,Aptos,'Segoe UI',Arial,sans-serif;
+  cursor:pointer;box-shadow:0 12px 28px rgba(32,51,75,.17),inset 0 1px 0 rgba(255,255,255,.17);
+  transition:background .2s ease,transform .2s ease,box-shadow .2s ease;
+}
+.mia-access__btn:hover{transform:translateY(-2px);background:#334b67;box-shadow:0 17px 31px rgba(32,51,75,.2)}
+.mia-access__btn:focus-visible{outline:3px solid #bf7c75;outline-offset:4px}
+.mia-access__btn--ghost{background:none;color:#758092;border-color:transparent;box-shadow:none;text-decoration:underline}
+.mia-access__btn--ghost:hover{background:none;transform:none;box-shadow:none;color:#4f5968}
+@media(max-width:520px){
+  .mia-access h1{font-size:28px}
+  .mia-access__logo{width:150px}
+}
