@@ -114,6 +114,35 @@ def test_vault_parallel_operations_isolated():
 
 
 @pytest.mark.asyncio
+async def test_outbound_token_restored_even_without_brackets(monkeypatch):
+    """Regresión: el LLM a veces redacta la frase final citando el identificador sin corchetes
+    (p. ej. "PERSON_001" en vez de "[PERSON_001]"); el token debe restaurarse igual, no filtrarse
+    en crudo al usuario."""
+    gateway, _ = fake_gateway(monkeypatch, lambda request: [
+        TextDelta(f'No he encontrado a nadie con el nombre \'PERSON_001\'.'), LLMCompleted(),
+    ])
+    gateway._tokenizer._vault.store('PERSON_001', NAME_A, user_id='u', operation_id='o')
+    set_operation_context(user_id='u', operation_id='o')
+    events = [e async for e in gateway.stream(LLMRequest(system='x', messages=[Message(role='user', content='hola')]))]
+    text = ''.join(e.text for e in events if isinstance(e, TextDelta))
+    assert NAME_A in text
+    assert 'PERSON_001' not in text
+
+
+@pytest.mark.asyncio
+async def test_business_identifier_with_token_like_shape_is_left_untouched(monkeypatch):
+    """Un identificador de negocio real con la misma forma (MAYUSCULAS_NNN) pero que no es un tipo
+    de entidad protegido (ni está en el vault) no debe tocarse ni bloquear la respuesta."""
+    gateway, _ = fake_gateway(monkeypatch, lambda request: [
+        TextDelta('La factura FACTURA_045 está pendiente de pago.'), LLMCompleted(),
+    ])
+    set_operation_context(user_id='u', operation_id='o')
+    events = [e async for e in gateway.stream(LLMRequest(system='x', messages=[Message(role='user', content='hola')]))]
+    text = ''.join(e.text for e in events if isinstance(e, TextDelta))
+    assert 'FACTURA_045' in text
+
+
+@pytest.mark.asyncio
 async def test_disabled_gateway_pass_through(monkeypatch):
     from mia.privacy_gateway import gateway as gateway_module
     monkeypatch.setattr(gateway_module, 'get_presidio_engine', lambda _: None)

@@ -12,11 +12,16 @@ import threading
 import time
 from collections import Counter
 
-from mia.privacy_gateway.policy_engine import Action, Policy, action_for, score_threshold
+from mia.privacy_gateway.policy_engine import Action, Policy, action_for, all_tokenizable_entities, score_threshold
 from mia.privacy_gateway.presidio_engine import PresidioEngine, drop_overlapping
 from mia.privacy_gateway.token_vault import TokenVault
 
-_TOKEN_RE = re.compile(r"\[([A-Z_]+?)_(\d{3,})\]")
+_ENTITY_TYPES_PATTERN = "|".join(re.escape(t) for t in sorted(all_tokenizable_entities(), key=len, reverse=True))
+_TOKEN_RE = re.compile(rf"\[?\b({_ENTITY_TYPES_PATTERN})_(\d{{3,}})\b\]?")
+"""Corchetes opcionales a propósito: el LLM a veces redacta la frase final citando el identificador
+sin ellos (p. ej. "PERSON_011" en vez de "[PERSON_011]"). El tipo se restringe a los tipos de entidad
+reales (``all_tokenizable_entities()``), no a cualquier MAYUSCULA_NNN: así un identificador de negocio
+legítimo con esa forma (p. ej. "FACTURA_045") nunca se confunde con un token filtrado."""
 
 
 class Tokenizer:

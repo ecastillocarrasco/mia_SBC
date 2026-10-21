@@ -14,7 +14,29 @@ from typing import Any
 from mia.privacy_gateway.custom_recognizers import build_spanish_recognizers
 from mia.privacy_gateway.exceptions import UnsafeContentBlockedError
 
+from mia.text import normalize_key
+
 _LANGUAGE = "es"
+
+_ASSISTANT_NAME = "mia"
+_ADDRESS_FILLER_WORDS = frozenset({
+    "mia", "hola", "holaa", "holaaa", "ey", "hey", "buenas", "buenos", "dias", "tardes", "noches",
+    "saludos", "que", "tal", "estas", "vas", "como", "andas",
+})
+"""Muletillas de saludo/dirección + el propio nombre del asistente. El modelo spaCy en español, al
+analizar frases cortas como "hola mia", fusiona el saludo y el nombre en UN SOLO tramo PERSON (lo
+mismo le pasa con "hola juan" o "hola maria" — no es un sesgo específico de "mia", es cómo trata
+cualquier "saludo + nombre en minúsculas" corto). Un ``allow_list`` de Presidio (coincidencia EXACTA
+contra el tramo completo) nunca dispara aquí porque el tramo es "hola mia", no "mia" suelto."""
+
+
+def _is_assistant_address_only(text: str) -> bool:
+    """True solo si TODAS las palabras del tramo detectado son muletillas de saludo o el propio
+    nombre del asistente, y aparece "mia" entre ellas — nunca si el tramo contiene cualquier otra
+    palabra, que podría ser parte del nombre real de un tercero (p. ej. "Juan Mia López" se queda
+    protegido: "juan" y "lópez" no están en la lista, así que no se descarta la entidad)."""
+    words = normalize_key(text).split()
+    return bool(words) and _ASSISTANT_NAME in words and all(w in _ADDRESS_FILLER_WORDS for w in words)
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,8 +111,12 @@ class PresidioEngine:
             results = self._analyzer.analyze(text=text, language=_LANGUAGE, entities=entities)
         except Exception as exc:  # pragma: no cover
             raise UnsafeContentBlockedError(f"Fallo del analizador Presidio: {type(exc).__name__}") from exc
-        return [
+        detected = [
             DetectedEntity(r.entity_type, r.start, r.end, r.score, text[r.start : r.end]) for r in results
+        ]
+        return [
+            e for e in detected
+            if not (e.entity_type == "PERSON" and _is_assistant_address_only(e.text))
         ]
 
 

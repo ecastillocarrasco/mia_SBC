@@ -194,6 +194,26 @@ async def test_tool_result_content_is_wrapped_as_untrusted_data() -> None:
     assert "DATOS NO CONFIABLES" in sent.messages[1].content  # el resultado de herramienta sí
 
 
+def test_assistant_greeting_is_never_tagged_as_person() -> None:
+    """Regresión: el modelo spaCy en español fusiona "hola mia" (saludo + nombre del asistente) en
+    UN SOLO tramo PERSON (lo mismo le pasa con "hola juan" — es cómo trata cualquier "saludo + nombre
+    corto en minúsculas", no un sesgo específico de "mia"). Sin filtrar esto, un saludo se convertía en
+    "hola [PERSON_NNN]" y desviaba la conversación hacia una búsqueda de empleado inexistente."""
+    engine = get_presidio_engine("es_core_news_lg")
+    for text in ("hola mia", "hola mia como estas", "hola mia necesito ayuda con mi nomina"):
+        entities = engine.analyze(text)
+        assert not any(e.entity_type == "PERSON" for e in entities), text
+
+
+def test_real_third_party_name_containing_assistant_name_stays_protected() -> None:
+    """El filtro de "hola mia" es por PALABRA completa dentro del tramo detectado, nunca por
+    subcadena: el nombre real de un tercero no debe perder protección solo por mencionarse junto a
+    un saludo o por parecerse superficialmente al nombre del asistente."""
+    engine = get_presidio_engine("es_core_news_lg")
+    entities = engine.analyze("El empleado Juan Pérez García cobra 1500 euros.")
+    assert any(e.entity_type == "PERSON" for e in entities)
+
+
 def test_presidio_latency_is_reasonable_after_warmup() -> None:
     """Medición real (sección «Rendimiento» de la Etapa 4), no estimada. El primer análisis del proceso
     carga el modelo (varios segundos); a partir de ahí debe ser rápido — si esto se degrada mucho,

@@ -70,6 +70,13 @@ def entities_to_tokenize(policy: Policy) -> frozenset[str]:
     return PERSONAL_ENTITIES
 
 
+def all_tokenizable_entities() -> frozenset[str]:
+    """Unión a través de las cuatro políticas: todo tipo de entidad que pueda llegar a convertirse en
+    un pseudo-token ``[TIPO_NNN]``, se mire con la política que se mire. Única fuente de verdad para que
+    el detector de tokens filtrados (``tokenizer._TOKEN_RE``) no tenga que repetir esta lista."""
+    return PERSONAL_ENTITIES | _STRICT_EXTRA
+
+
 def score_threshold(policy: Policy) -> float:
     return _SCORE_THRESHOLD[policy]
 

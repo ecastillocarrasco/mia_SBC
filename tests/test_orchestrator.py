@@ -105,6 +105,39 @@ def test_natural_language_variation_for_nominas() -> None:
         assert "nominas" in result, message
 
 
+def test_pure_greeting_does_not_fall_back_to_every_domain() -> None:
+    """Un saludo puro no es una pregunta de negocio con vocabulario no reconocido (como el caso
+    anterior): es la ausencia de pregunta. No debe arrastrar el catálogo completo de RRHH."""
+    for message in ("hola", "Hola!", "hola mia", "¿Qué tal, mIA?", "buenos días", "mia", "Ey mia"):
+        result = select_modules(message, _REAL_MODULE_KEYWORDS)
+        assert result == {DEFAULT_MODULE, "empleados"}, message
+
+
+def test_greeting_with_business_content_is_not_treated_as_pure_greeting() -> None:
+    """"hola" seguido de una pregunta real de negocio sigue reconociendo el dominio con normalidad."""
+    result = select_modules("hola, ¿cuánto cobra Ana este mes?", _REAL_MODULE_KEYWORDS)
+    assert "nominas" in result
+
+
+def test_natural_language_variation_for_correo() -> None:
+    """Mejora de correo pedida por el usuario: "los últimos recibidos sin filtro", "correos
+    enviados", "el hilo completo" y "descargar el adjunto" deben seguir activando el módulo de
+    correo, no sólo la frase canónica "tengo correos sin leer"."""
+    from mia.modules.rrhh.correo.tools import KEYWORDS as CORREO_KEYWORDS
+
+    module_keywords = {**_REAL_MODULE_KEYWORDS, "correo": CORREO_KEYWORDS}
+    phrases = (
+        "muéstrame los últimos correos recibidos sin filtro",
+        "qué correos enviados tengo esta semana",
+        "quiero ver el hilo completo de esa conversación de correo",
+        "descárgame el adjunto de ese correo",
+        "tengo correos sin leer?",
+    )
+    for message in phrases:
+        result = select_modules(message, module_keywords)
+        assert "correo" in result, message
+
+
 # ------------------------------------------------------------------ ToolRegistry module filtering
 
 
