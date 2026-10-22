@@ -178,9 +178,13 @@ def build_attachment_context(record: AttachmentRecord) -> str:
     """Genera una descripción compacta del adjunto para inyectar como contexto al LLM."""
     content = record.content
     if content is None:
-        return f"[Adjunto: {record.original_filename} — no procesado]"
+        return f"[Adjunto: {record.original_filename} (attachment_id: {record.attachment_id}) — no procesado]"
 
-    parts: list[str] = [f"## Adjunto: {record.original_filename}"]
+    parts: list[str] = [
+        f"## Adjunto: {record.original_filename}",
+        f"attachment_id: {record.attachment_id}  ← usa EXACTAMENTE este valor, nunca el nombre del "
+        "fichero, en cualquier herramienta que pida 'attachment_id' o 'adjunto_id'.",
+    ]
 
     if content.content_type == AttachmentContentType.IMAGE:
         if content.vision_description:

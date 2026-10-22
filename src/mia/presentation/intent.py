@@ -35,6 +35,7 @@ class QueryAnalysis:
     requested_output: frozenset[str]
     comparison_requested: bool
     analytics_requested: bool
+    summary_requested: bool
     temporal_scope: str  # "current_instant" | "today" | "period" | "unspecified"
 
 
@@ -83,13 +84,17 @@ _COUNT_RE = re.compile(
 
 _LIST_RE = re.compile(r"\blista\b|\blistado\b|\benumera\b", re.IGNORECASE)
 _CHART_RE = re.compile(r"\bgráfico\b|\bgráfica\b|\bvisualiz[a-z]*\b", re.IGNORECASE)
-_SUMMARY_RE = re.compile(r"\bresumene?\b|\bresume\b", re.IGNORECASE)
+# Raíz "resum"/"resúm" + cualquier terminación: cubre resumen, resúmenes, resume, resúmeme,
+# resumiendo… con o sin tilde (un fallo de tecleo frecuente es omitirla) — nunca una lista cerrada
+# de formas exactas, porque el usuario puede pedirlo de muchas maneras distintas.
+_SUMMARY_RE = re.compile(r"\bres[uú]m\w*\b", re.IGNORECASE)
 
 
 def classify_query(query: str) -> QueryAnalysis:
     """Clasifica la intención de presentación sin llamadas al LLM."""
     comparison_requested = bool(_COMPARISON_RE.search(query))
     analytics_requested = bool(_ANALYTICS_RE.search(query))
+    summary_requested = bool(_SUMMARY_RE.search(query))
     temporal_scope = "current_instant" if _TEMPORAL_NOW_RE.search(query) else "unspecified"
 
     outputs: set[str] = set()
@@ -105,7 +110,7 @@ def classify_query(query: str) -> QueryAnalysis:
         outputs.add("chart")
     if analytics_requested:
         outputs.add("analysis")
-    if _SUMMARY_RE.search(query):
+    if summary_requested:
         outputs.add("summary")
     if _REPORT_RE.search(query):
         outputs.add("report")
@@ -144,6 +149,7 @@ def classify_query(query: str) -> QueryAnalysis:
         requested_output=frozenset(outputs),
         comparison_requested=comparison_requested,
         analytics_requested=analytics_requested,
+        summary_requested=summary_requested,
         temporal_scope=temporal_scope,
     )
 
@@ -181,9 +187,17 @@ def build_presentation_hint(qa: QueryAnalysis) -> str:
             "cuando los datos ya son visibles en la presentación."
         )
 
-    if qa.presentation_intent in _DIRECT_INTENTS:
+    if qa.presentation_intent in _DIRECT_INTENTS and not qa.summary_requested:
         lines.append(
             "Responde directamente y de forma breve: no añadas análisis, comparativas ni distribuciones."
+        )
+
+    if qa.summary_requested:
+        lines.append(
+            "Es una petición de resumen: sintetiza el contenido real (de qué trata, quién interviene, qué "
+            "destaca) con tus propias palabras. No es una respuesta completa decir que los datos ya están "
+            "en la tabla/pantalla ni limitarte a señalar dónde mirar — eso es independiente del aviso "
+            "general de no repetir una tabla entera en texto."
         )
 
     return "\n".join(lines)

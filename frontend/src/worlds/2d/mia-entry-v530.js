@@ -4,7 +4,8 @@
  * DOM readiness + actual image load/error events drive the progress.
  */
 import { MiaBootLoader } from '../../core/boot-loader-v43.js';
-import { ensureAuthenticated, ensureAuthorized } from '../../core/auth-gate.js';
+import { ensureAuthenticated, ensureAuthorized, mountSignOutButton } from '../../core/auth-gate.js';
+import { start as startMailWatch, ensureNotificationPermission, showNotification } from '../../core/mail-watch.js';
 import './mia-entry-v530.css';
 
 export function install2DEntry({ root = document.body } = {}) {
@@ -99,6 +100,22 @@ if (typeof document !== 'undefined') {
   // Igual que el login: si la cuenta no tiene ningún permiso, esto sustituye la página entera
   // (levantando la misma cortina de pintura) y nunca resuelve — install2DEntry() nunca se llama.
   await ensureAuthorized();
+  mountSignOutButton('#miaSignOut');
+  // Aviso de correo nuevo (pedido del usuario, igual que mia-desktop): notificación del navegador
+  // con un clic que deja la pregunta de resumen ya escrita en el composer, lista para confirmar.
+  ensureNotificationPermission().then((granted) => {
+    if (!granted) return;
+    startMailWatch((correos) => {
+      for (const correo of correos) {
+        showNotification(correo, (c) => {
+          const input = document.getElementById('input');
+          if (!input) return;
+          input.value = `Resúmeme el correo de ${c.de} sobre "${c.asunto}"`;
+          input.focus();
+        });
+      }
+    });
+  });
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => install2DEntry(), {once:true});
   } else install2DEntry();

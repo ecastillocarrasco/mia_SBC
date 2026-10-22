@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from html.parser import HTMLParser
 
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
@@ -69,3 +70,92 @@ def format_number(value: float) -> str:
         return f"{int(value):,}".replace(",", ".") if abs(value) >= 10000 else str(int(value))
     text = f"{value:,.2f}".rstrip("0").rstrip(".")
     return text.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+# ------------------------------------------------------------------ HTML a texto plano
+# Usado por el cuerpo de correo (mia.modules.rrhh.correo) y por el cuerpo rico de listas de
+# SharePoint (p. ej. Community/Newsletter): ningun dominio es dueno de "convertir HTML a texto
+# legible", asi que vive aqui, no en uno de los dos.
+_HTML_SKIP = {"style", "script", "head", "title", "noscript", "template", "svg"}
+_HTML_BLOCK = {
+    "p", "div", "br", "tr", "table", "section", "article", "header", "footer", "blockquote", "ul", "ol", "hr",
+}
+_HTML_HEADING = {"h1", "h2", "h3", "h4", "h5", "h6"}
+_INVISIBLE = re.compile("[\u200b\u200c\u200d\u200e\u200f\u034f\u00ad\ufeff\u2060\u2007\u2800]")
+_HIDDEN_STYLE = re.compile(
+    r"display\s*:\s*none|visibility\s*:\s*hidden|max-height\s*:\s*0|font-size\s*:\s*0", re.I
+)
+_HTML_URL = re.compile(r"^https?://", re.I)
+
+
+class _HtmlTextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._skip = 0
+        self._hidden: list[str] = []  # etiquetas abiertas que estan ocultas (p. ej. el texto previo del correo)
+        self._links: list[str | None] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        a = dict(attrs)
+        if tag in _HTML_SKIP:
+            self._skip += 1
+            return
+        if self._hidden or "hidden" in a or _HIDDEN_STYLE.search(a.get("style") or ""):
+            if tag not in {"br", "img", "hr", "meta", "link", "input"}:
+                self._hidden.append(tag)
+            return
+        if tag in _HTML_HEADING:
+            self.parts.append("\n\n")
+        elif tag == "li":
+            self.parts.append("\n- ")
+        elif tag in {"td", "th"}:
+            self.parts.append(" ")
+        elif tag in _HTML_BLOCK:
+            self.parts.append("\n")
+        if tag == "a":
+            self._links.append(a.get("href"))
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in _HTML_SKIP:
+            self._skip = max(0, self._skip - 1)
+            return
+        if self._hidden:
+            if tag == self._hidden[-1]:
+                self._hidden.pop()
+            return
+        if tag == "a" and self._links:
+            href = self._links.pop()
+            if href and _HTML_URL.match(href):
+                self.parts.append(f" ({href})")
+        elif tag in _HTML_HEADING or tag in {"p", "div", "tr", "table", "ul", "ol", "blockquote"}:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self._skip and not self._hidden:
+            self.parts.append(data)
+
+
+def html_to_text(content: str, limit: int = 12000) -> str:
+    parser = _HtmlTextExtractor()
+    try:
+        parser.feed(re.sub(r"<!--.*?-->", "", content, flags=re.S))
+        parser.close()
+    except Exception:  # HTML muy roto: mejor algo de texto que nada
+        return _tidy_html_text(re.sub(r"<[^>]+>", " ", content))[:limit]
+    return _tidy_html_text("".join(parser.parts))[:limit]
+
+
+def _tidy_html_text(text: str) -> str:
+    text = _INVISIBLE.sub("", text).replace("\r", "").replace("\xa0", " ")
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.split("\n")]
+    out: list[str] = []
+    for line in lines:
+        if line or (out and out[-1]):
+            out.append(line)
+    return "\n".join(out).strip()
+
+
+def plain_text(content: str, content_type: str = "text", limit: int = 12000) -> str:
+    """Texto legible de un cuerpo HTML o texto plano (correo, campos de SharePoint con texto enriquecido...)."""
+    return html_to_text(content, limit) if content_type.lower() == "html" else _tidy_html_text(content)[:limit]

@@ -1,14 +1,20 @@
 'use strict';
 const { normalizeBackendUrl } = require('./config.cjs');
+const auth = require('./auth.cjs');
 const { extractPresentation } = require('./presentation.cjs');
 const { resolveEmployeeReply, selectedEmployeePresentation, getName, requestedEmployee } = require('./identity.cjs');
 const { planPrompt, safeConversationContext, normalized } = require('./conversation.cjs');
 const { view360 } = require('./employee360.cjs');
+const {extractReport,isReportQuestion,validateDownloadUrl} = require('./report.cjs');
 async function requestWithTimeout(url, opts, timeoutMs = 35000) {
   const ctrl = new AbortController();
   const id = setTimeout(() => ctrl.abort(), timeoutMs);
   try { return await fetch(url, { ...opts, redirect: 'error', signal: ctrl.signal }); }
   finally { clearTimeout(id); }
+}
+async function authHeaders() {
+  const token = await auth.getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 function endpoint(base, pathname) {
   const checked = normalizeBackendUrl(base);
@@ -26,10 +32,11 @@ async function sendPrompt(base, prompt, session = null) {
   // Solo en memoria; el servidor sigue siendo responsable de autenticar y autorizar.
   const previousContext=safeConversationContext(session?.backendContext);
   const request = JSON.stringify({ message: plan.message, context: { language: 'es', locale: 'es-ES', company: 'Sunset Beach Club', ...(previousContext||{}) } });
+  const bearer = await authHeaders();
   for (const route of ['/api/mia/v4/chat','/api/mia/chat']) {
     let response;
     try { response = await requestWithTimeout(endpoint(base, route), {
-      method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', Accept: 'application/json' }, body: request
+      method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', Accept: 'application/json', ...bearer }, body: request
     }, 120000); }
     catch (e) { return { error: 'No se puede conectar con el backend mIA SBC: ' + (e.name === 'AbortError' ? 'tiempo de espera agotado.' : 'comprueba la dirección y el servicio.') }; }
     // Do not downgrade or fall back on authentication failures.
@@ -47,6 +54,10 @@ async function sendPrompt(base, prompt, session = null) {
         return {answer:special.message,speechText:special.message,status:'partial_verified',presentation:special.presentation,identitySelection:special.code};
       }
       const presentation=extractPresentation(data);
+      const report=extractReport(data);
+      if(report?.available){try{validateDownloadUrl(base,report);}catch{report.available=false;}}
+      // Nunca presentaremos el éxito narrativo como confirmación de entrega del PDF.
+      const reportPending=isReportQuestion(plan.message) && !report?.available;
       const checked=resolveEmployeeReply(plan.message,data,presentation);
       if(!checked.ok)return {error:checked.message,identityBlocked:true,identityCode:checked.code};
       // Never replay free-text narration or attached tables from an unverified
@@ -65,15 +76,16 @@ async function sendPrompt(base, prompt, session = null) {
         return {answer:notice,speechText:notice,status:'partial_verified',presentation:safe,identitySelection:checked.selection};
       }
       const answer = data.answer || data.natural_answer || data.response || (data.status === 'error' ? 'El backend no pudo completar la consulta.' : 'Consulta completada.');
-      return { answer: String(answer).slice(0, 12000), speechText: String(data.speech_text || answer).slice(0, 1400), status: data.status || 'ok', presentation };
+      return { answer: String(answer).slice(0, 12000), speechText: String(data.speech_text || answer).slice(0, 1400), status: data.status || 'ok', presentation, report, reportPending };
     } catch { return { error: 'El backend ha devuelto una respuesta no válida.' }; }
   }
   return { error: 'El backend no ofrece una ruta de conversación compatible.' };
 }
 async function speak(base, text) {
   let res;
+  const bearer = await authHeaders();
   try { res = await requestWithTimeout(endpoint(base,'/api/mia/voice'), {
-    method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', Accept: 'audio/mpeg' },
+    method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8', Accept: 'audio/mpeg', ...bearer },
     body: JSON.stringify({ text: String(text).slice(0, 1200), locale: 'es-ES' })
   }, 35000); }
   catch { return { error: 'No se puede conectar al servicio ElevenLabs de mIA SBC.' }; }

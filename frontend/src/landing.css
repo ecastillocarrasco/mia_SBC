@@ -85,6 +85,10 @@ body{min-height:100vh;overflow-x:hidden;background:
 .visual-hg .visual-label{color:#b9fff8;background:rgba(6,31,34,.60);border-color:rgba(124,255,241,.17)}
 @keyframes hgScan{0%,100%{top:22%;opacity:.25}50%{top:78%;opacity:.85}}
 
+.world-wip-tag{position:absolute;z-index:6;top:14px;right:14px;display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;background:rgba(214,98,27,.92);color:#fff;font-size:8.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;box-shadow:0 8px 18px rgba(145,62,10,.28);pointer-events:none}
+.wip-icon{font-size:10px;line-height:1}
+.world-wip.world-card:hover{border-color:rgba(214,98,27,.4)}
+
 .world-content{display:flex;flex-direction:column;padding:21px 22px 20px}
 .world-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
 .world-index{font-family:Georgia,"Times New Roman",serif;font-size:20px;color:rgba(108,47,43,.42)}
@@ -139,4 +143,16 @@ body{min-height:100vh;overflow-x:hidden;background:
 
 @media (prefers-reduced-motion:reduce){
   .world-card,.world-enter b,.hg-scan{transition:none!important;animation:none!important}
+}
+
+.landing-topbar-right{display:flex;align-items:center;gap:16px}
+.mia-signout-btn{
+  border:1px solid var(--line);border-radius:999px;background:transparent;
+  color:var(--muted);font:700 12px/1.2 "Segoe UI",Aptos,Arial,sans-serif;
+  padding:9px 16px;cursor:pointer;transition:background .2s ease,color .2s ease,border-color .2s ease;
+}
+.mia-signout-btn:hover{background:rgba(108,47,43,.06);color:var(--burgundy);border-color:rgba(108,47,43,.2)}
+.mia-signout-btn:focus-visible{outline:2px solid var(--coral);outline-offset:2px}
+@media (max-width:640px){
+  .mia-signout-btn{padding:7px 12px;font-size:11px}
 }

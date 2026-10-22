@@ -276,6 +276,7 @@ function detectResultKind(r,data){
  const exe=resultExecutor(r).toLowerCase(),domain=resultDomain(r,data),intent=cleanDisplay(r?.intent).toLowerCase();
  const mail=mailPayload(data);
  if(mail.rows.length||Object.keys(mail.summary).length||exe.includes('mail')||domain==='correo'||intent.includes('mail'))return 'mail';
+ if(Array.isArray(data.news_rows)&&data.news_rows.length||domain==='noticias'||intent.includes('noticia'))return 'noticias';
  const nativeEmployeePresentation=(data.presentation&&typeof data.presentation==='object'&&data.presentation.schema==='mia.employee360.presentation');
  const employee360Root=(data.employee360&&typeof data.employee360==='object');
  if(nativeEmployeePresentation||employee360Root||data.employee360_version||intent.includes('employee360')||domain==='employee360')return 'employee360';
@@ -387,7 +388,7 @@ function renderDomainTable(data,wrap,kind){
  renderGenericTable(selectTableColumns(cfg,kind),wrap);return true
 }
 function renderResultHeader(kind,wrap,data){
- const labels={turnos:['Turnos','Planificación operativa'],vacaciones:['Vacaciones','Periodos y personas'],ausencias:['Bajas y ausencias','Situación y periodos'],nominas:['Nóminas','Información salarial disponible'],documents:['Documentos','Archivos y evidencias'],analytics:['Análisis','Indicadores y comparativas'],web:['Información externa','Fuentes consultadas'],list:['Resultados','Detalle estructurado']};
+ const labels={turnos:['Turnos','Planificación operativa'],vacaciones:['Vacaciones','Periodos y personas'],ausencias:['Bajas y ausencias','Situación y periodos'],nominas:['Nóminas','Información salarial disponible'],documents:['Documentos','Archivos y evidencias'],analytics:['Análisis','Indicadores y comparativas'],web:['Información externa','Fuentes consultadas'],list:['Resultados','Detalle estructurado'],noticias:['Noticias','Prensa y comunicados corporativos']};
  const pair=labels[kind];if(!pair)return;
  const h=document.createElement('div');h.className='adaptive-result-head';h.innerHTML='<div><strong>'+encodeText(pair[0])+'</strong><span>'+encodeText(pair[1])+'</span></div>';wrap.appendChild(h)
 }
@@ -627,7 +628,8 @@ function renderData(r,msg){
  const presentation=nativeEmployeePresentation||(looksLikeEmployee360?synthesizeEmployee360Presentation(data):null);
  const cards=Array.isArray(data.cards)?data.cards:[],visual=Array.isArray(r.visualizations)?r.visualizations:[],actions=Array.isArray(r.actions)?r.actions:[],turnos=Array.isArray(data.turnos)?data.turnos:[],table=data.table,documents=Array.isArray(data.documents)?data.documents:(data.document?[data.document]:[]);
  const mail=mailPayload(data);
- const hasAny=kind==='mail'?Boolean(mail.rows.length||Object.keys(mail.summary).length):Boolean(presentation||cards.length||visual.length||actions.length||turnos.length||table||documents.length||Array.isArray(data.comparacion)||(r.sources||[]).length||Array.isArray(data.web_sources)||data.alertas_calidad||data.insights||data.query_summary||(data.job&&typeof data.job==='object'&&data.job.job_id));
+ const newsRows=Array.isArray(data.news_rows)?data.news_rows:[];
+ const hasAny=kind==='mail'?Boolean(mail.rows.length||Object.keys(mail.summary).length):Boolean(presentation||cards.length||visual.length||actions.length||turnos.length||table||documents.length||newsRows.length||Array.isArray(data.comparacion)||(r.sources||[]).length||Array.isArray(data.web_sources)||data.alertas_calidad||data.insights||data.query_summary||(data.job&&typeof data.job==='object'&&data.job.job_id));
  if(!hasAny)return;
  const wrap=document.createElement('div');wrap.className='results results--'+kind;wrap.dataset.resultKind=kind;
  renderResponseMeta(r,wrap);renderQuerySummary(data,wrap);
@@ -650,7 +652,7 @@ function renderData(r,msg){
  else if(documents.length&&kind!=='employee360')renderDocuments(data,wrap);
  if(kind==='vacaciones'||kind==='ausencias'||kind==='nominas')renderDomainTable(data,wrap,kind);
  else if(kind==='analytics'){if(!analyticsState.tableHandled)renderGenericTable(table,wrap)}
- else if(kind!=='turnos'&&kind!=='employee360')renderGenericTable(table,wrap);
+ else if(kind!=='turnos'&&kind!=='employee360'&&kind!=='noticias')renderGenericTable(table,wrap);
  if(turnos.length){renderShiftTimeline(data,turnos,wrap);renderTurnsTable(data,turnos,wrap)}
  renderInsights(data,wrap);renderQuality(data,r,wrap);renderCharts(data,wrap);renderJob(data,wrap);
  visual.forEach(v=>{const p=document.createElement('div');p.className='viz';const h=document.createElement('div');h.className='viz-head';h.innerHTML='<strong>'+encodeText(cleanDisplay(v.title)||'Resumen')+'</strong><span>Visualización</span>';p.appendChild(h);const rows=(v.data||[]).map(x=>({label:cleanDisplay(x.label??x.Mes??''),value:Number(x.value??x.Horas??0)})).filter(x=>x.label);const max=Math.max(1,...rows.map(x=>Math.abs(x.value)));const b=document.createElement('div');b.className='bars';rows.forEach(x=>{const r0=document.createElement('div');r0.className='barrow';r0.innerHTML=`<span>${encodeText(x.label)}</span><div class="track"><div class="fill" style="width:${Math.max(1,Math.abs(x.value)/max*100)}%"></div></div><strong>${encodeText(fmt(x.value))}</strong>`;b.appendChild(r0)});p.appendChild(b);wrap.appendChild(p)});

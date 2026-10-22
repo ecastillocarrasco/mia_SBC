@@ -162,6 +162,17 @@ async def test_entra_token_with_a_real_app_role_name_maps_to_permissions() -> No
     assert user.has(Permission.EMPLEADOS_LEER)
 
 
+async def test_entra_accepts_v1_style_audience_and_issuer_for_api_scopes() -> None:
+    """Un token real pedido con un scope de API propia (``api://<client_id>/access_as_user``)
+    puede venir en formato v1 (``accessTokenAcceptedVersion`` del manifiesto en ``null``/``1``):
+    iss=«sts.windows.net/<tenant>/» y aud=«api://<client_id>», no el formato v2 «de libro». Debe
+    aceptarse igual que el v2 -- no depende de que alguien cambie un ajuste en Azure."""
+    token = _entra_token(aud=f"api://{CLIENT_ID}", iss=f"https://sts.windows.net/{TENANT}/")
+    user = await _entra_provider().authenticate(_Request({"authorization": f"Bearer {token}"}))  # type: ignore[arg-type]
+    assert user.user_id == "oid-1"
+    assert user.has(Permission.NOMINAS_LEER)  # mia.rrhh
+
+
 async def test_entra_without_header_is_rejected() -> None:
     with pytest.raises(AuthenticationError):
         await _entra_provider().authenticate(_Request({}))  # type: ignore[arg-type]

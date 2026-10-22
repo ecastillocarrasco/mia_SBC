@@ -18,7 +18,8 @@ const MESSAGES={
   NO_SPEECH:'No se ha detectado voz. Puedes volver a intentarlo.',
   TRANSCRIPTION_FAILED:'La transcripción local falló. Comprueba los modelos de voz.',
   CANCELLED:'Se ha detenido la escucha.',
-  MIC_OFF:'El micrófono está desactivado.'
+  MIC_OFF:'El micrófono está desactivado.',
+  COMMAND_UNVERIFIED:'No he podido verificar la orden de escritorio. Repítela con claridad o utiliza el botón.'
 };
 function configure(userDataPath){
   if(typeof userDataPath!=='string'||!path.isAbsolute(userDataPath))throw Error('voice userData requerido');
@@ -65,9 +66,18 @@ function onMessage(m){
       break;
     case 'COMMAND':
       if(awake?.onCommand&&desiredWake&&['SHOW','HIDE','EXIT'].includes(m.command)){
+        // Destructive commands must have independent verification in Python.
+        if(m.command!=='SHOW' && m.verified!==true){
+          diagnostics.record('voice_command_rejected',{mode:'wake',code:'NOT_VERIFIED'});
+          break;
+        }
         diagnostics.record('voice_command',{mode:'wake',code:m.command});
         awake.onCommand(m.command);
       }
+      break;
+    case 'COMMAND_REJECTED':
+      if(['HIDE','EXIT'].includes(m.command))
+        diagnostics.record('voice_command_rejected',{mode:'wake',code:m.command});
       break;
     case 'DICTATION_READY':
       if(pendingDictation?.onReady)pendingDictation.onReady();
@@ -82,7 +92,9 @@ function onMessage(m){
       }else settleDictation(statusError('TRANSCRIPTION_FAILED'));
       break;
     case 'DICTATION_COMMAND':
-      if(['SHOW','HIDE','EXIT'].includes(m.command))settleDictation({ok:true,command:m.command,text:'',confidence:1,alternatives:[]});
+      if(m.verified===true && ['SHOW','HIDE','EXIT'].includes(m.command))
+        settleDictation({ok:true,command:m.command,text:'',confidence:1,alternatives:[]});
+      else settleDictation(statusError('COMMAND_UNVERIFIED'));
       break;
     case 'DICTATION_ERROR':
       settleDictation(statusError(m.code in MESSAGES?m.code:'TRANSCRIPTION_FAILED'));

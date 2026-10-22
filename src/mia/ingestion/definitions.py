@@ -17,6 +17,7 @@ from mia.data import (
     DocumentTypeConfig,
     Employee,
     NewHire,
+    NewsletterItem,
     OrgUnit,
     Payslip,
     ShiftDay,
@@ -33,7 +34,7 @@ from mia.data import (
     WeekComment,
 )
 from mia.data.models import Base
-from mia.ingestion.mappers import calendars, docs, hr
+from mia.ingestion.mappers import calendars, community, docs, hr
 from mia.ingestion.mappers.common import MapContext
 from mia.text import normalize_key
 
@@ -290,6 +291,20 @@ TIPOS_DOCUMENTO_PORTAL = SourceDefinition(
 )
 
 
+NEWSLETTER_CORPORATIVA = SourceDefinition(
+    key="newsletter_corporativa",
+    list_title="NewsletterCorporativa",
+    select=(
+        "ID,Title,Resumen,Cuerpo,FechaCaducidad,Imagen,Categoria,Destacada,Activa,Orden,"
+        "Enlace,TextoBoton,Created,Modified"
+    ),
+    model=NewsletterItem,
+    mapper=community.newsletter_item,
+    owner_column="sp_id",
+    domain="newsletter",
+)
+
+
 TIPO_TURNOS = SourceDefinition(
     key="tipo_turnos",
     list_title="TipoTurnos",
@@ -408,6 +423,7 @@ def all_sources(
         TIPO_TURNOS,
         TURNOS_PLANTILLAS,
         COMENTARIOS_TURNOS_SEMANAS,
+        NEWSLETTER_CORPORATIVA,
     ]
     # Empleados y departamentos son la base de todos los cruces: siempre se sincronizan.
     base = {"empleados"}

@@ -9,8 +9,9 @@ Fuente actual: importación manual del Excel de Conectia — solo entornos de pr
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta, tzinfo as TzInfo
+from datetime import date, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -44,6 +45,13 @@ KEYWORDS = (
 """Ver `empleados.tools.KEYWORDS` para el criterio."""
 
 DEFAULT_TOLERANCE_MIN = 15
+MADRID = ZoneInfo("Europe/Madrid")
+"""Fichajes/turnos son siempre hora local de Sunset Beach Club (Málaga) — ``ClockMark.at`` se
+escribe con esta zona (``importer.py``), pero PostgreSQL la devuelve con tzinfo UTC al leerla (un
+TIMESTAMPTZ representa un instante, no una zona): hay que relocalizar explícitamente antes de
+mostrar u operar con la hora local, nunca asumir que el tzinfo que trae la fila ya es el correcto
+(bug real encontrado contra datos de producción, 2026-10-21 — las horas de fichaje se mostraban
+1-2h por detrás de la hora real)."""
 
 
 class PersonaPeriodoParams(PersonaParams):
@@ -70,14 +78,24 @@ def _week_start(today: date) -> date:
     return today - timedelta(days=today.weekday())
 
 
-def _day_bounds(lo: date, hi: date, tz: TzInfo | None) -> tuple[datetime, datetime]:
-    return datetime.combine(lo, time.min, tzinfo=tz), datetime.combine(hi + timedelta(days=1), time.min, tzinfo=tz)
+def _day_bounds(lo: date, hi: date) -> tuple[datetime, datetime]:
+    return datetime.combine(lo, time.min, tzinfo=MADRID), datetime.combine(hi + timedelta(days=1), time.min, tzinfo=MADRID)
 
 
-async def _marks_for(db: AsyncSession, person_key: str, lo: date, hi: date, tz: TzInfo | None) -> list[datetime]:
-    lo_dt, hi_dt = _day_bounds(lo, hi, tz)
+def _localize_marks(marks: list[datetime]) -> list[datetime]:
+    """Ver ``MADRID``: PostgreSQL devuelve ``ClockMark.at`` con tzinfo UTC, nunca Europe/Madrid,
+    aunque se escribió con la hora local correcta — relocaliza aquí, el único punto donde se leen
+    las marcas, antes de que lleguen a ``pairing``/``comparison`` (que sí asumen hora local de
+    Madrid). Función pura y separada a propósito para poder probarla sin depender de que SQLite
+    (solo tests) conserve o no el tzinfo al guardar/leer, a diferencia de PostgreSQL (real)."""
+    return [m.astimezone(MADRID) for m in marks]
+
+
+async def _marks_for(db: AsyncSession, person_key: str, lo: date, hi: date) -> list[datetime]:
+    lo_dt, hi_dt = _day_bounds(lo, hi)
     stmt = select(ClockMark.at).where(ClockMark.person_key == person_key, ClockMark.at >= lo_dt, ClockMark.at < hi_dt)
-    return list((await db.scalars(stmt)).all())
+    marks = list((await db.scalars(stmt)).all())
+    return _localize_marks(marks)
 
 
 async def _shifts_for(db: AsyncSession, person_key: str, lo: date, hi: date) -> list[ShiftExpectation]:
@@ -127,7 +145,7 @@ def fichajes_persona(deps: Deps) -> Tool:
             e = match.employee
             if not e.person_key:
                 return ToolResult(ToolStatus.NOT_FOUND, f"{e.name} no tiene un identificador de fichaje válido.")
-            marks = await _marks_for(db, e.person_key, lo, hi, ctx.now.tzinfo)
+            marks = await _marks_for(db, e.person_key, lo, hi)
 
         sessions, incomplete = pair_marks(marks)
         total_horas = round(sum(s.hours for s in sessions), 2)
@@ -193,7 +211,7 @@ def comparar_turnos_fichajes(deps: Deps) -> Tool:
                 if not e.person_key:
                     continue
                 shifts = await _shifts_for(db, e.person_key, lo, hi)
-                marks = await _marks_for(db, e.person_key, lo, hi, ctx.now.tzinfo)
+                marks = await _marks_for(db, e.person_key, lo, hi)
                 if not shifts and not marks:
                     continue
                 analizados += 1

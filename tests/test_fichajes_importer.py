@@ -5,6 +5,7 @@ descartadas en silencio. Las cabeceras y el formato de nombre replican los fiche
 
 from __future__ import annotations
 
+import io
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from openpyxl import Workbook
 from sqlalchemy import func, select
 
 from mia.data import ClockMark
-from mia.modules.rrhh.fichajes.importer import import_directory
+from mia.modules.rrhh.fichajes.importer import import_directory, import_from_attachment
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp
 
@@ -35,6 +36,20 @@ def _write_xlsx(path: Path, rows: list[tuple]) -> None:
 
 def _row(fecha: datetime, codigo: str, nombre: str, *, origen="Normal", terminal="Terminal -2", tipo="App") -> tuple:
     return (fecha, "1-1", codigo, nombre, fecha.strftime("%H:%M"), origen, "", terminal, tipo, "")
+
+
+def _xlsx_bytes(rows: list[tuple]) -> bytes:
+    """Mismo contenido que ``_write_xlsx``, pero en memoria — simula el adjunto subido en el chat,
+    sin tocar el disco (``import_from_attachment`` nunca lee de un directorio)."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Datos"
+    ws.append(_HEADER)
+    for row in rows:
+        ws.append(row)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 async def test_matches_by_name_regardless_of_word_order(tmp_path: Path) -> None:
@@ -224,6 +239,34 @@ async def test_reimporting_the_same_file_does_not_duplicate(tmp_path: Path) -> N
     async with db.session() as s:
         total = (await s.execute(select(func.count()).select_from(ClockMark))).scalar()
         assert total == 1
+    await db.dispose()
+
+
+async def test_import_from_attachment_matches_the_same_way_as_the_directory_path(tmp_path: Path) -> None:
+    """``import_from_attachment`` (el camino real desde un adjunto subido en el chat) usa el mismo
+    cruce por nombre y el mismo upsert que ``import_directory`` (pruebas) — nunca un segundo motor."""
+    db = await fresh_database(tmp_path, "fichajes_import_attachment_1.db")
+    async with db.session() as s:
+        s.add(_emp(1, "Melania Rosello Diaz", "Restaurante", person_key="pk-melania"))
+    content = _xlsx_bytes([_row(datetime(2026, 10, 5, 9, 19), "1-001080", "ROSELLO DIAZ, MELANIA")])
+    report = await import_from_attachment(db, content, "fichajes_semana41.xlsx", now=datetime.now(UTC))
+    assert report.imported == 1
+    assert report.files == 1
+    assert report.unmatched == {}
+    async with db.session() as s:
+        mark = (await s.scalars(select(ClockMark))).one()
+        assert mark.person_key == "pk-melania"
+    await db.dispose()
+
+
+async def test_import_from_attachment_reports_unmatched_rows_too(tmp_path: Path) -> None:
+    db = await fresh_database(tmp_path, "fichajes_import_attachment_2.db")
+    async with db.session() as s:
+        s.add(_emp(1, "Melania Rosello Diaz", "Restaurante", person_key="pk-melania"))
+    content = _xlsx_bytes([_row(datetime(2026, 10, 5, 9, 0), "1-999999", "PERSONA INEXISTENTE, NADIE")])
+    report = await import_from_attachment(db, content, "fichajes.xlsx", now=datetime.now(UTC))
+    assert report.imported == 0
+    assert report.unmatched == {"PERSONA INEXISTENTE, NADIE": 1}
     await db.dispose()
 
 

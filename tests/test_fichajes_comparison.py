@@ -5,6 +5,7 @@ sin pareja se reporten SIEMPRE aparte, nunca mezcladas con ellas."""
 from __future__ import annotations
 
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from mia.modules.rrhh.fichajes.comparison import ShiftExpectation, compare_person
 
@@ -81,3 +82,19 @@ def test_multiple_unscheduled_sessions_each_become_their_own_sin_turno() -> None
     assert len(results) == 2
     assert all(r.status == "sin_turno" for r in results)
     assert [r.day for r in results] == [date(2026, 10, 6), date(2026, 10, 7)]
+
+
+def test_timezone_aware_marks_do_not_crash_comparing_entrada_salida_deviation() -> None:
+    """Bug real encontrado contra datos de producción (PostgreSQL, 2026-10-21): ``ClockMark.at``
+    llega con zona horaria desde la base de datos real (nunca en SQLite, solo usado en tests, que no
+    la conserva al guardar/leer) — comparar esa fecha "aware" contra un ``datetime.combine`` "naive"
+    lanzaba ``TypeError: can't subtract offset-naive and offset-aware datetimes``. Esta prueba usa
+    zona horaria explícita a propósito para que SÍ la reproduzca, a diferencia del resto del archivo."""
+    tz = ZoneInfo("Europe/Madrid")
+    shifts = [ShiftExpectation(date(2026, 10, 6), "08:00", "16:00")]
+    marks = [datetime(2026, 10, 6, 8, 5, tzinfo=tz), datetime(2026, 10, 6, 16, 3, tzinfo=tz)]
+    results, incomplete = compare_person(shifts, marks)
+    assert incomplete == []
+    assert results[0].status == "correcto"
+    assert results[0].entrada_desviacion_min == 5
+    assert results[0].salida_desviacion_min == 3

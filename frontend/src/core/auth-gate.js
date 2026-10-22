@@ -43,6 +43,25 @@ function neverResolves() {
 }
 
 /**
+ * MSAL guarda en sessionStorage una marca de "hay una interacción en curso" (login/redirect) justo
+ * antes de navegar, y la quita al volver (`handleRedirectPromise()`). Si esa vuelta nunca ocurre —
+ * la página se recarga a medias, se cierra la pestaña durante el redirect, el intento anterior
+ * falló antes de completarse — la marca se queda puesta PARA SIEMPRE: cualquier `loginRedirect()`
+ * posterior falla al instante con `interaction_in_progress`, sin llegar nunca a Microsoft, de forma
+ * indefinida hasta que algo limpie sessionStorage a mano. Se limpia solo el prefijo `msal.` (no
+ * toca `mia.session_id`, la sesión de conversación de `client.js`, que vive en el mismo storage).
+ */
+function clearStuckMsalState() {
+  try {
+    for (const key of Object.keys(sessionStorage)) {
+      if (key.startsWith('msal.')) sessionStorage.removeItem(key);
+    }
+  } catch (error) {
+    console.warn('[mIA Auth] No se pudo limpiar el estado de MSAL:', error);
+  }
+}
+
+/**
  * Debe llamarse ANTES de montar cualquier UI real. Devuelve la cuenta MSAL activa, o `null` si
  * el login está desactivado (modo dev/easyauth) — en ese caso el llamador continúa exactamente
  * como hoy, sin ningún cambio de comportamiento.
@@ -70,36 +89,52 @@ export async function ensureAuthenticated({ interactive = true } = {}) {
   }
   if (!config.requires_login) return null;
 
-  const { PublicClientApplication } = await loadMsal();
-  const msal = new PublicClientApplication({
-    auth: {
-      clientId: config.entra.client_id,
-      authority: `https://login.microsoftonline.com/${config.entra.tenant_id}`,
-      redirectUri: window.location.origin + window.location.pathname,
-    },
-    cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false },
-  });
-  await msal.initialize();
-  window.msalInstance = msal;
+  // Todo lo que sigue puede fallar de verdad (tenant/client_id mal configurados, msal-browser sin
+  // precargar en el dev server de Vite, login.microsoftonline.com inalcanzable...). Antes de este
+  // try/catch, cualquier excepción aquí dejaba la cortina de pintura puesta PARA SIEMPRE (nunca se
+  // llegaba a `loginRedirect`, nunca se llamaba a `dismissEntryGuard()`) hasta que el timeout de
+  // seguridad del HTML la quitaba a los 18s y revelaba el portal sin sesión — nunca un error
+  // visible. Ahora cualquier fallo real se muestra con la misma pantalla que un 401/403.
+  try {
+    const { PublicClientApplication } = await loadMsal();
+    const msal = new PublicClientApplication({
+      auth: {
+        clientId: config.entra.client_id,
+        authority: `https://login.microsoftonline.com/${config.entra.tenant_id}`,
+        redirectUri: window.location.origin + window.location.pathname,
+      },
+      cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false },
+    });
+    await msal.initialize();
+    window.msalInstance = msal;
 
-  const redirectResult = await msal.handleRedirectPromise();
-  if (redirectResult?.account) msal.setActiveAccount(redirectResult.account);
+    const redirectResult = await msal.handleRedirectPromise();
+    if (redirectResult?.account) msal.setActiveAccount(redirectResult.account);
 
-  window.__miaAuthScope = config.entra.scope;
+    window.__miaAuthScope = config.entra.scope;
 
-  const account = msal.getActiveAccount() || msal.getAllAccounts()[0] || null;
-  if (account) {
-    msal.setActiveAccount(account);
-    return account;
-  }
+    const account = msal.getActiveAccount() || msal.getAllAccounts()[0] || null;
+    if (account) {
+      msal.setActiveAccount(account);
+      return account;
+    }
 
-  if (!interactive) {
-    window.location.href = import.meta.env.BASE_URL;
+    if (!interactive) {
+      window.location.href = import.meta.env.BASE_URL;
+      return neverResolves();
+    }
+
+    await msal.loginRedirect({ scopes: [config.entra.scope] });
+    return neverResolves();
+  } catch (error) {
+    console.error('[mIA Auth] No se pudo iniciar el login con Entra ID:', error);
+    // Se limpia PROACTIVAMENTE aquí, no solo al pulsar "Reintentar": así, si el error era
+    // precisamente `interaction_in_progress`, el siguiente intento (automático o manual) ya
+    // funciona sin que el usuario tenga que saber que existe sessionStorage.
+    clearStuckMsalState();
+    showAccessScreen('error');
     return neverResolves();
   }
-
-  await msal.loginRedirect({ scopes: [config.entra.scope] });
-  return neverResolves();
 }
 
 /**
@@ -117,9 +152,13 @@ export async function getAccessToken() {
     const result = await msal.acquireTokenSilent({ scopes, account });
     return result.accessToken;
   } catch (error) {
+    // `acquireTokenRedirect` navega fuera de la página: devolver `null` aquí (como antes) dejaba
+    // que el llamador siguiera adelante EN ESE MISMO INSTANTE con "sin token" (ver ensureAuthorized,
+    // que entonces llamaba a /api/auth/me sin cabecera Authorization y recibía 401) en vez de
+    // esperar a la redirección real — la navegación no detiene la ejecución de JS de inmediato.
     console.warn('[mIA Auth] No se pudo renovar el token en silencio, reintentando con redirect:', error);
     await msal.acquireTokenRedirect({ scopes, account });
-    return null; // La página está navegando; no hay token que devolver todavía.
+    return neverResolves();
   }
 }
 
@@ -127,9 +166,23 @@ export async function getAccessToken() {
 // no pueden hacer `import` de este módulo, así que leen el token a través de este global.
 if (typeof window !== 'undefined') window.miaGetAccessToken = getAccessToken;
 
-/** Cierra la sesión MSAL y vuelve al índice. Botón de escape en la pantalla de acceso: con un
- * token válido pero sin permisos, no hay otra forma de "probar con otra cuenta" (no hay logout
- * en ningún otro sitio de mIA todavía). */
+/**
+ * Revela un botón de cerrar sesión ya presente en la página (oculto por defecto en el HTML,
+ * `hidden`) y lo conecta a `signOut()`. Si el login está desactivado (dev/easyauth) no hace nada:
+ * el botón se queda oculto, no hay ninguna sesión real que cerrar. Debe llamarse DESPUÉS de que
+ * `ensureAuthenticated()`/`ensureAuthorized()` hayan confirmado que hay una cuenta con acceso —
+ * nunca antes, para no revelarlo mientras la cortina de pintura sigue puesta.
+ */
+export function mountSignOutButton(target) {
+  const button = typeof target === 'string' ? document.querySelector(target) : target;
+  if (!button || !window.msalInstance) return;
+  button.hidden = false;
+  button.addEventListener('click', () => signOut());
+}
+
+/** Cierra la sesión MSAL y vuelve al índice. Usado por `mountSignOutButton()` y por el botón de
+ * escape de la pantalla de acceso: con un token válido pero sin permisos, no hay otra forma de
+ * "probar con otra cuenta". */
 export async function signOut() {
   const msal = window.msalInstance;
   if (!msal) {
@@ -150,22 +203,31 @@ function escapeHtml(value) {
   ));
 }
 
-/** Mismo mecanismo que `install2DEntry()` usa para revelar el mundo 2D real: mientras la cortina
- * de pintura esté puesta, lo que mia-2d.js ya haya montado por debajo (ver el aviso en
- * mia-entry-v530.js sobre el orden de scripts clásicos) permanece oculto. Al mostrar esta
- * pantalla hay que levantarla igual, o nunca se vería. En los otros 3 puntos de entrada (todo
- * módulo, sin scripts clásicos) esta clase simplemente no existe y la llamada no hace nada. */
-function liftPaintGuard() {
-  document.documentElement.classList.remove('mia2d-entry-loading');
-  if (window.__mia2dEntryGuardTimeout) {
-    clearTimeout(window.__mia2dEntryGuardTimeout);
-    window.__mia2dEntryGuardTimeout = null;
+/**
+ * Levanta la cortina de pintura síncrona que el `<script>` inline del `<head>` pone ANTES de que
+ * este módulo cargue (ver `index.html` y `mia-2d.html`) — mientras está puesta, lo que ya hubiera
+ * debajo (los enlaces del portal, o lo que mia-2d.js ya haya montado — ver el aviso en
+ * mia-entry-v530.js sobre el orden de scripts clásicos) permanece oculto y, en el caso del
+ * portal, SIN POSIBILIDAD DE CLIC real (la cortina cubre toda la página). Debe llamarse tanto al
+ * revelar la UI real (login + autorización correctos) como al sustituirla por la pantalla de
+ * acceso (`showAccessScreen`) — si no, el aviso se quedaría oculto debajo. En los puntos de
+ * entrada sin cortina propia (3D, holograma) estas clases simplemente no existen y no hace nada.
+ */
+export function dismissEntryGuard() {
+  for (const cls of ['mia-index-loading', 'mia2d-entry-loading']) {
+    document.documentElement.classList.remove(cls);
+  }
+  for (const key of ['__miaIndexGuardTimeout', '__mia2dEntryGuardTimeout']) {
+    if (window[key]) {
+      clearTimeout(window[key]);
+      window[key] = null;
+    }
   }
   document.documentElement.style.overflow = '';
 }
 
 function showAccessScreen(kind, { displayName, email } = {}) {
-  liftPaintGuard();
+  dismissEntryGuard();
   const base = import.meta.env.BASE_URL;
   const isError = kind === 'error';
   const screen = document.createElement('div');
@@ -198,7 +260,13 @@ function showAccessScreen(kind, { displayName, email } = {}) {
       </div>
     </div>`;
   document.body.replaceChildren(screen);
-  screen.querySelector('[data-action="retry"]').addEventListener('click', () => window.location.reload());
+  screen.querySelector('[data-action="retry"]').addEventListener('click', () => {
+    // Defensa en profundidad: si el bloqueo venía de un intento de login anterior a este arreglo
+    // (interaction_in_progress ya en sessionStorage), reintentar sin limpiar repetiría el mismo
+    // error para siempre.
+    if (isError) clearStuckMsalState();
+    window.location.reload();
+  });
   screen.querySelector('[data-action="signout"]').addEventListener('click', () => signOut());
 }
 

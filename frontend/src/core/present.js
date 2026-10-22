@@ -101,6 +101,87 @@ function renderKeyValues(entries) {
     .join("")}</dl>`;
 }
 
+// ── Mail ───────────────────────────────────────────────────────────────────────
+
+function renderAttachmentCard(att) {
+  const url = safeDocumentUrl(att?.url);
+  if (!url) return `<span class="mia-mail-attachment mia-mail-attachment--unavailable">${escapeHtml(att?.nombre || "Adjunto")}</span>`;
+  return `<a class="mia-mail-attachment" href="${escapeHtml(url)}" target="_blank" rel="noopener">
+    <span class="mia-mail-attachment-name">${escapeHtml(att?.nombre || "Adjunto")}</span>
+    <span class="mia-mail-attachment-action">Descargar ↓</span>
+  </a>`;
+}
+
+function renderMailBody(text) {
+  const blocks = String(text ?? "").split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
+  if (!blocks.length) return "";
+  return `<div class="mia-mail-body">${blocks
+    .map((b) => `<p>${escapeHtml(b).replaceAll("\n", "<br>")}</p>`)
+    .join("")}</div>`;
+}
+
+function renderMailMessage(rest) {
+  const recipients = Array.isArray(rest.para) ? rest.para.join(", ") : rest.para;
+  const meta = [
+    rest.de ? `<span><b>De:</b> ${escapeHtml(rest.de)}</span>` : "",
+    recipients ? `<span><b>Para:</b> ${escapeHtml(recipients)}</span>` : "",
+    rest.recibido ? `<span>${escapeHtml(rest.recibido)}</span>` : "",
+  ].filter(Boolean).join("");
+  const attachments = Array.isArray(rest.adjuntos) && rest.adjuntos.length
+    ? `<div class="mia-mail-attachments">${rest.adjuntos.map(renderAttachmentCard).join("")}</div>`
+    : "";
+  return `<article class="mia-mail-card">
+    ${rest.asunto ? `<h3 class="mia-mail-subject">${escapeHtml(rest.asunto)}</h3>` : ""}
+    <div class="mia-mail-meta">${meta}</div>
+    ${renderMailBody(rest.texto)}
+    ${attachments}
+  </article>`;
+}
+
+function renderMailThread(rest) {
+  const rows = Array.isArray(rest.mail_rows) ? rest.mail_rows : [];
+  const items = rows.map((row) => `<li class="mia-mail-thread-item${row.is_read ? "" : " mia-mail-thread-item--unread"}">
+    <div class="mia-mail-thread-top"><b>${escapeHtml(row.from || "")}</b><span>${escapeHtml(row.received_at || "")}</span></div>
+    <div class="mia-mail-thread-subject">${escapeHtml(row.subject || "")}</div>
+    <div class="mia-mail-thread-preview">${escapeHtml(row.preview || "")}</div>
+    ${row.has_attachments ? '<span class="mia-mail-thread-flag">📎 Con adjuntos</span>' : ""}
+  </li>`).join("");
+  return `<ol class="mia-mail-thread">${items}</ol>`;
+}
+
+// ── Noticias ───────────────────────────────────────────────────────────────────
+
+function newsExternalLink(url) {
+  const text = String(url ?? "").trim();
+  try {
+    const parsed = new URL(text);
+    return ["http:", "https:"].includes(parsed.protocol) ? parsed.href : "";
+  } catch { return ""; }
+}
+
+function renderNewsCard(item) {
+  const link = newsExternalLink(item?.url);
+  const title = escapeHtml(item?.titulo || "Noticia");
+  const titleHtml = link
+    ? `<a class="mia-news-title" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">${title}</a>`
+    : `<span class="mia-news-title">${title}</span>`;
+  const meta = [item?.fuente, item?.fecha].filter(Boolean).map(escapeHtml).join(" · ");
+  return `<li class="mia-news-card">
+    <div class="mia-news-badges">
+      ${item?.empresa ? `<span class="mia-news-badge mia-news-badge--empresa">${escapeHtml(item.empresa)}</span>` : ""}
+      ${item?.categoria ? `<span class="mia-news-badge mia-news-badge--categoria">${escapeHtml(item.categoria)}</span>` : ""}
+    </div>
+    ${titleHtml}
+    ${item?.resumen ? `<p class="mia-news-summary">${escapeHtml(item.resumen)}</p>` : ""}
+    ${meta ? `<div class="mia-news-meta">${meta}</div>` : ""}
+  </li>`;
+}
+
+function renderNewsList(rows) {
+  if (!Array.isArray(rows) || !rows.length) return "";
+  return `<ul class="mia-news-list">${rows.map(renderNewsCard).join("")}</ul>`;
+}
+
 // ── Main renderer ─────────────────────────────────────────────────────────────
 
 export function renderPresentation(presentation) {
@@ -108,6 +189,23 @@ export function renderPresentation(presentation) {
   const { type, title, ...rest } = presentation;
   const heading = title ? `<h3 class="mia-presentation-title">${escapeHtml(title)}</h3>` : "";
   if ((type === "document" || type === "download") && rest.url && !safeDocumentUrl(rest.url)) return "";
+
+  // Mail: an opened message (with real attachment download links) or a full thread
+  if (type === "mail") {
+    return `<section class="mia-presentation">${heading}${renderMailMessage(rest)}</section>`;
+  }
+  if (type === "mail_thread") {
+    const count = rest.mensajes_en_el_hilo || (Array.isArray(rest.mail_rows) ? rest.mail_rows.length : 0);
+    return `<section class="mia-presentation">${heading}
+      <p class="mia-mail-thread-count">${count} mensaje${count === 1 ? "" : "s"} en esta conversación</p>
+      ${renderMailThread(rest)}</section>`;
+  }
+
+  // Noticias corporativas y de grupo: tarjetas (título enlazado, empresa/categoría, fuente/fecha)
+  if (type === "news_list") {
+    const list = renderNewsList(rest.news_rows) || renderTable(rest);
+    return `<section class="mia-presentation">${heading}${list}</section>`;
+  }
 
   // Table — also render attached document cards when present
   if (type === "table" && Array.isArray(rest.columns)) {

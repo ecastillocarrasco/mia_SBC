@@ -89,41 +89,24 @@ export function compactVoice(raw, maxChars = 360) {
   return fragments[0].trim();
 }
 
-function tableCount(presentations) {
-  for (const p of presentations || []) {
-    if (!isObject(p)) continue;
-    const tables = [p, ...(Array.isArray(p.tables) ? p.tables : [])];
-    for (const t of tables) {
-      if (Array.isArray(t?.rows)) return t.rows.length;
-    }
-    for (const key of ['employees','people','personal','records','items']) {
-      if (Array.isArray(p[key])) return p[key].length;
-    }
-  }
-  return null;
-}
-
-export function hologramExecutiveCopy({ question, response, presentations = [], counts = {} } = {}) {
+export function hologramExecutiveCopy({ question, response, presentations = [] } = {}) {
+  // La respuesta del backend es SIEMPRE la fuente de verdad -- la misma que verían 2D/3D para la
+  // misma pregunta (directiva del holograma: responde exactamente lo mismo, solo cambia cómo se
+  // muestra). Antes, si la pregunta parecía de personal "trabajando ahora" y el backend no marcaba
+  // `verified:true` (nunca lo hace hoy: ningún código del backend fija ese campo), esto DESCARTABA
+  // la respuesta real y la sustituía por un aviso genérico de "no puedo confirmar" -- se disparaba
+  // el 100% de las veces, no como salvaguarda ocasional. Ahora esa respuesta real siempre se
+  // muestra (resumida igual que cualquier otra pregunta); lo único que puede añadirse es una cifra
+  // confirmada como dato destacado, nunca en sustitución del texto real.
   const reported = string(response?.speech_text || response?.speech || response?.answer || response?.natural_answer);
   const working = isWorkingNowQuestion(question);
-  if (working) {
-    const total = confirmedWorkforceTotal(response, presentations);
-    if (total !== null) {
-      const txt = `Ahora mismo hay ${new Intl.NumberFormat('es-ES').format(total)} personas trabajando.`;
-      return { caption: txt, speech: txt, working:true, confirmed:true, value:total };
-    }
-    const rows = tableCount(presentations);
-    const count = rows !== null ? rows : Number.isInteger(counts.rows) && counts.rows > 0 ? counts.rows : null;
-    if (count !== null) {
-      const n = new Intl.NumberFormat('es-ES').format(count);
-      const speech = `He recibido ${n} registros relacionados con tu consulta sobre el personal trabajando. No puedo confirmar que representen el total de trabajadores en servicio.`;
-      return { caption:`${n} registros recibidos`, speech, working:true, confirmed:false, value:count };
-    }
-  }
   const summary = compactVoice(reported);
-  return {
+  const base = {
     caption: summary || 'No se han recibido datos suficientes para mostrar un resumen.',
     speech: summary || 'No he recibido información suficiente para responder a esa consulta. Puedes intentarlo de nuevo.',
-    working, confirmed:false, value:null,
+    working, confirmed: false, value: null,
   };
+  if (!working) return base;
+  const total = confirmedWorkforceTotal(response, presentations);
+  return total === null ? base : { ...base, confirmed: true, value: total };
 }

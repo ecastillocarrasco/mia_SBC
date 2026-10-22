@@ -168,6 +168,63 @@ def test_mail_is_translated_to_the_mail_panel_with_refs() -> None:
         ]
     )
     assert opened["mail_message"]["text"] == "Cuerpo" and opened["mail_message"]["attachments"] == ["a.pdf"]
+    thread, _ = legacy_view(
+        [
+            {
+                "type": "mail_thread",
+                "title": "Hilo: Hola",
+                "columns": ["Ref", "De", "Asunto", "Recibido"],
+                "rows": [["c1", "Ana <a@x.com>", "Hola", "2026-08-22T13:35:11Z"]],
+                "mail_rows": [
+                    {
+                        "ref": "c1",
+                        "from": "Ana <a@x.com>",
+                        "subject": "Hola",
+                        "received_at": "2026-08-22T13:35:11Z",
+                        "has_attachments": False,
+                    },
+                    {
+                        "ref": "c2",
+                        "from": "RRHH <rrhh@x.com>",
+                        "subject": "Re: Hola",
+                        "received_at": "2026-08-23T09:00:00Z",
+                        "has_attachments": True,
+                    },
+                ],
+            }
+        ]
+    )
+    assert thread["mail_thread"] == {"title": "Hilo: Hola", "count": 2}
+    assert len(thread["mail_rows"]) == 2
+    assert thread["mail_rows"][1]["sender_name"] == "RRHH"
+    assert "table" not in thread  # el hilo también sustituye a la tabla genérica, no se duplica
+
+
+def test_news_list_is_translated_to_the_news_panel_not_a_generic_table() -> None:
+    """Regresión de producción: sin su propia rama, ``news_list`` caía en el ``else`` genérico de
+    ``_absorb()``, que reconstruía ``news_rows`` como una tabla cruda sin formato ("News rows" /
+    "Información estructurada") — sin enlaces clicables ni la tarjeta premium del panel del 2D, y
+    con el turno clasificado como "analítica" en vez de "noticias"."""
+    presentation = {
+        "type": "news_list",
+        "title": "Noticias corporativas y del grupo",
+        "columns": ["Título", "Empresa", "Categoría", "Fuente", "Fecha"],
+        "rows": [["FBD Hotels adquiere un hotel", "Grupo FBD", "Hotelera / turismo", "Irish Times", "20/10/2026"]],
+        "news_rows": [
+            {
+                "titulo": "FBD Hotels adquiere un hotel",
+                "fuente": "Irish Times",
+                "empresa": "Grupo FBD",
+                "categoria": "Hotelera / turismo",
+                "fecha": "20/10/2026",
+                "resumen": None,
+                "url": "https://news.google.com/rss/articles/AAAA",
+            }
+        ],
+    }
+    data, _ = legacy_view([presentation])
+    assert data["news_rows"] == presentation["news_rows"]
+    assert "table" not in data  # el panel de noticias sustituye a la tabla genérica, no se duplica
 
 
 def test_headcount_by_department_from_the_tool_summary_becomes_a_chart() -> None:

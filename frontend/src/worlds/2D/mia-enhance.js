@@ -82,12 +82,20 @@
   var $ = { root: function () { return (typeof context !== 'undefined' && context) || window.context || {}; } };
   function sessionId() { return $.root().session_id || null; }
 
-  function mailApi(action, payload) {
+  async function mailApi(action, payload) {
     var body = Object.assign({ session_id: sessionId() }, payload || {});
-    return fetch('/api/mia/mail/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Respuesta no válida del servidor (' + r.status + ')' }; }); })
-      .then(function (j) { if (j && j.session_id) { try { $.root().session_id = j.session_id; } catch (e) { /* noop */ } } return j; })
-      .catch(function () { return { ok: false, error: 'No he podido conectar con el servidor.' }; });
+    try {
+      // Script clasico: lee el token via el global que auth-gate.js expone (ver mia-2d.js, miaAuthHeaders).
+      var token = typeof window.miaGetAccessToken === 'function' ? await window.miaGetAccessToken() : null;
+      var headers = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = 'Bearer ' + token;
+      var r = await fetch('/api/mia/mail/' + action, { method: 'POST', headers: headers, body: JSON.stringify(body) });
+      var j = await r.json().catch(function () { return { ok: false, error: 'Respuesta no válida del servidor (' + r.status + ')' }; });
+      if (j && j.session_id) { try { $.root().session_id = j.session_id; } catch (e) { /* noop */ } }
+      return j;
+    } catch (e) {
+      return { ok: false, error: 'No he podido conectar con el servidor.' };
+    }
   }
 
   var openModals = [];
@@ -127,6 +135,29 @@
     a.href = /^https?:\/\//i.test(url) ? url : '#'; return a;
   }
   function hostOf(url) { try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return url; } }
+
+  /* Tarjeta de un adjunto real: descarga directa cuando el backend trae url (ficheros), o un
+   * aviso sin enlace cuando no (p. ej. un correo reenviado como adjunto). Nunca se muestra el
+   * texto extraído del adjunto aquí: eso es solo para que el modelo lo lea, no para pantalla. */
+  function attachmentCard(a) {
+    var name = (a && a.nombre) || 'Adjunto';
+    if (a && /^\/api\/mail\/attachment\//.test(a.url || '')) {
+      var link = document.createElement('a');
+      link.className = 'mia-attachment'; link.href = a.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+      link.appendChild(el('span', 'mia-attachment-name', name));
+      link.appendChild(el('span', 'mia-attachment-action', 'Descargar ↓'));
+      return link;
+    }
+    var span = el('div', 'mia-attachment mia-attachment--unavailable');
+    span.appendChild(el('span', 'mia-attachment-name', name));
+    return span;
+  }
+  function attachmentList(attachments) {
+    if (!attachments || !attachments.length) return null;
+    var wrap = el('div', 'mia-attachments');
+    attachments.forEach(function (a) { wrap.appendChild(attachmentCard(a)); });
+    return wrap;
+  }
 
   /* Texto del correo → párrafos, viñetas y enlaces (todo con nodos DOM, nunca innerHTML). */
   function linkify(text, into) {
@@ -171,9 +202,10 @@
       m.head.querySelector('.mia-modal-avatar').textContent = initials(msg.from_name);
       m.meta.appendChild(chip('De', (msg.from_name || '') + (msg.from_address ? ' <' + msg.from_address + '>' : '')));
       if (msg.to && msg.to.length) m.meta.appendChild(chip('Para', msg.to.join(', ')));
-      (msg.attachments || []).forEach(function (a) { m.meta.appendChild(chip('Adjunto', a, 'attach')); });
       if (msg.no_reply) m.meta.appendChild(chip('', 'Correo automático · no admite respuesta', 'warn'));
       m.body.appendChild(formatMailBody(msg.text));
+      var attachments = attachmentList(msg.attachments);
+      if (attachments) m.body.appendChild(attachments);
       var reply = button('Proponer respuesta', 'primary', function () { openCompose(ref, msg); });
       if (msg.no_reply) { reply.disabled = true; reply.title = 'Es un correo automático (no-reply): no admite respuesta'; }
       m.foot.appendChild(reply); m.foot.appendChild(button('Cerrar', '', m.close));
@@ -269,9 +301,17 @@
     var meta = el('div', 'mia-mail-meta'); meta.appendChild(el('span', null, 'De: ' + (m.from_name || '') + (m.from_address ? ' <' + m.from_address + '>' : '')));
     if (m.received_at) meta.appendChild(el('span', null, fmtDate(m.received_at))); card.appendChild(meta);
     var preview = el('div', 'mia-mail-body'); preview.appendChild(formatMailBody(String(m.text || '').slice(0, 700))); card.appendChild(preview);
+    var attachments = attachmentList(m.attachments); if (attachments) card.appendChild(attachments);
     var bar = el('div', 'mia-actions');
     bar.appendChild(button('Abrir correo', 'primary', function () { openMail(m.ref, { subject: m.subject, sender_name: m.from_name }); }));
     card.appendChild(bar); return card;
+  }
+  /* ---- hilo completo: cabecera breve; la lista de mensajes la pinta decorateMailList() sobre mail_rows */
+  function mailThreadCard(t) {
+    var card = el('section', 'mia-mail-card mia-mail-thread-card');
+    card.appendChild(el('h4', null, t.title || 'Hilo de correo'));
+    card.appendChild(el('div', 'mia-mail-meta', (t.count || 0) + ' mensaje' + (t.count === 1 ? '' : 's') + ' en esta conversación'));
+    return card;
   }
   function draftCard(d) {
     var card = el('section', 'mia-mail-card mia-draft');
@@ -282,6 +322,87 @@
     bar.appendChild(button('Abrir borrador', 'primary', function () { openCompose(d.responde_a, { subject: 'Respuesta' }, d); }));
     card.appendChild(bar);
     if (!d.envio_habilitado) card.appendChild(el('div', 'mia-note', 'El envío de correos está desactivado en este entorno: el borrador queda guardado en el buzón.'));
+    return card;
+  }
+
+  /* ---- noticias corporativas y de grupo: tarjetas clicables que abren una ventana premium
+   * (mismo modal() que el correo) con el enlace real a la fuente original. */
+  function safeExternalUrl(value) {
+    try { var u = new URL(String(value || '')); return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : ''; }
+    catch (e) { return ''; }
+  }
+  /* Imágenes propias de mIA (p. ej. /api/community/newsletter/5/imagen, que descarga de
+   * SharePoint con las credenciales del backend) necesitan el mismo Bearer que mailApi() —
+   * un <img src> normal NUNCA puede mandar esa cabecera, así que se piden con fetch() y se
+   * convierten a blob: así siguen pasando por el mismo gate de autenticación que el resto de
+   * la API en vez de quedar abiertas a cualquiera que adivine la URL. */
+  async function authenticatedImageSrc(path) {
+    try {
+      var token = typeof window.miaGetAccessToken === 'function' ? await window.miaGetAccessToken() : null;
+      var headers = {};
+      if (token) headers.Authorization = 'Bearer ' + token;
+      var r = await fetch(path, { headers: headers });
+      if (!r.ok) return '';
+      var blob = await r.blob();
+      return URL.createObjectURL(blob);
+    } catch (e) { return ''; }
+  }
+  function loadImageSrc(value) {
+    var text = String(value || '').trim();
+    if (!text) return Promise.resolve('');
+    if (/^\/api\/[\w/?=&%.-]+$/.test(text)) return authenticatedImageSrc(text);
+    return Promise.resolve(safeExternalUrl(text));
+  }
+  function openNewsItem(item) {
+    var subtitle = [item.fuente, item.fecha].filter(Boolean).join(' · ');
+    var objectUrl = null;
+    var m = modal({
+      title: item.titulo || 'Noticia', subtitle: subtitle, icon: '📰',
+      onClose: function () { if (objectUrl) URL.revokeObjectURL(objectUrl); }
+    });
+    if (item.empresa) m.meta.appendChild(chip('', item.empresa, 'news-empresa'));
+    if (item.categoria) m.meta.appendChild(chip('', item.categoria, 'news-categoria'));
+    var detailText = item.cuerpo || item.resumen;
+    m.body.appendChild(detailText
+      ? formatMailBody(detailText)
+      : el('p', 'mia-muted', 'Sin contenido disponible: abre la noticia original para leerla completa.'));
+    var href = safeExternalUrl(item.url);
+    if (href) {
+      var open = document.createElement('a');
+      open.className = 'mia-btn primary'; open.href = href; open.target = '_blank'; open.rel = 'noopener noreferrer';
+      open.textContent = 'Abrir noticia original ↗';
+      m.foot.appendChild(open);
+    }
+    m.foot.appendChild(button('Cerrar', '', m.close));
+    loadImageSrc(item.imagen).then(function (src) {
+      if (!src || !m.body.isConnected) return;
+      objectUrl = src.indexOf('blob:') === 0 ? src : null;
+      var img = document.createElement('img');
+      img.className = 'mia-news-popup-image'; img.src = src; img.alt = item.titulo || 'Noticia';
+      img.addEventListener('error', function () { img.remove(); });
+      m.body.insertBefore(img, m.body.firstChild);
+    });
+    return m;
+  }
+  function newsCard(item) {
+    var card = el('article', 'mia-news-card');
+    var badges = el('div', 'mia-news-badges');
+    if (item.empresa) badges.appendChild(el('span', 'mia-news-badge mia-news-badge--empresa', item.empresa));
+    if (item.categoria) badges.appendChild(el('span', 'mia-news-badge mia-news-badge--categoria', item.categoria));
+    if (badges.childNodes.length) card.appendChild(badges);
+    var title = document.createElement('button');
+    title.type = 'button'; title.className = 'mia-news-title';
+    title.textContent = item.titulo || 'Noticia';
+    title.addEventListener('click', function () { openNewsItem(item); });
+    card.appendChild(title);
+    if (item.resumen) card.appendChild(el('p', 'mia-news-summary', item.resumen));
+    var meta = [item.fuente, item.fecha].filter(Boolean).join(' · ');
+    if (meta) card.appendChild(el('div', 'mia-news-meta', meta));
+    return card;
+  }
+  function newsListCard(rows) {
+    var card = el('section', 'mia-news-panel');
+    rows.forEach(function (row) { card.appendChild(newsCard(row)); });
     return card;
   }
 
@@ -330,7 +451,9 @@
     try {
       var data = (r && r.data) || {}, extras = [];
       if (data.mail_message) extras.push(mailMessageCard(data.mail_message));
+      if (data.mail_thread) extras.push(mailThreadCard(data.mail_thread));
       if (data.mail_draft) extras.push(draftCard(data.mail_draft));
+      if (Array.isArray(data.news_rows) && data.news_rows.length) extras.push(newsListCard(data.news_rows));
       (Array.isArray(data.charts) ? data.charts : []).forEach(function (spec) {
         if (spec && spec.series && spec.series[0] && spec.labels) extras.push(chartCard(spec));
       });

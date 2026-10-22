@@ -28,6 +28,15 @@ class ShiftExpectation:
     day: date
     start_time: str | None
     end_time: str | None
+    hours: float | None = None
+    """Horas totales programadas (``ShiftDay.hours``) — no la usa esta comparación de estado, solo
+    se transporta para el cálculo de horas de ``fichajes.hours`` (nunca se duplica aquí)."""
+    declared_night_hours: float | None = None
+    """Horas nocturnas declaradas en la definición del turno (``fichajes.shift_match``) — mismo
+    motivo que ``hours``: solo transporte, sin lógica propia en este módulo."""
+    area: str | None = None
+    """Área/puesto del turno (``ShiftDay.area``, p. ej. "Piscina") — mismo motivo que ``hours``: solo
+    transporte, para mostrar qué turno concreto hizo la persona ese día en el informe."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,8 +96,15 @@ def compare_person(
             # constancia de que hubo fichaje, pero no se puede calcular una desviación real.
             results.append(DayComparison(shift.day, "sin_turno", session))
             continue
-        entrada_dev = round((session.entrada - datetime.combine(shift.day, sched_start)).total_seconds() / 60)
-        salida_dev = round((session.salida - datetime.combine(shift.day, sched_end)).total_seconds() / 60)
+        # ``session.entrada``/``session.salida`` llegan con zona horaria en PostgreSQL (real) — nunca
+        # en SQLite (solo tests), que no la conserva al guardar/leer. ``datetime.combine`` sin
+        # ``tzinfo`` crea una fecha "naive": restarla de una "aware" lanza TypeError en producción,
+        # aunque los tests con SQLite no lo detecten (ahí ambas acaban siendo "naive" por igual) —
+        # bug real encontrado contra datos reales, nunca reproducido por la suite hasta añadir un test
+        # con datetimes con zona horaria explícita (ver test_fichajes_comparison.py).
+        tz = session.entrada.tzinfo
+        entrada_dev = round((session.entrada - datetime.combine(shift.day, sched_start, tzinfo=tz)).total_seconds() / 60)
+        salida_dev = round((session.salida - datetime.combine(shift.day, sched_end, tzinfo=tz)).total_seconds() / 60)
         status = "correcto" if abs(entrada_dev) <= tolerance_minutes and abs(salida_dev) <= tolerance_minutes else "desviado"
         results.append(DayComparison(shift.day, status, session, entrada_dev, salida_dev))
 

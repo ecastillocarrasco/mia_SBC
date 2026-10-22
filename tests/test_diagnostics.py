@@ -340,6 +340,30 @@ def test_metrics_computes_error_rate():
     assert abs(m["error_rate"] - 0.5) < 0.01
 
 
+def test_metrics_computes_cache_hit_rate():
+    from mia.diagnostics.metrics import compute_metrics
+    r1 = _make_trace()
+    r1.status = "completed"
+    r1.tokens_input = 100
+    r1.tokens_cached = 80
+    r2 = _make_trace()
+    r2.status = "completed"
+    r2.tokens_input = 100
+    r2.tokens_cached = 20
+    m = compute_metrics([r1, r2])
+    assert m["total_input_tokens"] == 200
+    assert m["total_cached_tokens"] == 100
+    assert abs(m["cache_hit_rate"] - 0.5) < 0.01
+
+
+def test_metrics_cache_hit_rate_none_without_input_tokens():
+    from mia.diagnostics.metrics import compute_metrics
+    r1 = _make_trace()
+    r1.status = "completed"
+    m = compute_metrics([r1])
+    assert m["cache_hit_rate"] is None
+
+
 # ── PHASE 2: TEMPORAL CONSTRAINT DETECTION ───────────────────────────────────
 
 def test_temporal_constraint_dropped_detected():

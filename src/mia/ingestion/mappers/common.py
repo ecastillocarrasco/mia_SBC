@@ -84,6 +84,16 @@ def ddmmyyyy(value: Any) -> date | None:
         return None
 
 
+def hyperlink_field(value: Any) -> str | None:
+    """Campo "Hyperlink or Picture" de SharePoint (enlace o imagen) → su URL.
+
+    La API REST lo devuelve como ``{"Url": ..., "Description": ...}``; se descarta la
+    descripción (a menudo repite la propia URL o un texto sin valor añadido)."""
+    if isinstance(value, dict):
+        return text(value.get("Url"))
+    return text(value)
+
+
 def person_field(value: Any) -> tuple[str | None, str | None]:
     """Campo Persona expandido de SharePoint → (nombre, email)."""
     if isinstance(value, dict):

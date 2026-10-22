@@ -44,6 +44,11 @@ export default defineConfig(({ command }) => ({
   root: __dirname,
   base: command === "build" ? "/mia/" : "/",
   plugins: [copyClassicWorld2dAssets()],
+  // @azure/msal-browser solo se importa de forma dinámica (auth-gate.js, loadMsal()) y nunca de
+  // forma estática en ningún fichero: el rastreador de dependencias de Vite puede no descubrirlo
+  // a tiempo, lo que en `vite dev` provoca un primer intento de login colgado (recarga de
+  // dependencias a mitad de la redirección a Microsoft). Declararlo aquí fuerza su pre-bundling.
+  optimizeDeps: { include: ["@azure/msal-browser"] },
   server: {
     host: "127.0.0.1",
     port: 5173,

@@ -28,5 +28,14 @@ build/
 # también ignoraba silenciosamente src/mia/modules/rrhh/informes/ (código, no salida generada).
 /informes/
 
-# Archivo comprimido grande (169 MB) que no debe versionarse: supera el límite de GitHub (100 MB).
-frontend.zip
+# Instaladores y paquetes de preproducción (no versionar)
+/PreReqMIA_PRE/
+
+# Archivo comprimido grande; excede límites habituales de GitHub.
+/frontend.zip
+
+/mia.zip
+/frontend/src/worlds/worlds.zip
+
+/data/attachments/
+/logs/

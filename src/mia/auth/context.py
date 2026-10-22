@@ -19,8 +19,9 @@ class Permission(StrEnum):
     TURNOS_LEER = "turnos:leer"
     FICHAJES_LEER = "fichajes:leer"
     """Control de presencia (fichajes): marcas de entrada/salida y su cruce con los turnos
-    planificados. Fuente actual: importación manual del Excel de Conectia (A3), solo en
-    entornos de prueba — ver ``mia.modules.rrhh.fichajes``."""
+    planificados. Fuente actual: el Excel de Conectia (A3), importado desde un adjunto subido en la
+    conversación o desde un directorio en pruebas — hasta que exista la API real de Conectia, ver
+    ``mia.modules.rrhh.fichajes``."""
     VACACIONES_LEER = "vacaciones:leer"
     NOMINAS_LEER = "nominas:leer"
     NOMINAS_IMPORTES = "nominas:importes"

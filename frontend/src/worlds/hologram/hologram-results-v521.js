@@ -154,8 +154,66 @@ function extractDocuments(presentations) {
     if (Array.isArray(p.documents)) for (const doc of p.documents) {
       if (asObj(doc) && doc.url) result.push({ label: str(doc.title || 'Documento'),url:doc.url });
     }
+    if (p.type === 'mail' && Array.isArray(p.adjuntos)) for (const att of p.adjuntos) {
+      if (asObj(att) && att.url) result.push({ label: str(att.nombre || 'Adjunto'), url: att.url });
+    }
   }
-  return result.slice(0, 2);
+  return result.slice(0, 4);
+}
+
+/** Correo abierto (de, para, asunto, cuerpo) o un hilo completo (lista de mensajes). Los adjuntos
+ * reales van por extractDocuments() — aquí nunca se muestra el texto extraído de un adjunto
+ * (es solo para el LLM), sólo el cuerpo real del mensaje. */
+function extractMail(presentations) {
+  for (const p of presentations) {
+    if (!asObj(p) || (p.type !== 'mail' && p.type !== 'mail_thread')) continue;
+    return p;
+  }
+  return null;
+}
+
+function renderMailSection(mail) {
+  if (!mail) return '';
+  if (mail.type === 'mail') {
+    const meta = [mail.de ? `De: ${str(mail.de)}` : '', mail.recibido ? str(mail.recibido) : '']
+      .filter(Boolean).map(escapeHTML).join(' · ');
+    const body = str(mail.texto).slice(0, 800);
+    return `<section class="hg-brief hg-mail" aria-label="Correo"><header class="hg-brief-head"><span>mIA · CORREO</span>
+      <h2>${escapeHTML(mail.asunto || '(sin asunto)')}</h2></header>
+      <p class="hg-mail-meta">${meta}</p>
+      <p class="hg-mail-body">${escapeHTML(body)}</p></section>`;
+  }
+  const rows = Array.isArray(mail.mail_rows) ? mail.mail_rows.slice(0, 8) : [];
+  const items = rows.map((r) => `<li class="hg-mail-thread-item${r?.is_read ? '' : ' hg-mail-thread-item--unread'}">
+    <b>${escapeHTML(r?.from || '')}</b><span>${escapeHTML(r?.subject || '')}</span></li>`).join('');
+  return `<section class="hg-brief hg-mail" aria-label="Hilo de correo"><header class="hg-brief-head"><span>mIA · CORREO</span>
+    <h2>${escapeHTML(mail.title || 'Hilo de correo')}</h2></header>
+    <ol class="hg-mail-thread">${items}</ol></section>`;
+}
+/** Noticias corporativas y de grupo (Sunset Beach Club / Grupo FBD): información pública, pero
+ * un listado de artículos no es contenido para la proyección física del fan (demasiado texto),
+ * así que se trata como la pantalla, nunca el fan — igual que la tabla genérica. */
+function extractNews(presentations) {
+  for (const p of presentations) {
+    if (asObj(p) && p.type === 'news_list') return p;
+  }
+  return null;
+}
+
+function renderNewsSection(news) {
+  if (!news) return '';
+  const rows = Array.isArray(news.news_rows) ? news.news_rows.slice(0, 8) : [];
+  const items = rows.map((r) => {
+    const href = safeHref(r?.url);
+    const title = escapeHTML(r?.titulo || 'Noticia');
+    const titleHTML = href
+      ? `<a href="${escapeHTML(href)}" target="_blank" rel="noopener noreferrer">${title}</a>` : title;
+    const meta = [r?.empresa, r?.categoria, r?.fecha].filter(Boolean).map(escapeHTML).join(' · ');
+    return `<li class="hg-news-item"><b>${titleHTML}</b>${meta ? `<span>${meta}</span>` : ''}</li>`;
+  }).join('');
+  return `<section class="hg-brief hg-news" aria-label="Noticias"><header class="hg-brief-head"><span>mIA · NOTICIAS</span>
+    <h2>${escapeHTML(news.title || 'Noticias corporativas y del grupo')}</h2></header>
+    <ol class="hg-news-list">${items}</ol></section>`;
 }
 function safeHref(url) {
   const raw = str(url);
@@ -170,10 +228,14 @@ function safeHref(url) {
 export function adaptHologramResult(response, presentations = [], { type = 'analytics', fan = false } = {}) {
   const items = Array.isArray(presentations) ? presentations.filter(asObj) : [];
   const metrics = extractMetrics(items);
-  const table = extractTables(items) || markdownTable(response?.answer);
+  const mail = extractMail(items);
+  const news = extractNews(items);
+  // El hilo completo y el listado de noticias ya traen su propia lista: no se duplican como
+  // tabla genérica (extractTables() no distingue por `type`, solo mira si hay `rows`).
+  const table = (mail?.type === 'mail_thread' || news) ? null : extractTables(items) || markdownTable(response?.answer);
   const docs = extractDocuments(items);
   const answer = str(response?.answer || response?.speech);
-  const hasPayload = items.length > 0 || Boolean(table || metrics.length || docs.length);
+  const hasPayload = items.length > 0 || Boolean(table || metrics.length || docs.length || mail || news);
   if (!hasPayload) return { html:'', visible:false, hasPayload:false, counts:{ metrics:0, rows:0, docs:0 } };
   // Explicitly label the number of received rows, never claim this is the entire dataset.
   // Prioritize a meaningful graph instead of a synthetic-looking row-count KPI.
@@ -204,13 +266,22 @@ export function adaptHologramResult(response, presentations = [], { type = 'anal
     const href=safeHref(d.url);
     return href ? `<a href="${escapeHTML(href)}" rel="noopener noreferrer" target="_blank">${escapeHTML(d.label)} ↗</a>` : '';
   }).filter(Boolean).join('') : '';
-  const status = !metrics.length && !table ?
+  // El correo (cuerpo, hilo) es contenido personal: igual que la tabla, nunca en el fan físico.
+  const mailHTML = mail && !fan ? renderMailSection(mail) : '';
+  // Las noticias son públicas (no personales), pero un listado de artículos no cabe en la
+  // proyección física del fan: igual que el correo, solo se muestran en pantalla.
+  const newsHTML = news && !fan ? renderNewsSection(news) : '';
+  const status = !metrics.length && !table && !mail && !news ?
     `<p class="hg-result-status">${docs.length ? 'Informe disponible' :
       (answer ? 'Mía está explicando el resultado por voz' : 'Respuesta recibida')}</p>` : '';
   // In fan mode, structured content without numeric visualizations still needs a
   // clear visible status; the user's answer is delivered by voice.
   const fanFallback = fan && !metrics.length && !numericRows?.length ?
     '<div class="hg-fan-feedback">RESULTADO DISPONIBLE</div>' : '';
-  const html = `<section class="hg-brief" aria-label="${escapeHTML(heading)}"><header class="hg-brief-head"><span>mIA · INSIGHTS</span><h2>${escapeHTML(heading)}</h2></header>${kpisHTML}${screenTable}${fanChart}${status}${docsHTML ? `<div class="hg-documents">${docsHTML}</div>` : ''}${fanFallback}</section>`;
+  const html = mailHTML
+    ? mailHTML + (docsHTML ? `<div class="hg-documents">${docsHTML}</div>` : '')
+    : newsHTML
+    ? newsHTML
+    : `<section class="hg-brief" aria-label="${escapeHTML(heading)}"><header class="hg-brief-head"><span>mIA · INSIGHTS</span><h2>${escapeHTML(heading)}</h2></header>${kpisHTML}${screenTable}${fanChart}${status}${docsHTML ? `<div class="hg-documents">${docsHTML}</div>` : ''}${fanFallback}</section>`;
   return {html, visible:true, hasPayload:true, counts:{ metrics:metrics.length, rows:table?.count || 0, docs:docs.length }};
 }

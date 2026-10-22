@@ -1,0 +1,219 @@
+/* mIA SBC | Breakout Spatial Results V3 - ONE engine, world 3D ONLY.
+ * The genuine, interactive results DOM stays intact. Visual-only 3D staging.
+ * ?breakout3d=0 -> V1 perspective; ?holo3d=0 -> validated flat layout.
+ */
+.mia-holo-mode {
+  margin-left:auto; flex:none; padding:9px 13px; border-radius:12px;
+  border:1px solid rgba(79,218,225,.34); color:#d8faf7;
+  background:linear-gradient(145deg,rgba(35,129,141,.18),rgba(5,25,37,.55));
+  font:650 11px/1.2 'Segoe UI',Aptos,Arial,sans-serif;
+  cursor:pointer; letter-spacing:.02em;
+}
+.mia-holo-mode:hover,.mia-holo-mode:focus-visible {
+  background:rgba(29,137,146,.28);border-color:rgba(118,245,247,.66);outline-offset:3px;
+}
+.mia-holo-mode[hidden]{display:none!important;}
+
+.mia-breakout-frame,.mia-breakout-portal,.mia-breakout-shadow,.mia-holo-echo {
+  display:none;position:fixed;left:var(--mia-holo-left,0px);top:var(--mia-holo-top,0px);
+  width:var(--mia-holo-width,100px);height:var(--mia-holo-height,100px);
+  pointer-events:none;z-index:12;
+}
+/* V1 spatial fallback, intentionally less intrusive than Breakout. */
+@media (min-width:1100px) and (prefers-reduced-motion:no-preference) {
+  body.mia-holo-active:not(.mia-breakout-active) #panel[data-presentation]:not([data-presentation="conversation"]) {
+    z-index:15; transform-origin:52% 48%;
+    transform:perspective(1700px) rotateY(var(--mia-holo-rot-y,-5.5deg))
+      rotateX(var(--mia-holo-rot-x,1deg)) translateZ(30px)!important;
+    transition:transform 1s cubic-bezier(.17,.83,.19,1),opacity .6s ease!important;
+  }
+  body.mia-holo-active:not(.mia-breakout-active).mia-holo-preparing #panel[data-presentation]:not([data-presentation="conversation"]) {
+    opacity:.08!important;transform:perspective(1700px) translate3d(-115px,32px,-420px) rotateY(-24deg) scale(.88)!important;
+  }
+  body.mia-holo-active:not(.mia-breakout-active) .mia-holo-echo {display:block;opacity:.24;
+    border:1px solid rgba(32,149,165,.4);border-radius:26px;}
+  body.mia-holo-active:not(.mia-breakout-active) .mia-holo-echo--1 {
+    transform:perspective(1600px) translate3d(-30px,13px,-78px) rotateY(-8deg);
+  }
+  body.mia-holo-active:not(.mia-breakout-active) .mia-holo-echo--2 {
+    transform:perspective(1600px) translate3d(-50px,24px,-135px) rotateY(-11deg);opacity:.13;
+  }
+}
+
+@media (min-width:1100px) and (prefers-reduced-motion:no-preference) {
+  /* V3: reserved margins and content-aware height. No more clipping at top/right
+   * or giant half-empty panel for an employee with only one record. */
+  body.mia-breakout-active #panel[data-presentation]:not([data-presentation="conversation"]) {
+    position:fixed!important;
+    left:auto!important;
+    right:var(--mia-breakout-panel-right,46px)!important;
+    top:var(--mia-breakout-panel-top,65px)!important;
+    bottom:auto!important;
+    width:var(--mia-breakout-panel-width,810px)!important;
+    height:var(--mia-breakout-panel-height,620px)!important;
+    max-height:calc(100dvh - 105px)!important;
+    transform-origin:54% 50%;
+    transform:perspective(1900px) translate3d(-18px,0,44px)
+      rotateY(var(--mia-holo-rot-y,-6deg))
+      rotateX(var(--mia-holo-rot-x,1.6deg)) scale(.97)!important;
+    z-index:16;
+    opacity:1!important;filter:none!important;
+    border:1px solid rgba(91,209,218,.45)!important;
+    border-radius:24px!important;
+    background:linear-gradient(156deg,rgba(12,32,41,.985),rgba(7,25,35,.99))!important;
+    box-shadow:-30px 38px 90px rgba(6,42,53,.23),-5px 4px 24px rgba(10,131,148,.11),
+      0 1px 0 rgba(230,250,255,.16) inset!important;
+    transition:transform 1.25s cubic-bezier(.14,.86,.18,1), opacity .55s ease,
+      box-shadow .4s ease!important;
+    will-change:transform;
+  }
+  body.mia-breakout-active.mia-holo-preparing #panel[data-presentation]:not([data-presentation="conversation"]) {
+    transform:perspective(1900px) translate3d(-170px,28px,-450px)
+      rotateY(-25deg) rotateX(8deg) scale(.86)!important;
+    opacity:.015!important;
+    filter:none!important;
+  }
+  /* Content stays in a readable 2D local plane. KPI blocks gain independent
+     Z-position; no filters or continuous movement on text in the final frame. */
+  body.mia-breakout-active #panel .panel-head,
+  body.mia-breakout-active #panel .conversation,
+  body.mia-breakout-active #panel .mia-results-full,
+  body.mia-breakout-active #panel .stat-kpis,
+  body.mia-breakout-active #panel .stat-metric-hero,
+  body.mia-breakout-active #panel .stat-metric-secondary,
+  body.mia-breakout-active #panel .stat-chart-grid,
+  body.mia-breakout-active #panel .presentation-stack {
+    position:relative;transform-style:preserve-3d;
+  }
+  body.mia-breakout-active #panel .panel-head{z-index:4;}
+  body.mia-breakout-active #panel .conversation{z-index:3;}
+  body.mia-breakout-active #panel .mia-results-full{gap:clamp(10px,1.25vh,16px);}
+  body.mia-breakout-active #panel .mia-results-head {
+    transform:translateZ(16px);text-shadow:0 9px 23px rgba(2,18,27,.3);
+  }
+  body.mia-breakout-active #panel .mia-results-summary {
+    transform:translateZ(10px);border-left:2px solid rgba(206,164,92,.62);
+  }
+  /* A single-record detail floats as a separate island. It does not become
+     an oversized, empty black dashboard. All controls remain interactive. */
+  body.mia-breakout-active.mia-breakout-compact #panel .presentation-stack > .mia-presentation,
+  body.mia-breakout-active.mia-breakout-compact #panel .presentation-stack > .presentation-detail {
+    box-shadow:-16px 22px 38px rgba(2,15,27,.24),inset 0 1px 0 rgba(255,255,255,.07);
+    border-color:rgba(78,195,209,.22);
+  }
+  /* REAL cards rise at differing depths and remain sharp. */
+  body.mia-breakout-active #panel .mia-breakout-card {
+    position:relative;isolation:isolate;transform-style:preserve-3d;
+    backface-visibility:hidden;
+    transform:translateZ(calc(24px + var(--mia-breakout-order,0) * 9px));
+    box-shadow:-10px 18px 32px rgba(1,14,26,.35),0 1px 0 rgba(233,251,255,.14) inset!important;
+    border-color:rgba(90,214,221,.32)!important;
+  }
+  body.mia-breakout-active #panel .mia-breakout-card::after {
+    content:"";position:absolute;inset:2px -5px -7px 5px;pointer-events:none;z-index:-1;
+    border-radius:inherit;border-right:5px solid rgba(4,70,88,.65);
+    border-bottom:6px solid rgba(4,60,78,.74);
+    filter:drop-shadow(-8px 11px 13px rgba(1,8,17,.27));
+  }
+  body.mia-breakout-active #panel.mia-holo-materialize .mia-breakout-card {
+    animation:miaBreakoutCardLaunch 1.05s cubic-bezier(.12,.81,.16,1)
+      calc(.10s + var(--mia-breakout-order,0) * .085s) both;
+  }
+  body.mia-breakout-active #panel .mia-breakout-chart {
+    position:relative;transform:translateZ(17px);
+    box-shadow:-13px 19px 40px rgba(0,11,27,.25),0 1px 0 rgba(113,229,238,.2) inset;
+  }
+  body.mia-breakout-active #panel.mia-holo-materialize .mia-breakout-chart {
+    animation:miaBreakoutChartLift 1.03s cubic-bezier(.12,.8,.18,1)
+      calc(.35s + var(--mia-breakout-order,0) * .11s) both;
+  }
+  body.mia-breakout-active #panel .mia-breakout-detail {
+    position:relative;transform:translateZ(11px);
+    box-shadow:-13px 16px 36px rgba(0,13,25,.20);
+  }
+  body.mia-breakout-active #panel.mia-holo-materialize .mia-breakout-detail {
+    animation:miaBreakoutDetailLift .9s cubic-bezier(.12,.82,.18,1) .37s both;
+  }
+  body.mia-breakout-active #panel .stat-bar-track,
+  body.mia-breakout-active #panel .stat-today-track {overflow:visible;perspective:680px;}
+  body.mia-breakout-active #panel .stat-bar-track i,
+  body.mia-breakout-active #panel .stat-today-track i {
+    box-shadow:0 5px 0 rgba(12,64,84,.8),3px 3px 0 rgba(211,166,100,.27),
+      0 10px 22px rgba(2,16,29,.25);
+    border-radius:3px 6px 6px 3px;transform:rotateX(-7deg);transform-origin:left center;
+  }
+  /* Interaction moves selected cards closer without affecting other widgets. */
+  body.mia-breakout-active #panel .mia-breakout-card:hover {
+    animation:none!important;
+    transform:translate3d(0,-4px,58px)!important;
+    box-shadow:-14px 21px 43px rgba(3,11,27,.42),0 0 22px rgba(74,207,216,.12)!important;
+    transition:transform .22s ease,box-shadow .22s ease;
+  }
+  /* Frame is a fine spatial outline, not the opaque 3D box from V2. */
+  body.mia-breakout-active .mia-breakout-frame,
+  body.mia-breakout-active .mia-breakout-portal,
+  body.mia-breakout-active .mia-breakout-shadow {display:block;}
+  body.mia-breakout-active .mia-breakout-frame {
+    border:1px solid rgba(28,169,186,.62);border-radius:25px;
+    background:radial-gradient(circle at 10% 22%,rgba(26,160,183,.035),transparent 42%);
+    transform:perspective(1900px) translate3d(-55px,16px,-115px) rotateY(-10deg) scale(.985);
+    box-shadow:-24px 27px 49px rgba(10,87,110,.09),0 0 16px rgba(5,166,187,.05);
+    animation:miaBreakoutFrame .95s ease both;
+  }
+  body.mia-breakout-active .mia-breakout-frame::before {
+    content:"";position:absolute;inset:11px;border:1px solid rgba(44,177,189,.10);border-radius:18px;
+  }
+  body.mia-breakout-active .mia-breakout-portal {
+    border-radius:25px;
+    border-left:2px solid rgba(86,210,222,.19);
+    background:linear-gradient(95deg,rgba(64,206,221,.09),transparent 24%);
+    transform:perspective(1900px) translate3d(-28px,8px,-54px) rotateY(-6deg);
+    opacity:.6;animation:miaBreakoutPortal .95s ease both;
+  }
+  body.mia-breakout-active .mia-breakout-shadow {
+    left:calc(var(--mia-holo-left,0px) + 35px);
+    top:calc(var(--mia-holo-top,0px) + var(--mia-holo-height,100px) - 21px);
+    width:calc(var(--mia-holo-width,100px) - 60px);height:52px;
+    border-radius:50%;background:radial-gradient(ellipse,rgba(13,44,55,.17),transparent 72%);
+    filter:blur(14px);
+  }
+  body.mia-breakout-active.mia-holo-preparing .mia-breakout-frame,
+  body.mia-breakout-active.mia-holo-preparing .mia-breakout-portal {opacity:0;}
+}
+
+@keyframes miaBreakoutCardLaunch {
+  0% {opacity:0;transform:perspective(900px) translate3d(30px,16px,-170px) rotateY(-16deg) scale(.88);}
+  67% {opacity:1;transform:perspective(900px) translate3d(-6px,-4px,75px) rotateY(1deg) scale(1.025);}
+  100% {opacity:1;transform:translateZ(calc(24px + var(--mia-breakout-order,0) * 9px));}
+}
+@keyframes miaBreakoutChartLift {
+  0% {opacity:0;transform:perspective(880px) translate3d(20px,32px,-155px) rotateX(11deg) scale(.91);}
+  70% {opacity:1;transform:perspective(880px) translate3d(-3px,-5px,39px) scale(1.012);}
+  100% {opacity:1;transform:translateZ(17px);}
+}
+@keyframes miaBreakoutDetailLift {
+  0% {opacity:0;transform:perspective(880px) translate3d(32px,22px,-150px) rotateY(-12deg) scale(.92);}
+  70% {opacity:1;transform:translate3d(-4px,-3px,35px) scale(1.01);}
+  100% {opacity:1;transform:translateZ(11px);}
+}
+@keyframes miaBreakoutFrame {
+  from {opacity:0;transform:perspective(1900px) translate3d(-110px,25px,-310px) rotateY(-22deg) scale(.89);}
+  to {opacity:1;transform:perspective(1900px) translate3d(-55px,16px,-115px) rotateY(-10deg) scale(.985);}
+}
+@keyframes miaBreakoutPortal {
+  from {opacity:0;transform:perspective(1900px) translate3d(-90px,30px,-200px) rotateY(-14deg);}
+  to {opacity:.6;transform:perspective(1900px) translate3d(-28px,8px,-54px) rotateY(-6deg);}
+}
+/* One-click reading restores all original table, search and export behavior. */
+body.mia-holo-reading #panel[data-presentation]:not([data-presentation="conversation"]) {
+  transform:none!important;filter:none!important;border-color:rgba(171,197,198,.24)!important;
+}
+body.mia-holo-reading #panel .mia-breakout-card,
+body.mia-holo-reading #panel .mia-breakout-chart,
+body.mia-holo-reading #panel .mia-breakout-detail {
+  animation:none!important;transform:none!important;filter:none!important;
+}
+@media (max-width:1099px), (prefers-reduced-motion:reduce) {
+  .mia-holo-mode,.mia-breakout-frame,.mia-breakout-portal,.mia-breakout-shadow,.mia-holo-echo{display:none!important;}
+  body #panel.mia-holo-materialize {animation:none!important;}
+}

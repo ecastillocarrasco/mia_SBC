@@ -22,6 +22,7 @@ import { isReportGenerationIntent } from "./hologram-api-v525.js";
 import { readHologramWorldContext, saveHologramWorldContext, bindHologramWorldNavigation } from "./hologram-session-v529.js";
 import { extractHologramJob, pollHologramJob, reportDownloadHref, getJobStatusLabel, jobIsActive } from "./hologram-jobs-v529.js";
 import { ensureAuthenticated, ensureAuthorized } from "../../core/auth-gate.js";
+import { start as startMailWatch, ensureNotificationPermission, showNotification } from "../../core/mail-watch.js";
 
 // Si MIA_AUTH__MODE=entra exige login y no hay sesión, `interactive: false` vuelve al portal (el
 // único punto con login real — ver auth-gate.js) en vez de iniciar aquí su propio redirect a
@@ -30,6 +31,21 @@ await ensureAuthenticated({ interactive: false });
 // Login correcto no es lo mismo que tener acceso: sin ningún permiso asignado, esto sustituye
 // la página entera por el aviso correspondiente y tampoco resuelve nunca.
 await ensureAuthorized();
+// Aviso de correo nuevo (pedido del usuario, igual que mia-desktop y los mundos 2D/3D): notificación
+// del navegador con un clic que deja la pregunta de resumen ya escrita en el composer.
+ensureNotificationPermission().then((granted) => {
+  if (!granted) return;
+  startMailWatch((correos) => {
+    for (const correo of correos) {
+      showNotification(correo, (c) => {
+        const inputEl = document.getElementById("input");
+        if (!inputEl) return;
+        inputEl.value = `Resúmeme el correo de ${c.de} sobre "${c.asunto}"`;
+        inputEl.focus();
+      });
+    }
+  });
+});
 
 const caption = document.getElementById("caption");
 const resultEl = document.getElementById("result");

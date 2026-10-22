@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mIA — Breakout 3D | prueba visual con datos ficticios</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;height:100%;font:14px/1.55 Arial,sans-serif;background:#fff;color:#ecf4f7;overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
+#panel{position:fixed;right:22px;top:18px;bottom:128px;height:calc(100vh - 146px);width:min(1060px,calc(100vw - 455px));display:flex;flex-direction:column;z-index:13;padding:16px 22px;border-radius:26px;background:linear-gradient(150deg,#0c1c25,#091721);border:1px solid #455e69;box-shadow:0 24px 85px rgba(12,33,45,.2)}
+.panel-head{display:flex;align-items:center;min-height:35px;gap:8px;border-bottom:1px solid #234653;padding-bottom:9px}.panel-head b{font-size:12px;color:#d4e3e2;letter-spacing:.08em}button{cursor:pointer}.close{margin-left:6px;background:transparent;color:#fff;border:0}.conversation{flex:1;overflow:auto}.mia-results-full{display:grid;gap:18px;padding-top:15px}.mia-results-kicker{color:#d9bd8e;font-size:10px;letter-spacing:.12em}.mia-results-head{display:flex;align-items:center;gap:10px}.mia-results-head h2{font-size:23px;margin:0}.mia-results-chip{font-size:10px;color:#cbdadf;border:1px solid #54808c;padding:4px 9px;border-radius:20px}.mia-results-summary{margin:0;color:#ccd5db}.stat-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.stat-kpis article{background:linear-gradient(155deg,#163b4b,#0b2433);border:1px solid #356578;border-radius:14px;padding:22px}.stat-kpis article strong{display:block;font-size:28px;color:#e9c48d}.stat-kpis article span{font-size:11px;color:#bdd3dd}.stat-chart{border:1px solid #356578;border-radius:16px;background:#0e2936;padding:24px}.stat-chart-head{font-size:17px;color:#dbe8ea;margin-bottom:18px}.stat-bars-list{display:grid;gap:17px}.stat-bar-row{display:grid;grid-template-columns:120px 1fr 74px;gap:14px;align-items:center}.stat-bar-track{height:12px;border-radius:20px;background:#224452}.stat-bar-track i{display:block;width:var(--bar);height:100%;background:linear-gradient(90deg,#2e9caa,#e7b06b);border-radius:20px}.stat-bar-row b{font-size:12px}.test-title{position:fixed;bottom:25px;left:24px;color:#53606b;font-weight:600;font-size:14px}.test-controls{position:fixed;z-index:40;bottom:20px;right:24px;display:flex;gap:8px}.test-controls button{background:#123444;color:white;border:1px solid #497582;border-radius:8px;padding:9px}
+</style>
+<link rel="stylesheet" href="/src/worlds/3d/holographic-results-v1.css">
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js"}}</script>
+</head>
+<body><aside id="panel" data-presentation="analytics"><header class="panel-head"><b>mIA · Sunset Beach Club</b><button class="close" id="closeResults">×</button></header>
+<div class="conversation"><article class="mia-results-full"><div class="mia-results-kicker">SUNSET BEACH CLUB · mIA INTELLIGENCE</div><header class="mia-results-head"><h2>Comparativa económica</h2><span class="mia-results-chip">ANÁLISIS</span></header><p class="mia-results-summary">Ejemplo técnico con valores ficticios para validar la presentación tridimensional.</p><div class="stat-kpis"><article><strong>229.450 €</strong><span>Coste acumulado ficticio</span></article><article><strong>64</strong><span>Empleados ficticios</span></article><article><strong>8,4 %</strong><span>Variación ficticia</span></article></div>
+<section class="stat-chart"><header class="stat-chart-head">Evolución por departamento — prueba</header><div class="stat-bars-list"><div class="stat-bar-row"><span>Recepción</span><div class="stat-bar-track"><i style="--bar:78%"></i></div><b>78 %</b></div><div class="stat-bar-row"><span>Cocina</span><div class="stat-bar-track"><i style="--bar:52%"></i></div><b>52 %</b></div><div class="stat-bar-row"><span>Servicios</span><div class="stat-bar-track"><i style="--bar:31%"></i></div><b>31 %</b></div></div></section></article></div></aside>
+<div class="test-title">mIA Breakout 3D — demostración con datos ficticios</div>
+<div class="test-controls"><button id="again">Repetir</button><button id="read">Lectura</button></div>
+<script type="module">
+import * as THREE from 'three';
+import {HolographicResults3D} from '/src/worlds/3d/holographic-results-v1.js';
+const sc=new THREE.Scene();sc.background=new THREE.Color(0xffffff);
+const cam=new THREE.PerspectiveCamera(40,innerWidth/innerHeight,.01,100);
+cam.position.set(0,1.47,3.88);cam.lookAt(0,1.18,0);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+document.body.prepend(renderer.domElement);
+sc.add(new THREE.HemisphereLight(0xffffff,0x96bbc8,2));
+const light=new THREE.DirectionalLight(0xffffff,2);light.position.set(2,5,6);sc.add(light);
+const scene={scene:sc,camera:cam,onFrame:null};
+const engine=new HolographicResults3D({scene,panel:document.getElementById('panel')});
+engine.prepare();engine.reveal();
+function loop(time){requestAnimationFrame(loop);scene.onFrame?.(time/1000);renderer.render(sc,cam);}requestAnimationFrame(loop);
+document.getElementById('read').onclick=()=>engine.setReading(!engine.reading);
+document.getElementById('again').onclick=()=>{engine.reset();engine.prepare();engine.reveal();};
+document.documentElement.dataset.test='PASS';
+</script>
+</body></html>

@@ -196,7 +196,7 @@ function renderEmployee360FullPayload(data,body){
  add('Turno de hoy',sh.hoy?describeShift(sh.hoy):null);add('Próximo turno',sh.proximo_turno?describeShift(sh.proximo_turno):null);add('Próximo descanso',sh.proximo_dia_libre?describeShift(sh.proximo_dia_libre):null);add('Vacaciones actuales',vac.actual?describeVacation(vac.actual):null);add('Próximas vacaciones',vac.proxima?describeVacation(vac.proxima):null);if(saldo.SaldoActual!==undefined)add('Saldo de vacaciones',`${displayValue(saldo.SaldoActual)}${saldo.SaldoTotal!==undefined?' de '+displayValue(saldo.SaldoTotal):''} días`);add('Periodos de baja registrados',ba.periodos_detectados);add('Última nómina',pay.periodo_ultima?humanMonth(pay.periodo_ultima):null);add('Documentos firmados',docs.total);
  if(!rows.length)return;const details=document.createElement('details');details.className='e360-full';details.open=true;const sum=document.createElement('summary');sum.innerHTML='<span>Resumen completo de la ficha</span><small>'+rows.length+' datos</small>';details.appendChild(sum);const content=document.createElement('div');content.className='e360-full-body';const grid=document.createElement('div');grid.className='e360-full-grid';rows.forEach(([k,v])=>{const item=document.createElement('div');item.className='e360-full-item';item.innerHTML='<div class="e360-full-k">'+encodeText(k)+'</div><div class="e360-full-v">'+encodeText(typeof v==='string'?v:displayValue(v))+'</div>';grid.appendChild(item)});content.appendChild(grid);details.appendChild(content);body.appendChild(details)
 }
-async function downloadGeneratedReport(action,presentation,button){if(!action||action.enabled===false||action.action!=='generate_report')return;const old=button.textContent;button.classList.add('busy');button.textContent='Generando…';try{const payload={modulo:action.module||'ficha360',formato:action.format||'pdf',nombre:cleanDisplay(presentation?.hero?.title)};const res=await fetch(action.endpoint||'/api/mia/informes/generar',{method:action.method||'POST',headers:{'Content-Type':'application/json; charset=utf-8'},body:JSON.stringify(payload)});if(!res.ok){let detail='';try{detail=(await res.json())?.error||''}catch(_){}throw new Error(detail||('HTTP '+res.status))}const blob=await res.blob();let filename='mIA_'+(payload.modulo||'informe')+'.'+(payload.formato==='xlsx'?'xlsx':'pdf');const cd=res.headers.get('Content-Disposition')||'';const m=cd.match(/filename="?([^";]+)"?/i);if(m)filename=m[1];const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2500);button.textContent='✓ Generado';setTimeout(()=>button.textContent=old,1800)}catch(e){button.textContent='Error al generar';button.title=String(e?.message||e);setTimeout(()=>button.textContent=old,2400)}finally{button.classList.remove('busy')}}
+async function downloadGeneratedReport(action,presentation,button){if(!action||action.enabled===false||action.action!=='generate_report')return;const old=button.textContent;button.classList.add('busy');button.textContent='Generando…';try{const payload={modulo:action.module||'ficha360',formato:action.format||'pdf',nombre:cleanDisplay(presentation?.hero?.title)};const res=await fetch(action.endpoint||'/api/mia/informes/generar',{method:action.method||'POST',headers:{'Content-Type':'application/json; charset=utf-8',...await miaAuthHeaders()},body:JSON.stringify(payload)});if(!res.ok){let detail='';try{detail=(await res.json())?.error||''}catch(_){}throw new Error(detail||('HTTP '+res.status))}const blob=await res.blob();let filename='mIA_'+(payload.modulo||'informe')+'.'+(payload.formato==='xlsx'?'xlsx':'pdf');const cd=res.headers.get('Content-Disposition')||'';const m=cd.match(/filename="?([^";]+)"?/i);if(m)filename=m[1];const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2500);button.textContent='✓ Generado';setTimeout(()=>button.textContent=old,1800)}catch(e){button.textContent='Error al generar';button.title=String(e?.message||e);setTimeout(()=>button.textContent=old,2400)}finally{button.classList.remove('busy')}}
 function renderEmployee360Presentation(presentation,data,wrap){
  if(!presentation||presentation.schema!=='mia.employee360.presentation')return false;const panel=document.createElement('div');panel.className='e360';const hero=presentation.hero||{};const h=document.createElement('div');h.className='e360-hero';const badgeVals=Array.isArray(hero.badges)?hero.badges:[];const seen=new Set();const badges=badgeVals.filter(x=>{const z=cleanDisplay(x).toLowerCase();if(!z||seen.has(z))return false;seen.add(z);return true}).map(x=>'<span class="e360-badge">'+encodeText(cleanDisplay(x))+'</span>').join('');h.innerHTML='<div class="e360-avatar">'+encodeText(cleanDisplay(hero.initials)||'E')+'</div><div class="e360-hero-copy"><div class="e360-hero-title">'+encodeText(cleanDisplay(hero.title)||'Ficha de empleado')+'</div><div class="e360-hero-sub">'+encodeText(cleanDisplay(hero.subtitle)||'Employee360')+'</div><div class="e360-badges">'+badges+'</div></div><div class="e360-status '+(hero.status==='inactive'?'inactive':'')+'"><span class="e360-status-dot"></span>'+(hero.status==='inactive'?'Inactivo':'Activo')+'</div>';panel.appendChild(h);const body=document.createElement('div');body.className='e360-body';panel.appendChild(body);
  const kpis=Array.isArray(presentation.kpis)?presentation.kpis.filter(x=>x&&typeof x==='object'):[];if(kpis.length){const g=document.createElement('div');g.className='e360-kpis';kpis.forEach(x=>{const k=document.createElement('div');k.className='e360-kpi '+cleanDisplay(x.variant);let val=displayValue(x.value);k.innerHTML='<div class="e360-kpi-label">'+encodeText(cleanDisplay(x.label)||'Dato')+'</div><div class="e360-kpi-value">'+encodeText(val)+(cleanDisplay(x.unit)?'<span class="e360-kpi-unit">'+encodeText(cleanDisplay(x.unit))+'</span>':'')+'</div>';g.appendChild(k)});body.appendChild(g)}
@@ -276,6 +276,7 @@ function detectResultKind(r,data){
  const exe=resultExecutor(r).toLowerCase(),domain=resultDomain(r,data),intent=cleanDisplay(r?.intent).toLowerCase();
  const mail=mailPayload(data);
  if(mail.rows.length||Object.keys(mail.summary).length||exe.includes('mail')||domain==='correo'||intent.includes('mail'))return 'mail';
+ if(Array.isArray(data.news_rows)&&data.news_rows.length||domain==='noticias'||intent.includes('noticia'))return 'noticias';
  const nativeEmployeePresentation=(data.presentation&&typeof data.presentation==='object'&&data.presentation.schema==='mia.employee360.presentation');
  const employee360Root=(data.employee360&&typeof data.employee360==='object');
  if(nativeEmployeePresentation||employee360Root||data.employee360_version||intent.includes('employee360')||domain==='employee360')return 'employee360';
@@ -387,7 +388,7 @@ function renderDomainTable(data,wrap,kind){
  renderGenericTable(selectTableColumns(cfg,kind),wrap);return true
 }
 function renderResultHeader(kind,wrap,data){
- const labels={turnos:['Turnos','Planificación operativa'],vacaciones:['Vacaciones','Periodos y personas'],ausencias:['Bajas y ausencias','Situación y periodos'],nominas:['Nóminas','Información salarial disponible'],documents:['Documentos','Archivos y evidencias'],analytics:['Análisis','Indicadores y comparativas'],web:['Información externa','Fuentes consultadas'],list:['Resultados','Detalle estructurado']};
+ const labels={turnos:['Turnos','Planificación operativa'],vacaciones:['Vacaciones','Periodos y personas'],ausencias:['Bajas y ausencias','Situación y periodos'],nominas:['Nóminas','Información salarial disponible'],documents:['Documentos','Archivos y evidencias'],analytics:['Análisis','Indicadores y comparativas'],web:['Información externa','Fuentes consultadas'],list:['Resultados','Detalle estructurado'],noticias:['Noticias','Prensa y comunicados corporativos']};
  const pair=labels[kind];if(!pair)return;
  const h=document.createElement('div');h.className='adaptive-result-head';h.innerHTML='<div><strong>'+encodeText(pair[0])+'</strong><span>'+encodeText(pair[1])+'</span></div>';wrap.appendChild(h)
 }
@@ -511,6 +512,10 @@ function renderCharts(data,wrap){
 // de una consulta real al servidor, igual tanto para la tarjeta que aparece en el chat como para el
 // panel de historial (misma tarjeta reutilizada; un trabajo puede estar representado por ambas a la
 // vez y las dos se mantienen sincronizadas desde el mismo sondeo).
+// Script clasico (no type="module"): no puede hacer `import` de auth-gate.js, por eso lee el
+// token de la cuenta MSAL activa a traves del global que esa capa ya expone (window.miaGetAccessToken).
+// Si el login esta desactivado (modo dev/easyauth) ese global no existe o devuelve null.
+async function miaAuthHeaders(){try{const t=typeof window.miaGetAccessToken==='function'?await window.miaGetAccessToken():null;return t?{Authorization:'Bearer '+t}:{}}catch(_){return {}}}
 const MIA_JOBS_API='/api/jobs';
 const MIA_JOB_POLL_MS=2500;
 const miaJobCardsByJob=new Map();
@@ -556,7 +561,7 @@ function updateAllCardsForJob(jobId,job,pollError){
 function stopJobPolling(jobId){const t=miaJobPollTimers.get(jobId);if(t){clearTimeout(t);miaJobPollTimers.delete(jobId)}}
 async function pollJobOnce(jobId){
  try{
-  const res=await fetch(MIA_JOBS_API+'/'+encodeURIComponent(jobId));if(!res.ok)throw new Error('HTTP '+res.status);
+  const res=await fetch(MIA_JOBS_API+'/'+encodeURIComponent(jobId),{headers:await miaAuthHeaders()});if(!res.ok)throw new Error('HTTP '+res.status);
   const job=await res.json();updateAllCardsForJob(jobId,job,false);
   if(job.status==='queued'||job.status==='running')miaJobPollTimers.set(jobId,setTimeout(()=>pollJobOnce(jobId),MIA_JOB_POLL_MS));else stopJobPolling(jobId)
  }catch(e){
@@ -567,7 +572,7 @@ async function pollJobOnce(jobId){
 function ensureJobPolling(jobId){if(!miaJobPollTimers.has(jobId))pollJobOnce(jobId)}
 async function cancelJob(jobId){
  try{
-  const res=await fetch(MIA_JOBS_API+'/'+encodeURIComponent(jobId),{method:'DELETE'});if(!res.ok)throw new Error('HTTP '+res.status);
+  const res=await fetch(MIA_JOBS_API+'/'+encodeURIComponent(jobId),{method:'DELETE',headers:await miaAuthHeaders()});if(!res.ok)throw new Error('HTTP '+res.status);
   const job=await res.json();updateAllCardsForJob(jobId,job,false);
   if(job.status!=='queued'&&job.status!=='running')stopJobPolling(jobId)
  }catch(e){miaToast('No se ha podido cancelar el trabajo. Inténtalo de nuevo.')}
@@ -587,7 +592,7 @@ function renderJobsPanelList(jobs){
 }
 async function refreshJobsHistory(){
  try{
-  const res=await fetch(MIA_JOBS_API);if(!res.ok)throw new Error('HTTP '+res.status);
+  const res=await fetch(MIA_JOBS_API,{headers:await miaAuthHeaders()});if(!res.ok)throw new Error('HTTP '+res.status);
   const jobs=await res.json();jobs.forEach(j=>miaJobsState.set(j.job_id,j));
   renderJobsPanelList(jobs);updateJobsBadge(jobs);
   jobs.filter(j=>j.status==='queued'||j.status==='running').forEach(j=>ensureJobPolling(j.job_id));
@@ -623,7 +628,8 @@ function renderData(r,msg){
  const presentation=nativeEmployeePresentation||(looksLikeEmployee360?synthesizeEmployee360Presentation(data):null);
  const cards=Array.isArray(data.cards)?data.cards:[],visual=Array.isArray(r.visualizations)?r.visualizations:[],actions=Array.isArray(r.actions)?r.actions:[],turnos=Array.isArray(data.turnos)?data.turnos:[],table=data.table,documents=Array.isArray(data.documents)?data.documents:(data.document?[data.document]:[]);
  const mail=mailPayload(data);
- const hasAny=kind==='mail'?Boolean(mail.rows.length||Object.keys(mail.summary).length):Boolean(presentation||cards.length||visual.length||actions.length||turnos.length||table||documents.length||Array.isArray(data.comparacion)||(r.sources||[]).length||Array.isArray(data.web_sources)||data.alertas_calidad||data.insights||data.query_summary||(data.job&&typeof data.job==='object'&&data.job.job_id));
+ const newsRows=Array.isArray(data.news_rows)?data.news_rows:[];
+ const hasAny=kind==='mail'?Boolean(mail.rows.length||Object.keys(mail.summary).length):Boolean(presentation||cards.length||visual.length||actions.length||turnos.length||table||documents.length||newsRows.length||Array.isArray(data.comparacion)||(r.sources||[]).length||Array.isArray(data.web_sources)||data.alertas_calidad||data.insights||data.query_summary||(data.job&&typeof data.job==='object'&&data.job.job_id));
  if(!hasAny)return;
  const wrap=document.createElement('div');wrap.className='results results--'+kind;wrap.dataset.resultKind=kind;
  renderResponseMeta(r,wrap);renderQuerySummary(data,wrap);
@@ -646,7 +652,7 @@ function renderData(r,msg){
  else if(documents.length&&kind!=='employee360')renderDocuments(data,wrap);
  if(kind==='vacaciones'||kind==='ausencias'||kind==='nominas')renderDomainTable(data,wrap,kind);
  else if(kind==='analytics'){if(!analyticsState.tableHandled)renderGenericTable(table,wrap)}
- else if(kind!=='turnos'&&kind!=='employee360')renderGenericTable(table,wrap);
+ else if(kind!=='turnos'&&kind!=='employee360'&&kind!=='noticias')renderGenericTable(table,wrap);
  if(turnos.length){renderShiftTimeline(data,turnos,wrap);renderTurnsTable(data,turnos,wrap)}
  renderInsights(data,wrap);renderQuality(data,r,wrap);renderCharts(data,wrap);renderJob(data,wrap);
  visual.forEach(v=>{const p=document.createElement('div');p.className='viz';const h=document.createElement('div');h.className='viz-head';h.innerHTML='<strong>'+encodeText(cleanDisplay(v.title)||'Resumen')+'</strong><span>Visualización</span>';p.appendChild(h);const rows=(v.data||[]).map(x=>({label:cleanDisplay(x.label??x.Mes??''),value:Number(x.value??x.Horas??0)})).filter(x=>x.label);const max=Math.max(1,...rows.map(x=>Math.abs(x.value)));const b=document.createElement('div');b.className='bars';rows.forEach(x=>{const r0=document.createElement('div');r0.className='barrow';r0.innerHTML=`<span>${encodeText(x.label)}</span><div class="track"><div class="fill" style="width:${Math.max(1,Math.abs(x.value)/max*100)}%"></div></div><strong>${encodeText(fmt(x.value))}</strong>`;b.appendChild(r0)});p.appendChild(b);wrap.appendChild(p)});
@@ -711,12 +717,13 @@ function _pendingAttachmentIds(){return typeof window._getAttachmentIds==='funct
 async function callNaturalLlm(q){
  if(!MIA_API.llmEnabled)throw new Error('LLM disabled');let last=null;
  const ids=_pendingAttachmentIds();const ctxPayload={...miaProfile,...context};if(ids.length)ctxPayload.attachment_ids=ids;
- for(const url of MIA_API.llmCandidates){try{const ctrl=new AbortController(),to=setTimeout(()=>ctrl.abort(),120000);const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/json'},body:JSON.stringify({message:q,context:ctxPayload}),signal:ctrl.signal});clearTimeout(to);if(!res.ok){last=new Error('HTTP '+res.status);continue}const j=await res.json();if(j&&typeof j==='object')return j}catch(e){last=e}}
+ const authHeaders=await miaAuthHeaders();
+ for(const url of MIA_API.llmCandidates){try{const ctrl=new AbortController(),to=setTimeout(()=>ctrl.abort(),120000);const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/json',...authHeaders},body:JSON.stringify({message:q,context:ctxPayload}),signal:ctrl.signal});clearTimeout(to);if(!res.ok){last=new Error('HTTP '+res.status);continue}const j=await res.json();if(j&&typeof j==='object')return j}catch(e){last=e}}
  throw last||new Error('LLM gateway unavailable')
 }
 function _chatPayload(q){const ids=_pendingAttachmentIds();const p={message:q,context:{...miaProfile,...context}};if(ids.length)p.attachment_ids=ids;return p}
-async function fallbackChat(q){const res=await fetch(MIA_API.backendChat,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/json'},body:JSON.stringify(_chatPayload(q))});return await res.json()}
-async function callBackendStream(q,prog){let finalResult=null;const res=await fetch(MIA_API.backendStream,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/x-ndjson'},body:JSON.stringify(_chatPayload(q))});if(!res.ok||!res.body)throw new Error('stream unavailable');const reader=res.body.getReader(),decoder=new TextDecoder('utf-8');let buf='';while(true){const {value,done}=await reader.read();buf+=decoder.decode(value||new Uint8Array(),{stream:!done});let pos;while((pos=buf.indexOf('\n'))>=0){const line=buf.slice(0,pos).trim();buf=buf.slice(pos+1);if(!line)continue;let ev;try{ev=JSON.parse(line)}catch(_){continue}if(ev.type==='progress')updateProgress(prog,ev);else if(ev.type==='result'){finalResult=ev.payload;break}}if(finalResult||done)break}return finalResult||{}}
+async function fallbackChat(q){const res=await fetch(MIA_API.backendChat,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/json',...await miaAuthHeaders()},body:JSON.stringify(_chatPayload(q))});return await res.json()}
+async function callBackendStream(q,prog){let finalResult=null;const res=await fetch(MIA_API.backendStream,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/x-ndjson',...await miaAuthHeaders()},body:JSON.stringify(_chatPayload(q))});if(!res.ok||!res.body)throw new Error('stream unavailable');const reader=res.body.getReader(),decoder=new TextDecoder('utf-8');let buf='';while(true){const {value,done}=await reader.read();buf+=decoder.decode(value||new Uint8Array(),{stream:!done});let pos;while((pos=buf.indexOf('\n'))>=0){const line=buf.slice(0,pos).trim();buf=buf.slice(pos+1);if(!line)continue;let ev;try{ev=JSON.parse(line)}catch(_){continue}if(ev.type==='progress')updateProgress(prog,ev);else if(ev.type==='result'){finalResult=ev.payload;break}}if(finalResult||done)break}return finalResult||{}}
 async function ask(raw){
  const q=String(raw||input.value||'').trim();if(!q)return;if('speechSynthesis'in window)speechSynthesis.cancel();input.value='';addMsg('Tú',q,'user');lastProgressSpoken=false;setAvatarState('pensando','Interpretando tu consulta y preparando una respuesta natural.');const prog=createProgress();prog.title.textContent='Entendiendo y consultando…';prog.detail.textContent='mIA está combinando interpretación conversacional y datos validados.';let finalResult=null;
  try{
@@ -797,7 +804,7 @@ async function miaElevenLabsSpeak(text,finalState='sonriendo',returnState=null){
   try{
     if(miaCurrentAudio){miaCurrentAudio.pause();miaCurrentAudio=null}
     if(miaAudioUrl){URL.revokeObjectURL(miaAudioUrl);miaAudioUrl=null}
-    const res=await fetch(MIA_API.voice,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'audio/mpeg'},body:JSON.stringify({text:prepared,locale:context.locale||miaProfile.locale||'es-ES'})});
+    const res=await fetch(MIA_API.voice,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'audio/mpeg',...await miaAuthHeaders()},body:JSON.stringify({text:prepared,locale:context.locale||miaProfile.locale||'es-ES'})});
     if(!res.ok)throw new Error(`Voice HTTP ${res.status}`);
     const blob=await res.blob();miaAudioUrl=URL.createObjectURL(blob);const audio=new Audio(miaAudioUrl);miaCurrentAudio=audio;
     setVoiceStatus('ElevenLabs · voz mIA');
@@ -897,7 +904,7 @@ console.log('### mIA 2D V3 · adaptive modules · Mail V12.4.2 · ElevenLabs rea
     try {
       const form = new FormData();
       form.append('file', file, file.name);
-      const resp = await fetch('/api/adjuntos/upload', { method: 'POST', body: form });
+      const resp = await fetch('/api/adjuntos/upload', { method: 'POST', headers: await miaAuthHeaders(), body: form });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ detail: 'Error al subir el archivo' }));
         pendingAttachments[idx] = { id: null, filename: file.name, status: 'error', error: err.detail || 'Error' };

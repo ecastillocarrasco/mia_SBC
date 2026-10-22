@@ -1,6 +1,6 @@
 {
   "name": "mia-desktop-sbc",
-  "version": "0.3.2",
+  "version": "0.3.7",
   "description": "mIA Desktop - Prototipo independiente para Sunset Beach Club",
   "private": true,
   "main": "src/main.cjs",
@@ -11,6 +11,7 @@
     "package:win": "npm run build && electron-builder --win nsis"
   },
   "dependencies": {
+    "@azure/msal-node": "^2.16.0",
     "three": "^0.180.0"
   },
   "devDependencies": {

@@ -312,20 +312,34 @@ async def test_leer_correo_reads_attachment_text(env: Any) -> None:
                     ]
                 },
             )
-        if "/messages/AAMk-2/attachments" in path:
-            content = base64.b64encode(b"Clausula de confidencialidad del contrato.").decode()
+        content = base64.b64encode(b"Clausula de confidencialidad del contrato.").decode()
+        if path.endswith("/messages/AAMk-2/attachments"):
+            # Listado SIN contentBytes: Graph rechaza ese campo en el $select de la colección
+            # (solo existe en el tipo derivado fileAttachment, no en el tipo base attachment).
             return httpx.Response(
                 200,
                 json={
                     "value": [
                         {
+                            "id": "att-1",
                             "@odata.type": "#microsoft.graph.fileAttachment",
                             "name": "contrato.txt",
                             "size": 42,
                             "contentType": "text/plain",
-                            "contentBytes": content,
                         }
                     ]
+                },
+            )
+        if path.endswith("/messages/AAMk-2/attachments/att-1"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": "att-1",
+                    "@odata.type": "#microsoft.graph.fileAttachment",
+                    "name": "contrato.txt",
+                    "size": 42,
+                    "contentType": "text/plain",
+                    "contentBytes": content,
                 },
             )
         if "/messages/AAMk-2" in path:
@@ -346,7 +360,11 @@ async def test_leer_correo_reads_attachment_text(env: Any) -> None:
     read = await call(registry, "leer_correo", state, ref="c1")
     await graph.aclose()
     assert read.summary["adjuntos"] == [
-        {"nombre": "contrato.txt", "contenido": "Clausula de confidencialidad del contrato."}
+        {
+            "nombre": "contrato.txt",
+            "contenido": "Clausula de confidencialidad del contrato.",
+            "url": "/api/mail/attachment/AAMk-2/att-1",
+        }
     ]
 
 
@@ -607,7 +625,7 @@ async def test_each_user_only_reaches_their_own_mailbox_and_drafts_do_not_travel
 
 def test_html_mail_becomes_clean_readable_text() -> None:
     """Fallo real: el correo de Power Automate se veía como cientos de líneas de CSS en una sola línea."""
-    from mia.modules.rrhh.correo.htmltext import html_to_text  # noqa: PLC0415
+    from mia.text import html_to_text  # noqa: PLC0415
 
     html = (
         "<html><head><style>table {width:640px} @media only screen {.a{padding:1px}}</style></head><body>"

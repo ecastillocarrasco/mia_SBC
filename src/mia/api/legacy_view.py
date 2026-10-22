@@ -407,8 +407,17 @@ def _absorb(
         data.update(mail_rows_view(p["mail_rows"]))
     elif kind == "mail":
         data["mail_message"] = _mail_message_view(p)
+    elif kind == "mail_thread":
+        rows = p.get("mail_rows") or []
+        data.update(mail_rows_view(rows))
+        data["mail_thread"] = {"title": p.get("title"), "count": len(rows)}
     elif kind == "mail_draft":
         data["mail_draft"] = {k: p.get(k) for k in ("borrador", "texto", "responde_a", "envio_habilitado")}
+    elif kind == "news_list":
+        # Rama propia (igual que el correo): sin ella, news_rows caía en el "else" genérico, que
+        # la reconstruye como una tabla cruda sin formato (mia.modules.community.noticias.tools) — sin
+        # enlaces clicables ni la tarjeta premium que sí entiende el panel de noticias del 2D.
+        data["news_rows"] = p.get("news_rows") or []
     elif kind == "table":
         tables.append(table_view(p))
         # Fase H: los KPI y gráficos de primera clase que la herramienta YA calculó (p. ej.

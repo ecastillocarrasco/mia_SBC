@@ -1,6 +1,47 @@
 <!doctype html>
 <html lang="es">
 <head>
+<!-- mIA: bloqueo de primera pintura hasta que el login/autorización terminen (ver auth-gate.js,
+     ensureAuthenticated()/ensureAuthorized() en landing-3d-v48.js). Sin esto, los enlaces de
+     .world-card son HTML estático ya clicable antes de que el script de módulo (diferido por
+     type="module") llegue siquiera a comprobar si hace falta iniciar sesión: un clic rápido entra
+     en un mundo sin sesión y ese mundo rebota de vuelta aquí — el mismo bucle que ya resuelve
+     mia-2d.html con esta misma cortina. -->
+<style id="mia-index-paint-guard">
+#miaAccessGuard{display:none}
+html.mia-index-loading{overflow:hidden}
+html.mia-index-loading #miaAccessGuard{
+  display:flex!important; position:fixed; inset:0; z-index:2147483640;
+  align-items:center; justify-content:center; background:#fff;
+}
+html.mia-index-loading body > *:not(#miaAccessGuard){visibility:hidden}
+#miaAccessGuard .mia-guard__card{
+  display:flex; flex-direction:column; align-items:center; text-align:center;
+  max-width:380px; padding:24px; box-sizing:border-box;
+}
+#miaAccessGuard .mia-guard__logo{width:clamp(130px,15vw,170px);height:auto;object-fit:contain;margin:0 0 24px}
+#miaAccessGuard .mia-guard__spinner{
+  width:34px;height:34px;border-radius:50%;margin:0 0 20px;
+  border:3px solid #edf0f3;border-top-color:#c77c75;animation:miaGuardSpin .8s linear infinite;
+}
+#miaAccessGuard .mia-guard__eyebrow{
+  letter-spacing:.19em;font-size:11px;font-weight:750;color:#bb7e65;margin:0 0 10px;
+  font-family:Inter,Aptos,"Segoe UI",Arial,sans-serif;
+}
+#miaAccessGuard h1{
+  margin:0;color:#243148;font-family:Georgia,"Times New Roman",serif;
+  font-size:clamp(26px,3vw,34px);font-weight:400;letter-spacing:-.03em;line-height:1.15;
+}
+#miaAccessGuard h1 em{font-style:normal;color:#c77c6b}
+@keyframes miaGuardSpin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#miaAccessGuard .mia-guard__spinner{animation:none}}
+</style>
+<script>
+document.documentElement.classList.add('mia-index-loading');
+window.__miaIndexGuardTimeout=window.setTimeout(function(){
+  document.documentElement.classList.remove('mia-index-loading');
+},18000);
+</script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#fbf7f0" />
@@ -9,6 +50,17 @@
   <link rel="stylesheet" href="./src/landing.css?v=landing-mia-v2" />
 </head>
 <body>
+  <!-- Contenido real del guard (ver el <style> del <head>): elemento del DOM, no pseudo-elemento,
+       para poder usar un <img> real del logo. Solo visible mientras html.mia-index-loading. -->
+  <div id="miaAccessGuard" aria-hidden="true">
+    <div class="mia-guard__card">
+      <img class="mia-guard__logo" src="./mia-assets/sunset_beach_club_logo.gif" alt="" />
+      <div class="mia-guard__spinner"></div>
+      <p class="mia-guard__eyebrow">UN MOMENTO</p>
+      <h1>Preparando tu <em>acceso</em></h1>
+    </div>
+  </div>
+
   <div class="landing-bg" aria-hidden="true">
     <span class="bg-orbit orbit-a"></span>
     <span class="bg-orbit orbit-b"></span>
@@ -25,9 +77,15 @@
         </span>
       </a>
 
-      <div class="brand-partner" aria-label="Sunset Beach Club">
-        <span class="brand-separator" aria-hidden="true"></span>
-        <img src="./mia-assets/sunset_beach_club_logo.gif" alt="Sunset Beach Club" />
+      <div class="landing-topbar-right">
+        <div class="brand-partner" aria-label="Sunset Beach Club">
+          <span class="brand-separator" aria-hidden="true"></span>
+          <img src="./mia-assets/sunset_beach_club_logo.gif" alt="Sunset Beach Club" />
+        </div>
+
+        <!-- Oculto por defecto: solo se revela con login real (ver auth-gate.js, mountSignOutButton()).
+             En modo dev/easyauth no hay sesión real que cerrar, así que se queda oculto. -->
+        <button type="button" id="miaSignOut" class="mia-signout-btn" hidden>Cerrar sesión</button>
       </div>
     </header>
 
@@ -82,7 +140,12 @@
         </div>
       </a>
 
-      <a class="world-card world-hg" href="./src/worlds/hologram/index.html">
+      <a class="world-card world-hg world-wip" href="./src/worlds/hologram/index.html">
+        <span class="world-wip-tag" aria-label="Función en desarrollo, todavía incompleta">
+          <span class="wip-icon" aria-hidden="true">🚧</span>
+          BETA · EN DESARROLLO
+          <span class="wip-icon" aria-hidden="true">⚠️</span>
+        </span>
         <div class="world-visual visual-hg" aria-hidden="true">
           <div class="hg-grid"></div>
           <div class="hg-halo"></div>

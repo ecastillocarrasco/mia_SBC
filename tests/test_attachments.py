@@ -499,6 +499,40 @@ async def test_service_upload_csv(tmp_path: Path) -> None:
     await svc.aclose()
 
 
+async def test_build_attachment_context_exposes_the_real_attachment_id(tmp_path: Path) -> None:
+    """Incidencia real (2026-10-21): el texto que se inyecta en el prompt para un adjunto solo
+    mostraba el nombre del fichero — el LLM no tenía forma de saber el ``attachment_id`` real y, al
+    necesitarlo para una herramienta (``info_dataset_adjunto``, ``informe_comparativo_turnos_fichajes``…),
+    usaba el nombre del fichero como si fuera el ID, y la herramienta fallaba con NOT_FOUND."""
+    from mia.attachments.intelligence import build_attachment_context  # noqa: PLC0415
+
+    svc = _make_service(tmp_path)
+    record = await svc.upload(content=_csv_bytes(), filename="datos.csv", declared_mime="text/csv", user_id="user-1", session_id=None)
+    context = build_attachment_context(record)
+    assert record.attachment_id in context
+    await svc.aclose()
+
+
+async def test_service_get_bytes_returns_the_raw_upload_unmodified(tmp_path: Path) -> None:
+    """``get_bytes`` devuelve el contenido crudo tal cual se subió — herramientas como ``fichajes``
+    necesitan releerlo con su propia lógica (hora completa, no solo la fecha, a diferencia del
+    parser genérico de datasets)."""
+    svc = _make_service(tmp_path)
+    content = _csv_bytes()
+    record = await svc.upload(content=content, filename="datos.csv", declared_mime="text/csv", user_id="user-1", session_id=None)
+    raw = await svc.get_bytes(record.attachment_id, "user-1")
+    assert raw == content
+    await svc.aclose()
+
+
+async def test_service_get_bytes_denies_a_different_user(tmp_path: Path) -> None:
+    svc = _make_service(tmp_path)
+    record = await svc.upload(content=_csv_bytes(), filename="datos.csv", declared_mime="text/csv", user_id="user-1", session_id=None)
+    raw = await svc.get_bytes(record.attachment_id, "user-2")
+    assert raw is None
+    await svc.aclose()
+
+
 async def test_service_upload_error_on_invalid_mime(tmp_path: Path) -> None:
     svc = _make_service(tmp_path)
     record = await svc.upload(

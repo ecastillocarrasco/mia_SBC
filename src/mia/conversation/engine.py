@@ -88,7 +88,10 @@ def _module_keywords() -> dict[str, tuple[str, ...]]:
     arrancada, ``mia.conversation`` está completamente inicializado y la importación es segura;
     ``lru_cache`` evita repetirla en cada turno.
     """
+    from mia.modules.community.newsletter import KEYWORDS as newsletter
+    from mia.modules.community.noticias import KEYWORDS as noticias
     from mia.modules.finanzas import KEYWORDS as finanzas
+    from mia.modules.it import KEYWORDS as it
     from mia.modules.rrhh.analitica import KEYWORDS as analitica
     from mia.modules.rrhh.correo import KEYWORDS as correo
     from mia.modules.rrhh.curriculums import KEYWORDS as curriculums
@@ -103,6 +106,9 @@ def _module_keywords() -> dict[str, tuple[str, ...]]:
 
     return {
         "finanzas": finanzas,
+        "it": it,
+        "noticias": noticias,
+        "newsletter": newsletter,
         "empleados": empleados,
         "turnos": turnos,
         "fichajes": fichajes,
@@ -125,6 +131,12 @@ def _module_hint(selected: set[str]) -> str:
             "\n\n## Pista para este mensaje\nLa pregunta parece de Finanzas, que todavía no "
             "está disponible (no hay fuente de datos conectada). Dilo con naturalidad, sin "
             "inventar cifras ni datos."
+        )
+    if "it" in selected:
+        return (
+            "\n\n## Pista para este mensaje\nLa pregunta parece de IT/Sistemas, que todavía no "
+            "está disponible (no hay fuente de datos conectada). Dilo con naturalidad, sin "
+            "inventar incidencias, equipos ni tickets."
         )
     return ""
 
@@ -413,6 +425,7 @@ class ConversationEngine:
                     "depth": qa.response_depth.value,
                     "comparison_requested": qa.comparison_requested,
                     "analytics_requested": qa.analytics_requested,
+                    "summary_requested": qa.summary_requested,
                     "temporal_scope": qa.temporal_scope,
                 },
             )

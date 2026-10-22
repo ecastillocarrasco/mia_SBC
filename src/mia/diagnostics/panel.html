@@ -258,6 +258,7 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
         <div class="metric-card"><div class="mc-label">Avg Latency</div><div class="mc-value" id="m-avg-lat">—</div></div>
         <div class="metric-card"><div class="mc-label">P95 Latency</div><div class="mc-value" id="m-p95-lat">—</div></div>
         <div class="metric-card"><div class="mc-label">Avg Tokens</div><div class="mc-value" id="m-tokens">—</div></div>
+        <div class="metric-card"><div class="mc-label">Cache Hit Rate</div><div class="mc-value" id="m-cache">—</div></div>
         <div class="metric-card"><div class="mc-label">Avg Tools/req</div><div class="mc-value" id="m-tools">—</div></div>
         <div class="metric-card"><div class="mc-label">Capability Gaps</div><div class="mc-value" id="m-capgaps">—</div></div>
         <div class="metric-card"><div class="mc-label">Errors</div><div class="mc-value" id="m-errors" style="color:var(--red)">—</div></div>
@@ -390,6 +391,7 @@ function updateMetrics(m) {
   set('m-avg-lat', m.avg_latency_ms != null ? m.avg_latency_ms + 'ms' : '—');
   set('m-p95-lat', m.p95_latency_ms != null ? m.p95_latency_ms + 'ms' : '—');
   set('m-tokens', m.avg_tokens ?? '—');
+  set('m-cache', m.cache_hit_rate != null ? (m.cache_hit_rate * 100).toFixed(1) + '%' : '—');
   set('m-tools', m.avg_tools_per_request ?? '—');
   set('m-capgaps', m.capability_gaps ?? '0');
   set('m-errors', m.errors ?? '0');

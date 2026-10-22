@@ -1,0 +1,85 @@
+/* mIA V4.3 — branded premium loading. No baked/static percentages. */
+.mia-boot,.mia-boot *{box-sizing:border-box}
+.mia-boot{
+  --boot-navy:#1c2944;--boot-muted:#788292;--boot-coral:#c87872;
+  position:fixed;inset:0;z-index:99990;display:flex;
+  align-items:center;justify-content:center;overflow:hidden;
+  background:#fff;color:var(--boot-navy);
+  font-family:Inter,Aptos,'Segoe UI',Arial,sans-serif;
+  transition:opacity .45s ease,visibility .45s ease;
+}
+.mia-boot--leaving{opacity:0;visibility:hidden;pointer-events:none}
+.mia-boot__layout{
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  align-items:center;gap:clamp(18px,4vw,85px);
+  width:min(1420px,95vw);height:min(870px,96dvh);
+}
+.mia-boot__figure{height:100%;min-height:0;display:flex;align-items:center;justify-content:center}
+.mia-boot__art{
+  width:100%;height:100%;max-height:840px;object-fit:contain;object-position:center;
+  filter:drop-shadow(0 12px 26px rgba(45,30,20,.065));
+  animation:mia43Float 7s ease-in-out infinite;
+}
+.mia-boot__content{
+  display:flex;flex-direction:column;align-items:flex-start;
+  justify-content:center;min-width:0;padding:20px 15px 28px;
+}
+.mia-boot__logo{object-fit:contain;object-position:left center;width:clamp(150px,15vw,225px);height:150px;max-width:100%;margin:0 0 12px}
+.mia-boot__eyebrow{letter-spacing:.19em;font-size:11px;font-weight:750;color:#bb7e65}
+.mia-boot__content h1{
+  margin:15px 0 8px;color:#243148;font-family:Georgia,'Times New Roman',serif;
+  font-size:clamp(38px,4.3vw,65px);font-weight:400;letter-spacing:-.04em;line-height:1.06;
+}
+.mia-boot__content h1 em{font-style:normal;color:#c77c6b}
+.mia-boot__intro{font-size:clamp(14px,1.25vw,18px);line-height:1.55;color:#778293;margin:0 0 23px}
+.mia-boot__progress{width:154px;height:154px;position:relative;align-self:center;margin:10px 0 15px}
+.mia-boot__ring{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);overflow:visible}
+.mia-boot__ring circle{fill:none;stroke-width:7.5;stroke-linecap:round}
+.mia-boot__ring-track{stroke:#edf0f3}
+.mia-boot__ring-value{stroke:#c77c75;transition:stroke-dashoffset .15s linear;filter:drop-shadow(0 0 4px rgba(209,125,145,.2))}
+.mia-boot__ring-number{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:1px;color:#1c2944}
+.mia-boot__ring-number strong{font-size:43px;font-weight:750;line-height:1;font-variant-numeric:tabular-nums}
+.mia-boot__ring-number small{font-size:19px;font-weight:700;align-self:center}
+.mia-boot__status{width:100%;min-height:26px;font-size:18px;text-align:center;font-weight:650;color:#25334a}
+.mia-boot__bar{height:7px;margin:19px 0 10px;width:100%;background:#edf0f2;border-radius:999px;overflow:hidden}
+.mia-boot__bar span{height:100%;width:0;display:block;border-radius:inherit;background:linear-gradient(90deg,#cc8277,#c279af,#b6a4e7);transition:width .13s linear}
+.mia-boot__details{text-align:center;width:100%;font-size:13px;color:#84909e;min-height:24px;font-variant-numeric:tabular-nums}
+.mia-boot__steps{display:flex;justify-content:space-between;gap:8px;margin-top:24px;width:100%;color:#abb3bc;font-size:12px;font-weight:700}
+.mia-boot__steps span{position:relative;flex:1;text-align:center;padding-top:21px}
+.mia-boot__steps span:before{content:"";position:absolute;left:calc(50% - 5px);top:0;width:10px;height:10px;background:#e2e5e9;border-radius:50%;transition:background .2s,box-shadow .2s}
+.mia-boot__steps .active{color:#98655e}
+.mia-boot__steps .active:before{background:#c88379;box-shadow:0 0 0 5px rgba(200,131,121,.13)}
+.mia-boot__steps .done{color:#6d8e84}
+.mia-boot__steps .done:before{background:#6ea990}
+.mia-boot__retry{border:0;border-radius:15px;background:#263851;color:white;font-size:14px;font-weight:700;padding:12px 24px;margin:22px auto 0;cursor:pointer}
+.mia-boot__retry[hidden]{display:none!important}
+.mia-boot--error .mia-boot__ring-value{stroke:#bd5857}
+@keyframes mia43Float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@media(max-width:850px){
+  .mia-boot__layout{width:calc(100vw - 24px);height:100dvh;grid-template-columns:1fr;grid-template-rows:minmax(0,43vh) minmax(0,1fr);gap:0}
+  .mia-boot__figure{align-items:end}
+  .mia-boot__art{max-height:45vh;object-position:center bottom}
+  .mia-boot__content{align-items:center;padding:0 16px 28px;justify-content:start}
+  .mia-boot__logo{height:88px;width:155px;margin:-7px 0 2px}
+  .mia-boot__eyebrow{font-size:9px;text-align:center}
+  .mia-boot__content h1{font-size:36px;margin:9px 0 5px;text-align:center}
+  .mia-boot__intro{font-size:13px;margin-bottom:8px;text-align:center}
+  .mia-boot__progress{width:110px;height:110px;margin:2px 0 7px}
+  .mia-boot__ring-number strong{font-size:32px}
+  .mia-boot__ring-number small{font-size:15px}
+  .mia-boot__status{font-size:15px}
+  .mia-boot__bar{margin:11px 0 7px}
+  .mia-boot__details{font-size:11px}
+  .mia-boot__steps{margin-top:8px;font-size:10px}
+}
+@media(max-height:620px) and (min-width:851px){
+  .mia-boot__layout{height:96dvh}
+  .mia-boot__logo{height:100px}
+  .mia-boot__progress{width:115px;height:115px}
+  .mia-boot__intro{margin-bottom:6px}
+  .mia-boot__steps{margin-top:7px}
+}
+@media(prefers-reduced-motion:reduce){
+  .mia-boot__art{animation:none!important}
+  .mia-boot,.mia-boot__ring-value,.mia-boot__bar span{transition:none!important}
+}

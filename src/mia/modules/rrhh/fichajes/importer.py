@@ -1,6 +1,9 @@
-"""Importación manual del Excel de fichajes de Conectia (A3 Wolters Kluwer) — solo entornos de
-prueba (ver docstring de ``Permission.FICHAJES_LEER``); cuando exista la API real de Conectia,
-``mia.connectors.a3.TimeClockConnector`` es el sitio para implementarla, nunca este importador.
+"""Importación manual del Excel de fichajes de Conectia (A3 Wolters Kluwer) — vía ``import_directory``
+(un directorio en disco, solo para pruebas/depuración) o ``import_from_attachment`` (el adjunto que el
+usuario sube en la propia conversación, el camino real hasta que exista la API de Conectia). Cuando
+esa API real exista, ``mia.connectors.a3.TimeClockConnector`` es el sitio para implementarla — ninguno
+de los dos caminos de este módulo, que seguirán funcionando igual para quien prefiera importar desde
+un Excel puntual.
 
 Formato real confirmado contra las exportaciones de la semana 41 (PISOS/RESTAURANTE, 2026-10-19):
 una fila por marca SUELTA (no por día), columnas "Fecha" (datetime completo con segundos, no solo
@@ -32,6 +35,7 @@ silencio.
 
 from __future__ import annotations
 
+import io
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -135,8 +139,7 @@ async def _employee_index(db: AsyncSession) -> _EmployeeIndex:
     return _EmployeeIndex(by_tokens, all_with_name)
 
 
-def _read_rows(path: Path) -> list[dict[str, Any]]:
-    wb = load_workbook(path, data_only=True)
+def _rows_from_workbook(wb: Any, label: str) -> list[dict[str, Any]]:
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
     if not rows:
@@ -145,7 +148,7 @@ def _read_rows(path: Path) -> list[dict[str, Any]]:
     missing = [c for c in _EXPECTED_COLUMNS if c not in header]
     if missing:
         raise ValueError(
-            f"{path.name}: faltan columnas esperadas {missing} en la cabecera real {header} "
+            f"{label}: faltan columnas esperadas {missing} en la cabecera real {header} "
             "— no se importa nada de este fichero, no se adivina el formato."
         )
     idx = {name: header.index(name) for name in header if name}
@@ -155,6 +158,54 @@ def _read_rows(path: Path) -> list[dict[str, Any]]:
             continue
         out.append({name: row[i] for name, i in idx.items()})
     return out
+
+
+def _read_rows(path: Path) -> list[dict[str, Any]]:
+    wb = load_workbook(path, data_only=True)
+    return _rows_from_workbook(wb, path.name)
+
+
+def rows_from_bytes(content: bytes, label: str) -> list[dict[str, Any]]:
+    """Mismo formato que :func:`_read_rows`, pero a partir de bytes ya en memoria (adjunto
+    conversacional) en vez de un fichero en disco — nunca se usa el parser genérico de adjuntos
+    (``mia.attachments.parsers.excel``) para esto: ese trunca la fecha al día, perdiendo la hora
+    exacta de cada marca, que aquí es imprescindible."""
+    wb = load_workbook(io.BytesIO(content), data_only=True)
+    return _rows_from_workbook(wb, label)
+
+
+async def _import_rows(
+    session: AsyncSession, index: _EmployeeIndex, rows: list[dict[str, Any]], *, tz: ZoneInfo, now: datetime, report: ImportReport
+) -> None:
+    """Cruce por nombre + upsert idempotente de ``ClockMark`` — compartido por la importación desde
+    directorio (pruebas) y desde un adjunto subido en la conversación."""
+    for row in rows:
+        report.rows_read += 1
+        raw_name = str(row["Nombre completo"])
+        matches = [e for e in index.match(_name_tokens(raw_name)) if e.person_key]
+        if not matches:
+            report.unmatched[raw_name] = report.unmatched.get(raw_name, 0) + 1
+            continue
+        if len(matches) > 1:
+            report.ambiguous[raw_name] = report.ambiguous.get(raw_name, 0) + 1
+            continue
+        at: datetime = row["Fecha"]
+        if at.tzinfo is None:
+            at = at.replace(tzinfo=tz)
+        await session.merge(
+            ClockMark(
+                person_key=matches[0].person_key,
+                at=at,
+                origin=row.get("Origen del marcaje") or None,
+                device_type=row.get("Tipo marcaje") or None,
+                terminal_name=row.get("Nombre Terminal") or None,
+                source=SOURCE,
+                imported_at=now,
+            )
+        )
+        report.imported += 1
+        lo, hi = report.period or (at, at)
+        report.period = (min(lo, at), max(hi, at))
 
 
 async def import_directory(
@@ -170,32 +221,21 @@ async def import_directory(
         index = await _employee_index(session)
         for path in paths:
             report.files += 1
-            rows = _read_rows(path)
-            for row in rows:
-                report.rows_read += 1
-                raw_name = str(row["Nombre completo"])
-                matches = [e for e in index.match(_name_tokens(raw_name)) if e.person_key]
-                if not matches:
-                    report.unmatched[raw_name] = report.unmatched.get(raw_name, 0) + 1
-                    continue
-                if len(matches) > 1:
-                    report.ambiguous[raw_name] = report.ambiguous.get(raw_name, 0) + 1
-                    continue
-                at: datetime = row["Fecha"]
-                if at.tzinfo is None:
-                    at = at.replace(tzinfo=tz)
-                await session.merge(
-                    ClockMark(
-                        person_key=matches[0].person_key,
-                        at=at,
-                        origin=row.get("Origen del marcaje") or None,
-                        device_type=row.get("Tipo marcaje") or None,
-                        terminal_name=row.get("Nombre Terminal") or None,
-                        source=SOURCE,
-                        imported_at=now,
-                    )
-                )
-                report.imported += 1
-                lo, hi = report.period or (at, at)
-                report.period = (min(lo, at), max(hi, at))
+            await _import_rows(session, index, _read_rows(path), tz=tz, now=now, report=report)
+    return report
+
+
+async def import_from_attachment(
+    db: Database, content: bytes, filename: str, *, timezone: str = "Europe/Madrid", now: datetime
+) -> ImportReport:
+    """Importa un único Excel de Conectia ya subido como adjunto conversacional (bytes en memoria,
+    nunca un segundo camino de lectura: misma función de cruce/upsert que ``import_directory``).
+    Sigue siendo el mismo formato real de Conectia (ver docstring del módulo) — lo único que cambia
+    es el origen de los bytes."""
+    tz = ZoneInfo(timezone)
+    report = ImportReport()
+    report.files = 1
+    async with db.session() as session:
+        index = await _employee_index(session)
+        await _import_rows(session, index, rows_from_bytes(content, filename), tz=tz, now=now, report=report)
     return report

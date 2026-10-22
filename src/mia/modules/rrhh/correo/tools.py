@@ -18,9 +18,9 @@ from mia.auth import Permission
 from mia.connectors.graph import GraphClient, GraphError
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.modules.rrhh.common import Deps, table
-from mia.modules.rrhh.correo.htmltext import plain_text
 from mia.modules.rrhh.correo.mailbox import resolve_mailbox
 from mia.observability import get_logger
+from mia.text import plain_text
 
 log = get_logger(__name__)
 
@@ -30,7 +30,9 @@ MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
 KEYWORDS = (
     "correo", "correos", "email", "emails", "e-mail", "buzon", "buzón", "bandeja de entrada",
     "mensaje", "mensajes", "borrador", "borradores", "responder correo", "enviar correo",
-    "correo sin leer",
+    "correo sin leer", "correos enviados", "elementos enviados", "hilo de correo",
+    "hilo de correos", "conversacion de correo", "conversación de correo", "ultimos correos",
+    "últimos correos", "adjunto del correo", "adjuntos del correo", "descargar adjunto",
 )
 """Ver `empleados.tools.KEYWORDS` para el criterio."""
 
@@ -39,7 +41,8 @@ _NOREPLY = re.compile(
     r"no[-_.]?reply|do[-_.]?not[-_.]?reply|no[-_.]?responder|no[-_.]?contestar|no[-_.]?contestes", re.IGNORECASE
 )
 _DENY = re.compile(r"\b(no|espera|todav[ií]a no|cancela)\b", re.IGNORECASE)
-SELECT = "id,subject,from,receivedDateTime,bodyPreview,hasAttachments,isRead"
+SELECT = "id,subject,from,receivedDateTime,bodyPreview,hasAttachments,isRead,conversationId"
+SELECT_SENT = "id,subject,from,toRecipients,sentDateTime,bodyPreview,hasAttachments,isRead,conversationId"
 
 
 def _plain(body: dict[str, Any] | None) -> str:
@@ -51,6 +54,12 @@ def _sender(message: dict[str, Any]) -> str:
     return f"{address.get('name') or ''} <{address.get('address') or ''}>".strip()
 
 
+def _recipients(message: dict[str, Any]) -> str:
+    return ", ".join(
+        a for r in message.get("toRecipients", []) if (a := r.get("emailAddress", {}).get("address"))
+    )
+
+
 def _remember(ctx: ToolContext, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Referencias cortas (c1, c2…) para que el modelo no tenga que copiar identificadores largos."""
     refs: dict[str, str] = ctx.session_state.setdefault("correos", {})
@@ -58,17 +67,19 @@ def _remember(ctx: ToolContext, messages: list[dict[str, Any]]) -> list[dict[str
     for message in messages:
         ref = next((k for k, v in refs.items() if v == message["id"]), None) or f"c{len(refs) + 1}"
         refs[ref] = message["id"]
-        out.append(
-            {
-                "ref": ref,
-                "de": _sender(message),
-                "asunto": message.get("subject"),
-                "recibido": message.get("receivedDateTime"),
-                "leido": message.get("isRead"),
-                "adjuntos": message.get("hasAttachments"),
-                "extracto": (message.get("bodyPreview") or "")[:240],
-            }
-        )
+        row = {
+            "ref": ref,
+            "de": _sender(message),
+            "asunto": message.get("subject"),
+            "recibido": message.get("receivedDateTime") or message.get("sentDateTime"),
+            "leido": message.get("isRead"),
+            "adjuntos": message.get("hasAttachments"),
+            "extracto": (message.get("bodyPreview") or "")[:240],
+            "conversacion": message.get("conversationId"),
+        }
+        if "toRecipients" in message:
+            row["para"] = _recipients(message)
+        out.append(row)
     return out
 
 
@@ -77,28 +88,34 @@ def is_noreply(sender: str) -> bool:
     return bool(_NOREPLY.search(sender or ""))
 
 
-def _mail_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Filas en el formato del panel de correo del 2D, con la referencia para poder abrir cada correo."""
+def _mail_rows(items: list[dict[str, Any]], *, sent: bool = False) -> list[dict[str, Any]]:
+    """Filas en el formato del panel de correo (2D/3D/holograma/portal), con la referencia para
+    poder abrir cada correo. En enviados importa el destinatario (``para``), no el remitente
+    (siempre el propio buzón) — nunca se muestra "de" ahí."""
     return [
         {
             "ref": i["ref"],
-            "from": i["de"],
+            "from": i.get("para") if sent else i["de"],
             "subject": i["asunto"],
             "received_at": i["recibido"],
             "has_attachments": bool(i.get("adjuntos")),
             "preview": i.get("extracto"),
             "is_read": bool(i.get("leido")),
-            "no_reply": is_noreply(i["de"]),
+            "no_reply": False if sent else is_noreply(i["de"]),
+            "conversation_id": i.get("conversacion"),
         }
         for i in items
     ]
 
 
-def _mail_table(title: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+def _mail_table(title: str, items: list[dict[str, Any]], *, sent: bool = False) -> dict[str, Any]:
+    label, field = ("Para", "para") if sent else ("De", "de")
     view = table(
-        title, ["Ref", "De", "Asunto", "Recibido"], [[i["ref"], i["de"], i["asunto"], i["recibido"]] for i in items]
+        title,
+        ["Ref", label, "Asunto", "Enviado" if sent else "Recibido"],
+        [[i["ref"], i.get(field), i["asunto"], i["recibido"]] for i in items],
     )
-    return {**view, "mail_rows": _mail_rows(items)}
+    return {**view, "mail_rows": _mail_rows(items, sent=sent)}
 
 
 def _unavailable(deps: Deps, ctx: ToolContext) -> ToolResult | None:
@@ -155,9 +172,94 @@ def pendientes(deps: Deps) -> Tool:
 
     return Tool(
         "correos_sin_leer",
-        "Correos sin leer del buzón corporativo configurado (los más recientes). Es lo que se pide con «mis correos "
-        "sin leer», «resume mi bandeja» o «el correo»: NO es un empleado.",
+        "Correos SIN LEER del buzón corporativo configurado. Úsala SOLO si el usuario pide "
+        "explícitamente «sin leer», «pendientes de leer» o «no leídos» — para «mis últimos "
+        "correos», «resume mi bandeja» o «el correo» sin más (sin mencionar lectura), usa en su "
+        "lugar correos_recientes, que no filtra por si están leídos o no. NO es un empleado.",
         PendientesParams,
+        handler,
+        permission=Permission.CORREO_LEER,
+        audit_resource="correo",
+    )
+
+
+class RecientesParams(BaseModel):
+    limite: int = Field(default=15, ge=1, le=50)
+    incluir_texto: bool = Field(default=False, description="true para un triaje a fondo (lee el cuerpo de cada correo)")
+
+
+def recientes(deps: Deps) -> Tool:
+    async def handler(p: RecientesParams, ctx: ToolContext) -> ToolResult:
+        if problem := _unavailable(deps, ctx):
+            return problem
+        try:
+            payload = await deps.graph.request(
+                "GET",
+                f"{_mailbox(deps, ctx)}/mailFolders/inbox/messages",
+                params={
+                    "$top": min(p.limite, 10) if p.incluir_texto else p.limite,
+                    "$orderby": "receivedDateTime desc",
+                    "$select": f"{SELECT},body" if p.incluir_texto else SELECT,
+                },
+            )
+        except GraphError as exc:
+            return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, f"No he podido leer el buzón: {exc}")
+        messages = payload.get("value", [])
+        items = _remember(ctx, messages)
+        if p.incluir_texto:
+            for item, message in zip(items, messages, strict=True):
+                item["texto"] = _plain(message.get("body"))[:1200]
+        return ToolResult(
+            ToolStatus.OK,
+            {"correos_mostrados": len(items), "correos": items},
+            _mail_table("Correos recientes", items),
+        )
+
+    return Tool(
+        "correos_recientes",
+        "Los últimos correos recibidos en el buzón, SIN filtrar por si están leídos o no — es lo "
+        "que se pide con «mis últimos correos», «resume mi bandeja», «correos recibidos» o «el "
+        "correo» sin más matización. Si el usuario pide expresamente «sin leer»/«pendientes», usa "
+        "correos_sin_leer en su lugar. NO es un empleado.",
+        RecientesParams,
+        handler,
+        permission=Permission.CORREO_LEER,
+        audit_resource="correo",
+    )
+
+
+class EnviadosParams(BaseModel):
+    limite: int = Field(default=15, ge=1, le=50)
+
+
+def enviados(deps: Deps) -> Tool:
+    async def handler(p: EnviadosParams, ctx: ToolContext) -> ToolResult:
+        if problem := _unavailable(deps, ctx):
+            return problem
+        try:
+            payload = await deps.graph.request(
+                "GET",
+                f"{_mailbox(deps, ctx)}/mailFolders/sentitems/messages",
+                params={
+                    "$top": p.limite,
+                    "$orderby": "sentDateTime desc",
+                    "$select": SELECT_SENT,
+                },
+            )
+        except GraphError as exc:
+            return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, f"No he podido leer los correos enviados: {exc}")
+        items = _remember(ctx, payload.get("value", []))
+        return ToolResult(
+            ToolStatus.OK,
+            {"correos_enviados_mostrados": len(items), "correos": items},
+            _mail_table("Correos enviados", items, sent=True),
+        )
+
+    return Tool(
+        "correos_enviados",
+        "Últimos correos ENVIADOS desde el buzón (carpeta Elementos enviados). Úsala cuando el "
+        "usuario pregunte por correos que él (o el buzón) ha enviado, no recibido.",
+        EnviadosParams,
         handler,
         permission=Permission.CORREO_LEER,
         audit_resource="correo",
@@ -200,6 +302,60 @@ def buscar(deps: Deps) -> Tool:
     )
 
 
+class HiloParams(BaseModel):
+    ref: str = Field(description="Referencia (c1, c2…) de cualquier correo de esa conversación")
+
+
+def hilo(deps: Deps) -> Tool:
+    async def handler(p: HiloParams, ctx: ToolContext) -> ToolResult:
+        if problem := _unavailable(deps, ctx):
+            return problem
+        message_id = ctx.session_state.get("correos", {}).get(p.ref)
+        if not message_id:
+            return ToolResult(ToolStatus.NOT_FOUND, "No conozco esa referencia: lista o busca los correos antes.")
+        try:
+            # El conversationId puede no estar ya en memoria si el ref viene de una lista antigua.
+            message = await deps.graph.request(
+                "GET", f"{_mailbox(deps, ctx)}/messages/{message_id}", params={"$select": "conversationId"}
+            )
+            conversation_id = message.get("conversationId")
+            if not conversation_id:
+                return ToolResult(ToolStatus.NOT_FOUND, "Ese correo no tiene conversación asociada.")
+            payload = await deps.graph.request(
+                "GET",
+                f"{_mailbox(deps, ctx)}/messages",
+                params={
+                    # Escapado OData estándar: una comilla simple se duplica, nunca se interpola sin más.
+                    "$filter": f"conversationId eq '{conversation_id.replace(chr(39), chr(39) * 2)}'",
+                    "$orderby": "receivedDateTime asc",
+                    "$select": SELECT,
+                },
+            )
+        except GraphError as exc:
+            return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, f"No he podido leer el hilo: {exc}")
+        messages = payload.get("value", [])
+        if not messages:
+            return ToolResult(ToolStatus.NOT_FOUND, "No se ha encontrado ningún mensaje de esa conversación.")
+        items = _remember(ctx, messages)
+        title = f"Hilo: {items[0]['asunto'] or ''}"
+        return ToolResult(
+            ToolStatus.OK,
+            {"mensajes_en_el_hilo": len(items), "correos": items},
+            {**_mail_table(title, items), "type": "mail_thread"},
+        )
+
+    return Tool(
+        "hilo_correo",
+        "Todos los mensajes de la MISMA conversación que un correo concreto (recibidos y "
+        "enviados), en orden cronológico — no un mensaje suelto. Úsala con «el hilo completo», "
+        "«toda la conversación» o «qué se han dicho sobre esto».",
+        HiloParams,
+        handler,
+        permission=Permission.CORREO_LEER,
+        audit_resource="correo",
+    )
+
+
 def _attachment_text(attachment: dict[str, Any]) -> str | None:
     """Texto extraído de un adjunto de tipo fichero (``#microsoft.graph.fileAttachment``).
 
@@ -230,6 +386,22 @@ class LeerParams(BaseModel):
     ref: str = Field(description="Referencia del correo (c1, c2…) de una lista anterior")
 
 
+async def _attachment_content(deps: Deps, mailbox: str, message_id: str, attachment_id: str) -> dict[str, Any] | None:
+    """Representación COMPLETA de un adjunto, incluido ``contentBytes``.
+
+    Microsoft Graph rechaza ``$select=contentBytes`` sobre /attachments (HTTP 400: "Could not
+    find a property named 'contentBytes' on type 'microsoft.graph.attachment'") porque esa
+    propiedad solo existe en el tipo derivado ``fileAttachment``, no en el tipo base con el que
+    OData valida el ``$select`` — ni en la colección ni en un elemento suelto. La única forma
+    fiable de obtener el contenido es pedir el adjunto SIN "$select": Graph sirve entonces el tipo
+    real ya resuelto, con todas sus propiedades.
+    """
+    try:
+        return await deps.graph.request("GET", f"{mailbox}/messages/{message_id}/attachments/{attachment_id}")
+    except GraphError:
+        return None
+
+
 def leer(deps: Deps) -> Tool:
     async def handler(p: LeerParams, ctx: ToolContext) -> ToolResult:
         if problem := _unavailable(deps, ctx):
@@ -237,23 +409,40 @@ def leer(deps: Deps) -> Tool:
         message_id = ctx.session_state.get("correos", {}).get(p.ref)
         if not message_id:
             return ToolResult(ToolStatus.NOT_FOUND, "No conozco esa referencia: lista o busca los correos antes.")
+        mailbox = _mailbox(deps, ctx)
         try:
             message = await deps.graph.request(
                 "GET",
-                f"{_mailbox(deps, ctx)}/messages/{message_id}",
+                f"{mailbox}/messages/{message_id}",
                 params={"$select": "subject,from,toRecipients,ccRecipients,receivedDateTime,body,hasAttachments"},
             )
             attachments: list[dict[str, Any]] = []
             if message.get("hasAttachments"):
+                # "id,name,size,contentType" son propiedades del tipo BASE (attachment): a diferencia
+                # de contentBytes, sí admiten $select aquí. Ver _attachment_content().
                 attachments = (
                     await deps.graph.request(
                         "GET",
-                        f"{_mailbox(deps, ctx)}/messages/{message_id}/attachments",
-                        params={"$select": "name,size,contentType,contentBytes"},
+                        f"{mailbox}/messages/{message_id}/attachments",
+                        params={"$select": "id,name,size,contentType"},
                     )
                 ).get("value", [])
         except GraphError as exc:
             return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, f"No he podido abrir el correo: {exc}")
+        adjuntos = []
+        for a in attachments:
+            is_file = a.get("@odata.type") == "#microsoft.graph.fileAttachment"
+            contenido = None
+            if is_file and int(a.get("size") or 0) > MAX_ATTACHMENT_BYTES:
+                contenido = "(adjunto demasiado grande para leer)"
+            elif is_file:
+                full = await _attachment_content(deps, mailbox, message_id, str(a.get("id")))
+                contenido = _attachment_text(full) if full is not None else "(no se ha podido leer este adjunto)"
+            adjuntos.append({
+                "nombre": a.get("name"),
+                "contenido": contenido,
+                "url": f"/api/mail/attachment/{message_id}/{a.get('id')}" if is_file else None,
+            })
         view = {
             "ref": p.ref,
             "de": _sender(message),
@@ -261,9 +450,7 @@ def leer(deps: Deps) -> Tool:
             "asunto": message.get("subject"),
             "recibido": message.get("receivedDateTime"),
             "texto": _plain(message.get("body"))[:8000],
-            "adjuntos": [
-                {"nombre": a.get("name"), "contenido": _attachment_text(a)} for a in attachments
-            ],
+            "adjuntos": adjuntos,
         }
         return ToolResult(ToolStatus.OK, view, {"type": "mail", **view})
 
@@ -495,5 +682,8 @@ def guardados(deps: Deps) -> Tool:
 
 
 def register(registry: ToolRegistry, deps: Deps) -> None:
-    for factory in (pendientes, buscar, leer, borrador, enviar, modificar, descartar, guardados):
+    for factory in (
+        pendientes, recientes, enviados, buscar, hilo, leer,
+        borrador, enviar, modificar, descartar, guardados,
+    ):
         registry.register(factory(deps))

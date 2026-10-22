@@ -1,0 +1,82 @@
+/* SBC 3D: el logo original se reconstruye con sus propios píxeles y el
+   avatar es la misma escena Three.js cargada por el mundo 3D. */
+.mia-boot[data-variant="sbc-assembly"]{
+  isolation:isolate; background:transparent; color:#202943;
+}
+.mia-boot[data-variant="sbc-assembly"]::before{
+  content:"";position:absolute;inset:0;background:#fff;z-index:-1;
+  opacity:1;transition:opacity .85s ease;
+}
+.mia-boot[data-variant="sbc-assembly"].mia-boot--avatar-ready::before{opacity:0}
+.mia-sbc-intro__layout{
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  width:min(1350px,94vw);height:min(780px,96dvh);align-items:center;
+  position:relative;pointer-events:none;
+}
+.mia-sbc-intro__identity{width:100%;max-width:540px;position:relative;z-index:2;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:24px 20px;pointer-events:auto}
+.mia-sbc-intro__eyebrow{font:750 11px/1.5 Inter,Aptos,'Segoe UI',sans-serif;
+  letter-spacing:.26em;color:#718097;margin:0 0 9px;text-align:center}
+.mia-sbc-intro__logo{
+  width:min(100%,clamp(255px,31vw,445px));aspect-ratio:342/291;
+  position:relative;perspective:1200px;isolation:isolate;
+  filter:drop-shadow(0 18px 20px rgba(12,23,59,.075));
+}
+.mia-sbc-intro__piece{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
+  opacity:0;transform:translate3d(0,12px,40px) rotateX(5deg) scale(.96);
+  transform-origin:center;backface-visibility:hidden;
+  animation:miaSbcReveal .65s cubic-bezier(.2,.7,.25,1) forwards;
+  animation-delay:calc(.2s + var(--piece-order) * .58s);
+}
+@keyframes miaSbcReveal{
+  0%{opacity:0;transform:translate3d(0,12px,40px) rotateX(5deg) scale(.96);filter:blur(3px)}
+  70%{opacity:1;filter:blur(0)}
+  100%{opacity:1;transform:translate3d(0,0,0) rotateX(0deg) scale(1);filter:blur(0)}
+}
+.mia-sbc-intro__caption{margin:-6px 0 8px;color:#6c7488;
+  text-align:center;letter-spacing:.065em;font-size:clamp(10px,1vw,13px)}
+.mia-sbc-intro__loading{max-width:330px;width:100%;margin:6px auto 0;
+  transition:opacity .4s,transform .4s}
+.mia-sbc-intro__loading .mia-boot__progress{width:88px;height:88px;margin:4px auto 6px}
+.mia-sbc-intro__loading .mia-boot__ring-number strong{font-size:27px}
+.mia-sbc-intro__loading .mia-boot__ring-number small{font-size:12px}
+.mia-sbc-intro__loading .mia-boot__ring circle{stroke-width:7}
+.mia-sbc-intro__loading .mia-boot__status{font-size:14px;min-height:20px}
+.mia-sbc-intro__loading .mia-boot__bar{margin:11px auto 7px}
+.mia-sbc-intro__loading .mia-boot__details{font-size:11px;min-height:18px}
+.mia-sbc-intro__loading .mia-boot__steps{margin-top:12px;font-size:10px}
+.mia-boot[data-variant="sbc-assembly"].mia-boot--avatar-ready:not(.mia-boot--error) .mia-sbc-intro__loading{opacity:0;position:absolute;visibility:hidden;pointer-events:none}
+.mia-sbc-intro__appearance{opacity:0;transform:translateY(12px);
+  transition:opacity .7s ease .15s,transform .7s ease .15s;
+  margin:8px 0 3px;font:500 14px/1.5 Inter,Aptos,'Segoe UI',sans-serif;color:#586579;text-align:center;
+  visibility:hidden}
+.mia-boot--avatar-ready .mia-sbc-intro__appearance{opacity:1;transform:none;visibility:visible}
+.mia-sbc-intro__identity .mia-boot__actions{margin-top:15px}
+.mia-sbc-intro__identity .mia-boot__continue{background:#273b5c;min-width:270px}
+.mia-sbc-intro__avatar-area{height:100%;pointer-events:none}
+.mia-boot[data-variant="sbc-assembly"].mia-boot--error::before{opacity:1}
+.mia-boot[data-variant="sbc-assembly"] .mia-boot__retry{z-index:2}
+@media(max-width:750px){
+  .mia-sbc-intro__layout{width:100vw;height:100dvh;grid-template-columns:1fr;
+    grid-template-rows:minmax(0,55%) minmax(0,45%)}
+  .mia-sbc-intro__identity{height:100%;padding:12px 15px;justify-content:center;max-width:none}
+  .mia-sbc-intro__logo{width:min(66vw,290px)}
+  .mia-sbc-intro__caption{margin:-4px 0 0;font-size:10px}
+  .mia-sbc-intro__loading .mia-boot__progress{width:68px;height:68px}
+  .mia-sbc-intro__loading .mia-boot__ring-number strong{font-size:21px}
+  .mia-sbc-intro__loading .mia-boot__bar{margin:7px auto 3px}
+  .mia-sbc-intro__loading .mia-boot__steps{margin-top:5px}
+  .mia-sbc-intro__identity .mia-boot__actions{margin-top:8px}
+  .mia-sbc-intro__avatar-area{height:0}
+}
+@media(max-height:580px) and (min-width:751px){
+  .mia-sbc-intro__logo{width:min(34vh,290px)}
+  .mia-sbc-intro__identity{padding:7px}
+  .mia-sbc-intro__loading .mia-boot__progress{width:60px;height:60px}
+  .mia-sbc-intro__loading .mia-boot__steps{margin-top:5px}
+}
+@media(prefers-reduced-motion:reduce){
+  .mia-sbc-intro__piece{animation-duration:0s!important;animation-delay:0s!important;transform:none!important;filter:none!important}
+  .mia-sbc-intro__appearance,.mia-boot[data-variant="sbc-assembly"]::before{transition:none!important}
+}

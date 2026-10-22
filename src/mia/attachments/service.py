@@ -164,6 +164,16 @@ class AttachmentService:
         r = self.get_for_user(attachment_id, user_id)
         return r.content if r else None
 
+    async def get_bytes(self, attachment_id: str, user_id: str) -> bytes | None:
+        """Contenido crudo tal cual se subió (sin pasar por ningún parser genérico) — para
+        herramientas que necesitan releer el archivo con su propia lógica (p. ej. ``fichajes``, que
+        necesita la hora completa de cada celda de fecha, no solo el día, como sí hace el parser
+        genérico de adjuntos para datasets)."""
+        r = self.get_for_user(attachment_id, user_id)
+        if r is None or not r.storage_location:
+            return None
+        return await self._storage.read(r.storage_location)
+
     def build_context(self, attachment_id: str, user_id: str) -> str:
         r = self.get_for_user(attachment_id, user_id)
         if r is None:

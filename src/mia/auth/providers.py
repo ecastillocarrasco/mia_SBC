@@ -98,9 +98,19 @@ class EntraIdIdentityProvider:
     def __init__(self, settings: AuthSettings, *, http_client: httpx.AsyncClient | None = None) -> None:
         if not settings.entra_tenant_id or not settings.entra_client_id:
             raise ValueError("entra_tenant_id y entra_client_id son obligatorios en modo 'entra'")
-        self._audience = settings.entra_client_id
+        # Se aceptan DOS formatos de audiencia/issuer, no uno: cuando el scope pedido es una API
+        # propia (``api://<client_id>/access_as_user``), el access token que emite Entra ID para
+        # esa API sigue el ajuste ``accessTokenAcceptedVersion`` del MANIFIESTO de la aplicación,
+        # no el endpoint usado para pedirlo (v1 si es ``null``/``1``: iss=«sts.windows.net/<tenant>/»
+        # y aud=«api://<client_id>»; v2 si es ``2``: iss=«login.microsoftonline.com/<tenant>/v2.0»
+        # y aud=«<client_id>» a secas) — verificado con un token real. Depender de un valor concreto
+        # del manifiesto (que además puede resetearse) es más frágil que aceptar ambos formatos.
+        self._audience = (settings.entra_client_id, f"api://{settings.entra_client_id}")
         self._role_claim = settings.entra_role_claim
-        self._issuer = f"https://login.microsoftonline.com/{settings.entra_tenant_id}/v2.0"
+        self._issuer = (
+            f"https://login.microsoftonline.com/{settings.entra_tenant_id}/v2.0",
+            f"https://sts.windows.net/{settings.entra_tenant_id}/",
+        )
         self._jwks_uri = f"https://login.microsoftonline.com/{settings.entra_tenant_id}/discovery/v2.0/keys"
         self._http = http_client or httpx.AsyncClient(timeout=10)
         self._owns_http = http_client is None

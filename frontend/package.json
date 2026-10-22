@@ -13,6 +13,7 @@
     "vite": "^8.2.2"
   },
   "dependencies": {
+    "@azure/msal-browser": "^3.30.0",
     "three": "^0.185.1"
   }
 }

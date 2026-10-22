@@ -20,7 +20,9 @@ def compute_metrics(traces: list[Any]) -> dict[str, Any]:
 
     total_input = sum(t.tokens_input for t in completed)
     total_output = sum(t.tokens_output for t in completed)
+    total_cached = sum(t.tokens_cached for t in completed)
     avg_tokens = int((total_input + total_output) / len(completed)) if completed else None
+    cache_hit_rate = round(total_cached / total_input, 3) if total_input else None
 
     tools_per_trace = [len(t.tools_called) for t in completed]
     avg_tools = round(sum(tools_per_trace) / len(tools_per_trace), 1) if tools_per_trace else None
@@ -47,6 +49,9 @@ def compute_metrics(traces: list[Any]) -> dict[str, Any]:
         "avg_latency_ms": avg_latency,
         "p95_latency_ms": p95_latency,
         "avg_tokens": avg_tokens,
+        "total_input_tokens": total_input,
+        "total_cached_tokens": total_cached,
+        "cache_hit_rate": cache_hit_rate,
         "avg_tools_per_request": avg_tools,
         "warning_traces": warning_traces,
         "capability_gaps": capability_gaps,
@@ -65,6 +70,9 @@ def _empty_metrics() -> dict[str, Any]:
         "avg_latency_ms": None,
         "p95_latency_ms": None,
         "avg_tokens": None,
+        "total_input_tokens": 0,
+        "total_cached_tokens": 0,
+        "cache_hit_rate": None,
         "avg_tools_per_request": None,
         "warning_traces": 0,
         "capability_gaps": 0,

@@ -12,7 +12,7 @@ from mia.conversation import ConversationEngine, Persona, ToolRegistry
 from mia.data import Database
 from mia.ingestion.sync.factory import build_sharepoint_client
 from mia.llm import LLMProvider, build_llm_provider
-from mia.modules import finanzas
+from mia.modules import community, finanzas, it
 from mia.modules.rrhh import build_registry
 from mia.modules.rrhh.correo.mailbox import mailbox_available, resolve_mailbox
 from mia.settings import Settings
@@ -68,6 +68,8 @@ class Services:
             enabled=settings.domains.enabled,
         )
         finanzas.register(registry, None)
+        it.register(registry, None)
+        community.register(registry, settings, database)
 
         # Adjuntos: construir servicio e inyectar herramientas si está activo
         attachment_svc: AttachmentService | None = None

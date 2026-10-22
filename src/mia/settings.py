@@ -102,6 +102,10 @@ class AuthSettings(BaseModel):
     """El Application (client) ID de mIA en Entra ID: la audiencia (aud) que debe traer el token."""
     entra_role_claim: str = "roles"
     """El claim del token donde vienen los app roles (p. ej. «mia.rrhh»): por defecto, «roles»."""
+    entra_scope: str = ""
+    """Scope que MSAL.js debe pedir desde el front-end para obtener un token con audiencia mIA
+    (p. ej. «api://<client-id>/access_as_user», el nombre exacto depende del scope expuesto en
+    el registro de la aplicación en Entra ID). Vacío → se usa «<entra_client_id>/.default»."""
 
 
 class SharePointSettings(BaseModel):
@@ -164,12 +168,24 @@ ALL_DOMAINS = (
     "trabajo_temporal",
     "analitica",
     "informes",
+    "newsletter",
 )
+"""Dominios de RRHH y de otros módulos que también sincronizan listas de SharePoint (p. ej.
+Community/Newsletter): un único interruptor de sincronización, reutilizado — ver
+``mia.ingestion.definitions.all_sources``."""
 
 
 class DomainSettings(BaseModel):
     enabled: list[str] = Field(default_factory=lambda: list(ALL_DOMAINS))
     """Interruptor por dominio: si uno falla con datos reales se desactiva sin afectar al resto."""
+
+
+class NoticiasSettings(BaseModel):
+    """Noticias corporativas y de grupo (Sunset Beach Club / Grupo FBD): fuentes públicas externas,
+    sin datos de empleados. Interruptor independiente del resto de dominios (``DomainSettings``
+    es específico de RRHH) porque consulta sitios de terceros fuera del control de mIA."""
+
+    enabled: bool = True
 
 
 class MailSettings(BaseModel):
@@ -316,6 +332,7 @@ class Settings(BaseSettings):
     data: DataSettings = Field(default_factory=DataSettings)
     domains: DomainSettings = Field(default_factory=DomainSettings)
     mail: MailSettings = Field(default_factory=MailSettings)
+    noticias: NoticiasSettings = Field(default_factory=NoticiasSettings)
     curriculums: CurriculumSettings = Field(default_factory=CurriculumSettings)
     reports: ReportSettings = Field(default_factory=ReportSettings)
     attachments: AttachmentSettings = Field(default_factory=AttachmentSettings)

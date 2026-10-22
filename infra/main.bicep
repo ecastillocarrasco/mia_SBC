@@ -428,7 +428,7 @@ resource syncJob 'Microsoft.App/jobs@2024-03-01' = if (sharepointEnabled && !emp
         {
           name: 'sync'
           image: image
-          command: ['python', '-m', 'mia.sync']
+          command: ['python', '-m', 'mia.ingestion.sync']
           resources: { cpu: json('0.5'), memory: '1Gi' }
           env: allEnv
         }

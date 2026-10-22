@@ -65,6 +65,9 @@ function extractPresentation(reply) {
       if (!primitive(value) || value == null) continue;
       const label = card.label || card.title || card.titulo || card.nombre || card.name;
       if (!label) continue;
+      // Datos técnicos de un artefacto NO son métricas financieras.
+      const normalizedLabel=String(label).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[_-]/g,' ').trim();
+      if(/^(secciones|caduca en horas|horas de caducidad|ttl|expires in hours|expiration hours|vencimiento|paginas del informe)$/.test(normalizedLabel))continue;
       result.cards.push({label:String(label).slice(0,100),value:safeValue(value),unit:typeof card.unit === 'string' ? card.unit.slice(0,30) : ''});
     }
     if (result.cards.length) result.hasStructuredData = true;

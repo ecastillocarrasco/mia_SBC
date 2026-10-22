@@ -26,6 +26,7 @@ import {
   renderEmployee360PresentationHtml,
 } from "../../core/employee360-presentation.js";
 import { ensureAuthenticated, ensureAuthorized } from "../../core/auth-gate.js";
+import { start as startMailWatch, ensureNotificationPermission, showNotification } from "../../core/mail-watch.js";
 
 // Si MIA_AUTH__MODE=entra exige login y ya hay sesión (p. ej. iniciada desde el portal), sigue
 // sin tocar nada. Si no hay sesión, `interactive: false` NUNCA inicia aquí su propio login (cada
@@ -37,6 +38,19 @@ await ensureAuthenticated({ interactive: false });
 // Login correcto no es lo mismo que tener acceso: sin ningún permiso asignado, esto sustituye
 // la página entera por el aviso correspondiente y tampoco resuelve nunca.
 await ensureAuthorized();
+// Aviso de correo nuevo (pedido del usuario, igual que mia-desktop y el mundo 2D): notificación
+// del navegador con un clic que abre el cajón de texto y deja la pregunta de resumen ya escrita.
+ensureNotificationPermission().then((granted) => {
+  if (!granted) return;
+  startMailWatch((correos) => {
+    for (const correo of correos) {
+      showNotification(correo, (c) => {
+        openDock({ focus: true });
+        input.value = `Resúmeme el correo de ${c.de} sobre "${c.asunto}"`;
+      });
+    }
+  });
+});
 
 const conversation = document.getElementById("conversation");
 const composer = document.getElementById("composer");

@@ -85,21 +85,35 @@ async function loadModel() {
     ready = false;
   }
 }
-function inCharacter(ev) {
-  if (!ready) {
-    const x = ev.clientX / window.innerWidth, y = ev.clientY / window.innerHeight;
-    return y > .06 && y < .99 && Math.abs(x - .5) < (.17 + .34 * y);
-  }
-  mouse.x = (ev.clientX / window.innerWidth) * 2 - 1;
-  mouse.y = -(ev.clientY / window.innerHeight) * 2 + 1;
+function inCharacterCoords(x, y) {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 ||
+      x >= window.innerWidth || y >= window.innerHeight) return false;
+  const nx = x / window.innerWidth, ny = y / window.innerHeight;
+  // A usable central grab area: skinned GLB meshes and animated limbs may not
+  // always intersect a ray despite being visibly drawn under the cursor.
+  const centralGrab = ny > .15 && ny < .94 && Math.abs(nx - .5) < (.12 + .20 * ny);
+  if (!ready || !character) return centralGrab;
+  mouse.x = nx * 2 - 1;
+  mouse.y = -(ny * 2 - 1);
   raycaster.setFromCamera(mouse, camera);
-  return raycaster.intersectObject(character, true).length > 0;
+  return centralGrab || raycaster.intersectObject(character, true).length > 0;
 }
+function inCharacter(ev) { return inCharacterCoords(ev.clientX, ev.clientY); }
+
 function setPassthrough(pass) {
+  if (drag) pass = false;
   if (pass === lastPass) return;
   lastPass = pass;
   bridge.setPassthrough(pass);
+  canvas.style.cursor = pass ? 'default' : 'grab';
 }
+// Authoritative recovery path: the main process can see the global cursor
+// even while Electron has setIgnoreMouseEvents(true). Do not rely only on
+// forwarded pointermove events from an ignored transparent window.
+bridge.onAvatarCursor(pos => {
+  if (drag) return;
+  setPassthrough(!inCharacterCoords(pos?.x, pos?.y));
+});
 // Pointer capture + movimiento desde el proceso principal. No depende de
 // recibir mousemove desde una ventana que está siendo desplazada.
 window.addEventListener('pointermove', ev => {
@@ -113,20 +127,23 @@ window.addEventListener('pointermove', ev => {
 window.addEventListener('pointerdown', ev => {
   if(ev.button!==0 || !inCharacter(ev)) return;
   drag={id:ev.pointerId, x:ev.screenX, y:ev.screenY, moved:false};
-  canvas.setPointerCapture?.(ev.pointerId);
+  try { canvas.setPointerCapture?.(ev.pointerId); } catch { /* Window-level pointer events still work. */ }
   setPassthrough(false);
+  canvas.style.cursor = 'grabbing';
   bridge.startDrag();
 });
 function releaseDrag(ev){
   if(!drag || (ev && ev.pointerId!==drag.id))return;
   const moved=drag.moved || (ev && Math.abs(ev.screenX-drag.x)+Math.abs(ev.screenY-drag.y)>7);
   drag=null;bridge.stopDrag();
+  canvas.style.cursor = 'grab';
   if(!moved){playAnimation('GREET');bridge.openBubble();}
 }
 window.addEventListener('pointerup',releaseDrag);
-window.addEventListener('pointercancel', () => {drag=null;bridge.stopDrag();});
-window.addEventListener('blur', () => {drag=null;bridge.stopDrag();});
-window.addEventListener('keydown', ev => { if (ev.key === 'Escape') bridge.hideAvatar(); });
+window.addEventListener('pointercancel', () => {drag=null;bridge.stopDrag();canvas.style.cursor='grab';});
+// Window moves or companion focus may fire blur during an active drag.
+// The pointerup / pointercancel events, not focus changes, own drag release.
+// Escape never minimizes the avatar; use the explicit minimize action.
 window.addEventListener('contextmenu', ev => {
   if (inCharacter(ev)) { ev.preventDefault(); bridge.avatarContextMenu(); }
 });

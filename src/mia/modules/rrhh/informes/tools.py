@@ -23,6 +23,7 @@ from mia.diagnostics import EventStage
 from mia.diagnostics import emit as diag_emit
 from mia.modules.rrhh.common import Deps, department_problem, resolve_department
 from mia.modules.rrhh.informes.document import Document, to_document
+from mia.modules.rrhh.informes.persist import persist_document_report
 from mia.modules.rrhh.informes.render import RENDERERS
 from mia.reporting.narrative_generation import generate_narrative_block
 from mia.reporting.content_composer import MissingReportEvidence, compose_for_request
@@ -218,6 +219,77 @@ un informe semánticamente distinto del que se pidió (ver sección 15/incidenci
 departamento) — se rechaza en vez de exportar en silencio."""
 
 
+async def _maybe_redirect_to_turnos_fichajes(deps: Deps, ctx: ToolContext) -> ToolResult | None:
+    """Incidencia real (2026-10-21, mismo patrón que la sección 15): el LLM elige ``generar_informe``
+    para peticiones de "informe comparativo de fichajes... con los turnos..." en vez de
+    ``informe_comparativo_turnos_fichajes`` — porque esta herramienta genérica también se describe a
+    sí misma con "informe"/"comparativo" y no hay ninguna tabla previa que exportar (``NOT_FOUND``).
+
+    Redirección real, no solo una descripción mejor (la sola prosa ya demostró no bastar en la
+    incidencia de nóminas): si el mensaje menciona fichajes Y turnos a la vez, hay al menos un adjunto
+    activo TODAVÍA VÁLIDO en la conversación (el más reciente de ellos — ver comentario sobre
+    reinicios más abajo) y se identifica sin ambigüedad el departamento, se ejecuta de verdad
+    ``informe_comparativo_turnos_fichajes`` a través del MISMO ``ToolRegistry``
+    (permisos/diagnóstico/timeout intactos) — nunca se adivina el departamento si el texto no lo deja
+    claro, en cuyo caso no hay redirección y sigue el NOT_FOUND genérico de siempre.
+
+    Deliberadamente NO se intenta extraer un número de "semana" del mensaje: confirmado contra datos
+    reales (2026-10-21) que la semana que nombra el usuario (p. ej. "semana 41", del nombre del
+    fichero de Conectia) no tiene por qué coincidir con el número ISO real de los turnos — el propio
+    ``informe_comparativo_turnos_fichajes`` ya resuelve el periodo a partir de las fechas REALES del
+    adjunto importado cuando no se le pasa un periodo explícito (ver su docstring de
+    ``_resolve_period``); adivinar aquí un número de semana sería forzar el periodo equivocado."""
+    message = ctx.user_message or ""
+    key = normalize_key(message)
+    if "fichaje" not in key or "turno" not in key:
+        return None
+
+    svc = ctx.attachment_service
+    if svc is None:
+        return None
+
+    from mia.attachments.model import get_active_refs  # noqa: PLC0415
+
+    # El MÁS RECIENTE adjunto que sigue siendo válido AHORA MISMO (no solo "el único en la lista"):
+    # en una conversación larga con varios reinicios del backend, ``adjuntos_activos`` puede acumular
+    # referencias de adjuntos subidos ANTES de un reinicio (el almacén de adjuntos es en memoria —
+    # se pierde al reiniciar, pero la referencia queda en el estado de sesión persistido). Elegir solo
+    # por "hay exactamente uno" descartaba la redirección en cuanto había más de una referencia, aunque
+    # las antiguas ya no existieran. Nunca es una adivinanza de CONTENIDO: si el elegido ya no existe,
+    # ``informe_comparativo_turnos_fichajes`` lo reporta explícitamente (NOT_FOUND), nunca inventa datos.
+    refs = get_active_refs(ctx.session_state)
+    live_ref = next(
+        (r for r in reversed(refs) if svc.get_for_user(r.attachment_id, ctx.user.user_id) is not None), None
+    )
+    if live_ref is None:
+        return None
+
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from mia.data import Employee  # noqa: PLC0415
+
+    async with deps.db.session() as db:
+        rows = (await db.execute(select(Employee.department).distinct())).scalars().all()
+    departments = sorted({d for d in rows if d}, key=len, reverse=True)
+    matched = [d for d in departments if normalize_key(d) and normalize_key(d) in key]
+    if len(matched) != 1:
+        return None  # ninguno o varios departamentos mencionados: no se adivina cuál.
+
+    registry: ToolRegistry | None = deps.services.get("registry")
+    if registry is None:  # pragma: no cover — solo si Deps se construye fuera de build_registry()
+        return None
+
+    from mia.llm import ToolCall  # noqa: PLC0415
+
+    call = ToolCall(
+        "generar_informe->informe_comparativo_turnos_fichajes",
+        "informe_comparativo_turnos_fichajes",
+        json.dumps({"departamento": matched[0], "adjunto_id": live_ref.attachment_id}),
+    )
+    execution = await registry.execute(call, ctx)
+    return execution.result
+
+
 def generar(deps: Deps) -> Tool:
     async def handler(p: InformeParams, ctx: ToolContext) -> ToolResult:
         # Si hay dos meses explícitos de nóminas, no exportar la última
@@ -254,6 +326,9 @@ def generar(deps: Deps) -> Tool:
                 )
         presentation = ctx.session_state.get(LAST_TABLE)
         if not presentation:
+            redirect = await _maybe_redirect_to_turnos_fichajes(deps, ctx)
+            if redirect is not None:
+                return redirect
             return ToolResult(
                 ToolStatus.NOT_FOUND,
                 "No hay ningún resultado reciente (tabla, panel o ficha) para el informe.",
@@ -582,51 +657,15 @@ def generar_ejecutivo(deps: Deps) -> Tool:
                  "requisitos_pendientes": exc.missing},
             )
 
-        settings = deps.settings.reports if deps.settings else None
-        directory = Path(settings.directory if settings else "informes")
-        ttl = timedelta(hours=settings.ttl_hours if settings else 24)
-        logo_path = settings.logo_path if settings else None
-
-        content = await asyncio.to_thread(_render, p.formato, document, ctx.now, logo_path)
-        report_id = _uuid()
-        path = directory / f"{report_id}.{p.formato}"
-        await asyncio.to_thread(_write, path, content)
-
-        safe = re.sub(r"[^\w\- ]+", "", document.title).strip()[:60] or "informe_ejecutivo"
-        file_name = f"{safe}.{p.formato}"
-
-        async with deps.db.session() as db:
-            db.add(
-                Report(
-                    id=report_id,
-                    user_id=ctx.user.user_id,
-                    title=document.title,
-                    format=p.formato,
-                    file_name=file_name,
-                    path=str(path),
-                    expires_at=ctx.now + ttl,
-                )
-            )
-
-        url = f"/api/reports/{report_id}"
-        diag_emit(
-            EventStage.REPORT_GENERATION,
-            data={
-                "report_id": report_id, "formato": p.formato, "secciones": len(document.blocks),
-                "tool": "generar_informe_ejecutivo",
-            },
-        )
-        return ToolResult(
-            ToolStatus.OK,
-            {
-                "informe": file_name,
-                "secciones": len(document.blocks),
+        return await persist_document_report(
+            deps, ctx, document,
+            formato=p.formato,
+            tool_name="generar_informe_ejecutivo",
+            default_file_stem="informe_ejecutivo",
+            extra_summary={
                 "periodo": f"{lo.isoformat()} a {hi.isoformat()}",
                 "ambito": dept_name or "toda la empresa",
-                "enlace": url,
-                "caduca_en_horas": int(ttl.total_seconds() // 3600),
             },
-            {"type": "download", "title": document.title, "format": p.formato, "url": url, "file_name": file_name},
         )
 
     return Tool(

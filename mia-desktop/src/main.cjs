@@ -6,11 +6,27 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { normalizeConfig, clamp, placeNear } = require('./config.cjs');
 const { computeResizeBounds } = require('./bubble-resize.cjs');
+const { isInWindow, toLocalPoint, shouldIgnoreMouse, nextDragPosition } = require('./avatar-pointer.cjs');
 const speech = require('./voice.cjs');
 const backend = require('./backend.cjs');
+const auth = require('./auth.cjs');
+const mailWatch = require('./mail-watch.cjs');
+const reportFiles = require('./report.cjs');
 const tableExport = require('./export.cjs');
 const diagnostics = require('./diagnostics.cjs');
 const {VisibilityGate} = require('./visibility.cjs');
+
+// mia-desktop no tenia ningun mecanismo de .env hasta ahora (todo el login venia del
+// /api/auth/config compartido con la web -- ver auth.cjs). Variables como MIA_DESKTOP_ENTRA_CLIENT_ID
+// se leen de aqui. Usa el loader nativo de Node (sin dependencia nueva); si el fichero no existe o
+// Node es demasiado antiguo para soportarlo, sigue con el comportamiento de siempre sin romper nada.
+const envFilePath = path.join(app.getAppPath(), '.env');
+try {
+  process.loadEnvFile(envFilePath);
+  console.log('[mIA Config] .env cargado desde', envFilePath);
+} catch (e) {
+  console.log('[mIA Config] sin .env en', envFilePath, '-', e.code || e.message);
+}
 
 protocol.registerSchemesAsPrivileged([{
   scheme: 'mia', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true }
@@ -25,6 +41,8 @@ let registeredShortcut = null;
 let wakeProcess = null;
 let wakeGeneration=0;
 const visibility = new VisibilityGate();
+// Only a verified voice command or an explicit UI/tray action can hide mIA.
+const HIDE_REASONS=new Set(['VOICE_VERIFIED','TRAY_MINIMIZE','CHAT_MINIMIZE','AVATAR_MENU_MINIMIZE','WINDOW_CLOSE']);
 let confirmationOpen=false;
 let microphoneInUse = false;
 const activePlaybackSenders=new Set();
@@ -32,6 +50,7 @@ let greetingTriggered = false;
 let ceremonySequence=0, ceremonyBusy=false;
 const ceremonies=new Map();
 let lastResultsPayload = null;
+let lastBackendReport = null;
 const conversationSession={backendContext:null,employeeSubject:null};
 let logoDownloadBusy = false;
 let bubbleResizePending = null;
@@ -155,7 +174,7 @@ async function spokenHide(){
   ceremonyBusy=true;stopWake();speech.cancelDictation();
   if(bubbleWin&&!bubbleWin.isDestroyed())bubbleWin.webContents.send('mia:stop-conversation');
   try{await performCeremony('FAREWELL','Hasta luego. Cuando me necesites, aquí estaré.');}
-  finally{ceremonyBusy=false;hideAvatar();}
+  finally{ceremonyBusy=false;hideAvatar('VOICE_VERIFIED');}
 }
 async function spokenShow(){
   if(ceremonyBusy || !visibility.acceptVoiceShow())return;
@@ -177,9 +196,9 @@ function exitDesktop() {
   app.isQuitting=true; stopWake(); speech.cancelDictation(); speech.shutdown(); app.quit();
 }
 function onSpokenCommand(command){
-  if(ceremonyBusy||app.isQuitting)return;
+  if(ceremonyBusy||confirmationOpen||app.isQuitting)return;
   if(command==='SHOW'){spokenShow().catch(()=>{ceremonyBusy=false;startWake();});return;}
-  if(command==='HIDE'){spokenHide().catch(()=>{ceremonyBusy=false;hideAvatar();});return;}
+  if(command==='HIDE'){spokenHide().catch(()=>{ceremonyBusy=false;hideAvatar('VOICE_VERIFIED');});return;}
   if(command==='EXIT'&&!confirmationOpen){
     confirmationOpen=true;stopWake();
     dialog.showMessageBox({type:'question',title:'Cerrar mIA Desktop',message:'¿Quieres cerrar mIA Desktop por completo?',buttons:['Cancelar','Cerrar mIA'],defaultId:0,cancelId:0,noLink:true})
@@ -222,8 +241,14 @@ function focusAvatar() {
   avatarWin.showInactive();
   avatarWin.webContents.send('mia:avatar-visibility', true);
 }
-function hideAvatar() {
-  if (!avatarWin || avatarWin.isDestroyed()) return;
+function hideAvatar(reason) {
+  if (!HIDE_REASONS.has(reason)) {
+    diagnostics.record('visibility_change',{mode:'avatar',code:'REJECTED_UNAUTHORIZED_HIDE'});
+    return false;
+  }
+  if (!avatarWin || avatarWin.isDestroyed()) return false;
+  if (!avatarWin.isVisible() && (!bubbleWin || bubbleWin.isDestroyed() || !bubbleWin.isVisible()))return false;
+  diagnostics.record('visibility_change',{mode:'avatar',code:reason});
   visibility.hide();
   speech.cancelDictation();
   microphoneInUse=false;
@@ -232,6 +257,7 @@ function hideAvatar() {
   avatarWin.hide();
   avatarWin.webContents.send('mia:avatar-visibility', false);
   startWake();
+  return true;
 }
 function positionCompanion(win) {
   if (!avatarWin || !win || win.isDestroyed()) return;
@@ -247,7 +273,7 @@ function openBubble(options = {}) {
       frame: false, transparent: true, hasShadow: true, resizable: true,
       skipTaskbar: true, alwaysOnTop: config.alwaysOnTop
     });
-    bubbleWin.on('close', e => { if (!app.isQuitting) { e.preventDefault(); speech.cancelDictation(); bubbleWin.webContents.send('mia:stop-conversation'); bubbleWin.hide(); startWake(); } });
+    bubbleWin.on('close', e => { if (!app.isQuitting) { e.preventDefault(); diagnostics.record('visibility_change',{mode:'ui',code:'CHAT_WINDOW_CLOSE'}); speech.cancelDictation(); bubbleWin.webContents.send('mia:stop-conversation'); bubbleWin.hide(); startWake(); } });
     bubbleWin.on('resize', () => {
       const bounds=bubbleWin.getBounds();
       if (bubbleResizePending) clearTimeout(bubbleResizePending);
@@ -281,7 +307,10 @@ function openResults(payload = {}) {
   const sanitized = {
     question: typeof payload.question === 'string' ? payload.question.slice(0,2000) : '',
     answer: typeof payload.answer === 'string' ? payload.answer.slice(0,12000) : '',
-    presentation: payload.presentation && typeof payload.presentation === 'object' ? payload.presentation : null
+    presentation: payload.presentation && typeof payload.presentation === 'object' ? payload.presentation : null,
+    // Solo usar el descriptor recibido por IPC directamente del backend.
+    report: lastBackendReport ? {format:lastBackendReport.format,title:lastBackendReport.title,filename:lastBackendReport.filename,available:lastBackendReport.available}:null,
+    reportPending: !!payload.reportPending && !lastBackendReport?.available
   };
   if (!resultsWin || resultsWin.isDestroyed()) {
     resultsWin = createWindow('results', {
@@ -303,9 +332,8 @@ function registerShortcut(shortcut) {
   if (registeredShortcut) globalShortcut.unregister(registeredShortcut);
   registeredShortcut = null;
   if (!globalShortcut.register(shortcut, () => {
-    if (!avatarWin.isVisible()) openBubble();
-    else if (bubbleWin && bubbleWin.isVisible()) hideAvatar();
-    else openBubble();
+    // A global shortcut may be hit by another application. It must never minimize mIA.
+    openBubble();
   })) return false;
   registeredShortcut = shortcut;
   return true;
@@ -322,7 +350,7 @@ function createTray() {
     { label: 'Mostrar mIA', click: () => openBubble() },
     { label: 'Escribir a mIA', click: () => openBubble() },
     { label: 'Hablar con mIA', click: () => openBubble({ autoDictate: true, userGesture: true }) },
-    { label: 'Minimizar mIA a la bandeja', click: hideAvatar },
+    { label: 'Minimizar mIA a la bandeja', click: () => hideAvatar('TRAY_MINIMIZE') },
     { type: 'separator' },
     { label: 'Configuración…', click: openSettings },
     { label: 'Abrir carpeta de diagnósticos', click: () => shell.openPath(diagnostics.folder()).catch(()=>{}) },
@@ -337,21 +365,45 @@ function ownSender(event, allowed) {
 function setupIPC() {
   ipcMain.handle('mia:get-state', event => {
     if (!ownSender(event, [avatarWin, bubbleWin, settingsWin, resultsWin])) return null;
-    return { config: { ...config }, hasModel: Boolean(currentModel()), hasBrand: Boolean(currentBrandFile()), hasMiaLogo:Boolean(currentMiaLogoFile()), mode: 'desktop-v0.3.2', backendConnected: false, voiceStatus: lastVoiceStatus, avatarBounds:avatarWin.getBounds() }; 
+    return { config: { ...config }, hasModel: Boolean(currentModel()), hasBrand: Boolean(currentBrandFile()), hasMiaLogo:Boolean(currentMiaLogoFile()), mode: 'desktop-v0.3.4', backendConnected: false, voiceStatus: lastVoiceStatus, avatarBounds:avatarWin.getBounds() }; 
   });
   let dragSession = null;
   let dragTimer = null;
+  let avatarWasUnderCursor = false;
+  // An ignored transparent window cannot rely on pointermove/pointerenter to
+  // recover mouse input on Windows. Poll Electron's global cursor, including
+  // when the avatar is currently click-through, then ask the renderer whether
+  // the cursor hits the actual 3D silhouette.
+  const avatarHoverTimer = setInterval(() => {
+    if (!avatarWin || avatarWin.isDestroyed() || !avatarWin.isVisible() || dragSession) return;
+    const cursor = screen.getCursorScreenPoint();
+    const bounds = avatarWin.getBounds();
+    const inside = isInWindow(cursor, bounds);
+    if (inside) {
+      avatarWasUnderCursor = true;
+      if (!avatarWin.webContents.isDestroyed() && !avatarWin.webContents.isLoading()) {
+        avatarWin.webContents.send('mia:avatar-cursor', toLocalPoint(cursor, bounds));
+      }
+    } else if (avatarWasUnderCursor) {
+      avatarWasUnderCursor = false;
+      if (!avatarWin.webContents.isDestroyed()) avatarWin.webContents.send('mia:avatar-cursor', { x: -1, y: -1 });
+      avatarWin.setIgnoreMouseEvents(true, { forward: true });
+    }
+  }, 45);
+  avatarHoverTimer.unref?.();
+  app.once('will-quit', () => clearInterval(avatarHoverTimer));
   function stopDragging(){ if(dragTimer) clearInterval(dragTimer); dragTimer=null; dragSession=null; }
   ipcMain.on('mia:start-drag', event => {
     if (!ownSender(event,[avatarWin])) return;
     stopDragging();
     avatarWin.setIgnoreMouseEvents(false);
+    avatarWasUnderCursor = true;
     dragSession={cursor:screen.getCursorScreenPoint(), bounds:avatarWin.getBounds(), started:Date.now()};
     dragTimer=setInterval(()=>{
       if(!dragSession || avatarWin.isDestroyed() || Date.now()-dragSession.started>12000) {stopDragging();return;}
       const now=screen.getCursorScreenPoint(); const ds=screen.getDisplayNearestPoint(now);const w=ds.workArea;
-      avatarWin.setPosition(Math.round(clamp(dragSession.bounds.x+now.x-dragSession.cursor.x,w.x,w.x+w.width-dragSession.bounds.width)),
-        Math.round(clamp(dragSession.bounds.y+now.y-dragSession.cursor.y,w.y,w.y+w.height-dragSession.bounds.height)));
+      const position=nextDragPosition(dragSession.bounds,dragSession.cursor,now,w);
+      avatarWin.setPosition(position.x,position.y);
       if (bubbleWin && bubbleWin.isVisible()) positionCompanion(bubbleWin);
     },25);
   });
@@ -377,16 +429,19 @@ function setupIPC() {
       bubbleWin.setBounds(next);
   });
   ipcMain.on('mia:passthrough', (event, ignore) => {
-    if (ownSender(event, [avatarWin]) && typeof ignore === 'boolean')
-      avatarWin.setIgnoreMouseEvents(ignore, { forward: true });
+    if (!ownSender(event, [avatarWin]) || typeof ignore !== 'boolean') return;
+    // A queued hit-test message can arrive after start-drag: never let it
+    // make an actively dragged window ignore the mouse.
+    if (dragSession && ignore) return;
+    avatarWin.setIgnoreMouseEvents(shouldIgnoreMouse({ dragging:!!dragSession, inside:true, hit:!ignore }), { forward: true });
   });
   ipcMain.handle('mia:open-bubble', event => ownSender(event, [avatarWin, bubbleWin]) && openBubble());
   ipcMain.handle('mia:hide-bubble', event => {
-    if (ownSender(event, [bubbleWin])) { speech.cancelDictation(); bubbleWin.webContents.send('mia:stop-conversation'); bubbleWin.hide(); startWake(); return true; }
+    if (ownSender(event, [bubbleWin])) { diagnostics.record('visibility_change',{mode:'ui',code:'CHAT_CLOSE'});speech.cancelDictation(); bubbleWin.webContents.send('mia:stop-conversation'); bubbleWin.hide(); startWake(); return true; }
     return false;
   });
   ipcMain.handle('mia:hide-avatar', event => {
-    if (ownSender(event, [avatarWin, bubbleWin, settingsWin])) { hideAvatar(); return true; }
+    if (ownSender(event, [avatarWin, bubbleWin, settingsWin])) { return hideAvatar('CHAT_MINIMIZE'); }
     return false;
   });
   ipcMain.handle('mia:open-settings', event => ownSender(event, [bubbleWin, settingsWin, avatarWin]) && openSettings());
@@ -400,7 +455,7 @@ function setupIPC() {
       { label: 'Escribir a mIA', click: () => openBubble() },
       { label: 'Hablar con mIA', click: () => openBubble({ autoDictate: true, userGesture: true }) },
       { type: 'separator' },
-      { label: 'Minimizar a la bandeja', click: hideAvatar },
+      { label: 'Minimizar a la bandeja', click: () => hideAvatar('AVATAR_MENU_MINIMIZE') },
       { label: 'Configuración...', click: openSettings }
     ]).popup({ window: avatarWin });
   });
@@ -426,7 +481,7 @@ function setupIPC() {
     await writeConfig();
     if(settingsWin&&!settingsWin.isDestroyed())settingsWin.webContents.send('mia:config-changed',{...config});
     broadcastVoiceStatus(mode==='off'?'Micrófono completamente desactivado.':
-      mode==='once'?'Micrófono listo: solo escucha al pulsar Hablar.':'Conversación autorizada desde el chat.');
+      mode==='once'?(config.wakePhraseEnabled?'Solo detección de comandos activa; pulsa Hablar para dictar.':'Micrófono en espera; pulsa Hablar para dictar.'):'Conversación autorizada desde el chat.');
     if(mode!=='off' && !microphoneInUse)startWake();
     return {ok:true,mode,commandsEnabled:mode!=='off'&&config.wakePhraseEnabled};
   });
@@ -469,7 +524,7 @@ function setupIPC() {
     if (!ownSender(event, [bubbleWin]) || typeof text !== 'string' || text.trim().length > 2000) return { error: 'Entrada no válida.' };
     if (!text.trim()) return { error: 'Escribe o dicta una consulta.' };
     const started=Date.now();
-    try { const out=await backend.sendPrompt(config.backendBase,text.trim(),conversationSession);diagnostics.record('backend_chat',{mode:'backend',code:out.identityBlocked?out.identityCode:(out.error?'REQUEST_FAILED':(out.identitySelection||'OK')),durationMs:Date.now()-started});return out; }
+    try { lastBackendReport=null; const out=await backend.sendPrompt(config.backendBase,text.trim(),conversationSession);lastBackendReport=out.report||null;diagnostics.record('backend_chat',{mode:'backend',code:out.identityBlocked?out.identityCode:(out.error?'REQUEST_FAILED':(out.identitySelection||'OK')),durationMs:Date.now()-started});if(out.report?.available||out.reportPending)diagnostics.record('report_delivery',{mode:'backend',code:out.report?.available?'LINK_AVAILABLE':'LINK_MISSING',available:!!out.report?.available});return out; }
     catch(e){diagnostics.record('backend_chat',{mode:'backend',code:'UNHANDLED_ERROR'});throw e;}
   });
   ipcMain.on('mia:avatar-ready', event => {
@@ -493,6 +548,27 @@ function setupIPC() {
       await fsp.writeFile(selected.filePath, content, {flag:'w'});
       return {ok:true,rows:rowIndices?.length??tables[tableIndex].rows.length, partial:tables[tableIndex].truncated || tables[tableIndex].total>tables[tableIndex].received};
     }catch(e){return {ok:false,error:e.message};}
+  });
+  ipcMain.handle('mia:download-report', async event => {
+    if(!ownSender(event,[resultsWin]) || !lastBackendReport?.available || !lastResultsPayload?.report?.available)
+      return {ok:false,error:'El backend no ha proporcionado un archivo descargable.'};
+    try{
+      const report=lastBackendReport;
+      // Obtener el documento ANTES de mostrar Guardar como: un fallo remoto no produce archivo vacío.
+      const bytes=await reportFiles.fetchReportFile(config.backendBase,report);
+      const selected=await dialog.showSaveDialog(resultsWin,{
+        title:'Guardar informe generado por mIA SBC',defaultPath:report.filename,
+        filters:[{name:report.format.toUpperCase(),extensions:[report.format]}]
+      });
+      if(selected.canceled||!selected.filePath)return {ok:false,canceled:true};
+      await fsp.writeFile(selected.filePath,bytes,{flag:'w'});
+      diagnostics.record('report_download',{mode:'backend',code:'SAVED',httpStatus:200});
+      return {ok:true};
+    }catch(e){
+      // No registrar rutas, IDs, URLs ni datos empresariales.
+      diagnostics.record('report_download',{mode:'backend',code:'DOWNLOAD_FAILED'});
+      return {ok:false,error:String(e?.message||'No se pudo descargar el informe.').slice(0,250)};
+    }
   });
   ipcMain.handle('mia:probe-voice', async event => {
     if(!ownSender(event,[settingsWin]))return {ok:false,error:'No autorizado.'};
@@ -578,10 +654,23 @@ function setupIPC() {
 
 app.on('second-instance', () => { if (avatarWin) openBubble(); });
 app.on('window-all-closed', () => { /* El proceso permanece residente en la bandeja. */ });
-app.on('will-quit', () => { speech.cancelDictation(); stopWake(); speech.shutdown(); globalShortcut.unregisterAll(); });
+app.on('will-quit', () => { speech.cancelDictation(); stopWake(); speech.shutdown(); globalShortcut.unregisterAll(); mailWatch.stop(); });
 app.whenReady().then(async () => {
   readConfig();
   diagnostics.init(app.getPath('userData'), app.getVersion());
+  // Antes de crear ninguna ventana: si el backend exige login real (MIA_AUTH__MODE=entra), esto
+  // abre el navegador del sistema y espera a que el usuario inicie sesión. No-op en modo dev.
+  try {
+    await auth.ensureAuthenticated(app.getPath('userData'), config.backendBase);
+  } catch (e) {
+    // El dialogo que ve el usuario es generico a proposito; sin esto, el motivo real del fallo
+    // (MSAL: errorCode/errorMessage) se perdia del todo, ni en consola ni en diagnostics.
+    console.error('[mIA Auth] Fallo en el login:', e);
+    diagnostics.record('startup', { mode: 'auth', code: 'LOGIN_FAILED', detail: String(e?.errorCode || e?.message || e) });
+    dialog.showErrorBox('mIA Desktop', 'No se ha podido iniciar sesión. Vuelve a abrir mIA Desktop para reintentarlo.');
+    app.quit();
+    return;
+  }
   speech.configure(app.getPath('userData'));
   speech.setEnabled(config.voiceMode!=='off');
   protocol.handle('mia', async request => {
@@ -604,7 +693,7 @@ app.whenReady().then(async () => {
   positionAvatar();
   avatarWin.once('ready-to-show', () => {if(visibility.canAutoShow())focusAvatar();});
   avatarWin.webContents.once('did-finish-load', () => {if(visibility.canAutoShow() && !avatarWin.isVisible())focusAvatar();});
-  avatarWin.on('close', e => { if (!app.isQuitting) { e.preventDefault(); hideAvatar(); } });
+  avatarWin.on('close', e => { if (!app.isQuitting) { e.preventDefault(); hideAvatar('WINDOW_CLOSE'); } });
   applyLoginSetting();
   createTray();
   setupIPC();
@@ -612,4 +701,14 @@ app.whenReady().then(async () => {
   if (app.isPackaged) app.setAppUserModelId('es.sunsetbeachclub.mia.desktop');
   startWake();
   cacheBrandLogo().catch(console.warn);
+  // Aviso proactivo de correo nuevo (pedido del usuario): notificacion nativa de Windows: un clic
+  // abre la burbuja de chat con la pregunta de resumen ya escrita, lista para confirmar.
+  mailWatch.start(config.backendBase, correos => {
+    for (const correo of correos) {
+      mailWatch.showNotification(correo, c => {
+        openBubble();
+        bubbleWin?.webContents.send('mia:prefill-input', `Resúmeme el correo de ${c.de} sobre "${c.asunto}"`);
+      });
+    }
+  });
 }).catch(e => { diagnostics.record('startup',{mode:'ui',code:'STARTUP_ERROR'});dialog.showErrorBox('mIA Desktop','No se ha podido iniciar mIA Desktop. Consulta los diagnósticos.');app.quit(); });

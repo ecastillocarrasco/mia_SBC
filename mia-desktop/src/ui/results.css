@@ -44,3 +44,7 @@ main{max-width:1260px;margin:0 auto;padding:29px 32px 40px;display:flex;flex-dir
 .sbc-brand .sbc-header-logo{width:61px;max-height:35px;object-fit:contain}
 .sbc-brand .brand-fallback{font-size:11px;line-height:1.15}
 @media(max-width:810px){.sbc-brand{min-width:46px;padding-left:6px}.sbc-brand .sbc-header-logo{max-width:45px;max-height:30px}}
+
+/* V0.3.5: documentos provenientes del motor único del backend. */
+.document-section{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:24px 26px;border:1px solid #d8b68c;border-radius:20px;background:linear-gradient(125deg,#fffdf9,#faedf0);box-shadow:0 10px 30px #503b3b12}
+.document-summary{display:flex;align-items:center;gap:20px;flex:1 1 300px}.document-mark{display:grid;place-items:center;width:66px;height:78px;border-radius:12px;background:#733750;color:#fff7f5;font-size:18px;font-weight:850;letter-spacing:.03em;flex:none}.document-content{min-width:0}.document-content h2{font:normal 25px Georgia,serif;color:#50253a;margin:8px 0;overflow-wrap:anywhere}.document-content p{font-size:12px;color:#715b67;line-height:1.5;margin:0 0 8px}.document-content #documentStatus{font-size:11px;font-weight:700;color:#815b4a}.document-download{border:0;border-radius:12px;background:#743550;color:white;padding:16px 22px;font-size:13px;font-weight:700;cursor:pointer}.document-download:hover{background:#56273d}.document-download:disabled{opacity:.55;cursor:progress}

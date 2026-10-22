@@ -47,8 +47,10 @@ const html = (base) => `
   </div>`;
 
 export class MiaBootLoader {
-  constructor({ mode = '3d', root = document.body } = {}) {
+  constructor({ mode = '3d', root = document.body, variant = 'classic', markup = null } = {}) {
     this.mode = mode;
+    this.variant = variant;
+    this.avatarScene = null;
     this.active = true;
     this.target = 0;
     this.displayed = 0;
@@ -59,9 +61,33 @@ export class MiaBootLoader {
     this.node = document.createElement('div');
     this.node.className = 'mia-boot';
     this.node.dataset.mode = mode;
+    this.node.dataset.variant = variant;
     this.node.setAttribute('aria-label', 'Cargando Mía');
-    this.node.innerHTML = html(safeBase);
+    this.node.innerHTML = variant === 'sbc-assembly' && typeof markup === 'function'
+      ? markup(safeBase) : html(safeBase);
     root.appendChild(this.node);
+    // V3: wait until the original HQ layers are decoded before starting the
+    // composition clock. Without this, slower devices show jumps/half-loaded
+    // pieces even though the CSS animation has already progressed.
+    if (variant === 'sbc-assembly') {
+      const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+      const imgs = [...this.node.querySelectorAll('.mia-sbc-v2__face')];
+      const decode = imgs.map(img => {
+        if (typeof img.decode === 'function') return img.decode().catch(() => {});
+        if (img.complete) return Promise.resolve();
+        return new Promise(resolve => {
+          img.addEventListener('load', resolve, { once: true });
+          img.addEventListener('error', resolve, { once: true });
+        });
+      });
+      this.assemblyDone = Promise.all(decode).then(() => {
+        if (!this.active) return;
+        this.node.classList.add('mia-sbc-v3--play');
+        return new Promise(resolve => window.setTimeout(resolve, reduced ? 0 : 5650));
+      });
+    } else {
+      this.assemblyDone = Promise.resolve();
+    }
     this.percentEl = this.node.querySelector('[data-boot-percent]');
     this.barEl = this.node.querySelector('[data-boot-bar]');
     this.ringEl = this.node.querySelector('.mia-boot__ring-value');
@@ -122,6 +148,10 @@ export class MiaBootLoader {
       this.phase = 'processing';
       this.statusEl.textContent = 'Preparando el personaje 3D…';
       this.detailEl.textContent = 'Organizando geometría y materiales';
+    } else if (details.phase === '2d') {
+      this.phase = '2d';
+      this.statusEl.textContent = 'Preparando tu experiencia 2D…';
+      this.detailEl.textContent = 'Cargando los recursos visuales';
     } else if (details.phase === 'animations') {
       this.phase = 'animations';
       this.statusEl.textContent = 'Sincronizando las animaciones…';
@@ -129,9 +159,37 @@ export class MiaBootLoader {
     }
   }
 
+  /** Revela el modelo Three.js YA cargado: no crea un segundo avatar ni GLB. */
+  async revealAvatar(scene) {
+    if (this.variant !== 'sbc-assembly' || !this.active || !scene?.model) return;
+    await this.assemblyDone;
+    if (!this.active) return;
+    this.avatarScene = scene;
+    // Reframe the existing camera; never move the rig or the avatar root.
+    this._introResize = () => {
+      if (this.avatarScene === scene) scene._framingGoal = window.innerWidth < 850 ? 0 : -0.76;
+    };
+    window.addEventListener('resize', this._introResize);
+    this._introResize();
+    scene.play('mIA_IDLE_SAFE', { fade: .3, loop: true });
+    this.node.classList.add('mia-boot--avatar-ready');
+    await new Promise((resolve) => window.setTimeout(resolve,
+      window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 0 : 860));
+  }
+
+  _restoreAvatar() {
+    const scene = this.avatarScene;
+    if (!scene) return;
+    this.avatarScene = null;
+    if (this._introResize) window.removeEventListener('resize', this._introResize);
+    this._introResize = null;
+    scene._framingGoal = 0; // Normal scene framing resumes smoothly.
+  }
+
   async _exit() {
     if (!this.active) return;
     this.node.classList.add('mia-boot--leaving');
+    this._restoreAvatar();
     await new Promise((resolve) => setTimeout(resolve, 290));
     this.dispose();
   }
@@ -149,6 +207,7 @@ export class MiaBootLoader {
     this.statusEl.textContent = '¡Todo listo para empezar!';
     this.detailEl.textContent = 'Mía está preparada';
     this._render();
+    await this.assemblyDone;
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     if (typeof onContinue !== 'function') {
       await new Promise((resolve) => setTimeout(resolve, 460));
@@ -219,6 +278,7 @@ export class MiaBootLoader {
     if (!this.active) return;
     this.active = false;
     cancelAnimationFrame(this.raf);
+    this._restoreAvatar();
     this.node.remove();
   }
 }

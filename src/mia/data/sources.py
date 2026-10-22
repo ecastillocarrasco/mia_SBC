@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mia.data.models import Base, _now
@@ -38,3 +39,39 @@ class SourceSyncState(Base):
     last_changes: Mapped[int | None] = mapped_column(Integer)
     last_error: Mapped[str | None] = mapped_column(Text)
     last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+STALE_AFTER = timedelta(minutes=30)
+
+
+async def freshness(db: AsyncSession, *sources: str, stale_after: timedelta = STALE_AFTER) -> dict[str, Any]:
+    """Antigüedad de las fuentes consultadas. ``al_dia`` False solo si superan el umbral.
+
+    Genérico sobre ``SourceSyncState``: lo usa cualquier dominio sincronizado desde SharePoint
+    (RRHH, Community…), nunca solo uno — por eso vive aquí y no en el ``common.py`` de un dominio
+    concreto."""
+    states = {
+        s.source: s
+        for s in (await db.scalars(select(SourceSyncState).where(SourceSyncState.source.in_(sources)))).all()
+    }
+    now = datetime.now(UTC)
+    oldest: int | None = 0
+    never: list[str] = []
+    for source in sources:
+        state = states.get(source)
+        last = state.last_success_at if state else None
+        if last is None:
+            never.append(source)
+            continue
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=UTC)
+        minutes = int((now - last).total_seconds() // 60)
+        oldest = max(oldest or 0, minutes)
+    if never:
+        return {"al_dia": False, "aviso": "Estas fuentes no se han sincronizado nunca: " + ", ".join(never)}
+    if oldest is not None and oldest > stale_after.total_seconds() // 60:
+        return {
+            "al_dia": False,
+            "aviso": f"Última sincronización hace {oldest} minutos: pueden faltar cambios recientes.",
+        }
+    return {"al_dia": True}

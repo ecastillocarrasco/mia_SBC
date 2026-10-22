@@ -7,7 +7,7 @@ import re
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
@@ -16,11 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.conversation import ToolResult, ToolStatus
 from mia.core.i18n import t
-from mia.data import Database, Employee, ShiftDay, SourceSyncState, Vacation
+from mia.data import Database, Employee, ShiftDay, Vacation
+from mia.data.sources import STALE_AFTER, freshness
 from mia.ingestion.mappers.hr import ShiftKind
 from mia.text import normalize_key
 
-STALE_AFTER = timedelta(minutes=30)
 MAX_ROWS_FOR_MODEL = 40
 """Filas que ve el modelo; la interfaz recibe la lista completa."""
 
@@ -159,36 +159,6 @@ def person_problem(match: PersonMatch, query: str | None) -> ToolResult:
     if match.suggestions:
         summary["quizas_quiso_decir"] = list(match.suggestions)
     return ToolResult(ToolStatus.NOT_FOUND, summary)
-
-
-# ------------------------------------------------------------------ frescura de datos
-async def freshness(db: AsyncSession, *sources: str, stale_after: timedelta = STALE_AFTER) -> dict[str, Any]:
-    """Antigüedad de las fuentes consultadas. ``al_dia`` False solo si superan el umbral."""
-    states = {
-        s.source: s
-        for s in (await db.scalars(select(SourceSyncState).where(SourceSyncState.source.in_(sources)))).all()
-    }
-    now = datetime.now(UTC)
-    oldest: int | None = 0
-    never: list[str] = []
-    for source in sources:
-        state = states.get(source)
-        last = state.last_success_at if state else None
-        if last is None:
-            never.append(source)
-            continue
-        if last.tzinfo is None:
-            last = last.replace(tzinfo=UTC)
-        minutes = int((now - last).total_seconds() // 60)
-        oldest = max(oldest or 0, minutes)
-    if never:
-        return {"al_dia": False, "aviso": "Estas fuentes no se han sincronizado nunca: " + ", ".join(never)}
-    if oldest is not None and oldest > stale_after.total_seconds() // 60:
-        return {
-            "al_dia": False,
-            "aviso": f"Última sincronización hace {oldest} minutos: pueden faltar cambios recientes.",
-        }
-    return {"al_dia": True}
 
 
 # ------------------------------------------------------------------ presentación

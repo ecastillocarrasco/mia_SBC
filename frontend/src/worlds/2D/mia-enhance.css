@@ -43,6 +43,15 @@
 .mia-mail-meta{display:grid;gap:2px;font-size:9.5px;color:#8d796d;margin-bottom:10px}
 .mia-mail-body{white-space:pre-wrap;font-size:11px;line-height:1.55;color:#3d3833;max-height:280px;overflow:auto;
   padding:10px 12px;border-radius:14px;background:rgba(23,32,68,.03)}
+.mia-attachments{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.mia-attachment{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:12px;
+  border:1px solid rgba(76,167,163,.3);background:rgba(76,167,163,.1);color:#1f6f6b;
+  text-decoration:none;font-size:10.5px;transition:background .15s ease}
+.mia-attachment:hover{background:rgba(76,167,163,.18)}
+.mia-attachment-name{font-weight:700;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mia-attachment-action{opacity:.75;font-size:9.5px}
+.mia-attachment--unavailable{color:#8d796d;background:rgba(23,32,68,.05);border-color:rgba(23,32,68,.09);cursor:default}
+.mia-mail-thread-card{border-color:rgba(76,167,163,.3)}
 .mia-draft{border-color:rgba(216,165,101,.45);background:linear-gradient(180deg,#fffdf9,#fbf5ec)}
 .mia-draft-state{display:inline-flex;align-items:center;gap:6px;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;
   color:#8a5a1f;background:rgba(216,165,101,.18);border-radius:999px;padding:4px 9px;margin-bottom:8px}
@@ -52,6 +61,26 @@
   font-size:10.5px;color:#7d3522}
 .mia-confirm .mia-actions{margin-top:8px}
 .mia-note{margin-top:8px;font-size:9.5px;color:#8d796d}
+
+/* noticias corporativas y de grupo */
+.mia-news-panel{display:grid;gap:10px;margin:12px 0}
+.mia-news-card{padding:14px 16px;border:1px solid rgba(23,32,68,.09);border-radius:18px;background:#fff;
+  box-shadow:0 14px 32px rgba(38,37,47,.05)}
+.mia-news-badges{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:7px}
+.mia-news-badge{display:inline-flex;padding:3px 10px;border-radius:999px;font-size:8.5px;font-weight:800;
+  letter-spacing:.04em;text-transform:uppercase}
+.mia-news-badge--empresa{color:#1f6f6b;background:rgba(76,167,163,.12);border:1px solid rgba(76,167,163,.3)}
+.mia-news-badge--categoria{color:#8a5a1f;background:rgba(216,165,101,.14);border:1px solid rgba(216,165,101,.35)}
+.mia-news-title{display:block;width:100%;text-align:left;border:none;background:none;padding:0;margin:0;
+  font:inherit;font-size:12.5px;font-weight:700;color:var(--mia-navy,#172044);cursor:pointer;transition:color .15s ease}
+.mia-news-title:hover{color:#8a5a1f}
+.mia-news-title::after{content:" ↗";font-size:.8em;opacity:.6}
+.mia-news-summary{margin:6px 0 0;font-size:10.5px;line-height:1.5;color:#6e5a4f}
+.mia-news-meta{margin-top:7px;font-size:9px;color:#9a8e87}
+.mia-chip.news-empresa{background:rgba(76,167,163,.13);color:#1f6f6b;font-weight:700}
+.mia-chip.news-categoria{background:rgba(216,165,101,.2);color:#8a5a1f;font-weight:700}
+.mia-news-popup-image{display:block;width:100%;max-height:280px;object-fit:cover;border-radius:16px;
+  margin-bottom:12px;background:rgba(23,32,68,.04)}
 
 /* texto de la respuesta */
 .mia-answer-bullet.mia-num b{color:var(--mia-gold,#d8a565);margin-right:2px}

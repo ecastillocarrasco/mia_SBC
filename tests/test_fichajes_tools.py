@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -112,3 +112,17 @@ async def test_user_without_fichajes_permission_is_denied(registry: ToolRegistry
     ctx = ToolContext(user=limited, request_id=None, now=NOW, session_state={})
     execution = await registry.execute(ToolCall("c", "fichajes_persona", json.dumps({"nombre": "Melania"})), ctx)
     assert execution.result.status is ToolStatus.PERMISSION_DENIED
+
+
+def test_localize_marks_converts_utc_to_local_madrid_time() -> None:
+    """Bug real encontrado contra datos de producción (2026-10-21): PostgreSQL devuelve
+    ``ClockMark.at`` con tzinfo UTC (un TIMESTAMPTZ representa un instante, no una zona), aunque se
+    escribió con la hora local correcta — mostrar esa hora directamente sin relocalizar daba una
+    hora de fichaje 2h por detrás de la real. 12:00 UTC en octubre (CEST, UTC+2) son las 14:00 en
+    Madrid. Prueba pura, a propósito separada de la base de datos: SQLite (solo tests) no reproduce
+    el comportamiento real de PostgreSQL de devolver el tzinfo tal cual se guardó."""
+    from mia.modules.rrhh.fichajes.tools import _localize_marks
+
+    marks = [datetime(2026, 10, 12, 12, 0, tzinfo=UTC), datetime(2026, 10, 12, 20, 0, tzinfo=UTC)]
+    localized = _localize_marks(marks)
+    assert [m.strftime("%H:%M") for m in localized] == ["14:00", "22:00"]

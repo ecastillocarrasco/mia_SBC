@@ -196,6 +196,53 @@ def test_hint_respuesta_directa_para_lookup():
     assert "directamente" in hint.lower()
 
 
+# ── Resumen: con tilde, sin tilde, en plural, con errores de tecleo ──────────
+# Regresión real: "resúmeme mis correos" no activaba nada distinto de "resumen" porque el regex
+# original (\bresumene?\b|\bresume\b) no reconocía la tilde de "resúm-" ni derivados como
+# "resúmenes"/"resumiendo". El usuario puede escribirlo de muchas formas: el reconocimiento debe
+# tolerar tildes, plural y errores tipográficos habituales, no solo la forma canónica "resumen".
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "resúmeme mis correos sin leer",
+        "resumeme mis correos sin leer",  # tilde omitida (error de tecleo habitual)
+        "hazme un resumen de los últimos 10 correos",
+        "quiero los resúmenes de cada correo",
+        "ves resumiendo el hilo mientras lo leo",
+        "RESUME mi bandeja de entrada",
+    ],
+)
+def test_summary_requested_tolerates_accents_and_typos(query: str) -> None:
+    qa = classify_query(query)
+    assert qa.summary_requested is True
+    assert "summary" in qa.requested_output
+
+
+def test_summary_requested_false_when_no_summary_word_present() -> None:
+    qa = classify_query("muéstrame los turnos de hoy")
+    assert qa.summary_requested is False
+
+
+def test_hint_summary_overrides_the_terse_direct_response_instruction() -> None:
+    """Pedir un resumen no debe recibir a la vez la instrucción contraria de "responde breve, no
+    añadas nada": eso es justo lo que producía la respuesta "ya está en la tabla, mira el detalle"."""
+    qa = classify_query("resúmeme mis correos sin leer")
+    hint = build_presentation_hint(qa)
+    assert "responde directamente y de forma breve" not in hint.lower()
+    assert "petición de resumen" in hint.lower()
+    assert "sintetiza el contenido real" in hint.lower()
+
+
+def test_hint_direct_response_instruction_still_applies_without_summary() -> None:
+    """Control: la instrucción de respuesta breve sigue apareciendo cuando NO se pide un resumen."""
+    qa = classify_query("cuántas personas hay hoy")
+    hint = build_presentation_hint(qa)
+    assert "responde directamente y de forma breve" in hint.lower()
+    assert "petición de resumen" not in hint.lower()
+
+
 # ── Tests de suppress_comparison en legacy_view.summary_view ─────────────────
 
 def test_suppress_comparison_elimina_comparativa_de_dict_of_dicts():

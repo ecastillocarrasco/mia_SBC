@@ -42,7 +42,8 @@ function stateText(value) { voiceStatus.textContent = value; }
 function updateMicControls(){
   const mode=cfg.voiceMode||'off';
   chatMicMode.value=mode;
-  mic.disabled=modeChanging||mode==='off'||answering||recognizing;
+  // While talking hands-free, 'Detener' must remain clickable even during an active capture.
+  mic.disabled=modeChanging||mode==='off'||answering||(recognizing&&!conversationActive);
   mic.textContent=mode==='conversation'?(conversationActive?'■ Detener':'🎙 Iniciar conversación'):'🎙 Hablar una vez';
   micIndicator.dataset.status=mode==='off'?'off':recognizing?'listening':conversationActive?'conversation':'off';
   micIndicator.textContent=mode==='off'?'APAGADO':recognizing?'ESCUCHANDO':conversationActive?'CONVERSANDO':cfg.wakePhraseEnabled?'SOLO COMANDOS':'EN ESPERA';
@@ -140,13 +141,15 @@ async function submit() {
       addMessage(reply.error, 'mia'); stateText('Error de conexión, autorización o verificación de identidad.'); bridge.avatarAction('IDLE');stopConversation();
     } else {
       addMessage(reply.answer || 'Sin respuesta.', 'mia');
-      lastResult = { question, answer: reply.answer || '', presentation: reply.presentation || null };
+      lastResult = { question, answer: reply.answer || '', presentation: reply.presentation || null, reportPending:!!reply.reportPending };
+      if(reply.reportPending)addMessage('El backend no ha entregado un enlace de descarga verificable. El texto «PDF listo» no permite recuperar el archivo. Consulta la sección Documento generado de Resultados.','mia');
       const hasTables = !!reply.presentation?.tables?.length;
       const hasCards = !!reply.presentation?.cards?.length;
+      const hasReport = !!reply.report?.available;
       const wantsVisual = /\b(lista|listado|relaci[oó]n|tabla|todos|todas|empleados|personas|puestos|gr[aá]fic[ao]s?|informe|kpi|estad[ií]sticas|ficha|expediente|perfil)\b/i.test(question);
-      if (hasTables || hasCards || wantsVisual) {
+      if (hasTables || hasCards || hasReport || wantsVisual) {
         bridge.openResults(lastResult);
-        if (!hasTables && !hasCards) {
+        if (!hasTables && !hasCards && !hasReport && !reply.reportPending) {
           addMessage('Aviso: el servidor ha enviado texto, pero no los registros estructurados del listado. He abierto Resultados para que puedas comprobarlo.', 'mia');
         }
       }
@@ -191,7 +194,7 @@ mic.addEventListener('click',()=>{
 document.getElementById('stopConversation').addEventListener('click',()=>{stopConversation();stopAudio();stateText('Conversación manos libres detenida.');});
 input.addEventListener('keydown', ev => {
   if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); submit(); }
-  if (ev.key === 'Escape') {stopConversation();bridge.hideBubble();}
+  if (ev.key === 'Escape') {ev.preventDefault();stopConversation();stateText('Escucha detenida. El chat sigue abierto.');}
 });
 document.getElementById('close').addEventListener('click', () => { stopConversation(); stopAudio(); bridge.hideBubble(); });
 document.getElementById('minimize').addEventListener('click', () => { stopConversation(); stopAudio(); bridge.hideAvatar(); });
@@ -199,6 +202,9 @@ document.getElementById('settings').addEventListener('click', () => bridge.openS
 document.getElementById('preview').addEventListener('click', () => bridge.openResults(lastResult || { question: input.value.trim(), answer: 'Todavía no se ha recibido una respuesta a esta consulta.', presentation:null }));
 // Solo solicitudes explícitas del menú «Hablar»; abrir mIA nunca inicia el dictado.
 bridge.onMicrophoneRequest(() => {if(cfg.voiceMode!=='off')dictate();});
+// Aviso de correo nuevo (main.cjs, mail-watch.cjs): deja la pregunta escrita, lista para que el
+// usuario la confirme — nunca se envía sola, sin que el usuario pulse enviar.
+bridge.onPrefillInput(text => { if (typeof text === 'string' && text.trim()) { input.value = text; input.focus(); } });
 bridge.onStopConversation(()=>{stopConversation();stopAudio();});
 bridge.onConfigChanged(value=>{
   const prev=cfg.voiceMode;
@@ -208,7 +214,7 @@ bridge.onConfigChanged(value=>{
   updateMicControls();
 });
 bridge.onVoiceStatus(status => { if(status.active && !recognizing && cfg.voiceMode!=='off')stateText('Escucha de comandos activa, no de preguntas.');updateMicControls(); });
-window.addEventListener('keydown', ev => { if (ev.key === 'Escape') { stopConversation();stopAudio(); bridge.hideBubble(); } });
+// Global Escape must not accidentally dismiss the chat window.
 window.addEventListener('focus', () => input.focus());
 document.addEventListener('visibilitychange', () => { if (document.hidden) {stopConversation();stopAudio();} });
 input.focus();

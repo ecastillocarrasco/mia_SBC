@@ -66,21 +66,37 @@ test('Una conexión muda termina con plazo de inactividad', async () => {
   }),timeoutMs:1000,inactivityMs:130}),err=>err.code==='inactivity');
 });
 
-test('No confunde recuento de filas con total de empleados trabajando', () => {
+test('Sin total confirmado, se muestra la respuesta real del backend (nunca un aviso genérico que la sustituya)', () => {
+  // Directiva del holograma: responde EXACTAMENTE lo mismo que 2D/3D para la misma pregunta, solo
+  // cambia la presentación. Antes, al no haber total confirmado, se descartaba la respuesta real
+  // y se sustituía por "No puedo confirmar..." — y como ningún código del backend fija
+  // `verified:true`, eso se disparaba el 100% de las veces, no como salvaguarda ocasional.
   const presentations=[{type:'table',columns:['Empleado','Departamento'],rows:[['Ana','Cocina'],['Luis','Restaurante']]}];
   assert.equal(confirmedWorkforceTotal({},presentations),null);
-  const result=hologramExecutiveCopy({question:'¿Quién está trabajando ahora mismo?',response:{answer:'Estos son los resultados.'},presentations,counts:{rows:2}});
+  const result=hologramExecutiveCopy({question:'¿Quién está trabajando ahora mismo?',response:{answer:'Ana y Luis están trabajando ahora en Cocina y Restaurante.'},presentations,counts:{rows:2}});
   assert.equal(result.confirmed,false);
-  assert.match(result.caption,/2 registros recibidos/);
-  assert.match(result.speech,/No puedo confirmar/);
+  assert.equal(result.value,null);
+  assert.match(result.caption,/Ana y Luis están trabajando ahora/);
+  assert.match(result.speech,/Ana y Luis están trabajando ahora/);
+  assert.doesNotMatch(result.speech,/No puedo confirmar/);
 });
 
-test('Métrica declarada sí permite mostrar total confirmado', () => {
+test('Métrica declarada marca un total confirmado, sin sustituir la respuesta real del backend', () => {
+  // confirmedWorkforceTotal exige verificación explícita del backend (response.verified===true):
+  // una etiqueta/valor de tarjeta KPI por sí sola no certifica un total real. Y aunque haya total
+  // confirmado, la respuesta mostrada/hablada sigue siendo la del backend -- el total confirmado
+  // es solo un dato adicional para resaltar como KPI, nunca sustituye el texto real (directiva del
+  // holograma: responde exactamente lo mismo que 2D/3D).
   const presentations=[{kpis:[{label:'Personal trabajando ahora',value:27}],tables:[]}];
-  assert.equal(confirmedWorkforceTotal({},presentations),27);
-  const copy=hologramExecutiveCopy({question:'¿Cuántos empleados trabajan ahora?',response:{answer:'Datos.'},presentations});
+  assert.equal(confirmedWorkforceTotal({verified:true},presentations),27);
+  const copy=hologramExecutiveCopy({
+    question:'¿Cuántos empleados trabajan ahora?',
+    response:{verified:true,answer:'Hay 27 personas trabajando ahora en el turno de tarde.'},
+    presentations,
+  });
   assert.equal(copy.confirmed,true);
-  assert.match(copy.speech,/27 personas trabajando/);
+  assert.equal(copy.value,27);
+  assert.match(copy.speech,/Hay 27 personas trabajando ahora en el turno de tarde/);
 });
 
 test('No convierte activos, vacaciones o descansos en personal trabajando', () => {
@@ -114,7 +130,7 @@ test('La voz tiene timeout; no mantiene un audio en espera indefinida', async ()
 
 test('La V5.2.2 conserva bienvenida con botón y micrófono de tres estados', async () => {
   const main=await readFile(new URL('../src/worlds/hologram/main.js',import.meta.url),'utf8');
-  for (const value of ['new MiaVoiceV4','voice?.cycle()','welcomeVoice.replay','boot.complete({','new MiaHologramDirectorV52','adaptHologramResult','sendHologramTurn','hologramExecutiveCopy','hologramVoice.speak']) {
+  for (const value of ['new MiaVoiceV4','voice?.cycle()','welcomeVoice.replay','boot.complete({','new MiaHologramDirectorV52','adaptHologramResult','sendHologramVia2D','hologramExecutiveCopy','hologramVoice.speak']) {
     assert.ok(main.includes(value),`Falta ${value}`);
   }
   assert.ok(!main.includes('await client.send(question)'));

@@ -39,6 +39,45 @@ def classify(phrase, config):
             return cmd
     return None
 
+
+def confirm_destructive_command(command, pcm_frames, configured, transcriber, np):
+    """Reject false Vosk matches. Only a completed utterance independently
+    transcribed by Whisper to the same exact hide/exit phrase is authorized.
+    Never log or persist the PCM/transcribed words.
+    """
+    if command not in ('HIDE', 'EXIT') or len(pcm_frames) < 12:
+        return False
+    try:
+        samples = np.frombuffer(b''.join(pcm_frames), dtype=np.int16).astype(np.float32) / 32768.0
+        if len(samples) < RATE // 3 or float(np.sqrt(np.mean(samples ** 2))) < .003:
+            return False
+        segments, _ = transcriber.transcribe(samples, language='es', beam_size=1,
+            vad_filter=False, condition_on_previous_text=False, temperature=0.0)
+        text = ' '.join(part.text.strip() for part in segments).strip()
+        return classify(text, configured) == command
+    except Exception:
+        # Fails closed; a speech model error never hides/closes the application.
+        return False
+
+def confirm_dictation_command(command, pcm_frames, configured, model, recognizer_type):
+    """Whisper candidate must also be independently recognized by Vosk.
+    A mistaken transcription is not permission to hide or exit the desktop.
+    """
+    if command not in ('HIDE', 'EXIT', 'SHOW') or not pcm_frames:
+        return False
+    try:
+        phrases = sorted({entry for opts in variants(configured).values() for entry in opts})
+        phrases.append('[unk]')
+        recognition = recognizer_type(model, RATE, json.dumps(phrases, ensure_ascii=False))
+        text = ''
+        if recognition.AcceptWaveform(b''.join(pcm_frames)):
+            text = json.loads(recognition.Result()).get('text', '')
+        if not text:
+            text = json.loads(recognition.FinalResult()).get('text', '')
+        return classify(text, configured) == command
+    except Exception:
+        return False
+
 def check_models(root):
     vosk_model = root / 'vosk-model-small-es-0.42'
     whisper_dir = root / 'whisper-base'
@@ -83,6 +122,7 @@ def run():
     speech_end_counter = 0
     noise_floor = 0.007
     candidate = None
+    wake_audio = collections.deque(maxlen=220)  # last 4.4 s; RAM only
     last_command_at = 0.0
     vad = webrtcvad.Vad(2) if webrtcvad else None
 
@@ -165,7 +205,10 @@ def run():
             else:
                 cmd = classify(words, configured)
                 if cmd:
-                    emit('DICTATION_COMMAND', command=cmd)
+                    if confirm_dictation_command(cmd,dictation_frames,configured,wake_model,KaldiRecognizer):
+                        emit('DICTATION_COMMAND', command=cmd, verified=True)
+                    else:
+                        emit('DICTATION_ERROR', code='COMMAND_UNVERIFIED')
                 else:
                     emit('TRANSCRIPT', text=words, confidence=None, alternatives=[])
         except Exception:
@@ -191,6 +234,7 @@ def run():
                             configured.update({k: str(ins['phrases'][k])[:48] for k in ('show','hide','exit') if k in ins['phrases']})
                         configure_wake()
                         candidate=None
+                        wake_audio.clear()
                         if ins.get('enabled'):
                             if open_microphone():
                                 active_mode='wake'
@@ -214,6 +258,7 @@ def run():
                         speech_started=False
                         speech_end_counter=0
                         preroll.clear()
+                        wake_audio.clear()
                         while not messages.empty():
                             try: messages.get_nowait()
                             except queue.Empty: break
@@ -230,21 +275,36 @@ def run():
                     process_dictation()
                 continue
             if active_mode=='wake':
+                wake_audio.append(pcm)
                 if recognizer.AcceptWaveform(pcm):
                     text=json.loads(recognizer.Result()).get('text','')
                     cmd=classify(text,configured)
                     if cmd and time.monotonic()-last_command_at>1.8:
-                        emit('COMMAND',command=cmd); last_command_at=time.monotonic()
+                        if cmd in ('HIDE','EXIT'):
+                            # Never act on a Vosk-only guess. Whisper confirms the
+                            # exact phrase from buffered local audio before any hide.
+                            if confirm_destructive_command(cmd,list(wake_audio),configured,transcriber,np):
+                                emit('COMMAND',command=cmd,verified=True)
+                                last_command_at=time.monotonic()
+                            else:
+                                emit('COMMAND_REJECTED',command=cmd)
+                        else:
+                            emit('COMMAND',command=cmd)
+                            last_command_at=time.monotonic()
                     candidate=None
+                    wake_audio.clear()
                 else:
                     text=json.loads(recognizer.PartialResult()).get('partial','')
                     cmd=classify(text,configured)
-                    # SHOW/HIDE are allowed with stable partial results; EXIT only on final.
-                    if cmd in ('SHOW','HIDE'):
+                    # Only SHOW is accepted from a stable partial result.
+                    # HIDE and EXIT must wait for final Vosk + independent Whisper.
+                    if cmd == 'SHOW':
                         if candidate and candidate[0]==cmd and time.monotonic()-candidate[1]>.22:
                             if time.monotonic()-last_command_at>1.8:
-                                emit('COMMAND',command=cmd);last_command_at=time.monotonic()
+                                emit('COMMAND',command=cmd)
+                                last_command_at=time.monotonic()
                                 recognizer.Reset()
+                                wake_audio.clear()
                             candidate=None
                         elif not candidate or candidate[0]!=cmd:
                             candidate=(cmd,time.monotonic())

@@ -159,6 +159,16 @@ function makeTable(table,tableIndex){
 function render(payload){
   if(!payload || typeof payload!=='object')return;
   currentPayload=payload;
+  const report=payload.report;
+  const pending=!!payload.reportPending;
+  const section=$('documentSection');
+  section.hidden=!(report||pending);
+  $('downloadReport').hidden=!report?.available;
+  $('downloadReport').disabled=false;
+  $('documentTitle').textContent=report?.title||'Informe solicitado';
+  $('documentDescription').textContent=report?.available?('Archivo '+report.format.toUpperCase()+' proporcionado por el motor de informes SBC.'): 'El servidor ha respondido, pero no ha enviado un enlace de descarga verificable. No es posible obtener el documento desde esta respuesta.';
+  $('documentStatus').textContent=report?.available?'Disponible para descargar':'Descarga no disponible · revisar respuesta del backend';
+  $('documentSection').dataset.format=report?.format||'pdf';
   $('query').textContent=payload.question||'Consulta sin especificar';
   $('answer').textContent=payload.answer||'No se ha recibido texto de respuesta.';
   const presentation=payload.presentation||{};
@@ -170,8 +180,8 @@ function render(payload){
   $('statTables').textContent=fmt.format(tables.length);
   $('statKpis').textContent=fmt.format(cards.length);
   const structured=!!(tables.length||cards.length);
-  if(!structured)notices.push('El backend no ha enviado tablas ni indicadores estructurados. El texto de la respuesta no equivale a registros recibidos.');
-  $('state').textContent=structured?'● Respuesta con datos':'◌ Sin datos estructurados';
+  if(!structured && !report?.available && !pending)notices.push('El backend no ha enviado tablas ni indicadores estructurados. El texto de la respuesta no equivale a registros recibidos.');
+  $('state').textContent=report?.available?'● Documento disponible':pending?'◌ Documento no entregado':structured?'● Respuesta con datos':'◌ Sin datos estructurados';
   $('notices').replaceChildren();
   for(const warning of notices.slice(0,12)){
     const el=node('div','notice');el.append(node('span','notice-mark','!'),node('span','',warning));$('notices').append(el);
@@ -185,11 +195,18 @@ function render(payload){
     box.append(node('span','kpi-shine'));
     $('cards').append(box);
   });
-  $('cards').hidden=!cards.length;$('cardsEmpty').hidden=!!cards.length;
+  $('cards').hidden=!cards.length;$('cardsEmpty').hidden=!!cards.length || !!report || pending;
+  $('dashboard').hidden=!cards.length && (!!report || pending);
   $('tables').replaceChildren();tables.forEach((table,i)=>$('tables').append(makeTable(table,i)));
-  $('empty').hidden=structured;
+  $('empty').hidden=structured || !!report || pending;
   $('details').hidden=!tables.length;
 }
+$('downloadReport').addEventListener('click',async()=>{
+  const button=$('downloadReport');button.disabled=true;$('documentStatus').textContent='Recuperando archivo del backend…';
+  try{const r=await bridge.downloadReport();$('documentStatus').textContent=r?.ok?'Informe guardado correctamente.':r?.canceled?'Descarga cancelada.':r?.error||'No se pudo recuperar el archivo.';}
+  catch{$('documentStatus').textContent='No se pudo establecer comunicación para descargar el archivo.';}
+  finally{button.disabled=false;}
+});
 bridge.onResultsData(render);
 
 window.addEventListener('error',()=>window.miaDesktop.reportRendererError('WINDOW_ERROR'));

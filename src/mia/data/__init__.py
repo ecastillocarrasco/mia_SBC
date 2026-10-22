@@ -1,3 +1,4 @@
+from mia.data.community import NewsletterItem
 from mia.data.db import Database
 from mia.data.hr import (
     CalendarShift,
@@ -66,6 +67,7 @@ __all__ = [
     "JOB_TERMINAL_STATES",
     "JOB_VALIDATING",
     "NewHire",
+    "NewsletterItem",
     "OrgUnit",
     "Payslip",
     "Report",

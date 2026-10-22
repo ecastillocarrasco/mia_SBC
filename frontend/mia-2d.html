@@ -3,21 +3,33 @@
 <head>
 <!-- mIA V5.3.1: bloqueo de primera pintura antes del mundo 2D -->
 <style id="mia2d-entry-paint-guard">
-html.mia2d-entry-loading body::before,
-html.mia2d-entry-loading body::after {
-  position:fixed!important; z-index:2147483640!important; pointer-events:auto!important;
-  box-sizing:border-box!important;
+#miaAccessGuard{display:none}
+html.mia2d-entry-loading{overflow:hidden}
+html.mia2d-entry-loading #miaAccessGuard{
+  display:flex!important; position:fixed; inset:0; z-index:2147483640;
+  align-items:center; justify-content:center; background:#fff;
 }
-html.mia2d-entry-loading body::before {
-  content:""; inset:0; background:linear-gradient(145deg,#fffbf5,#f9ece2 55%,#eee0d3);
+html.mia2d-entry-loading body > *:not(#miaAccessGuard){visibility:hidden}
+#miaAccessGuard .mia-guard__card{
+  display:flex; flex-direction:column; align-items:center; text-align:center;
+  max-width:380px; padding:24px; box-sizing:border-box;
 }
-html.mia2d-entry-loading body::after {
-  content:"mIA\A SUNSET BEACH CLUB\A Preparando tu experiencia 2D";
-  left:50%;top:50%;width:min(85vw,420px);transform:translate(-50%,-50%);
-  text-align:center;white-space:pre-line;color:#6b3141;line-height:2.0;
-  font:700 clamp(15px,2.5vw,23px)/1.9 Aptos,"Segoe UI",sans-serif;
-  letter-spacing:.06em;
+#miaAccessGuard .mia-guard__logo{width:clamp(130px,15vw,170px);height:auto;object-fit:contain;margin:0 0 24px}
+#miaAccessGuard .mia-guard__spinner{
+  width:34px;height:34px;border-radius:50%;margin:0 0 20px;
+  border:3px solid #edf0f3;border-top-color:#c77c75;animation:miaGuardSpin .8s linear infinite;
 }
+#miaAccessGuard .mia-guard__eyebrow{
+  letter-spacing:.19em;font-size:11px;font-weight:750;color:#bb7e65;margin:0 0 10px;
+  font-family:Inter,Aptos,"Segoe UI",Arial,sans-serif;
+}
+#miaAccessGuard h1{
+  margin:0;color:#243148;font-family:Georgia,"Times New Roman",serif;
+  font-size:clamp(26px,3vw,34px);font-weight:400;letter-spacing:-.03em;line-height:1.15;
+}
+#miaAccessGuard h1 em{font-style:normal;color:#c77c6b}
+@keyframes miaGuardSpin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#miaAccessGuard .mia-guard__spinner{animation:none}}
 </style>
 <script>
 document.documentElement.classList.add('mia2d-entry-loading');
@@ -36,6 +48,17 @@ window.__mia2dEntryGuardTimeout=window.setTimeout(function(){
   <link rel="stylesheet" href="/src/worlds/2D/mia-enhance.css" />
 </head>
 <body class="mia-universe-2d">
+  <!-- Contenido real del guard (ver el <style> del <head>): elemento del DOM, no pseudo-elemento,
+       para poder usar un <img> real del logo. Solo visible mientras html.mia2d-entry-loading. -->
+  <div id="miaAccessGuard" aria-hidden="true">
+    <div class="mia-guard__card">
+      <img class="mia-guard__logo" src="/mia-assets/sunset_beach_club_logo.gif" alt="" />
+      <div class="mia-guard__spinner"></div>
+      <p class="mia-guard__eyebrow">UN MOMENTO</p>
+      <h1>Preparando tu <em>experiencia 2D</em></h1>
+    </div>
+  </div>
+
   <div class="universe-bg" aria-hidden="true">
     <div class="universe-horizon"></div>
     <div class="universe-line line-a"></div>
@@ -76,6 +99,10 @@ window.__mia2dEntryGuardTimeout=window.setTimeout(function(){
           <div id="jobsPanelBody" class="jobs-panel-body"><div class="jobs-panel-empty">Cargando…</div></div>
         </div>
       </div>
+
+      <!-- Oculto por defecto: solo se revela con login real (ver auth-gate.js, mountSignOutButton(),
+           llamado desde mia-entry-v530.js). En modo dev/easyauth se queda oculto. -->
+      <button type="button" id="miaSignOut" class="mia-signout-btn" hidden>Cerrar sesión</button>
     </div>
   </header>
 
