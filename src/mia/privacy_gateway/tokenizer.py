@@ -7,6 +7,7 @@ distintos) — pero el token nunca lleva el valor original codificado, solo un n
 
 from __future__ import annotations
 
+import hashlib
 import re
 import threading
 import time
@@ -39,6 +40,10 @@ class Tokenizer:
         self._assigned: dict[tuple[str, str, str], str] = {}
         self._counters: dict[tuple[str, str], int] = {}
         self._last_seen: dict[str, float] = {}
+        # (operation_id, policy, hash(text)) -> (texto_con_pseudo_tokens, recuento). El system prompt
+        # es idéntico en todas las rondas de un mismo turno (varios segundos de análisis NLP sobre
+        # ~30.000 caracteres si no se cachea); analizarlo de cero en cada ronda es puro desperdicio.
+        self._tokenize_cache: dict[tuple[str, str, bytes], tuple[str, Counter[str]]] = {}
 
     def _token_for_value(self, entity_type: str, value: str, *, user_id: str, operation_id: str) -> str:
         key = (operation_id, entity_type, value)
@@ -62,23 +67,42 @@ class Tokenizer:
             stale_set = set(stale_ops)
             self._assigned = {k: v for k, v in self._assigned.items() if k[0] not in stale_set}
             self._counters = {k: v for k, v in self._counters.items() if k[0] not in stale_set}
+            self._tokenize_cache = {k: v for k, v in self._tokenize_cache.items() if k[0] not in stale_set}
             for op in stale_ops:
                 del self._last_seen[op]
+
+    @staticmethod
+    def _cache_key(operation_id: str, policy: Policy, text: str) -> tuple[str, str, bytes]:
+        digest = hashlib.blake2b(text.encode("utf-8"), digest_size=16).digest()
+        return (operation_id, policy.value, digest)
 
     def tokenize(
         self, text: str, *, policy: Policy, user_id: str, operation_id: str
     ) -> tuple[str, Counter[str]]:
-        """Devuelve (texto_con_pseudo_tokens, recuento de entidades por tipo)."""
+        """Devuelve (texto_con_pseudo_tokens, recuento de entidades por tipo).
+
+        Cacheado por (operación, política, texto): el system prompt es exactamente el mismo texto en
+        todas las rondas de un turno, así que repetir el análisis NLP completo en cada ronda es
+        desperdicio puro — mismo texto, misma operación, mismo resultado determinista."""
         self._sweep_stale()
         if not text:
             return text, Counter()
+        cache_key = self._cache_key(operation_id, policy, text)
+        with self._lock:
+            self._last_seen[operation_id] = time.monotonic()
+            cached = self._tokenize_cache.get(cache_key)
+        if cached is not None:
+            return cached
         entities = self._engine.analyze(text)
         threshold = score_threshold(policy)
         relevant = [
             e for e in entities if e.score >= threshold and action_for(e.entity_type, policy) is Action.TOKENIZE
         ]
         if not relevant:
-            return text, Counter()
+            result = (text, Counter())
+            with self._lock:
+                self._tokenize_cache[cache_key] = result
+            return result
         relevant = drop_overlapping(relevant)
         # de derecha a izquierda para no desplazar los índices de las entidades ya procesadas
         relevant.sort(key=lambda e: e.start, reverse=True)
@@ -88,7 +112,10 @@ class Tokenizer:
             token = self._token_for_value(entity.entity_type, entity.text, user_id=user_id, operation_id=operation_id)
             out = out[: entity.start] + token + out[entity.end :]
             counts[entity.entity_type] += 1
-        return out, counts
+        result = (out, counts)
+        with self._lock:
+            self._tokenize_cache[cache_key] = result
+        return result
 
     def restore(self, text: str, *, user_id: str, operation_id: str) -> tuple[str, int]:
         """Sustituye cada [TIPO_NNN] por su valor real SOLO si el token pertenece a esta operación y
@@ -116,4 +143,7 @@ class Tokenizer:
             stale_counters = [k for k in self._counters if k[0] == operation_id]
             for k in stale_counters:
                 del self._counters[k]
+            stale_cache = [k for k in self._tokenize_cache if k[0] == operation_id]
+            for k in stale_cache:
+                del self._tokenize_cache[k]
         self._vault.purge_operation(operation_id)
