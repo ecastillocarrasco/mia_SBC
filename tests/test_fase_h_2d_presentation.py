@@ -87,7 +87,7 @@ async def chat_app(tmp_path):
 
     from mia.api.services import Services
     from mia.conversation import ConversationEngine, Persona
-    from mia.modules.rrhh import build_registry
+    from mia.modules.registry import build_registry
 
     services = Services.build(settings, llm=llm, db=db)
     # Services.build() ya construyó su propio registro/engine con sharepoint=None (Deps es inmutable,
@@ -205,7 +205,7 @@ async def chat_app_with_hidden_department(tmp_path):
 
     from mia.api.services import Services
     from mia.conversation import ConversationEngine, Persona
-    from mia.modules.rrhh import build_registry
+    from mia.modules.registry import build_registry
 
     services = Services.build(settings, llm=llm, db=db)
     registry = build_registry(
@@ -300,7 +300,7 @@ async def chat_app_jobs_enabled(tmp_path):
 
     from mia.api.services import Services
     from mia.conversation import ConversationEngine, Persona
-    from mia.modules.rrhh import build_registry
+    from mia.modules.registry import build_registry
 
     services = Services.build(settings, llm=llm, db=db)
     registry = build_registry(

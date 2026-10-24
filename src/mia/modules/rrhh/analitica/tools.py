@@ -183,7 +183,10 @@ def panel(deps: Deps) -> Tool:
                 ),
             ],
         }
-        return ToolResult(ToolStatus.OK, summary, presentation, {"foco_departamento": dept.name} if dept.name else {})
+        # None explícito (y no {}) cuando no hay departamento: turn.state.update() en el motor nunca
+        # borra claves, así que omitir "foco_departamento" dejaría pegado un departamento de un turno
+        # anterior de forma indefinida (incluso tras reiniciar el backend, por persistir en Postgres).
+        return ToolResult(ToolStatus.OK, summary, presentation, {"foco_departamento": dept.name or None})
 
     return Tool(
         "panel_rrhh",

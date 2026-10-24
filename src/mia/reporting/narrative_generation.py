@@ -24,7 +24,7 @@ from typing import Any
 
 from mia.llm.base import LLMProvider, LLMRequest, Message, TextDelta
 from mia.llm.tiers import model_for_tier
-from mia.modules.rrhh.informes.document import Block, narrative_block, narrative_statement
+from mia.reporting.document import Block, narrative_block, narrative_statement
 from mia.reporting.narrative_guard import (
     enforce_narrative_integrity,
     enforce_narrative_period_coherence,

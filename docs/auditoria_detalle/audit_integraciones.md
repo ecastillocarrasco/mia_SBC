@@ -101,7 +101,7 @@ de contenido que al de conexión.
 
 ---
 
-## 2. Correo (Microsoft Graph, buzón compartido RRHH) — ✅ Implementado
+## 2. Correo (Microsoft Graph, buzón propio) — ✅ Implementado
 
 **Sentido:** saliente (lectura/búsqueda/borradores) y, condicionalmente, saliente real (envío).
 **Protocolo:** HTTPS/REST, Microsoft Graph v1.0 — `src/mia/connectors/graph.py:13` (`GRAPH =
@@ -114,23 +114,11 @@ SharePoint** (`CertificateTokenProvider(settings.sharepoint, scope="https://grap
 tanto el acceso al sitio SharePoint de RRHH como, potencialmente, Graph Mail sobre buzones — si ese
 certificado se compromete, el radio de impacto cubre ambos sistemas a la vez.
 
-**Permisos solicitados y HALLAZGO crítico ya reconocido por el propio equipo de desarrollo** —
-documentado literalmente en `docs/arquitectura.md:159-163`:
-> "Hoy Graph se llama con la aplicación (certificado) sobre `users/{buzón}`. Con buzones personales
-> hay dos caminos: (1) permisos delegados...; (2) permisos de aplicación con una Application Access
-> Policy de Exchange que limite a qué buzones puede entrar la aplicación (**sin ella, `Mail.Read` de
-> aplicación da acceso a todos los buzones del tenant**)."
+**Permisos solicitados:** `Mail.Read`/`Mail.ReadWrite`/`Mail.Send` se conceden desde Entra y el cliente pide `.default`; el repositorio no declara exactamente qué app roles están consentidos.
 
-Esto es una confirmación textual, en el propio repositorio, de que el permiso de aplicación de Graph
-para correo (`Mail.Read`/`Mail.ReadWrite`/`Mail.Send`, nombre exacto no fijado en código) es, por
-diseño de Graph, de **todo el tenant** salvo que se añada una Application Access Policy en Exchange
-Online que lo acote al buzón compartido de RRHH. **No hay evidencia en el repositorio de que esa
-Application Access Policy exista** (no está en `infra/main.bicep`, no hay script de Exchange Online
-PowerShell en el repo). **Recomendación crítica para IT:** verificar en Exchange Online si existe esa
-política de acotación; si no existe, la aplicación de mIA puede leer/enviar correo de **cualquier
-buzón del tenant**, no solo el de RRHH.
+**Límite de seguridad pendiente de comprobar en el tenant:** el backend resuelve el buzón de la sesión (`src/mia/modules/correo/mailbox.py`) y las herramientas no reciben otro buzón como argumento. La credencial de aplicación, sin embargo, puede tener alcance tenant-wide si Entra/Exchange no lo limitan. No hay evidencia en el repositorio del ámbito efectivo. IT debe revisar permisos generales en Entra y Exchange RBAC for Applications, y probar el usuario propio y otro usuario. Para aislamiento efectivo por petición, evaluar permisos delegados.
 
-**Resolución de buzón:** `src/mia/modules/rrhh/correo/mailbox.py:16-19` — nunca viene como parámetro
+**Resolución de buzón:** `src/mia/modules/correo/mailbox.py:16-19` — nunca viene como parámetro
 del modelo/usuario, siempre resuelto server-side (mitiga que el LLM o el usuario apunten a otro
 buzón, pero no mitiga el alcance del permiso de aplicación en sí).
 
@@ -139,11 +127,11 @@ buzón, pero no mitiga el alcance del permiso de aplicación en sí).
 reintentos ante 429/5xx con `Retry-After` o backoff `2**attempt` tope 30s (`graph.py:58-61`),
 renovación de token ante 401 una vez (`graph.py:55-57`), sin paginación explícita de `$skip`/
 `@odata.nextLink` implementada en el cliente genérico (cada herramienta pagina con `$top` fijo, ver
-p.ej. `src/mia/modules/rrhh/correo/tools.py:140-142`).
+p.ej. `src/mia/modules/correo/tools.py:140-142`).
 
 **Si el servicio cae:** cada herramienta de correo captura `GraphError` y devuelve
 `ToolResult(ToolStatus.SOURCE_UNAVAILABLE, "No he podido ...")` al usuario en vez de una excepción
-sin control — confirmado en 7 puntos de `src/mia/modules/rrhh/correo/tools.py:143-144,183-184,255-256,
+sin control — confirmado en 7 puntos de `src/mia/modules/correo/tools.py:143-144,183-184,255-256,
 300-301,378-379,411-412,453-454,482-483`. Nota menor: el mensaje incluye `{exc}` (cuerpo HTTP de Graph
 truncado a 300 caracteres, `graph.py:63`) tal cual al usuario final de la conversación — no es un
 secreto, pero es detalle interno de la API que no se filtra ni genera.
@@ -151,7 +139,7 @@ secreto, pero es detalle interno de la API que no se filtra ni genera.
 **Envío real:** controlado por flag explícito `MIA_MAIL__SEND_ENABLED` (por defecto `false`,
 `.env.example:59`) + confirmación conversacional adicional (comentario en el mismo fichero); el envío
 efectivo es una llamada POST a `.../sendMail` o `.../messages/{id}/send` vía el mismo `GraphClient`
-(`src/mia/modules/rrhh/correo/tools.py:377`).
+(`src/mia/modules/correo/tools.py:377`).
 
 **TLS / logging:** igual que SharePoint (mismo `httpx.AsyncClient`, sin `verify=False`; mismo
 logger con redacción de secretos).
@@ -333,11 +321,9 @@ vía Microsoft Graph, punto 2) — ❌ No existe.
 
 ## Hallazgos priorizados
 
-1. **CRÍTICO — Graph Mail, alcance de permiso no acotado.** `docs/arquitectura.md:159-163` reconoce
-   textualmente que el permiso de aplicación usado para leer el buzón de RRHH (`Mail.Read` de
-   aplicación) da acceso a **todos los buzones del tenant** salvo que exista una Application Access
-   Policy de Exchange Online que lo acote — y no hay evidencia en el repo de que esa política exista.
-   Verificar en Exchange Online/Entra ID antes de la presentación.
+1. **CRÍTICO — Graph Mail, alcance efectivo pendiente de revisar.** mIA apunta al buzón autenticado,
+   pero los permisos app-only pueden permitir el acceso técnico a otros buzones. Revisar Entra y Exchange;
+   el código no demuestra cómo está limitado el principal en el tenant.
 2. **ALTO — Permisos de Graph/SharePoint no declarados como código.** El scope usado es siempre
    `.default` (`auth.py:65`, `services.py:30`), que depende enteramente de lo que un administrador
    concedió manualmente en el registro de la aplicación en Entra ID; no hay ninguna lista de

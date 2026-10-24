@@ -25,8 +25,8 @@ import {
   buildEmployee360Presentation,
   renderEmployee360PresentationHtml,
 } from "../../core/employee360-presentation.js";
-import { ensureAuthenticated, ensureAuthorized } from "../../core/auth-gate.js";
-import { start as startMailWatch, ensureNotificationPermission, showNotification } from "../../core/mail-watch.js";
+import { ensureAuthenticated, ensureAuthorized, getAccessToken } from "../../core/auth-gate.js";
+import { start as startMailWatch, ensureNotificationPermission, announceNewMail, mailPromptQuery, consumeMailPrompt } from "../../core/mail-watch.js";
 
 // Si MIA_AUTH__MODE=entra exige login y ya hay sesión (p. ej. iniciada desde el portal), sigue
 // sin tocar nada. Si no hay sesión, `interactive: false` NUNCA inicia aquí su propio login (cada
@@ -40,15 +40,15 @@ await ensureAuthenticated({ interactive: false });
 await ensureAuthorized();
 // Aviso de correo nuevo (pedido del usuario, igual que mia-desktop y el mundo 2D): notificación
 // del navegador con un clic que abre el cajón de texto y deja la pregunta de resumen ya escrita.
-ensureNotificationPermission().then((granted) => {
-  if (!granted) return;
-  startMailWatch((correos) => {
-    for (const correo of correos) {
-      showNotification(correo, (c) => {
-        openDock({ focus: true });
-        input.value = `Resúmeme el correo de ${c.de} sobre "${c.asunto}"`;
-      });
-    }
+void ensureNotificationPermission();
+startMailWatch((correos, { restored = false } = {}) => {
+  if (busy) { deferredMailNotices.push({ correos, restored }); return; }
+  announceNewMail(correos, {
+    restored,
+    speak: (text) => { if (voiceEnabled) void client.speak(text); },
+    onSummary: (correo) => { openDock({ focus: true }); void submit(mailPromptQuery(correo, 'summary')); },
+    onDetails: (correo) => { openDock({ focus: true }); void submit(mailPromptQuery(correo, 'details')); },
+    onDismiss: () => { if (voiceEnabled) void client.speak('De acuerdo, seguimos con lo que estábamos.'); },
   });
 });
 
@@ -92,6 +92,19 @@ const holographicResults = new HolographicResults3D({ scene, panel, reducedMotio
 
 let voiceEnabled = true;
 let busy = false;
+const deferredMailNotices = [];
+function flushMailNotices() {
+  if (busy || !deferredMailNotices.length) return;
+  const notices = deferredMailNotices.splice(0);
+  const batch = notices.flatMap((notice) => notice.correos);
+  announceNewMail(batch, {
+    restored: notices.every((notice) => notice.restored),
+    speak: (text) => { if (voiceEnabled) void client.speak(text); },
+    onSummary: (correo) => { openDock({ focus: true }); void submit(mailPromptQuery(correo, 'summary')); },
+    onDetails: (correo) => { openDock({ focus: true }); void submit(mailPromptQuery(correo, 'details')); },
+    onDismiss: () => { if (voiceEnabled) void client.speak('De acuerdo, seguimos con lo que estábamos.'); },
+  });
+}
 let behavior = null;
 let dockHideTimer = null;
 let greetingTimer = null;
@@ -116,6 +129,10 @@ function scheduleGreetingEnd() {
 
 welcomeVoice = new MiaWelcomeVoiceV45({
   apiBase: client.apiBase,
+  getAuthHeaders: async () => {
+    const token = await getAccessToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  },
   onBlocked: () => welcomeAutostart?.blocked(),
   onStart: () => {
     welcomeAutostart?.markPlaying();
@@ -395,8 +412,11 @@ closePanel?.addEventListener("click", () => {
 });
 
 async function submit(text) {
-  const question = String(text || "").trim();
+  let question = String(text || "").trim();
   if (busy || !question) return;
+  const mailReply = consumeMailPrompt(question);
+  if (mailReply?.action === 'dismiss') { if (voiceEnabled) await client.speak('De acuerdo, seguimos con lo que estábamos.'); return; }
+  if (mailReply?.action === 'summary' || mailReply?.action === 'details') question = mailPromptQuery(mailReply.correo, mailReply.action);
   busy = true;
   welcomeAutostart.cancel(); // Impide el saludo tardio si ya hay una consulta.
   welcomeVoice.cancel();
@@ -463,6 +483,7 @@ async function submit(text) {
     sendButton.disabled = false;
     voice?.resume();  // solo reactiva el modo continuo elegido por el usuario
     scheduleDockAutoHide();
+    flushMailNotices();
   }
 }
 

@@ -16,7 +16,7 @@ from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.conversation import ToolContext, ToolRegistry, ToolStatus
 from mia.data import Payslip
 from mia.llm import ToolCall
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp
 from tests.test_domains import NOW
@@ -129,3 +129,60 @@ async def test_ranking_refuses_small_groups_and_needs_the_permission(registry: T
     assert (
         await registry.execute(ToolCall("c", "ranking_salarial", json.dumps({"puesto": "cocinero"})), denied)
     ).result.status is ToolStatus.PERMISSION_DENIED
+
+
+async def test_comparativa_lists_everyone_in_the_group_by_name(registry: ToolRegistry) -> None:
+    """Nombre a nombre (no un ranking top-N ni un agregado anónimo): los 6 cocineros, cada uno con su importe."""
+    ctx = ToolContext(user=ADMIN, request_id=None, now=NOW, session_state={})
+    result = (
+        await registry.execute(ToolCall("c", "comparativa_salarial", json.dumps({"puesto": "cocinero"})), ctx)
+    ).result
+    assert result.summary["nominas_comparadas"] == 6
+    by_name = {r["persona"]: r["importe"] for r in result.summary["comparativa"]}
+    assert by_name == {f"Cocinero {n}": net for n, net in NETS.items()}
+
+
+async def test_comparativa_refuses_small_groups_and_needs_the_permission(registry: ToolRegistry) -> None:
+    ctx = ToolContext(user=ADMIN, request_id=None, now=NOW, session_state={})
+    small = (
+        await registry.execute(ToolCall("c", "comparativa_salarial", json.dumps({"puesto": "jefe de sala"})), ctx)
+    ).result
+    assert small.status is ToolStatus.PERMISSION_DENIED and "protección de datos" in small.summary["mensaje"]
+    denied = ToolContext(user=MANAGER, request_id=None, now=NOW, session_state={})
+    assert (
+        await registry.execute(ToolCall("c", "comparativa_salarial", json.dumps({"puesto": "cocinero"})), denied)
+    ).result.status is ToolStatus.PERMISSION_DENIED
+
+
+async def test_comparativa_restricts_to_the_previous_population_not_the_whole_department(
+    registry: ToolRegistry,
+) -> None:
+    """Fallo real reportado: «compara el salario de esos (un subgrupo)» volvía a traer a todo el
+    departamento en vez de restringirse al grupo concreto del resultado anterior."""
+    previous_subgroup = {
+        "etiqueta": "los 3 de la mañana",
+        "total": 3,
+        "empleado_ids": [101, 102, 103],
+        "person_keys": [],
+        "emails": [],
+    }
+    ctx = ToolContext(
+        user=ADMIN, request_id=None, now=NOW, session_state={"ultima_poblacion": previous_subgroup}
+    )
+    result = (
+        await registry.execute(
+            ToolCall("c", "comparativa_salarial", json.dumps({"sobre_resultado_anterior": True})), ctx
+        )
+    ).result
+    names = {r["persona"] for r in result.summary["comparativa"]}
+    assert names == {"Cocinero 101", "Cocinero 102", "Cocinero 103"}
+
+
+async def test_comparativa_without_previous_result_is_a_clear_not_found(registry: ToolRegistry) -> None:
+    ctx = ToolContext(user=ADMIN, request_id=None, now=NOW, session_state={})
+    result = (
+        await registry.execute(
+            ToolCall("c", "comparativa_salarial", json.dumps({"sobre_resultado_anterior": True})), ctx
+        )
+    ).result
+    assert result.status is ToolStatus.NOT_FOUND

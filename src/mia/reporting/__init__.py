@@ -6,12 +6,10 @@ Capas, de más genérica a más específica:
                         (``period_engine``), catálogo semántico de campos (``field_registry``), y un
                         DSL de consulta en memoria (``UniversalQueryEngine``) — nada de esto es nuevo
                         del Bloque II, se adopta en vez de reconstruirlo (ver ADVANCED_REPORTING_PROGRESS.md).
-  mia.reporting/        (este paquete) — las piezas nuevas del Bloque II: ``ReportPlanner`` traduce una
-                        petición en lenguaje natural en un ``ReportPlan`` validado contra el catálogo
-                        semántico y los permisos del usuario, antes de que nada se ejecute.
-  mia.modules.rrhh.informes/  capa de herramientas conversacionales y renderizado (PDF/XLSX/PPTX) ya
-                        existente — sigue siendo la responsable de producir el documento final; este
-                        paquete no la sustituye, la antecede.
+  mia.reporting/        núcleo compartido: planificación, composición narrativa, modelo documental,
+                        gráficos y renderizadores PDF/XLSX/PPTX/HTML/DOCX. No pertenece a un dominio.
+  mia.modules.<dominio>/ herramientas conversacionales y datos de cada dominio; RRHH es el primero
+                        con generación de informes conectada a este motor.
 
 Ninguna pieza de este paquete ejecuta SQL ni llama al LLM directamente: ``ReportPlanner`` es
 determinista (resuelve texto contra el catálogo, nunca "adivina" un campo que no esté registrado), y

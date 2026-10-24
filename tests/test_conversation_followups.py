@@ -24,7 +24,7 @@ import pytest
 from mia.auth import UserContext
 from mia.conversation import ToolContext, ToolRegistry
 from mia.llm import ToolCall
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from tests.dbutil import fresh_database
 from tests.hr_seed import TODAY, _emp
 

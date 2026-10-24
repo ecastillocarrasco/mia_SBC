@@ -215,7 +215,7 @@
 
   /* ---- ventana: proponer, editar, guardar y enviar una respuesta */
   function openCompose(ref, msg, existing) {
-    var state = { borrador: existing ? existing.borrador : null, sent: false, enabled: existing ? existing.envio_habilitado : null };
+    var state = { borrador: existing ? existing.borrador : null, sent: false, confirming: false, enabled: existing ? existing.envio_habilitado : null, firma: existing ? existing.firma_preview : null, mailbox: existing ? existing.buzon_envio_nombre : null };
     var subject = (msg && msg.subject) || 'Respuesta';
     var m = modal({ title: 'Respuesta', subtitle: 'Re: ' + subject, icon: '✎', wide: true, sticky: true });
     if (msg && msg.from_address) m.meta.appendChild(chip('Para', (msg.from_name || '') + ' <' + msg.from_address + '>'));
@@ -223,14 +223,33 @@
     var status = el('div', 'mia-status'), hintRow = el('div', 'mia-regen'), instr = document.createElement('input');
     instr.type = 'text'; instr.placeholder = 'Indicaciones (opcional): «más formal», «dile que lo vemos el lunes»…'; instr.className = 'mia-input';
     var regen = button('Regenerar', '', function () { generate(); }); hintRow.appendChild(instr); hintRow.appendChild(regen);
-    var confirmSlot = el('div');
-    m.body.appendChild(status); m.body.appendChild(area); m.body.appendChild(hintRow); m.body.appendChild(confirmSlot);
-    var save = button('Guardar borrador', 'primary', doSave), send = button('Confirmar y enviar', 'primary', askConfirm), discard = button('Descartar', 'danger', doDiscard), cancel = button('Cerrar', '', m.close);
+    var confirmSlot = el('div', 'mia-confirm-slot');
+    var signaturePreview = el('details', 'mia-signature-preview');
+    var signatureSummary = el('summary', null, 'Vista previa de la firma corporativa');
+    signaturePreview.appendChild(signatureSummary);
+    var signatureContent = el('div', 'mia-signature-preview-content');
+    signaturePreview.appendChild(signatureContent);
+    if (state.firma) renderSignature(state.firma);
+    function renderSignature(text) {
+      state.firma = text;
+      signatureContent.innerHTML = '';
+      var banner = document.createElement('img'); banner.src = '/mia-assets/signature-banner.png';
+      banner.alt = 'Sunset Beach Club · Amazing Holidays all year round';
+      banner.style.cssText = 'display:block;width:100%;max-width:600px;height:auto;margin:8px 0';
+      signatureContent.appendChild(banner);
+      var preview = document.createElement('pre'); preview.textContent = text;
+      preview.style.cssText = 'white-space:pre-wrap;font:12px/1.45 Arial,Helvetica,sans-serif;color:#526579;margin:8px 0';
+      signatureContent.appendChild(preview);
+      signaturePreview.open = true;
+    }
+    m.body.appendChild(status); m.body.appendChild(area); m.body.appendChild(signaturePreview); m.body.appendChild(hintRow);
+    var save = button('Guardar borrador', 'primary', doSave), send = button('Enviar respuesta', 'primary', askConfirm), discard = button('Descartar', 'danger', doDiscard), cancel = button('Cerrar', '', m.close);
     function setStatus(kind, text) { status.innerHTML = ''; if (text) status.appendChild(banner(kind, text)); }
     function busy(on) { [save, send, discard, regen].forEach(function (b) { b.disabled = on || (b === send && !state.borrador) ; }); area.disabled = on; }
     function render() {
-      m.foot.innerHTML = '';
+      m.foot.innerHTML = ''; m.foot.classList.toggle('confirming', state.confirming);
       if (state.sent) { m.foot.appendChild(button('Cerrar', 'primary', m.close)); return; }
+      if (state.confirming) { m.foot.appendChild(confirmSlot); return; }
       if (!state.borrador) { m.foot.appendChild(save); m.foot.appendChild(cancel); return; }
       send.disabled = state.enabled === false; if (state.enabled === false) send.title = 'El envío de correos está desactivado en este entorno';
       m.foot.appendChild(send); m.foot.appendChild(save); m.foot.appendChild(discard); m.foot.appendChild(cancel);
@@ -251,24 +270,29 @@
       call.then(function (res) {
         busy(false);
         if (!res.ok) { setStatus('error', res.error || 'No he podido guardar el borrador.'); return; }
-        if (res.draft) { state.borrador = res.draft.borrador || state.borrador; state.enabled = res.draft.envio_habilitado; }
+        if (res.draft) { state.borrador = res.draft.borrador || state.borrador; state.enabled = res.draft.envio_habilitado; state.mailbox = res.draft.buzon_envio_nombre || state.mailbox; if (res.draft.firma_preview) renderSignature(res.draft.firma_preview); }
         setStatus('ok', 'Borrador guardado en el buzón. Todavía no se ha enviado.'); render();
       });
     }
     function askConfirm() {
       confirmSlot.innerHTML = ''; var box = el('div', 'mia-confirm');
-      box.appendChild(el('strong', null, '¿Enviar ahora esta respuesta?'));
-      box.appendChild(el('span', null, 'Saldrá desde el buzón de RRHH' + (msg && msg.from_address ? ' a ' + msg.from_address : '') + ' y no se puede deshacer.'));
+      box.appendChild(el('strong', null, '¿Enviar esta respuesta?'));
+      var from = state.mailbox || 'tu buzón';
+      var to = (msg && msg.from_address) || 'el remitente del correo';
+      box.appendChild(el('span', null, 'De ' + from + ' · Para ' + to + '. El envío no se puede deshacer.'));
       var row = el('div', 'mia-actions');
       row.appendChild(button('Sí, enviar', 'primary', function () {
-        confirmSlot.innerHTML = ''; busy(true); setStatus('info', 'Enviando…');
+        var confirmButton = row.querySelector('button'); if (confirmButton) confirmButton.disabled = true;
+        busy(true); setStatus('info', 'Enviando…');
         mailApi('send', { borrador: state.borrador }).then(function (res) {
           busy(false);
-          if (!res.ok) { setStatus('error', res.error || 'No se ha podido enviar.'); return; }
+          if (!res.ok) { state.confirming = false; confirmSlot.innerHTML = ''; setStatus('error', res.error || 'No se ha podido enviar.'); render(); return; }
+          state.confirming = false; confirmSlot.innerHTML = '';
           state.sent = true; area.disabled = true; hintRow.style.display = 'none'; setStatus('ok', '✓ Respuesta enviada.'); render();
         });
       }));
-      row.appendChild(button('Volver', '', function () { confirmSlot.innerHTML = ''; })); box.appendChild(row); confirmSlot.appendChild(box);
+      row.appendChild(button('Cancelar', '', function () { state.confirming = false; confirmSlot.innerHTML = ''; render(); })); box.appendChild(row); confirmSlot.appendChild(box);
+      state.confirming = true; render();
     }
     function doDiscard() {
       busy(true); mailApi('discard', { borrador: state.borrador }).then(function (res) {
@@ -459,6 +483,13 @@
       });
       var all = msg.querySelectorAll('.results'), wrap = all.length > before ? all[all.length - 1] : null;
       if (wrap && Array.isArray(data.mail_rows) && data.mail_rows.length) decorateMailList(wrap, data.mail_rows);
+      if (window.miaAutoOpenNextMail) {
+        window.miaAutoOpenNextMail = false;
+        if (data.mail_message && data.mail_message.ref) {
+          var openedMessage = data.mail_message;
+          window.setTimeout(function () { openMail(openedMessage.ref, { subject: openedMessage.subject, sender_name: openedMessage.from_name }); }, 0);
+        }
+      }
       if (!extras.length) return;
       if (!wrap) {  // el 2D original no crea contenedor para un correo abierto o un borrador: lo creamos
         wrap = el('div', 'results results--mail'); msg.appendChild(wrap);

@@ -45,6 +45,10 @@ p{margin:0 0 1px;color:#846e7a;font-size:11px;line-height:1.45}
 .notice{align-self:flex-start;color:#91717f;font-size:10px;line-height:1.4;
   border:1px solid rgba(255,255,255,.52);background:rgba(255,255,255,.34);
   padding:7px 11px;border-radius:12px}
+.mail-prompt{flex:none;padding:10px 11px;border:1px solid rgba(185,123,149,.32);border-radius:13px;background:rgba(255,255,255,.84);color:#64253f;font-size:11px;line-height:1.4}
+.mail-prompt[hidden]{display:none}.mail-prompt strong{display:block;overflow-wrap:anywhere}.mail-prompt p{margin:4px 0 8px;white-space:pre-line;overflow-wrap:anywhere}
+.mail-prompt-actions{display:flex;flex-wrap:wrap;gap:6px}.mail-prompt button{padding:6px 9px;border:1px solid #ebdce4;border-radius:9px;background:#fff;color:#71364f;font-size:10px;font-weight:700;cursor:pointer}
+.mail-prompt button:first-child{background:#6b2845;color:#fff;border-color:#6b2845}
 .message{max-width:95%;padding:10px 12px;line-height:1.47;font-size:12px;border-radius:14px;
   white-space:pre-wrap;overflow-wrap:anywhere;
   box-shadow:0 3px 10px rgba(82,42,64,.045)}

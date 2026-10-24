@@ -13,7 +13,7 @@ from typing import Any
 
 from mia.llm.base import LLMProvider, LLMRequest, Message, TextDelta
 from mia.llm.tiers import model_for_tier
-from mia.modules.rrhh.informes.document import Document
+from mia.reporting.document import Document
 from mia.settings import LLMSettings, ModelTier
 
 _SCHEMA: dict[str, Any] = {

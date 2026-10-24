@@ -16,7 +16,7 @@ from mia.conversation import ToolContext, ToolRegistry, ToolStatus
 from mia.data import ClockMark
 from mia.ingestion.mappers.hr import ShiftKind
 from mia.llm import ToolCall
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp, _shift
 

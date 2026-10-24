@@ -48,8 +48,26 @@ param voiceApiKey string = ''
 @description('Identificador de la voz de mIA en ElevenLabs')
 param voiceId string = ''
 
-@description('Client ID de la app de Entra ID para Easy Auth (vacío = sin Easy Auth; solo dev)')
+@description('Client ID de la API CV-SunsetBeachClub; audiencia de mIA y cliente confidencial OBO')
 param easyAuthClientId string = ''
+
+@description('Activar autenticación directa de Entra y OBO de Microsoft Graph para Correo')
+param delegatedMailEnabled bool = false
+
+@description('Tenant ID para MSAL/OBO (por defecto el tenant de la suscripción)')
+param entraTenantId string = subscription().tenantId
+
+@description('Client ID de la API mIA que recibe el token y hace el intercambio OBO; debe tener el certificado de mIA')
+param entraClientId string = easyAuthClientId
+
+@description('Client ID público de la aplicación web mia_Login que solicita el token para la API')
+param entraWebClientId string = ''
+
+@description('Client ID público de mia_Login_Desktop que solicita el token para la API')
+param entraDesktopClientId string = ''
+
+@description('Scope expuesto por CV-SunsetBeachClub solicitado por ambos clientes, p. ej. api://<client-id>/access_as_user')
+param entraScope string = ''
 
 @description('SharePoint: tenant de Entra ID donde está registrada la aplicación')
 param sharepointTenantId string = subscription().tenantId
@@ -81,7 +99,7 @@ param pseudonymKey string
 @description('Programación de la sincronización (cron, UTC)')
 param syncCron string = '*/10 * * * *'
 
-@description('Buzón compartido para el dominio de correo (vacío = correo desactivado)')
+@description('Buzón usado en desarrollo; producción resuelve el buzón de cada usuario')
 param mailMailbox string = ''
 
 @description('Permitir que mIA envíe correos (siempre con confirmación explícita del usuario)')
@@ -97,6 +115,9 @@ var isProd = environmentName == 'prod'
 var image = empty(containerImage) ? 'mcr.microsoft.com/k8se/quickstart:latest' : containerImage
 var voiceEnabled = !empty(voiceApiKey) && !empty(voiceId)
 var easyAuthEnabled = !empty(easyAuthClientId)
+var entraEnabled = delegatedMailEnabled
+var authClientId = entraEnabled ? entraClientId : easyAuthClientId
+var authTenantId = entraEnabled ? entraTenantId : subscription().tenantId
 var sharepointEnabled = !empty(sharepointSiteUrl) && !empty(sharepointPfxBase64)
 
 // ---------------------------------------------------------------- observabilidad
@@ -278,6 +299,7 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01'
 resource reportsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
   parent: blobService
   name: 'informes'
+  properties: { publicAccess: 'None' }
 }
 
 var blobContributor = subscriptionResourceId(
@@ -331,7 +353,12 @@ var voiceSecrets = voiceEnabled
 
 var baseEnv = [
   { name: 'MIA_ENVIRONMENT', value: isProd ? 'production' : 'dev' }
-  { name: 'MIA_AUTH__MODE', value: easyAuthEnabled ? 'easyauth' : 'dev' }
+  { name: 'MIA_AUTH__MODE', value: entraEnabled ? 'entra' : (easyAuthEnabled ? 'easyauth' : 'dev') }
+  { name: 'MIA_AUTH__ENTRA_TENANT_ID', value: entraEnabled ? entraTenantId : '' }
+  { name: 'MIA_AUTH__ENTRA_CLIENT_ID', value: entraEnabled ? entraClientId : '' }
+  { name: 'MIA_AUTH__ENTRA_WEB_CLIENT_ID', value: entraEnabled ? entraWebClientId : '' }
+  { name: 'MIA_AUTH__ENTRA_DESKTOP_CLIENT_ID', value: entraEnabled ? entraDesktopClientId : '' }
+  { name: 'MIA_AUTH__ENTRA_SCOPE', value: entraEnabled ? (empty(entraScope) ? 'api://${entraClientId}/access_as_user' : entraScope) : '' }
   { name: 'MIA_DATABASE_URL', secretRef: 'database-url' }
   { name: 'MIA_LLM__PROVIDER', value: llmProvider }
   { name: 'MIA_LLM__BASE_URL', value: llmBaseUrl }
@@ -346,8 +373,12 @@ var voiceEnv = voiceEnabled ? [{ name: 'MIA_VOICE__API_KEY', secretRef: 'voice-a
 var dataEnv = [
   { name: 'MIA_DATA__PSEUDONYM_KEY', secretRef: 'pseudonym-key' }
   { name: 'MIA_MAIL__MAILBOX', value: mailMailbox }
+  { name: 'MIA_MAIL__MAILBOX_SOURCE', value: entraEnabled || easyAuthEnabled ? 'user' : 'configured' }
   { name: 'MIA_MAIL__SEND_ENABLED', value: string(mailSendEnabled) }
   { name: 'MIA_REPORTS__DIRECTORY', value: '/tmp/informes' }
+  { name: 'MIA_REPORTS__BACKEND', value: 'azure_blob' }
+  { name: 'MIA_REPORTS__AZURE_ACCOUNT_URL', value: 'https://${storage.name}.blob.core.windows.net' }
+  { name: 'MIA_REPORTS__AZURE_CONTAINER', value: 'informes' }
 ]
 var sharepointEnv = sharepointEnabled
   ? [
@@ -371,7 +402,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
     type: 'UserAssigned'
     userAssignedIdentities: { '${identity.id}': {} }
   }
-  dependsOn: [vaultAccess, registryAccess]
+  dependsOn: [vaultAccess, registryAccess, storageAccess, reportsContainer]
   properties: {
     managedEnvironmentId: appEnvironment.id
     configuration: {
@@ -437,7 +468,7 @@ resource syncJob 'Microsoft.App/jobs@2024-03-01' = if (sharepointEnabled && !emp
   }
 }
 
-// Easy Auth: login de Entra delante de toda la aplicación hasta implementar MSAL.
+// En modo OBO MSAL envía un token cuya audiencia es la API mIA; Easy Auth acepta esa misma audiencia.
 resource auth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (easyAuthEnabled) {
   parent: app
   name: 'current'
@@ -446,16 +477,16 @@ resource auth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (easyAut
     globalValidation: {
       unauthenticatedClientAction: 'RedirectToLoginPage'
       redirectToProvider: 'azureactivedirectory'
-      excludedPaths: ['/health/live', '/health/ready']
+      excludedPaths: ['/health/live', '/health/ready', '/api/auth/config']
     }
     identityProviders: {
       azureActiveDirectory: {
         enabled: true
         registration: {
-          clientId: easyAuthClientId
-          openIdIssuer: '${environment().authentication.loginEndpoint}${subscription().tenantId}/v2.0'
+          clientId: authClientId
+          openIdIssuer: '${environment().authentication.loginEndpoint}${authTenantId}/v2.0'
         }
-        validation: { allowedAudiences: ['api://${easyAuthClientId}'] }
+        validation: { allowedAudiences: ['api://${authClientId}'] }
       }
     }
   }

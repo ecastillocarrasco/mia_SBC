@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from mia.api.deps import ServicesDep, UserDep
 from mia.auth import Permission, PermissionDeniedError
@@ -19,12 +19,13 @@ MEDIA = {
     "pdf": "application/pdf",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "html": "text/html; charset=utf-8",
 }
 
 
 @router.get("/reports/{report_id}")
-async def download(report_id: str, services: ServicesDep, user: UserDep) -> FileResponse:
+async def download(report_id: str, services: ServicesDep, user: UserDep) -> Response:
     """Solo quien generó el informe puede descargarlo, y solo mientras no caduque.
 
     Fase I (cierre de seguridad): para informes que exigen un permiso sensible
@@ -38,7 +39,13 @@ async def download(report_id: str, services: ServicesDep, user: UserDep) -> File
     expires = report.expires_at if report else None
     if expires is not None and expires.tzinfo is None:
         expires = expires.replace(tzinfo=UTC)
-    exists = report is not None and await asyncio.to_thread(Path(report.path).is_file)
+    legacy_path = Path(report.path) if report is not None and Path(report.path).is_absolute() else None
+    exists = False
+    if report is not None:
+        if legacy_path is not None:
+            exists = await asyncio.to_thread(legacy_path.is_file)
+        elif services.report_storage is not None:
+            exists = await services.report_storage.exists(report.path)
     if report is None or report.user_id != user.user_id or not exists:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Informe no encontrado")
     if expires is not None and expires < datetime.now(UTC):
@@ -54,5 +61,16 @@ async def download(report_id: str, services: ServicesDep, user: UserDep) -> File
                 status="error",
                 data={"report_id": report_id, "required_permission": report.required_permission, "decision": "denied"},
             )
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Ya no tienes el permiso necesario para este informe") from exc
-    return FileResponse(report.path, media_type=MEDIA.get(report.format), filename=report.file_name)
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, "Ya no tienes el permiso necesario para este informe"
+            ) from exc
+    if legacy_path is not None:
+        return FileResponse(legacy_path, media_type=MEDIA.get(report.format), filename=report.file_name)
+    if services.report_storage is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Informe no encontrado")
+    content = await services.report_storage.read(report.path)
+    return Response(
+        content,
+        media_type=MEDIA.get(report.format),
+        headers={"Content-Disposition": f'attachment; filename="{report.file_name}"'},
+    )

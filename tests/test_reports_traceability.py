@@ -30,7 +30,7 @@ from mia.diagnostics.store import DiagnosticsStore
 from mia.diagnostics.streaming import LiveBroadcaster
 from mia.diagnostics.trace import begin_trace
 from mia.llm import ToolCall
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from tests.dbutil import fresh_database
 
 ADMIN = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))

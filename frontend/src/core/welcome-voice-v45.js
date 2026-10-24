@@ -9,13 +9,17 @@
  */
 export class MiaWelcomeVoiceV45 {
   constructor({ apiBase = '', onBlocked = null, onStart = null, onEnd = null,
-    fetchImpl = null, audioFactory = null } = {}) {
+    fetchImpl = null, audioFactory = null, getAuthHeaders = null } = {}) {
     this.apiBase = apiBase;
     this.onBlocked = onBlocked;
     this.onStart = onStart;
     this.onEnd = onEnd;
     this.fetchImpl = fetchImpl || ((...args) => fetch(...args));
     this.audioFactory = audioFactory || ((url) => new Audio(url));
+    // /api/voice/stream exige sesión (UserDep en el backend, ver src/mia/api/routes/voice.py):
+    // sin esto, el saludo recibe 401 y cae siempre a la voz del navegador en 3D/Holograma —
+    // nunca se notaba en 2D porque su propio speak() ya adjunta el token (ver mia-2d.js).
+    this.getAuthHeaders = getAuthHeaders || (async () => ({}));
     this._controller = null;
     this._audio = null;
     this._url = null;
@@ -55,9 +59,14 @@ export class MiaWelcomeVoiceV45 {
     this._controller = controller;
     const promise = (async () => {
       try {
+        const authHeaders = await this.getAuthHeaders().catch(() => ({}));
+        // cancel() pudo llegar mientras esperábamos el token (p. ej. una consulta real
+        // interrumpe el saludo): no lancemos la petición de voz si ya no hace falta.
+        if (controller.signal.aborted || generation !== this._generation)
+          return { status: 'cancelled' };
         const response = await this.fetchImpl(`${this.apiBase}/api/voice/stream`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
           body: JSON.stringify({ text: message }),
           signal: controller.signal,
         });

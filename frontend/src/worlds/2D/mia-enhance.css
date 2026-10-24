@@ -130,6 +130,11 @@ body.mia-modal-open{overflow:hidden}
 .mia-modal-foot{display:flex;flex-wrap:wrap;gap:9px;justify-content:flex-end;padding:14px 22px 20px;border-top:1px solid rgba(23,32,68,.06);
   background:linear-gradient(0deg,rgba(246,243,238,.7),transparent)}
 .mia-modal-foot .mia-btn{padding:9px 16px;font-size:10.5px}
+.mia-modal-foot.confirming{display:block;padding:10px 18px 14px;background:#fff}
+.mia-confirm-slot{width:100%}
+.mia-confirm{display:grid;gap:7px;margin:0;padding:11px 13px;border-radius:14px;background:rgba(164,71,47,.07);border:1px solid rgba(164,71,47,.2);font-size:11px;line-height:1.45;color:#71331f}
+.mia-confirm>span{display:block;overflow-wrap:anywhere}
+.mia-confirm .mia-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:2px}
 .mia-compose{width:100%;box-sizing:border-box;padding:14px 16px;border-radius:18px;border:1px solid rgba(23,32,68,.13);background:#fff;
   font:inherit;font-size:12px;line-height:1.65;color:#2c2925;resize:vertical;min-height:170px;outline:none;transition:.16s ease}
 .mia-compose:focus{border-color:var(--mia-gold,#d8a565);box-shadow:0 0 0 4px rgba(216,165,101,.18)}

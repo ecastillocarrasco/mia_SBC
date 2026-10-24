@@ -1,7 +1,8 @@
 """Herramienta conversacional de noticias corporativas y de grupo.
 
-Información pública (prensa, comunicados a inversores): sin permiso asociado, igual que las
-herramientas de ``sistema`` — cualquier usuario autenticado puede consultarla.
+Prensa y comunicados a inversores: aunque el contenido en sí es público, el acceso a mIA no lo
+es — exige ``Permission.NOTICIAS_LEER``, concedido a cualquier usuario con algún rol reconocido
+(ver ``_UNIVERSAL_CON_ROL`` en ``mia.auth.context``), nunca a quien no tiene ninguno.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolResult, ToolStatus
 from mia.modules.community.noticias.classify import CATEGORY_LABELS, match_category_query
 from mia.modules.community.noticias.dedup import dedupe
@@ -117,7 +119,7 @@ def noticias_corporativas() -> Tool:
         "falta la frase exacta.",
         NoticiasParams,
         handler,
-        permission=None,
+        permission=Permission.NOTICIAS_LEER,
         timeout_seconds=15.0,
     )
 

@@ -19,7 +19,7 @@ from mia.conversation.tools import LAST_TABLE
 from mia.llm import ToolCall
 from mia.llm.base import LLMCompleted, LLMRequest, TextDelta
 from mia.llm.fake import FakeLLMProvider
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from tests.dbutil import fresh_database
 
 ADMIN = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))

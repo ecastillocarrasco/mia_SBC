@@ -21,8 +21,8 @@ import { createHologramTurnGuard, sanitizeHologramTrace } from "./hologram-lifec
 import { isReportGenerationIntent } from "./hologram-api-v525.js";
 import { readHologramWorldContext, saveHologramWorldContext, bindHologramWorldNavigation } from "./hologram-session-v529.js";
 import { extractHologramJob, pollHologramJob, reportDownloadHref, getJobStatusLabel, jobIsActive } from "./hologram-jobs-v529.js";
-import { ensureAuthenticated, ensureAuthorized } from "../../core/auth-gate.js";
-import { start as startMailWatch, ensureNotificationPermission, showNotification } from "../../core/mail-watch.js";
+import { ensureAuthenticated, ensureAuthorized, getAccessToken } from "../../core/auth-gate.js";
+import { start as startMailWatch, ensureNotificationPermission, announceNewMail, mailPromptQuery, consumeMailPrompt } from "../../core/mail-watch.js";
 
 // Si MIA_AUTH__MODE=entra exige login y no hay sesión, `interactive: false` vuelve al portal (el
 // único punto con login real — ver auth-gate.js) en vez de iniciar aquí su propio redirect a
@@ -33,18 +33,10 @@ await ensureAuthenticated({ interactive: false });
 await ensureAuthorized();
 // Aviso de correo nuevo (pedido del usuario, igual que mia-desktop y los mundos 2D/3D): notificación
 // del navegador con un clic que deja la pregunta de resumen ya escrita en el composer.
-ensureNotificationPermission().then((granted) => {
-  if (!granted) return;
-  startMailWatch((correos) => {
-    for (const correo of correos) {
-      showNotification(correo, (c) => {
-        const inputEl = document.getElementById("input");
-        if (!inputEl) return;
-        inputEl.value = `Resúmeme el correo de ${c.de} sobre "${c.asunto}"`;
-        inputEl.focus();
-      });
-    }
-  });
+void ensureNotificationPermission();
+startMailWatch((correos, { restored = false } = {}) => {
+  if (busy) { deferredMailNotices.push({ correos, restored }); return; }
+  announceMailBatch(correos, { restored });
 });
 
 const caption = document.getElementById("caption");
@@ -68,7 +60,13 @@ const hgContext = createHologramApiContext(hgSessionOrigin.context);
 bindHologramWorldNavigation(document, () => hgContext.value);
 const hgIntegrity = createHologramReplyIntegrity();
 const premiumStage = createHologramStage();
-const hologramVoice = new HologramVoiceV522({ apiBase: client.apiBase });
+const hologramVoice = new HologramVoiceV522({
+  apiBase: client.apiBase,
+  getAuthHeaders: async () => {
+    const token = await getAccessToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  },
+});
 // V5.3.1: manual recovery when remote voice is blocked or the service fails.
 // The audio from /api/voice/stream remains cached; no browser TTS is used.
 const voiceWidget = document.createElement('div');
@@ -238,6 +236,23 @@ window.addEventListener('keydown', (event) => {
 let hologramEffect = null;
 let director = null;
 let busy = false;
+const deferredMailNotices = [];
+function announceMailBatch(correos, { restored = false } = {}) {
+  announceNewMail(correos, {
+    restored,
+    speak: (text) => { void speakHologram(text); },
+    onSummary: (correo) => { void submit(mailPromptQuery(correo, 'summary'), { source: 'typed' }); },
+    onDetails: (correo) => { void submit(mailPromptQuery(correo, 'details'), { source: 'typed' }); },
+    onDismiss: () => { void speakHologram('De acuerdo, seguimos con lo que estábamos.'); },
+  });
+}
+function flushMailNotices() {
+  if (busy || !deferredMailNotices.length) return;
+  const notices = deferredMailNotices.splice(0);
+  announceMailBatch(notices.flatMap((notice) => notice.correos), {
+    restored: notices.every((notice) => notice.restored),
+  });
+}
 let queuedQuestion = null;
 let runningQuestion = '';
 let reportWatcher = null;
@@ -354,6 +369,10 @@ function scheduleGreetingEnd() {
 // inicia la proyección, la voz pre-descargada y SU animación exclusiva.
 const welcomeVoice = new MiaWelcomeVoiceV45({
   apiBase: client.apiBase,
+  getAuthHeaders: async () => {
+    const token = await getAccessToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  },
   onStart: () => premiumStage.speaking(true),
   onEnd: () => {
     premiumStage.speaking(false);
@@ -402,8 +421,11 @@ client.addEventListener("progress", (event) => {
 
 /** Cualquier pregunta termina en respuesta visual o error recuperable. */
 async function submit(text, {source = 'typed'} = {}) {
-  const question = String(text || "").trim();
+  let question = String(text || "").trim();
   if (!question || pageLeaving) return;
+  const mailReply = consumeMailPrompt(question);
+  if (mailReply?.action === 'dismiss') { await speakHologram('De acuerdo, seguimos con lo que estábamos.'); return; }
+  if (mailReply?.action === 'summary' || mailReply?.action === 'details') question = mailPromptQuery(mailReply.correo, mailReply.action);
   if (busy) {
     // Repetición por reconocimiento continuo o segundo clic: no generar DOS PDFs.
     if (normalizedPrompt(question) === normalizedPrompt(runningQuestion)) return;
@@ -455,6 +477,12 @@ async function submit(text, {source = 'typed'} = {}) {
         contextState: hgContext,
         replyIntegrity: hgIntegrity,
         signal: requestController.signal,
+        // Sin esto, MIA_AUTH__MODE=entra rechaza con 401 toda consulta del
+        // holograma (nunca llegaba a responder nada) — ver auth-gate.js.
+        getAuthHeaders: async () => {
+          const token = await getAccessToken();
+          return token ? { Authorization: `Bearer ${token}` } : {};
+        },
         // Mismo flujo que el 2D: LLM -> NDJSON -> JSON.
         // No se realiza ningún corte de 25s por silencio del backend.
         llmTimeoutMs: 120000,
@@ -682,6 +710,7 @@ async function submit(text, {source = 'typed'} = {}) {
     safely('button-unlock', () => { sendButton.disabled = false; });
     safely('microphone-resume', () => voice?.resume());
     safely('input-focus', () => { if (voice?.mode !== 'continuous') input.focus(); });
+    flushMailNotices();
     if (!pageLeaving && queuedQuestion !== null) {
       const next = queuedQuestion;
       queuedQuestion = null;

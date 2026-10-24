@@ -12,10 +12,11 @@ from __future__ import annotations
 import mimetypes
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 
-from mia.api.deps import ServicesDep, UserDep
+from mia.api.deps import ServicesDep, require
+from mia.auth import Permission
 from mia.connectors.sharepoint import SharePointError
 from mia.data import NewsletterItem
 
@@ -24,9 +25,10 @@ router = APIRouter(prefix="/api/community", tags=["community"])
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 
-@router.get("/newsletter/{item_id}/imagen")
-async def newsletter_image(item_id: int, services: ServicesDep, user: UserDep) -> Response:
-    del user  # información pública (igual que la propia herramienta, sin Permission asociado)
+@router.get("/newsletter/{item_id}/imagen", dependencies=[Depends(require(Permission.NOTICIAS_LEER))])
+async def newsletter_image(item_id: int, services: ServicesDep) -> Response:
+    # Mismo permiso que la herramienta newsletter_corporativo: el contenido en sí es público,
+    # pero el acceso a mIA no lo es (ver mia.auth.context._UNIVERSAL_CON_ROL).
     if services.sharepoint is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "SharePoint no está configurado")
     async with services.db.session() as db:

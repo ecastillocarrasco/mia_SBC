@@ -61,7 +61,7 @@ from mia.diagnostics.store import DiagnosticsStore
 from mia.diagnostics.streaming import LiveBroadcaster
 from mia.llm import ToolCall
 from mia.llm.fake import FakeLLMProvider, final_answer, tool_call
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from mia.modules.rrhh.informes.document import to_document
 from mia.modules.rrhh.informes.render import RENDERERS
 from mia.reporting.planner import planner

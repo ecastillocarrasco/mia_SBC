@@ -1,8 +1,9 @@
 """Módulo RRHH: el primero de los módulos de conocimiento de la empresa.
 
-Cada dominio (empleados, turnos, vacaciones…) vive en su propio paquete con sus herramientas
+Cada dominio de RRHH (empleados, turnos, vacaciones…) vive en su propio paquete con sus herramientas
 y tests, y se registra aquí. Los dominios desactivados (MIA_DOMAINS__ENABLED) no se ofrecen al
-modelo y se declaran como no disponibles para que mIA no los prometa.
+modelo y se declaran como no disponibles. Los dominios organizativos como Correo se componen en
+``mia.modules.registry``.
 """
 
 from __future__ import annotations
@@ -16,7 +17,6 @@ from mia.data import Database
 from mia.modules import ModuleManifest
 from mia.modules.rrhh import (
     analitica,
-    correo,
     curriculums,
     documentos,
     empleados,
@@ -33,13 +33,13 @@ from mia.modules.rrhh.common import Deps
 if TYPE_CHECKING:
     # Import real solo para tipado: en ejecución, mia.modules.rrhh se importa como parte de la
     # carga de mia.conversation.engine (vocabularios de select_modules), así que importar
-    # ToolRegistry aquí arriba crearía un ciclo. build_registry() lo importa en caliente.
+    # ToolRegistry aquí arriba crearía un ciclo. build_rrhh_registry() lo importa en caliente.
     from mia.conversation import ToolRegistry
 
 MANIFEST = ModuleManifest(
     name="rrhh",
     description="Recursos Humanos: empleados y organización, turnos y ausencias, fichajes y su "
-    "cruce con los turnos, vacaciones, nóminas, documentación firmada, correo del buzón de RRHH, "
+    "cruce con los turnos, vacaciones, nóminas, documentación firmada, "
     "selección y currículums, "
     "trabajo temporal, analítica e informes.",
     permissions=(
@@ -53,8 +53,6 @@ MANIFEST = ModuleManifest(
         Permission.DOCUMENTOS_CONTENIDO,
         Permission.CURRICULUMS_LEER,
         Permission.TRABAJO_TEMPORAL_LEER,
-        Permission.CORREO_LEER,
-        Permission.CORREO_ENVIAR,
         Permission.INFORMES_GENERAR,
         Permission.ADMINISTRAR,
         # PREDICCIONES_LEER no está aquí: hoy no la exige ninguna herramienta de RRHH,
@@ -70,7 +68,6 @@ MANIFEST = ModuleManifest(
         "sharepoint:DocumentosFirmados",
         "sharepoint:Calendarios",
         "sharepoint:Candidaturas",
-        "graph:correo",
     ),
 )
 
@@ -80,7 +77,6 @@ DOMAINS: dict[str, tuple[str, Callable[[ToolRegistry, Deps], None]]] = {
     "fichajes": ("control de presencia (fichajes)", fichajes.register),
     "vacaciones": ("vacaciones y saldos", vacaciones.register),
     "curriculums": ("selección y currículums", curriculums.register),
-    "correo": ("correo del buzón de RRHH", correo.register),
     "nominas": ("nóminas", nominas.register),
     "documentos": ("documentación firmada", documentos.register),
     "trabajo_temporal": ("trabajo temporal", trabajo_temporal.register),
@@ -89,7 +85,7 @@ DOMAINS: dict[str, tuple[str, Callable[[ToolRegistry, Deps], None]]] = {
 }
 
 
-def build_registry(
+def build_rrhh_registry(
     db: Database,
     stale_after_minutes: int = 30,
     *,
@@ -97,6 +93,7 @@ def build_registry(
     llm: Any = None,
     graph: Any = None,
     sharepoint: Any = None,
+    report_storage: Any = None,
     enabled: list[str] | None = None,
 ) -> ToolRegistry:
     from mia.conversation import ToolRegistry  # import en caliente: ver nota TYPE_CHECKING arriba.
@@ -116,6 +113,8 @@ def build_registry(
     # para no saltarse la comprobación de permisos, el trazado de diagnóstico ni el timeout que aplica
     # `ToolRegistry.execute()`. `deps.services` ya es el cajón de servicios compartidos del dominio.
     deps.services["registry"] = registry
+    if report_storage is not None:
+        deps.services["report_storage"] = report_storage
     sistema.register(registry)
     for domain in active:
         with registry.using_module(domain):

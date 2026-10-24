@@ -1,10 +1,7 @@
-"""Qué buzón usa cada usuario.
+"""Resolución del buzón personal por usuario.
 
-  * ``configured`` (desarrollo): el buzón declarado en ``.env`` (MIA_MAIL__MAILBOX), el mismo para todos.
-  * ``user`` (con autenticación MSAL/Entra ID): el buzón de la cuenta con la que el usuario ha iniciado sesión.
-
-Las herramientas de correo NO reciben el buzón como parámetro: siempre sale de aquí, así ni el modelo ni
-el usuario pueden apuntar a la bandeja de otra persona.
+Las herramientas pueden recibir el UPN o dirección de un buzón compartido. Con OBO,
+Microsoft Graph/Exchange decide si el usuario conectado está autorizado para acceder.
 """
 
 from __future__ import annotations

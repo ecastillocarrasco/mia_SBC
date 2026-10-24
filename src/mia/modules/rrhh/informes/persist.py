@@ -21,8 +21,8 @@ from mia.data.models import _uuid
 from mia.diagnostics import EventStage
 from mia.diagnostics import emit as diag_emit
 from mia.modules.rrhh.common import Deps
-from mia.modules.rrhh.informes.document import Document
-from mia.modules.rrhh.informes.render import RENDERERS
+from mia.reporting.document import Document
+from mia.reporting.render import RENDERERS
 
 
 def render_document(formato: str, document: Document, generated: datetime, logo: Path | None) -> bytes:
@@ -48,14 +48,19 @@ async def persist_document_report(
     """Renderiza ``document``, lo persiste en disco, lo registra en ``reports`` y devuelve el
     ``ToolResult`` de descarga — idéntico contrato al que ya usaba ``generar_informe_ejecutivo``."""
     settings = deps.settings.reports if deps.settings else None
-    directory = Path(settings.directory if settings else "informes")
     ttl = timedelta(hours=settings.ttl_hours if settings else 24)
     logo_path = settings.logo_path if settings else None
 
     content = await asyncio.to_thread(render_document, formato, document, ctx.now, logo_path)
     report_id = _uuid()
-    path = directory / f"{report_id}.{formato}"
-    await asyncio.to_thread(_write, path, content)
+    path = f"{report_id}.{formato}"
+    storage = deps.services.get("report_storage")
+    if storage is None:
+        directory = Path(settings.directory if settings else "informes")
+        await asyncio.to_thread(_write, directory / path, content)
+        path = str(directory / path)
+    else:
+        await storage.write(path, content)
 
     safe = re.sub(r"[^\w\- ]+", "", document.title).strip()[:60] or default_file_stem
     file_name = f"{safe}.{formato}"

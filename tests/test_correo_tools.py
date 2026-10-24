@@ -18,9 +18,9 @@ from mia.auth import Permission, UserContext
 from mia.connectors.graph import GraphClient
 from mia.connectors.sharepoint import StaticTokenProvider
 from mia.conversation.tools import ToolContext, ToolStatus
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from mia.modules.rrhh.common import Deps
-from mia.modules.rrhh.correo.tools import enviados, hilo, leer, recientes
+from mia.modules.correo.tools import enviados, hilo, leer, recientes
 from mia.settings import Environment, MailSettings, Settings
 from tests.dbutil import fresh_database
 
@@ -63,10 +63,41 @@ async def test_correos_recientes_does_not_filter_by_read_status() -> None:
     assert result.summary["correos_mostrados"] == 2
 
 
+async def test_correos_recientes_expands_attachment_names_and_types() -> None:
+    """Petición del usuario: el aviso de correo nuevo debe poder anunciar nombre y tipo de los
+    adjuntos, así que ``correos_recientes`` (la herramienta que alimenta /api/mail/notifications/poll)
+    tiene que pedirlos a Graph en la misma llamada, sin una petición aparte por mensaje."""
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["expand"] = request.url.params.get("$expand") or ""
+        message = _message("m1", read=True)
+        message["hasAttachments"] = True
+        message["attachments"] = [{"name": "informe.pdf", "contentType": "application/pdf"}]
+        return httpx.Response(200, json={"value": [message]})
+
+    graph = _graph(handler)
+    tool = recientes(_deps(graph))
+    result = await tool.handler(tool.params(limite=10), _ctx())
+    await graph.aclose()
+
+    assert "attachments" in seen["expand"]
+    assert result.summary["correos"][0]["adjuntos_detalle"] == [{"nombre": "informe.pdf", "tipo": "PDF"}]
+
+
+async def test_correos_recientes_without_attachments_has_no_adjuntos_detalle() -> None:
+    graph = _graph(lambda r: httpx.Response(200, json={"value": [_message("m1", read=True)]}))
+    tool = recientes(_deps(graph))
+    result = await tool.handler(tool.params(limite=10), _ctx())
+    await graph.aclose()
+
+    assert "adjuntos_detalle" not in result.summary["correos"][0]
+
+
 async def test_correos_sin_leer_still_filters_unread_only() -> None:
     """Guarda de regresión del propio contrato: ``correos_sin_leer`` sigue siendo el filtro
     explícito, no una alternativa de ``correos_recientes``."""
-    from mia.modules.rrhh.correo.tools import pendientes
+    from mia.modules.correo.tools import pendientes
 
     seen: dict[str, str] = {}
 
@@ -229,6 +260,69 @@ async def test_leer_correo_exposes_a_download_url_only_for_file_attachments() ->
     assert "$select" not in single_request.url.params
 
 
+# ------------------------------------------------------------------ buzon compartido (OBO delegado)
+
+MC_SALAS = UserContext(
+    "mc-salas-oid",
+    "Mª Carmen Salas",
+    roles=frozenset({"mia.rrhh"}),
+    auth_method="entra",
+    email="mc.salas@sunsetbeachclub.com",
+    graph_assertion="caller-own-api-token",
+)
+
+
+def _ctx_entra(user: UserContext = MC_SALAS) -> ToolContext:
+    return ToolContext(user=user, request_id="req-1", now=datetime(2026, 10, 20, 9, 0), session_state={})
+
+
+async def _fake_delegated_token(user: UserContext, *, force_refresh: bool = False) -> str:  # noqa: ARG001
+    """Sustituye el intercambio OBO real (MSAL + certificado) por un token de prueba: estos tests
+    verifican el enrutado del buzón y la gestión del 200/403 de Graph, no el propio protocolo OBO
+    (eso lo cubre graph.py / MSAL, no mIA)."""
+    return "fake-delegated-graph-token"
+
+
+async def test_recientes_cross_mailbox_uses_the_callers_own_obo_token_against_the_target_mailbox() -> None:
+    """mc.salas tiene Full Access delegado (ya concedido en Exchange) sobre RRHH@sunsetbeachclub.com.
+    Al pedir buzon="RRHH@sunsetbeachclub.com", Graph debe recibir la petición sobre ESE buzón usando
+    el token OBO de mc.salas -- no hay catálogo ni allow-list dentro de mIA, es Exchange quien decide."""
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        return httpx.Response(200, json={"value": [_message("m1", read=False)]})
+
+    graph = _graph(handler)
+    graph._delegated_token = _fake_delegated_token  # type: ignore[method-assign]
+    tool = recientes(_deps(graph))
+    result = await tool.handler(tool.params(buzon="RRHH@sunsetbeachclub.com"), _ctx_entra())
+    await graph.aclose()
+
+    assert seen["path"] == "/v1.0/users/RRHH@sunsetbeachclub.com/mailFolders/inbox/messages"
+    assert result.status is ToolStatus.OK
+    assert result.summary["correos_mostrados"] == 1
+
+
+async def test_recientes_cross_mailbox_denied_by_exchange_shows_a_clear_message_without_graph_internals() -> None:
+    """Sin delegación concedida, Exchange responde 403 y GraphError lo traduce a un mensaje claro
+    para la persona -- sin volcar el cuerpo/JSON interno de la respuesta de Graph."""
+
+    def handler(request: httpx.Request) -> httpx.Response:  # noqa: ARG001
+        return httpx.Response(403, json={"error": {"code": "ErrorAccessDenied", "innerError": {"request-id": "abc-123"}}})
+
+    graph = _graph(handler)
+    graph._delegated_token = _fake_delegated_token  # type: ignore[method-assign]
+    tool = recientes(_deps(graph))
+    result = await tool.handler(tool.params(buzon="RRHH@sunsetbeachclub.com"), _ctx_entra())
+    await graph.aclose()
+
+    assert result.status is ToolStatus.SOURCE_UNAVAILABLE
+    assert "permiso" in result.summary.lower()
+    assert "ErrorAccessDenied" not in result.summary
+    assert "request-id" not in result.summary
+
+
 def _message(msg_id: str, *, read: bool) -> dict[str, object]:
     return {
         "id": msg_id,
@@ -323,19 +417,42 @@ async def test_mail_unread_route_calls_the_tool_directly_without_an_llm_turn(tmp
     assert result["correos"][0]["asunto"] == "Asunto"
 
 
-async def test_mail_unread_route_requires_permission(tmp_path: Path) -> None:
+async def test_mail_unread_route_is_available_to_any_recognized_role(tmp_path: Path) -> None:
+    """CORREO_LEER es universal para cualquier rol reconocido, no un privilegio de "mia.rrhh":
+    "Legal" no lo lleva declarado en ROLE_PERMISSIONS y debe poder usarlo igual."""
+    from mia.api.routes.mail import mail_unread
+
+    user_legal = UserContext("u2", "Legal", roles=frozenset({"Legal"}))
+    db = await fresh_database(tmp_path, "mail_unread_legal.db")
+    settings = Settings(_env_file=None, environment=Environment.TEST, mail={"mailbox": "rrhh@sbc.test"})
+    graph = _graph(lambda r: httpx.Response(200, json={"value": []}))
+    registry = build_registry(db, settings=settings, graph=graph)
+    services = SimpleNamespace(engine=SimpleNamespace(tools=registry))
+
+    result = await mail_unread(services, user_legal)
+    await graph.aclose()
+    await db.dispose()
+
+    assert result["sin_leer_mostrados"] == 0
+
+
+async def test_mail_unread_route_denies_a_user_without_any_recognized_role(tmp_path: Path) -> None:
+    """Sin ningún rol reconocido no hay acceso de ningún tipo, ni siquiera a correo (ver
+    UserContext.permissions): 403, no un resultado vacío."""
     from fastapi import HTTPException
 
     from mia.api.routes.mail import mail_unread
 
-    user_without_mail = UserContext("u2", "Sin permiso", roles=frozenset())
+    user_without_role = UserContext("u3", "Sin rol", roles=frozenset())
     db = await fresh_database(tmp_path, "mail_unread_denied.db")
     settings = Settings(_env_file=None, environment=Environment.TEST, mail={"mailbox": "rrhh@sbc.test"})
-    registry = build_registry(db, settings=settings, graph=_graph(lambda r: httpx.Response(500)))
+    graph = _graph(lambda r: httpx.Response(200, json={"value": []}))
+    registry = build_registry(db, settings=settings, graph=graph)
     services = SimpleNamespace(engine=SimpleNamespace(tools=registry))
 
     with pytest.raises(HTTPException) as excinfo:
-        await mail_unread(services, user_without_mail)
+        await mail_unread(services, user_without_role)
+    await graph.aclose()
     await db.dispose()
 
     assert excinfo.value.status_code == 403

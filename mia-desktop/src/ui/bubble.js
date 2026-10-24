@@ -1,6 +1,7 @@
 const bridge = window.miaDesktop;
 const input = document.getElementById('prompt');
 const thread = document.getElementById('thread');
+const mailPrompt = document.getElementById('mailPrompt');
 const send = document.getElementById('send');
 const mic = document.getElementById('mic');
 const voiceStatus = document.getElementById('voiceStatus');
@@ -8,6 +9,7 @@ const chatMicMode=document.getElementById('chatMicMode');
 const micIndicator=document.getElementById('micIndicator');
 let cfg = {}, recognizing = false, answering = false, audio = null, audioUrl = null;
 let lastResult = null;
+let pendingMailPrompt = null, mailPromptTimer = null;
 let conversationActive=false,conversationTimer=null,captureEpoch=0;
 let modeRevision=0,modeChanging=false;
 const conversationToolbar=document.getElementById('conversationToolbar');
@@ -75,6 +77,47 @@ function addMessage(text, type) {
   el.textContent = text; // Sin HTML desde respuestas del backend.
   thread.appendChild(el); thread.scrollTop = thread.scrollHeight;
 }
+function hideMailPrompt() {
+  clearTimeout(mailPromptTimer); mailPromptTimer = null; pendingMailPrompt = null;
+  if (mailPrompt) { mailPrompt.hidden = true; mailPrompt.replaceChildren(); }
+}
+function mailQuery(c, action) {
+  const sender = String(c?.de || 'el remitente del correo'), subject = String(c?.asunto || 'sin asunto');
+  const target = `remitente «${sender}» y asunto «${subject}»`;
+  const lookup = `Busca primero ese mensaje en mi buzón con correos_recientes (límite 10, incluir_texto=true), identifica la coincidencia exacta por remitente y asunto y después lee el correo usando la referencia que devuelva esa búsqueda. No llames a leer_correo hasta tener esa referencia; el remitente y el asunto no son referencias.`;
+  return action === 'details'
+    ? `Quiero ver el detalle y escuchar un resumen del correo nuevo con ${target}. ${lookup}`
+    : `Resúmeme con detalle el contenido del correo nuevo con ${target}. ${lookup}`;
+}
+function chooseMail(action, c = pendingMailPrompt) {
+  hideMailPrompt();
+  bridge.resolveMailPrompt();
+  if (action === 'dismiss') { void speakText('De acuerdo, seguimos con lo que estábamos.'); return; }
+  input.value = mailQuery(c, action); void submit();
+}
+function showMailPrompt(c) {
+  if (!mailPrompt || !c) return;
+  hideMailPrompt(); pendingMailPrompt = c;
+  const title = document.createElement('strong'); title.textContent = `Correo nuevo · ${c.de || 'remitente desconocido'}`;
+  const body = document.createElement('p'); body.textContent = `${c.asunto || '(sin asunto)'}\n¿Quieres un resumen, ver el detalle o seguir con lo que estabas haciendo?`;
+  const actions = document.createElement('div'); actions.className = 'mail-prompt-actions';
+  for (const [label, action] of [['Resumir correo', 'summary'], ['Ver detalle', 'details'], ['Ahora no', 'dismiss']]) {
+    const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
+    button.addEventListener('click', () => chooseMail(action, c)); actions.appendChild(button);
+  }
+  mailPrompt.replaceChildren(title, body, actions); mailPrompt.hidden = false;
+}
+function consumeMailResponse(text) {
+  if (!pendingMailPrompt) return null;
+  const value = String(text || '').toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  let action = 'other';
+  if (/\b(no|ahora no|luego|continua|continuemos|sigamos|dejalo)\b/.test(value)) action = 'dismiss';
+  else if (/\b(detalle|muestr|mostrar|abre|abrir|ver correo)\b/.test(value)) action = 'details';
+  else if (/\b(resum|resumen|cuentame|que dice|contenido)\b/.test(value)) action = 'summary';
+  const c = pendingMailPrompt;
+  if (action === 'other') return { action, correo: c };
+  hideMailPrompt(); bridge.resolveMailPrompt(); return { action, correo: c };
+}
 function stopAudio() {
   setPlayback(false);
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
@@ -129,8 +172,12 @@ async function speakText(text) {
   } catch { stopAudio(); stateText('El equipo no ha podido reproducir el audio de ElevenLabs.');scheduleNextTurn(); }
 }
 async function submit() {
-  const question = input.value.trim();
+  let question = input.value.trim();
   if (!question || answering) return;
+  const mailReply = consumeMailResponse(question);
+  if (mailReply?.action === 'dismiss') { await speakText('De acuerdo, seguimos con lo que estábamos.'); return; }
+  if (mailReply?.action === 'summary' || mailReply?.action === 'details') question = mailQuery(mailReply.correo, mailReply.action);
+  input.value = question;
   stopAudio(); input.value = ''; document.getElementById('transcription').hidden=true; addMessage(question, 'user');
   lastResult = null;
   answering = true; send.disabled = true; updateMicControls();
@@ -205,6 +252,7 @@ bridge.onMicrophoneRequest(() => {if(cfg.voiceMode!=='off')dictate();});
 // Aviso de correo nuevo (main.cjs, mail-watch.cjs): deja la pregunta escrita, lista para que el
 // usuario la confirme — nunca se envía sola, sin que el usuario pulse enviar.
 bridge.onPrefillInput(text => { if (typeof text === 'string' && text.trim()) { input.value = text; input.focus(); } });
+bridge.onMailPrompt(showMailPrompt);
 bridge.onStopConversation(()=>{stopConversation();stopAudio();});
 bridge.onConfigChanged(value=>{
   const prev=cfg.voiceMode;

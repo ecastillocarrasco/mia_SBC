@@ -16,21 +16,23 @@ from mia.assets import resolve_logo
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.conversation.tools import LAST_TABLE, remember_table
-from mia.text import normalize_key
 from mia.data import Report
 from mia.data.models import _uuid
 from mia.diagnostics import EventStage
 from mia.diagnostics import emit as diag_emit
 from mia.modules.rrhh.common import Deps, department_problem, resolve_department
-from mia.modules.rrhh.informes.document import Document, to_document
+from mia.reporting.document import Document, to_document
 from mia.modules.rrhh.informes.persist import persist_document_report
-from mia.modules.rrhh.informes.render import RENDERERS
-from mia.reporting.narrative_generation import generate_narrative_block
-from mia.reporting.content_composer import MissingReportEvidence, compose_for_request
+from mia.reporting.render import RENDERERS
 from mia.reporting.comparisons import (
-    explicit_month_comparison, merge_payroll_comparison, remembered_comparison,
+    explicit_month_comparison,
+    merge_payroll_comparison,
+    remembered_comparison,
 )
+from mia.reporting.content_composer import MissingReportEvidence, compose_for_request
+from mia.reporting.narrative_generation import generate_narrative_block
 from mia.reporting.planner import planner
+from mia.text import normalize_key
 
 KEYWORDS = (
     "informe", "informes", "pdf", "excel", "xlsx", "powerpoint", "pptx", "exporta",
@@ -41,7 +43,9 @@ KEYWORDS = (
 
 
 class InformeParams(BaseModel):
-    formato: Literal["pdf", "xlsx", "pptx", "html"] = Field(description="pdf, xlsx (Excel), pptx (PowerPoint) o html")
+    formato: Literal["pdf", "xlsx", "pptx", "html", "docx"] = Field(
+        description="pdf, xlsx (Excel), pptx (PowerPoint), html o docx (Word)"
+    )
     titulo: str | None = Field(default=None, description="Título (por defecto, el de la tabla)")
     incluir_detalle: bool = Field(
         default=True,
@@ -94,7 +98,6 @@ async def _build_report_result(
     panel, resultado de ``analisis_economico_nominas``…). Compartido por ``generar_informe`` y por la
     redirección interna de ``generar_informe_ejecutivo`` — nunca dos copias del mismo renderizado."""
     settings = deps.settings.reports if deps.settings else None
-    directory = Path(settings.directory if settings else "informes")
     ttl = timedelta(hours=settings.ttl_hours if settings else 24)
     document = to_document(presentation, include_detail=incluir_detalle, include_chart=incluir_grafico)
     if titulo:
@@ -143,8 +146,14 @@ async def _build_report_result(
     logo_path = settings.logo_path if settings else None
     content = await asyncio.to_thread(_render, formato, document, ctx.now, logo_path)
     report_id = _uuid()
-    path = directory / f"{report_id}.{formato}"
-    await asyncio.to_thread(_write, path, content)
+    path = f"{report_id}.{formato}"
+    storage = deps.services.get("report_storage")
+    if storage is None:
+        directory = Path(settings.directory if settings else "informes")
+        await asyncio.to_thread(_write, directory / path, content)
+        path = str(directory / path)
+    else:
+        await storage.write(path, content)
     safe = re.sub(r"[^\w\- ]+", "", title).strip()[:60] or "informe"
     file_name = f"{safe}.{formato}"
     # Reautorización en la descarga (Fase I, cierre de seguridad): un informe construido a partir de
@@ -435,9 +444,9 @@ class InformeEjecutivoParams(BaseModel):
         default=None,
         description="Limitar el informe a un departamento concreto; sin valor: toda la empresa",
     )
-    formato: Literal["pdf", "xlsx", "pptx", "html"] = Field(
+    formato: Literal["pdf", "xlsx", "pptx", "html", "docx"] = Field(
         default="pdf",
-        description="Formato del documento: pdf (predeterminado), xlsx, pptx o html",
+        description="Formato del documento: pdf (predeterminado), xlsx, pptx, html o docx",
     )
     titulo: str | None = Field(default=None, description="Título personalizado del informe")
 

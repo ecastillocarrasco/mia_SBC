@@ -81,7 +81,7 @@ async def test_semantic_search_tools_report_tool_call_error_when_llm_unavailable
 
     from mia.data import Database
     from mia.diagnostics import EventStage as DiagStage
-    from mia.modules.rrhh import build_registry
+    from mia.modules.registry import build_registry
     from tests.dbutil import fresh_database
 
     db: Database = await fresh_database(tmp_path, "rag_llm_unavailable.db")

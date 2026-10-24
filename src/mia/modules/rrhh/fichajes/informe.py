@@ -24,7 +24,7 @@ from mia.modules.rrhh.fichajes.hours import DayHours, compute_day_hours
 from mia.modules.rrhh.fichajes.importer import import_from_attachment
 from mia.modules.rrhh.fichajes.shift_match import match_shift_type
 from mia.modules.rrhh.fichajes.tools import MADRID, _localize_marks
-from mia.modules.rrhh.informes.document import Block, Document
+from mia.reporting.document import Block, Document
 from mia.modules.rrhh.informes.persist import persist_document_report
 
 KEYWORDS = (
@@ -55,7 +55,7 @@ class InformeComparativoTurnosFichajesParams(BaseModel):
         default=DEFAULT_TOLERANCE_MIN,
         description="Margen en minutos para considerar un fichaje 'correcto' frente al turno programado",
     )
-    formato: Literal["pdf", "xlsx", "pptx", "html"] = Field(default="pdf", description="Formato del documento")
+    formato: Literal["pdf", "xlsx", "pptx", "html", "docx"] = Field(default="pdf", description="Formato del documento")
     titulo: str | None = Field(default=None, description="Título personalizado del informe")
 
 

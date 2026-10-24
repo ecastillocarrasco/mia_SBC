@@ -1,12 +1,10 @@
 """Contrato común de los módulos de conocimiento de la empresa.
 
-mIA deja de ser solo RRHH: a este módulo le seguirán Finanzas, Administración, Legal y
-Compliance. Cada módulo declara un :class:`ModuleManifest` (qué permisos exige, qué idiomas
-soporta hoy y qué fuentes usa) para que el orquestador de conversación (``conversation/``)
-pueda decidir qué módulo o módulos necesita una pregunta antes de cargar sus herramientas.
-
-Hoy solo existe ``rrhh``, así que el enrutado multi-módulo no está implementado todavía
-(no hay nada que enrutar); este módulo deja la interfaz lista para cuando lo haya.
+mIA es una plataforma conversacional para toda la organización. Los dominios funcionales son
+paquetes independientes (por ejemplo, Community, RRHH, Finanzas e IT); Correo, Legal y otros
+dominios deben seguir el mismo contrato al separarse de sus ubicaciones actuales o incorporarse.
+Cada módulo declara un :class:`ModuleManifest` con permisos, idiomas y fuentes. Las herramientas
+verifican permisos en backend, independientemente de la selección que haga el orquestador.
 """
 
 from __future__ import annotations

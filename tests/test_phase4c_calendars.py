@@ -22,7 +22,7 @@ from mia.ingestion.mappers import calendars
 from mia.ingestion.mappers.common import MapContext
 from mia.ingestion.sync import SyncRunner
 from mia.llm import ToolCall
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from tests.dbutil import fresh_database
 from tests.fakes.sharepoint import FakeSharePoint
 

@@ -46,7 +46,7 @@ from mia.auth.context import ROLE_PERMISSIONS
 from mia.auth.providers import DevIdentityProvider
 from mia.data import Report
 from mia.main import create_app
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from mia.modules.rrhh.informes.jobs import JOB_KIND_INFORME_ECONOMICO, run_informe_economico_nominas
 from mia.reporting import job_manager
 from mia.reporting.worker import ReportJobWorker

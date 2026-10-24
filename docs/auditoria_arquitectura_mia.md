@@ -197,7 +197,7 @@ Dominios externos confirmados en código: `login.microsoftonline.com`, `graph.mi
 
 ### Prioridad alta (resolver antes de producción)
 
-1. **Verificar en Exchange Online/Entra ID el alcance real del permiso de Graph Mail** — confirmar si existe una Application Access Policy que lo acote al buzón de RRHH, o si da acceso a todo el tenant. *(IT + desarrollador, esfuerzo: bajo — es una verificación, no un cambio de código)*.
+1. **Verificar en Exchange Online/Entra ID el alcance real del permiso de Graph Mail** — el código usa el buzón propio de la sesión, pero comprobar si los permisos app-only permiten técnicamente acceder a otros buzones; evaluar RBAC y permisos delegados. *(IT + desarrollador; no se puede verificar desde el repositorio)*.
 2. **Corregir el comando del Container Apps Job de sincronización** en `infra/main.bicep:431` (`mia.sync` → `mia.ingestion.sync`). *(Desarrollador, esfuerzo: muy bajo)*.
 3. **Añadir rate limiting** a `/api/chat/stream` y `/api/voice/stream`, al menos por usuario autenticado. *(Desarrollador, esfuerzo: medio)*.
 4. **Activar Dependabot y un paso de escaneo de vulnerabilidades (pip-audit + npm audit) en CI.** *(Desarrollador, esfuerzo: bajo)*.

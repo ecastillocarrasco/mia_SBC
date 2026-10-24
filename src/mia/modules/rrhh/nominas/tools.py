@@ -646,13 +646,18 @@ def buscar_en_nominas(deps: Deps) -> Tool:
 def register_amounts(registry: ToolRegistry, deps: Deps) -> None:
     from mia.modules.rrhh.informes.jobs import informe_economico_en_segundo_plano  # noqa: PLC0415
     from mia.modules.rrhh.nominas.analisis_economico import analisis_economico_nominas  # noqa: PLC0415
-    from mia.modules.rrhh.nominas.estadisticas import estadisticas_salariales, ranking_salarial  # noqa: PLC0415
+    from mia.modules.rrhh.nominas.estadisticas import (  # noqa: PLC0415
+        comparativa_salarial,
+        estadisticas_salariales,
+        ranking_salarial,
+    )
 
     for factory in (
         nomina_importes,
         evolucion_nominas,
         estadisticas_salariales,
         ranking_salarial,
+        comparativa_salarial,
         analisis_economico_nominas,
     ):
         registry.register(factory(deps))

@@ -68,10 +68,20 @@ test('voice endpoint error provides manual browser synthesis fallback', async ()
 
 test('stale TTS is cancelled after query starts', async () => {
   let cancelled = false;
-  const voice = new MiaWelcomeVoiceV45({fetchImpl:(_uri,{signal})=>new Promise((resolve,reject)=>{
-    signal.addEventListener('abort', () => { cancelled = true; reject(new Error('aborted')); });
-  })});
+  let fetchStarted;
+  const fetchStartedPromise = new Promise((resolve) => { fetchStarted = resolve; });
+  // getAuthHeaders() se espera antes de llamar a fetchImpl (ver welcome-voice-v45.js): si
+  // cancel() llega mientras ese token se resuelve, prepare() corta antes de invocar fetchImpl
+  // siquiera (más barato, mismo resultado). Para probar el abort de una petición YA en vuelo,
+  // esperamos a que fetchImpl se haya invocado de verdad antes de cancelar.
+  const voice = new MiaWelcomeVoiceV45({fetchImpl:(_uri,{signal})=>{
+    fetchStarted();
+    return new Promise((resolve,reject)=>{
+      signal.addEventListener('abort', () => { cancelled = true; reject(new Error('aborted')); });
+    });
+  }});
   const prepare = voice.prepare('Hola Enrique');
+  await fetchStartedPromise;
   voice.cancel();
   assert.equal((await prepare).status, 'cancelled');
   assert.equal(cancelled, true);

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "mia"
 version = "0.1.0"
-description = "mIA · asistente conversacional de RRHH de Sunset Beach Club"
+description = "mIA · asistente conversacional de toda la organización de Sunset Beach Club"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -44,6 +44,8 @@ mia = "mia.__main__:main"
 [project.optional-dependencies]
 azure = [
     "azure-monitor-opentelemetry>=1.6",
+    "azure-identity>=1.17",
+    "azure-storage-blob>=12.20",
 ]
 dev = [
     "aiosqlite>=0.20",
@@ -56,6 +58,7 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mia"]
+artifacts = ["src/mia/modules/correo/assets/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

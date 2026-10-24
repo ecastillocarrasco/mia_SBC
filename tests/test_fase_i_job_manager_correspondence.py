@@ -30,7 +30,7 @@ from mia.conversation.tools import remember_table
 from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.data import Payslip, Report
 from mia.llm import ToolCall
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from mia.modules.rrhh.informes.jobs import JOB_KIND_INFORME_ECONOMICO, run_informe_economico_nominas
 from mia.reporting import job_manager
 from mia.reporting.worker import ReportJobWorker

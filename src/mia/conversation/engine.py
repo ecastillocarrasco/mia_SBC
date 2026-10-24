@@ -93,7 +93,7 @@ def _module_keywords() -> dict[str, tuple[str, ...]]:
     from mia.modules.finanzas import KEYWORDS as finanzas
     from mia.modules.it import KEYWORDS as it
     from mia.modules.rrhh.analitica import KEYWORDS as analitica
-    from mia.modules.rrhh.correo import KEYWORDS as correo
+    from mia.modules.correo import KEYWORDS as correo
     from mia.modules.rrhh.curriculums import KEYWORDS as curriculums
     from mia.modules.rrhh.documentos import KEYWORDS as documentos
     from mia.modules.rrhh.empleados import KEYWORDS as empleados
@@ -358,7 +358,9 @@ class ConversationEngine:
             session_id=session_id,
             request_id=request_id,
         ) as trace:
-            diag_emit(EventStage.REQUEST_RECEIVED, data={"query": message, "session_id": session_id})
+            # Diagnósticos solo necesitan tamaño y correlación; no almacenamos el texto libre,
+            # que puede contener información personal o confidencial.
+            diag_emit(EventStage.REQUEST_RECEIVED, data={"query_chars": len(message), "session_id": session_id})
 
             # 1) Transacción corta: sesión, historial y turno del usuario.
             async with self._db.session() as db:

@@ -16,6 +16,10 @@ from pathlib import Path
 from typing import Any
 ROOT = Path(__file__).resolve().parents[1] / "src/mia"
 _STUBBED_PACKAGES = ("mia.modules", "mia.modules.rrhh", "mia.modules.rrhh.informes")
+# conftest.py (vía mia.main) ya ha importado estos paquetes de verdad antes de que pytest recoja
+# este fichero: hay que guardar lo que había (el módulo real, no None) para poder restaurarlo, no
+# solo popearlo — popear deja sys.modules sin el paquete real durante el resto de la sesión.
+_saved_modules = {fullname: sys.modules.get(fullname) for fullname in _STUBBED_PACKAGES}
 for fullname, path in [("mia.modules", ROOT / "modules"),
                        ("mia.modules.rrhh", ROOT / "modules/rrhh"),
                        ("mia.modules.rrhh.informes", ROOT / "modules/rrhh/informes")]:
@@ -27,11 +31,15 @@ from mia.modules.rrhh.informes.render import to_pdf, to_pptx, to_xlsx
 from mia.modules.rrhh.informes.render_html import to_html
 # Deshacer el stub ahora que ya tenemos las referencias que necesitábamos: dejarlo puesto
 # envenena sys.modules para el resto de la sesión de pytest (otros test_*.py, recogidos después
-# en el mismo proceso, harían `from mia.modules.rrhh import build_registry` contra este stub sin
-# build_registry y fallarían). Los submódulos ya importados (document/render/render_html) quedan
-# bien cacheados bajo su propia clave; solo se retiran los 3 paquetes contenedores stubeados.
-for _fullname in _STUBBED_PACKAGES:
-    sys.modules.pop(_fullname, None)
+# en el mismo proceso, harían `from mia.modules.rrhh import build_rrhh_registry` contra este stub sin
+# build_rrhh_registry y fallarían). Los submódulos ya importados (document/render/render_html) quedan
+# bien cacheados bajo su propia clave; los 3 paquetes contenedores stubeados se restauran a lo que
+# había antes (el paquete real ya cargado por conftest.py), no simplemente se popean.
+for _fullname, _previous in _saved_modules.items():
+    if _previous is None:
+        sys.modules.pop(_fullname, None)
+    else:
+        sys.modules[_fullname] = _previous
 
 
 def extract_function(path, name):

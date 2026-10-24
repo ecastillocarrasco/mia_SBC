@@ -206,6 +206,7 @@ async function greetAtStartup(payload){
 }
 bridge.onStartupGreeting(greetAtStartup);
 bridge.onAvatarCeremony(greetAtStartup);
+bridge.onMailNotice(payload => greetAtStartup({ ...payload, animation: 'TALK' }));
 bridge.onModelChanged(loadModel);
 bridge.onAvatarVisibility(value => { visible = Boolean(value);if(!visible){stopGreeting();if('speechSynthesis' in window)speechSynthesis.cancel();} });
 function render(time) {

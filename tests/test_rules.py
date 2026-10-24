@@ -3,7 +3,7 @@ from __future__ import annotations
 from mia.auth import UserContext
 from mia.conversation import Persona
 from mia.data import Database
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from mia.rules import RULES, rule, rules_for_prompt
 
 

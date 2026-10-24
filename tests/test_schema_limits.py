@@ -39,7 +39,7 @@ def test_enumerated_values_fit_their_columns(column: Any, values: list[str]) -> 
 
 def test_audit_action_fits_every_tool_name() -> None:
     from mia.data import Database  # noqa: PLC0415
-    from mia.modules.rrhh import build_registry  # noqa: PLC0415
+    from mia.modules.registry import build_registry  # noqa: PLC0415
 
     registry = build_registry(Database("sqlite+aiosqlite:///:memory:"))
     limit = _length(AuditEvent.action)

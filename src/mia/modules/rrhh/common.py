@@ -117,11 +117,28 @@ async def _without_one_word(db: AsyncSession, query: str) -> PersonMatch | None:
     return PersonMatch(ToolStatus.AMBIGUOUS, candidates=tuple(list(loose.values())[:10])) if loose else None
 
 
+def _name_matches(query: str, name_key: str) -> bool:
+    """Mismo criterio que ``find_people``: todas las palabras de ``query`` deben aparecer en
+    el nombre, para decidir si un ``nombre`` dado junto a un ``empleado_id`` de foco realmente
+    se refiere a esa misma persona (y no a otra, por un foco obsoleto)."""
+    tokens = [t for t in normalize_key(query).split() if len(t) > 1]
+    return bool(tokens) and all(token in name_key for token in tokens)
+
+
 async def resolve_person(db: AsyncSession, params: PersonaParams) -> PersonMatch:
+    query = params.nombre or ""
     if params.empleado_id is not None:
         employee = await db.get(Employee, params.empleado_id)
-        return PersonMatch(ToolStatus.OK, employee) if employee else PersonMatch(ToolStatus.NOT_FOUND)
-    query = params.nombre or ""
+        if employee is None:
+            return PersonMatch(ToolStatus.NOT_FOUND)
+        # Defensa en profundidad: el modelo puede arrastrar un empleado_id de foco obsoleto
+        # (de una persona ya consultada antes) aunque el turno nombre a alguien distinto —
+        # nunca confiar en el id a ciegas si además viene un nombre que no encaja con él, o
+        # podríamos devolver los datos personales de un tercero a una pregunta sobre otro.
+        if query.strip() and not _name_matches(query, employee.name_key):
+            pass  # cae a la búsqueda por nombre de abajo, ignorando el empleado_id obsoleto
+        else:
+            return PersonMatch(ToolStatus.OK, employee)
     matches = await find_people(db, query)
     active = [m for m in matches if m.active]
     pool = active or matches

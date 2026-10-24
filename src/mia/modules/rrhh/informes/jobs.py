@@ -119,7 +119,7 @@ class InformeEconomicoJobParams(BaseModel):
     concepto: Literal["liquido", "devengado", "coste_empresa"] = "liquido"
     incluir_grupos_pequenos: bool = False
     incluir_inactivos: bool = False
-    formato: Literal["pdf", "xlsx", "pptx", "html"] = "pdf"
+    formato: Literal["pdf", "xlsx", "pptx", "html", "docx"] = "pdf"
     titulo: str | None = None
 
 

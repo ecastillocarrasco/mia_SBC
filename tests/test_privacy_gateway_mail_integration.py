@@ -3,12 +3,12 @@ pruebas de integración real.
 
 Dos garantías distintas, cada una con su propia prueba:
 
-1. El correo del buzón de RRHH (Microsoft Graph) es, por diseño, el vector de datos MENOS confiable de
+1. El correo del usuario (Microsoft Graph) es, por diseño, el vector de datos MENOS confiable de
    todo mIA: su contenido lo escribe un remitente externo cualquiera. Debe tratarse exactamente igual
    que cualquier otro resultado de herramienta: identidades tokenizadas antes de llegar al LLM,
    contenido envuelto como DATOS no confiables (ver ``prompt_injection_guard.wrap_untrusted``).
 2. El envío de correo (COR-001) tiene su PROPIA separación de privilegios, independiente del Privacy
-   Gateway: ``_send_blocker`` en ``mia/modules/rrhh/correo/tools.py`` solo consulta
+   Gateway: ``_send_blocker`` en ``mia/modules/correo/tools.py`` solo consulta
    ``ctx.user_message`` (lo que el humano escribió en ESTE turno) para decidir si hay confirmación de
    envío. Una frase de confirmación clásica incrustada dentro del CUERPO de un correo — exactamente la
    inyección que un atacante externo intentaría para que mIA se "autoconfirme" el envío — nunca llega
@@ -36,9 +36,9 @@ from mia.conversation.events import ResultEvent
 from mia.conversation.tools import ToolContext, ToolStatus
 from mia.llm.base import LLMRequest
 from mia.llm.fake import FakeLLMProvider, final_answer, tool_call
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from mia.modules.rrhh.common import Deps
-from mia.modules.rrhh.correo.tools import _send_blocker
+from mia.modules.correo.tools import _send_blocker
 from mia.privacy_gateway.gateway import PrivacyGateway
 from mia.privacy_gateway.prompt_injection_guard import scan as scan_injection
 from mia.settings import MailSettings, PrivacyGatewaySettings

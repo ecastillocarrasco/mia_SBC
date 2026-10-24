@@ -1,11 +1,7 @@
-"""Configuración pública de autenticación para el frontend.
+"""Configuración pública de autenticación para los clientes web y desktop.
 
-El front-end necesita saber, ANTES de que exista ninguna sesión, si debe mostrar la pantalla de
-login de Entra ID (MSAL.js) o no — y con qué ``tenant_id``/``client_id`` inicializar MSAL. Este
-endpoint es la única fuente de esa configuración: ``MIA_AUTH__MODE`` decide todo (variable de
-entorno única, ya existente — no se introduce una segunda bandera "auth activada/desactivada"
-que pudiera desincronizarse de ella). Nunca devuelve secretos: ``tenant_id``/``client_id`` son
-identificadores públicos (van también dentro del propio token), no credenciales.
+Devuelve el tenant, los IDs públicos de cada cliente, la audiencia API y el scope solicitado.
+No devuelve credenciales ni secretos.
 """
 
 from __future__ import annotations
@@ -29,7 +25,9 @@ async def auth_config(services: ServicesDep) -> dict[str, object]:
             {
                 "tenant_id": settings.entra_tenant_id,
                 "client_id": settings.entra_client_id,
-                "scope": settings.entra_scope or f"{settings.entra_client_id}/.default",
+                "web_client_id": settings.entra_web_client_id,
+                "desktop_client_id": settings.entra_desktop_client_id,
+                "scope": settings.entra_scope or f"api://{settings.entra_client_id}/access_as_user",
             }
             if requires_login
             else None

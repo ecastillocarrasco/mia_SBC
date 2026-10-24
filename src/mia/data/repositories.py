@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.data.models import AuditEvent, ConversationSession, ConversationTurn
@@ -49,6 +50,17 @@ class ConversationRepository:
         await self._db.flush()
         return turn
 
+    @staticmethod
+    async def purge_expired(db: AsyncSession, retention_days: int, *, now: datetime | None = None) -> int:
+        """Elimina sesiones y mensajes vencidos. El estado conversacional también puede contener PII."""
+        cutoff = (now or datetime.now(UTC)) - timedelta(days=retention_days)
+        expired_sessions = select(ConversationSession.id).where(ConversationSession.updated_at < cutoff)
+        turns_result = await db.execute(
+            delete(ConversationTurn).where(ConversationTurn.session_id.in_(expired_sessions))
+        )
+        sessions_result = await db.execute(delete(ConversationSession).where(ConversationSession.updated_at < cutoff))
+        return int(turns_result.rowcount or 0) + int(sessions_result.rowcount or 0)
+
 
 class AuditRepository:
     def __init__(self, db: AsyncSession) -> None:
@@ -74,3 +86,10 @@ class AuditRepository:
                 detail=detail or {},
             )
         )
+
+    @staticmethod
+    async def purge_expired(db: AsyncSession, retention_days: int, *, now: datetime | None = None) -> int:
+        """Elimina eventos de auditoría vencidos. ``detail`` puede contener PII (argumentos de herramientas)."""
+        cutoff = (now or datetime.now(UTC)) - timedelta(days=retention_days)
+        result = await db.execute(delete(AuditEvent).where(AuditEvent.created_at < cutoff))
+        return int(result.rowcount or 0)

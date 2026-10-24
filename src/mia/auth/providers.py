@@ -170,6 +170,7 @@ class EntraIdIdentityProvider:
             email=claims.get("preferred_username") or claims.get("upn"),
             roles=frozenset(str(r) for r in roles),
             auth_method="entra",
+            graph_assertion=token,
         )
 
     async def aclose(self) -> None:

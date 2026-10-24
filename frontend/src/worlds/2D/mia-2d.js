@@ -725,7 +725,14 @@ function _chatPayload(q){const ids=_pendingAttachmentIds();const p={message:q,co
 async function fallbackChat(q){const res=await fetch(MIA_API.backendChat,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/json',...await miaAuthHeaders()},body:JSON.stringify(_chatPayload(q))});return await res.json()}
 async function callBackendStream(q,prog){let finalResult=null;const res=await fetch(MIA_API.backendStream,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/x-ndjson',...await miaAuthHeaders()},body:JSON.stringify(_chatPayload(q))});if(!res.ok||!res.body)throw new Error('stream unavailable');const reader=res.body.getReader(),decoder=new TextDecoder('utf-8');let buf='';while(true){const {value,done}=await reader.read();buf+=decoder.decode(value||new Uint8Array(),{stream:!done});let pos;while((pos=buf.indexOf('\n'))>=0){const line=buf.slice(0,pos).trim();buf=buf.slice(pos+1);if(!line)continue;let ev;try{ev=JSON.parse(line)}catch(_){continue}if(ev.type==='progress')updateProgress(prog,ev);else if(ev.type==='result'){finalResult=ev.payload;break}}if(finalResult||done)break}return finalResult||{}}
 async function ask(raw){
- const q=String(raw||input.value||'').trim();if(!q)return;if('speechSynthesis'in window)speechSynthesis.cancel();input.value='';addMsg('Tú',q,'user');lastProgressSpoken=false;setAvatarState('pensando','Interpretando tu consulta y preparando una respuesta natural.');const prog=createProgress();prog.title.textContent='Entendiendo y consultando…';prog.detail.textContent='mIA está combinando interpretación conversacional y datos validados.';let finalResult=null;
+ let q=String(raw||input.value||'').trim();if(!q)return;
+ const mailReply=window.miaMailWatch?.consumeMailPrompt(q);
+ if(mailReply?.action==='dismiss'){window.miaSpeakMailNotification?.('De acuerdo, seguimos con lo que estábamos.');return}
+ if(mailReply?.action==='summary'||mailReply?.action==='details'){
+  if(mailReply.action==='details')window.miaAutoOpenNextMail=true;
+  q=window.miaMailWatch.mailPromptQuery(mailReply.correo,mailReply.action);
+ }
+ if('speechSynthesis'in window)speechSynthesis.cancel();input.value='';addMsg('Tú',q,'user');lastProgressSpoken=false;setAvatarState('pensando','Interpretando tu consulta y preparando una respuesta natural.');const prog=createProgress();prog.title.textContent='Entendiendo y consultando…';prog.detail.textContent='mIA está combinando interpretación conversacional y datos validados.';let finalResult=null;
  try{
   finalResult=await callNaturalLlm(q);
  }catch(llmErr){
@@ -822,6 +829,15 @@ async function miaElevenLabsSpeak(text,finalState='sonriendo',returnState=null){
 
 speak=function(text,finalState='sonriendo'){miaElevenLabsSpeak(text,finalState)};
 speakProgress=function(text,returnState){if(!speechEnabled||miaCurrentAudio)return;miaElevenLabsSpeak(text,returnState||'concentrada',returnState||'concentrada')};
+const miaMailSpeechQueue=[];let miaMailSpeechTimer=null;
+function drainMiaMailSpeech(){
+ miaMailSpeechTimer=null;if(!miaMailSpeechQueue.length||!speechEnabled)return;
+ if(['pensando','concentrada','escuchando','hablando'].includes(currentState)||miaCurrentAudio||('speechSynthesis'in window&&speechSynthesis.speaking)){
+  miaMailSpeechTimer=setTimeout(drainMiaMailSpeech,800);return;
+ }
+ const text=miaMailSpeechQueue.shift();void miaElevenLabsSpeak(text,'avisando','reposo').finally(()=>{if(miaMailSpeechQueue.length)miaMailSpeechTimer=setTimeout(drainMiaMailSpeech,250)});
+}
+window.miaSpeakMailNotification=(text)=>{if(!speechEnabled||!String(text||'').trim())return;miaMailSpeechQueue.push(String(text).slice(0,300));if(!miaMailSpeechTimer)drainMiaMailSpeech()};
 
 // The existing toggle also controls the ElevenLabs audio element.
 soundToggle.addEventListener('click',()=>{if(!speechEnabled&&miaCurrentAudio){miaCurrentAudio.pause();miaCurrentAudio=null}setVoiceStatus(speechEnabled?'ElevenLabs · voz mIA':'Voz desactivada')});

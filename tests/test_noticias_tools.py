@@ -9,7 +9,7 @@ from datetime import datetime
 import pytest
 
 import mia.modules.community.noticias.tools as noticias_tools
-from mia.auth import UserContext
+from mia.auth import Permission, UserContext
 from mia.conversation.tools import ToolContext, ToolStatus
 from mia.modules.community.noticias.sources import GROUP_FBD, GROUP_SUNSET, NewsItem
 from mia.modules.community.noticias.tools import noticias_corporativas
@@ -134,9 +134,11 @@ async def test_partial_failure_still_returns_ok_with_aviso(monkeypatch: pytest.M
     assert "Google News: X" in result.summary["aviso"]
 
 
-def test_tool_has_no_permission_requirement() -> None:
+def test_tool_requires_noticias_leer_permission() -> None:
+    """Público en contenido, no en acceso: exige NOTICIAS_LEER, concedido a cualquier usuario con
+    algún rol reconocido (ver mia.auth.context._UNIVERSAL_CON_ROL), nunca a quien no tiene ninguno."""
     tool = noticias_corporativas()
-    assert tool.permission is None
+    assert tool.permission is Permission.NOTICIAS_LEER
 
 
 # ------------------------------------------------------------------ regresión: fechas mixtas reales

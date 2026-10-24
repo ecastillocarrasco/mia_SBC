@@ -6,8 +6,13 @@ param postgresStorageGb = 32
 param llmProvider = 'azure_openai'
 param llmBaseUrl = 'https://<recurso>.openai.azure.com/openai/v1'
 param llmModel = 'gpt-4.1-mini'
-// Obligatorio en producción: sin Easy Auth la aplicación no arranca (MIA_AUTH__MODE=dev está bloqueado).
+// Client ID de CV-SunsetBeachClub (API y cliente confidencial OBO).
 param easyAuthClientId = '<client-id-de-la-app-de-entra>'
+// Activar solo después de configurar scope access_as_user, certificado y permisos Graph delegados.
+param delegatedMailEnabled = false
+// IDs públicos de los dos clientes que solicitarán access_as_user a la API CV-SunsetBeachClub.
+param entraWebClientId = readEnvironmentVariable('MIA_ENTRA_WEB_CLIENT_ID', '')
+param entraDesktopClientId = readEnvironmentVariable('MIA_ENTRA_DESKTOP_CLIENT_ID', '')
 param postgresAdminPassword = readEnvironmentVariable('MIA_PG_ADMIN_PASSWORD', '')
 param llmApiKey = readEnvironmentVariable('MIA_LLM_API_KEY', '')
 param voiceApiKey = readEnvironmentVariable('MIA_VOICE_API_KEY', '')

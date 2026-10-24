@@ -13,8 +13,9 @@ hasta validar la protección real por etapas.
 
 from __future__ import annotations
 
-from collections import Counter
+import asyncio
 import json
+from collections import Counter
 from collections.abc import AsyncIterator
 from dataclasses import replace
 
@@ -30,7 +31,7 @@ from mia.privacy_gateway.presidio_engine import DetectedEntity, PresidioEngine, 
 from mia.privacy_gateway.prompt_injection_guard import scan as scan_injection
 from mia.privacy_gateway.prompt_injection_guard import wrap_untrusted
 from mia.privacy_gateway.token_vault import TokenVault
-from mia.privacy_gateway.tokenizer import Tokenizer, _TOKEN_RE
+from mia.privacy_gateway.tokenizer import _TOKEN_RE, Tokenizer
 from mia.settings import PrivacyGatewaySettings
 
 _OPEN_BRACKET = "["
@@ -198,7 +199,11 @@ class PrivacyGateway(LLMProvider):
         tokenizer = self._tokenizer
 
         try:
-            safe_request = self._sanitize_request(request, policy=policy, user_id=user_id, operation_id=operation_id)
+            # Presidio/spaCy son síncronos y la carga/análisis NLP no debe bloquear el event loop
+            # que sirve el streaming de otras conversaciones.
+            safe_request = await asyncio.to_thread(
+                self._sanitize_request, request, policy=policy, user_id=user_id, operation_id=operation_id
+            )
         except Exception as exc:
             # Fallo seguro: CUALQUIER excepción al proteger la salida bloquea la llamada externa, no
             # solo UnsafeContentBlockedError — un fallo inesperado del motor no debe convertirse nunca

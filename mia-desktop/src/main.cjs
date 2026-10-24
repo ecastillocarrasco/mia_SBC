@@ -46,6 +46,8 @@ const HIDE_REASONS=new Set(['VOICE_VERIFIED','TRAY_MINIMIZE','CHAT_MINIMIZE','AV
 let confirmationOpen=false;
 let microphoneInUse = false;
 const activePlaybackSenders=new Set();
+const pendingMailVoice=[];
+let pendingMailPrompt=null;
 let greetingTriggered = false;
 let ceremonySequence=0, ceremonyBusy=false;
 const ceremonies=new Map();
@@ -152,6 +154,23 @@ function broadcastVoiceStatus(message, active = false) {
 function avatarAction(name) {
   if (avatarWin && !avatarWin.isDestroyed()) avatarWin.webContents.send('mia:avatar-action', name);
 }
+function deliverMailPrompt(correo) {
+  if (correo) pendingMailPrompt=correo;
+  const send = () => { if (bubbleWin && !bubbleWin.isDestroyed()) bubbleWin.webContents.send('mia:mail-prompt', correo); };
+  if (!bubbleWin || bubbleWin.isDestroyed()) return;
+  if (bubbleWin.webContents.isLoading()) bubbleWin.webContents.once('did-finish-load', send); else send();
+}
+function flushMailVoice() {
+  if (!config.voiceEnabled || ceremonyBusy || activePlaybackSenders.size || !pendingMailVoice.length) return;
+  if (!avatarWin || avatarWin.isDestroyed() || !avatarWin.isVisible()) return;
+  const text = pendingMailVoice.shift();
+  avatarWin.webContents.send('mia:mail-notice', { text, voiceEnabled: true, fallbackEnabled: config.voiceFallbackEnabled });
+}
+function queueMailVoice(text) {
+  if (!config.voiceEnabled || typeof text !== 'string' || !text.trim()) return;
+  pendingMailVoice.push(text.slice(0, 1200));
+  flushMailVoice();
+}
 function stopWake() {
   wakeGeneration++;
   const previous = wakeProcess; wakeProcess = null;
@@ -240,6 +259,7 @@ function focusAvatar() {
   avatarWin.setIgnoreMouseEvents(false);
   avatarWin.showInactive();
   avatarWin.webContents.send('mia:avatar-visibility', true);
+  flushMailVoice();
 }
 function hideAvatar(reason) {
   if (!HIDE_REASONS.has(reason)) {
@@ -287,6 +307,7 @@ function openBubble(options = {}) {
   const explicitTalk=options.autoDictate===true && options.userGesture===true;
   if(explicitTalk)stopWake();
   bubbleWin.show(); bubbleWin.focus();
+  if (pendingMailPrompt) deliverMailPrompt(pendingMailPrompt);
   if (explicitTalk) requestMicrophone();
   else if (!wakeProcess && !microphoneInUse && !activePlaybackSenders.size) startWake();
   return true;
@@ -440,6 +461,9 @@ function setupIPC() {
     if (ownSender(event, [bubbleWin])) { diagnostics.record('visibility_change',{mode:'ui',code:'CHAT_CLOSE'});speech.cancelDictation(); bubbleWin.webContents.send('mia:stop-conversation'); bubbleWin.hide(); startWake(); return true; }
     return false;
   });
+  ipcMain.on('mia:mail-prompt-resolved', event => {
+    if (ownSender(event, [bubbleWin])) pendingMailPrompt=null;
+  });
   ipcMain.handle('mia:hide-avatar', event => {
     if (ownSender(event, [avatarWin, bubbleWin, settingsWin])) { return hideAvatar('CHAT_MINIMIZE'); }
     return false;
@@ -467,7 +491,7 @@ function setupIPC() {
   ipcMain.on('mia:playback-state',(event,active)=>{
     if(!ownSender(event,[bubbleWin,avatarWin]) || typeof active!=='boolean')return;
     if(active){activePlaybackSenders.add(event.sender.id);stopWake();}
-    else {activePlaybackSenders.delete(event.sender.id);if(!activePlaybackSenders.size)startWake();}
+    else {activePlaybackSenders.delete(event.sender.id);if(!activePlaybackSenders.size){startWake();flushMailVoice();}}
   });
   ipcMain.on('mia:cancel-dictation',event=>{if(ownSender(event,[bubbleWin]))speech.cancelDictation();});
   // The chat mode is authoritative for capture. OFF closes the native audio stream.
@@ -701,14 +725,20 @@ app.whenReady().then(async () => {
   if (app.isPackaged) app.setAppUserModelId('es.sunsetbeachclub.mia.desktop');
   startWake();
   cacheBrandLogo().catch(console.warn);
-  // Aviso proactivo de correo nuevo (pedido del usuario): notificacion nativa de Windows: un clic
-  // abre la burbuja de chat con la pregunta de resumen ya escrita, lista para confirmar.
+  // Aviso proactivo de correo nuevo: voz en el avatar y opciones al abrir la notificación.
   mailWatch.start(config.backendBase, correos => {
+    const correo = correos[0] || {};
+    // Presenta primero el aviso recuperable dentro de mIA; un fallo del toast o de la voz
+    // no debe tragarse el mensaje ni impedir que la persona vea las acciones.
+    deliverMailPrompt(correo);
     for (const correo of correos) {
       mailWatch.showNotification(correo, c => {
         openBubble();
-        bubbleWin?.webContents.send('mia:prefill-input', `Resúmeme el correo de ${c.de} sobre "${c.asunto}"`);
+        deliverMailPrompt(c);
       });
     }
+    const text = `${correos.length > 1 ? 'Han llegado correos nuevos' : 'Ha llegado un correo nuevo'}. ¿Quieres que te resuma el contenido, que te muestre el detalle o seguimos con lo que estábamos?`;
+    try { queueMailVoice(text); }
+    catch (error) { console.warn('[mIA Mail] No se pudo anunciar el correo con voz:', error?.message || error); }
   });
 }).catch(e => { diagnostics.record('startup',{mode:'ui',code:'STARTUP_ERROR'});dialog.showErrorBox('mIA Desktop','No se ha podido iniciar mIA Desktop. Consulta los diagnósticos.');app.quit(); });

@@ -82,3 +82,18 @@ async def test_503_when_sharepoint_is_not_configured(client: httpx.AsyncClient, 
     response = await client.get("/api/community/newsletter/1/imagen")
 
     assert response.status_code == 503
+
+
+async def test_403_without_any_recognized_role(client: httpx.AsyncClient, services: Services) -> None:
+    """Mismo permiso que la herramienta newsletter_corporativo: sin ningún rol reconocido no hay
+    acceso, ni siquiera a esta imagen."""
+    await _seed(
+        services.db,
+        image_url="https://sunsetbeachclub.sharepoint.com/sites/PortalCorporativo/RRHH/Documents/x/blas.png",
+    )
+    services.sharepoint = _mock_sharepoint()
+    services.identity = DevIdentityProvider(AuthSettings(dev_user_id="u1", dev_roles=[]))
+
+    response = await client.get("/api/community/newsletter/1/imagen")
+
+    assert response.status_code == 403

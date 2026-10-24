@@ -1,5 +1,5 @@
 'use strict';
-// Sondeo periodico de correo sin leer, para avisar con una notificacion nativa de Windows cuando
+// Sondeo periodico de mensajes recientes de la bandeja, para avisar con una notificacion nativa cuando
 // llega uno nuevo (pedido explicito del usuario). No existia nada proactivo en mia-desktop antes
 // de esto: ni sondeo en segundo plano, ni notificaciones nativas (Electron las trae, pero no se
 // usaban para nada).
@@ -10,10 +10,20 @@
 const { Notification } = require('electron');
 const auth = require('./auth.cjs');
 
-const POLL_MS = 3 * 60 * 1000; // cada 3 minutos (elegido por el usuario)
+const POLL_MS = 60 * 1000; // mantener el aviso al día también en segundo plano
+const STARTUP_CATCHUP_MS = 5 * 60 * 1000;
 
 let timer = null;
-let lastSeenAt = null; // ISO de receivedDateTime del correo mas reciente ya visto
+let primed = false;
+let startedAt = 0;
+let checking = false;
+let seenMail = new Set();
+
+function mailFingerprint(c) {
+  if (c?.huella) return String(c.huella);
+  return [c?.recibido || '', c?.de || '', c?.asunto || '', c?.extracto || '']
+    .map(part => String(part).trim().toLocaleLowerCase('es')).join('|');
+}
 
 async function authHeaders() {
   try {
@@ -25,23 +35,41 @@ async function authHeaders() {
 }
 
 async function checkOnce(base, onNewMail) {
+  if (checking) return;
+  checking = true;
   try {
-    const response = await fetch(`${base}/api/mail/unread?limite=10`, { headers: await authHeaders() });
-    if (!response.ok) return; // backend no disponible, sin permiso, o modo dev sin buzon: se reintenta solo
+    const response = await fetch(`${base}/api/mail/notifications/poll?limite=10`, { headers: await authHeaders() });
+    if (!response.ok) { console.warn(`[mIA Mail] El sondeo respondio HTTP ${response.status}; se reintentara.`); return; }
     const data = await response.json();
     const correos = Array.isArray(data?.correos) ? data.correos : [];
-    if (!correos.length) return;
-    // correos_sin_leer pide $orderby=receivedDateTime desc: el primero es el mas reciente.
-    const previousSeen = lastSeenAt;
-    const top = correos[0]?.recibido;
-    if (top && (!lastSeenAt || new Date(top) > new Date(lastSeenAt))) lastSeenAt = top;
-    // En la PRIMERA pasada solo se fija el punto de partida: nunca se notifica de golpe toda la
-    // bandeja al abrir la app, solo lo que llegue despues.
-    if (!previousSeen) return;
-    const nuevos = correos.filter(c => c.recibido && new Date(c.recibido) > new Date(previousSeen));
-    if (nuevos.length) onNewMail(nuevos);
+    console.info(`[mIA Mail] Sondeo correcto; mensajes recientes=${correos.length}.`);
+    const nuevos = [];
+    if (!primed) {
+      // El primer sondeo establece la bandeja conocida, pero conserva los mensajes
+      // recibidos desde el arranque aunque Graph haya tardado o la primera petición fallara.
+      for (const correo of correos) {
+        const key = mailFingerprint(correo);
+        const received = Date.parse(correo?.recibido || '');
+        if (received >= startedAt - STARTUP_CATCHUP_MS && !seenMail.has(key)) nuevos.push(correo);
+      }
+      primed = true;
+    } else {
+      // Evita depender de receivedDateTime para detectar un mensaje que Graph acaba de mostrar.
+      for (const correo of correos) {
+        const key = mailFingerprint(correo);
+        if (!seenMail.has(key)) nuevos.push(correo);
+      }
+    }
+    if (nuevos.length) {
+      console.info(`[mIA Mail] Detectados ${nuevos.length} mensaje(s) nuevo(s).`);
+      await onNewMail(nuevos);
+    }
+    for (const correo of correos) seenMail.add(mailFingerprint(correo));
+    if (seenMail.size > 100) seenMail = new Set([...seenMail].slice(-50));
   } catch (e) {
     console.warn('[mIA Mail] No se ha podido comprobar el correo:', e);
+  } finally {
+    checking = false;
   }
 }
 
@@ -49,7 +77,11 @@ async function checkOnce(base, onNewMail) {
  * anterior (nunca en la primera pasada). Seguro de llamar varias veces: reinicia el temporizador. */
 function start(base, onNewMail) {
   stop();
-  lastSeenAt = null;
+  // Si el primer HTTP falla, conserva el punto de arranque para detectar mensajes que lleguen
+  // antes del siguiente sondeo correcto. Se deja un margen corto por desviación de reloj.
+  startedAt = Date.now();
+  primed = false;
+  seenMail = new Set();
   const first = checkOnce(base, onNewMail);
   timer = setInterval(() => checkOnce(base, onNewMail), POLL_MS);
   return first;
@@ -61,13 +93,18 @@ function stop() {
 
 /** `correo` trae los campos de `correos_sin_leer`: de, asunto, recibido, extracto... */
 function showNotification(correo, onClick) {
-  if (!Notification.isSupported()) return;
-  const n = new Notification({
-    title: `Correo nuevo de ${correo.de || 'remitente desconocido'}`,
-    body: correo.asunto || '(sin asunto)',
-  });
-  if (typeof onClick === 'function') n.on('click', () => onClick(correo));
-  n.show();
+  try {
+    if (!Notification.isSupported()) return;
+    const n = new Notification({
+      title: `Correo nuevo de ${correo.de || 'remitente desconocido'}`,
+      body: correo.asunto || '(sin asunto)',
+    });
+    if (typeof onClick === 'function') n.on('click', () => onClick(correo));
+    n.show();
+  } catch (error) {
+    // Un toast de Windows no debe impedir que el aviso integrado en mIA aparezca.
+    console.warn('[mIA Mail] Notificación de Windows no disponible:', error?.message || error);
+  }
 }
 
 module.exports = { start, stop, checkOnce, showNotification, POLL_MS };

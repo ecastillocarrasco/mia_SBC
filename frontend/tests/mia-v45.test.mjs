@@ -10,8 +10,11 @@ import { waitMessage } from '../src/core/waiting-v4.js';
 const code = (rel) => readFileSync(new URL('../'+rel, import.meta.url), 'utf8');
 
 test('development greeting uses Enrique and NO last name', () => {
+  // El saludo varía entre varias formulaciones (ver WELCOME_TEMPLATES_* en identity-v45.js) para
+  // no sonar siempre a la misma frase grabada: no fijamos aquí el texto exacto, solo que el
+  // nombre real aparece y el apellido nunca se filtra, en cualquiera de las variantes posibles.
   assert.equal(resolveWelcomeName({development:true}), 'Enrique');
-  assert.match(welcomeText({name:'Enrique'}), /^¡Hola Enrique!/);
+  assert.match(welcomeText({name:'Enrique'}), /Enrique/);
   assert.doesNotMatch(welcomeText({name:'Enrique'}), /Carrasco|Castillo/);
 });
 
@@ -20,9 +23,22 @@ test('MSAL given_name overrides dev fallback; no account in prod gives anonymous
   assert.equal(resolveWelcomeName({account, development:true}), 'María');
   assert.equal(firstNameFromAccount({name:'Juan Carlos Martínez'}), 'Juan');
   assert.equal(resolveWelcomeName({account:null,development:false}), '');
-  assert.match(welcomeText(), /^¡Hola!/);
+  assert.match(welcomeText(), /Mía/);
   assert.equal(activeIdentity({msalInstance:{getActiveAccount:()=>account}}), account);
   assert.equal(activeIdentity({msalInstance:{getActiveAccount:()=>null}}), null);
+});
+
+test('welcomeText varies across several phrasings while keeping the name', () => {
+  // pick() inyectado para recorrer todas las variantes de forma determinista, en vez de depender
+  // de la semilla aleatoria de sesión (pensada para producción, no para iterar en tests).
+  const withName = new Set();
+  const withoutName = new Set();
+  for (let i = 0; i < 5; i += 1) withName.add(welcomeText({ name: 'Luis', pick: () => i }));
+  for (let i = 0; i < 3; i += 1) withoutName.add(welcomeText({ pick: () => i }));
+  assert.ok(withName.size >= 3, 'se esperan al menos 3 formulaciones distintas con nombre');
+  assert.ok(withoutName.size >= 2, 'se esperan al menos 2 formulaciones distintas sin nombre');
+  for (const text of withName) assert.match(text, /Luis/);
+  for (const text of withName) assert.doesNotMatch(text, /Carrasco|Castillo/);
 });
 
 test('welcome voice requests TTS immediately and handles blocked autoplay', async () => {
@@ -42,11 +58,20 @@ test('welcome voice requests TTS immediately and handles blocked autoplay', asyn
 });
 
 test('welcome TTS is aborted when visitor submits a query, never starts stale audio', async () => {
-  let abortObserved=false,playerCreated=false;
-  const welcome=new MiaWelcomeVoiceV45({fetchImpl:(_uri,opt)=>new Promise((resolve,reject)=>{
-    opt.signal.addEventListener('abort',()=>{abortObserved=true;reject(Object.assign(new Error('aborted'),{name:'AbortError'}));});
-  }),audioFactory:()=>{playerCreated=true;return {play:()=>Promise.resolve(),pause(){}}}});
+  let abortObserved=false,playerCreated=false,fetchStarted;
+  const fetchStartedPromise=new Promise(resolve=>{fetchStarted=resolve;});
+  // getAuthHeaders() (trivial aquí, sin cuenta) se espera antes de llamar a fetchImpl: si
+  // cancel() llega mientras eso se resuelve, prepare() corta antes de invocar fetchImpl siquiera
+  // — mismo resultado 'cancelled', pero sin red de por medio. Para probar el abort de una
+  // petición YA en vuelo, esperamos a que fetchImpl se haya invocado antes de cancelar.
+  const welcome=new MiaWelcomeVoiceV45({fetchImpl:(_uri,opt)=>{
+    fetchStarted();
+    return new Promise((resolve,reject)=>{
+      opt.signal.addEventListener('abort',()=>{abortObserved=true;reject(Object.assign(new Error('aborted'),{name:'AbortError'}));});
+    });
+  },audioFactory:()=>{playerCreated=true;return {play:()=>Promise.resolve(),pause(){}}}});
   const pending=welcome.start('Hola');
+  await fetchStartedPromise;
   welcome.cancel();
   assert.deepEqual(await pending,{status:'cancelled'});
   assert.equal(abortObserved,true);

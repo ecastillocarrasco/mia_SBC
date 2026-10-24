@@ -80,14 +80,12 @@ async function ensureAuthenticated(userDataPath, base) {
 
   cachePath = path.join(userDataPath, 'mia-auth-cache.bin');
   console.log('[mIA Auth] cache de sesion en', cachePath);
-  // Por defecto, el mismo client_id que la web (authConfig.entra.client_id, de /api/auth/config)
-  // -- funciona, pero Microsoft desaconseja compartir un Registro de la aplicación entre una SPA
-  // y un cliente nativo. Con MIA_DESKTOP_ENTRA_CLIENT_ID definido (Registro de la aplicación
-  // propio, plataforma "Mobile and desktop applications"), se usa ese en su lugar. El scope y el
-  // tenant siguen siendo los mismos: siguen siendo la API expuesta por el Registro de la
-  // aplicación de la web (el "recurso"), no cambian por tener un cliente nativo distinto pidiendo
-  // el token.
-  const clientId = process.env.MIA_DESKTOP_ENTRA_CLIENT_ID || authConfig.entra.client_id;
+  // La app nativa usa su registro público propio (mia_Login_Desktop); el token solicitado
+  // sigue dirigido a la API expuesta por CV-SunsetBeachClub, mediante el scope compartido.
+  const clientId = authConfig.entra?.desktop_client_id;
+  if (!clientId || !authConfig.entra.scope) {
+    throw new Error('Falta configurar el Client ID de mia_Login_Desktop o el scope de la API mIA.');
+  }
   pca = new PublicClientApplication({
     auth: {
       clientId,
@@ -97,8 +95,7 @@ async function ensureAuthenticated(userDataPath, base) {
   });
   // msal-node (a diferencia de msal-browser) no tiene pca.getConfiguration(): se registra el
   // valor ya calculado en vez de intentar leerlo de vuelta de la instancia.
-  console.log('[mIA Auth] clientId en uso:', clientId,
-    process.env.MIA_DESKTOP_ENTRA_CLIENT_ID ? '(MIA_DESKTOP_ENTRA_CLIENT_ID)' : '(compartido con la web)');
+  console.log('[mIA Auth] Client ID nativo configurado para mIA Desktop.');
 
   const accounts = await pca.getTokenCache().getAllAccounts();
   if (accounts.length > 0) {

@@ -88,6 +88,10 @@ class PresidioEngine:
                     nlp_configuration={
                         "nlp_engine_name": "spacy",
                         "models": [{"lang_code": _LANGUAGE, "model_name": self._spacy_model}],
+                        # MISC no está en PERSONAL_ENTITIES (policy_engine.py): nunca se tokeniza, así que
+                        # descartarlo aquí no cambia qué se protege, solo evita el aviso repetido de Presidio
+                        # ("Entity MISC is not mapped...") en cada documento indexado.
+                        "ner_model_configuration": {"labels_to_ignore": ["MISC"]},
                     }
                 )
                 nlp_engine = provider.create_engine()

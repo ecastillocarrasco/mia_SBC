@@ -13,6 +13,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 
+from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.data import NewsletterItem
 from mia.modules.community.common import Deps
@@ -137,7 +138,7 @@ def newsletter_corporativo(deps: Deps) -> Tool:
         "noticias_corporativas.",
         NewsletterParams,
         handler,
-        permission=None,
+        permission=Permission.NOTICIAS_LEER,
         timeout_seconds=15.0,
     )
 

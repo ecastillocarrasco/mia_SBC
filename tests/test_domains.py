@@ -14,7 +14,7 @@ import pytest
 from mia.auth import UserContext
 from mia.conversation import ToolContext, ToolRegistry, ToolStatus
 from mia.llm import ToolCall
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from tests.dbutil import fresh_database
 from tests.hr_seed import TODAY, seed
 
@@ -87,6 +87,26 @@ async def test_ficha_detalle_includes_full_history(registry: ToolRegistry) -> No
     historico = with_detail.summary["historico"]
     assert {"vacaciones", "bajas", "nominas", "documentos"} <= set(historico)
     assert historico["vacaciones"][0]["estado"] == "Aceptada"
+
+
+async def test_stale_focus_id_is_ignored_when_a_different_person_is_named(registry: ToolRegistry) -> None:
+    """Fallo real reproducido en preprod 2026-10-24: el modelo arrastraba el empleado_id del
+    foco de una consulta anterior (Ana, empleado_id=1) aunque el turno nombrara a otra persona
+    distinta — la ficha devuelta era la de la persona equivocada, exponiendo sus datos
+    personales a una pregunta sobre otro. empleado_id de foco obsoleto + nombre de otra persona
+    debe resolver por el nombre, nunca por el id arrastrado."""
+    result = await call(registry, "ficha_empleado", empleado_id=1, nombre="Luis Gil")
+    assert result.status is ToolStatus.OK
+    assert result.summary["nombre"] == "Luis Gil"
+    assert result.summary["empleado_id"] != 1
+
+
+async def test_matching_focus_id_and_name_still_resolves_normally(registry: ToolRegistry) -> None:
+    """La defensa del test anterior no debe romper el caso normal: id y nombre coherentes
+    (el usuario confirma o repite el nombre de la misma persona en foco) siguen resolviendo bien."""
+    result = await call(registry, "ficha_empleado", empleado_id=1, nombre="Ana Ruiz")
+    assert result.status is ToolStatus.OK
+    assert result.summary["empleado_id"] == 1
 
 
 # ------------------------------------------------------------------ plantilla (POB-001)

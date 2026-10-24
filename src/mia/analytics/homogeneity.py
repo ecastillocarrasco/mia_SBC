@@ -14,7 +14,7 @@ problemas de calidad de datos y errores que deben impedir la generación de conc
     cuando los datos sean incompatibles").
 
 Cada ``HomogeneityIssue`` lleva código, fuente y contexto para poder mostrarse como un
-``Block(kind="warnings")`` trazable (ver ``mia.modules.rrhh.informes.document.warnings_block``), no solo
+``Block(kind="warnings")`` trazable (ver ``mia.reporting.document.warnings_block``), no solo
 como texto suelto.
 
 Deliberadamente no asume cosas que ``ResolvedPeriod`` (``mia.query.period``) no sabe: no tiene

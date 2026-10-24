@@ -410,7 +410,10 @@ def plantilla(deps: Deps) -> Tool:
             summary.update(age_stats(people, ctx.now.date()))
         if len(people) <= MAX_ROWS_FOR_MODEL:
             summary["personas"] = [person_summary(e) for e in people]
-        state: dict[str, Any] = {"foco_departamento": dept.name} if dept.name else {}
+        # None explícito (y no {}) cuando no hay departamento: turn.state.update() en el motor nunca
+        # borra claves, así que omitir "foco_departamento" dejaría pegado un departamento de un turno
+        # anterior de forma indefinida (incluso tras reiniciar el backend, por persistir en Postgres).
+        state: dict[str, Any] = {"foco_departamento": dept.name or None}
         state.update(population_state(f"plantilla {p.estado} {dept.name or ''}".strip(), people))
         if p.agrupar_por and not p.listar:
             # Un recuento por categorías se presenta agrupado (y se dibuja como gráfico), no como 343 nombres.

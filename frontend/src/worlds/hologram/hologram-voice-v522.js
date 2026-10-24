@@ -7,12 +7,13 @@
 export class HologramVoiceV522 {
   constructor({ apiBase = '', fetchImpl = (...args) => fetch(...args),
     createAudio = url => new Audio(url), maxMs = 90000,
-    fetchTimeoutMs = 45000 } = {}) {
+    fetchTimeoutMs = 45000, getAuthHeaders = async () => ({}) } = {}) {
     this.apiBase = apiBase;
     this.fetchImpl = fetchImpl;
     this.createAudio = createAudio;
     this.maxMs = maxMs;
     this.fetchTimeoutMs = fetchTimeoutMs;
+    this.getAuthHeaders = getAuthHeaders;
     this.controller = null;
     this.audio = null;
     this.audioURL = null;
@@ -107,9 +108,10 @@ export class HologramVoiceV522 {
           fetchTimedOut = true;
           controller.abort();
         }, Math.max(250,this.fetchTimeoutMs));
+        const authHeaders = (await this.getAuthHeaders()) || {};
         const response = await this.fetchImpl(`${this.apiBase}/api/voice/stream`, {
           method:'POST',
-          headers:{'Content-Type':'application/json','Accept':'audio/*, application/octet-stream'},
+          headers:{'Content-Type':'application/json','Accept':'audio/*, application/octet-stream',...authHeaders},
           body:JSON.stringify({text:summary}),
           signal:controller.signal,
         });

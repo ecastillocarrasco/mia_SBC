@@ -10,10 +10,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import mia.diagnostics as diagnostics
 from mia import __version__
 from mia.api.errors import install_error_handlers
 from mia.api.middleware import RequestContextMiddleware
-import mia.diagnostics as diagnostics
 from mia.api.routes import (
     admin,
     attachments,
@@ -30,6 +30,8 @@ from mia.api.routes import (
 )
 from mia.api.routes.frontend import mount_frontend
 from mia.api.services import Services
+from mia.conversation.retention import run_retention_cleanup
+from mia.data.retention import run_audit_retention_cleanup
 from mia.data.schema import schema_problem
 from mia.diagnostics.routes import router as diagnostics_router
 from mia.diagnostics.store import DiagnosticsStore
@@ -37,10 +39,26 @@ from mia.diagnostics.streaming import LiveBroadcaster
 from mia.modules.rrhh.informes.jobs import JOB_KIND_INFORME_ECONOMICO, run_informe_economico_nominas
 from mia.observability import configure_logging, get_logger
 from mia.observability.telemetry import configure_telemetry
+from mia.reporting.retention import run_report_cleanup
 from mia.reporting.worker import ReportJobWorker
 from mia.settings import Settings, VoiceProviderName, get_settings
 
 log = get_logger(__name__)
+
+
+def _start_retention_tasks(
+    services: Services, settings: Settings
+) -> tuple[asyncio.Task, asyncio.Task, asyncio.Task | None]:
+    conversations = asyncio.create_task(
+        run_retention_cleanup(services.db, settings.conversation_retention_days)
+    )
+    audit = asyncio.create_task(run_audit_retention_cleanup(services.db, settings.audit_retention_days))
+    reports = (
+        asyncio.create_task(run_report_cleanup(services.db, services.report_storage, settings.reports.directory))
+        if services.report_storage is not None
+        else None
+    )
+    return conversations, audit, reports
 
 
 async def _warm_voice(services: Services) -> None:
@@ -61,6 +79,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.services = services or Services.build(settings)
+        retention_cleanup, audit_cleanup, report_cleanup = _start_retention_tasks(app.state.services, settings)
 
         # Diagnóstico — solo si está habilitado
         diag_store: DiagnosticsStore | None = None
@@ -93,6 +112,16 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
         try:
             yield
         finally:
+            if report_cleanup is not None:
+                report_cleanup.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await report_cleanup
+            retention_cleanup.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await retention_cleanup
+            audit_cleanup.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await audit_cleanup
             warm.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await warm

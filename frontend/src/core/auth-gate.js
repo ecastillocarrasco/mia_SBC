@@ -96,10 +96,13 @@ export async function ensureAuthenticated({ interactive = true } = {}) {
   // seguridad del HTML la quitaba a los 18s y revelaba el portal sin sesión — nunca un error
   // visible. Ahora cualquier fallo real se muestra con la misma pantalla que un 401/403.
   try {
+    if (!config.entra?.web_client_id || !config.entra?.scope) {
+      throw new Error('Falta configurar el Client ID de mia_Login o el scope de la API mIA.');
+    }
     const { PublicClientApplication } = await loadMsal();
     const msal = new PublicClientApplication({
       auth: {
-        clientId: config.entra.client_id,
+        clientId: config.entra.web_client_id,
         authority: `https://login.microsoftonline.com/${config.entra.tenant_id}`,
         redirectUri: window.location.origin + window.location.pathname,
       },

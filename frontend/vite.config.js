@@ -10,12 +10,12 @@ import { defineConfig } from "vite";
 // propio aviso de "can't be bundled without type=module" en `npm run build`) — así que, sin este
 // plugin, `dist/` quedaba sin ellos y el navegador recibía el HTML de index.html como fallback en su
 // lugar. En `vite dev` no hace falta: el servidor de desarrollo ya sirve estos ficheros directamente
-// desde `frontend/src/worlds/2D/`, sin pasar por este plugin (`apply: "build"`).
+// desde `frontend/src/worlds/2d/`, sin pasar por este plugin (`apply: "build"`).
 const CLASSIC_WORLD_2D_ASSETS = [
-  "src/worlds/2D/mia-2d.js",
-  "src/worlds/2D/mia-enhance.js",
-  "src/worlds/2D/mia-2d.css",
-  "src/worlds/2D/mia-enhance.css",
+  "src/worlds/2d/mia-2d.js",
+  "src/worlds/2d/mia-enhance.js",
+  "src/worlds/2d/mia-2d.css",
+  "src/worlds/2d/mia-enhance.css",
 ];
 
 function copyClassicWorld2dAssets() {

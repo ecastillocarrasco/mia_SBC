@@ -30,7 +30,7 @@ from mia.conversation.events import ResultEvent
 from mia.data import Employee
 from mia.llm.base import LLMRequest, Message, TextDelta
 from mia.llm.fake import FakeLLMProvider, final_answer, tool_call
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from mia.privacy_gateway.context_manager import set_operation_context
 from mia.privacy_gateway.gateway import PrivacyGateway
 from mia.privacy_gateway.prompt_injection_guard import scan as scan_injection

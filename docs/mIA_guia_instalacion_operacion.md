@@ -25,11 +25,12 @@ Pensada para que el equipo de IT del cliente pueda instalar, operar y auditar mI
 ### 1.2 Entra ID / Microsoft 365 (responsabilidad de IT del cliente)
 
 - Un **App Registration** para mIA, con:
-  - Certificado de aplicación para SharePoint/Graph (client-credentials, no secreto de cliente).
+  - Certificado de aplicación para SharePoint app-only y para autenticar la API confidencial durante OBO (no secreto de cliente); debe estar registrado en el Client ID de la API mIA usado para OBO.
   - App Roles definidos y asignados a los usuarios/grupos correctos: `Global`, `RRHH`, `RRHH.NoNominas`, `Administracion`, `Legal` (mIA lee el claim `roles`, **nunca** `groups`).
   - Si se usa el modo de login `entra` (ver §7): `redirect URI` del frontend, scope expuesto para MSAL.
-- **Consentimiento de administrador** a los permisos de aplicación de Graph/SharePoint — ver `docs/mIA_catalogo_integraciones.md` §4 para el detalle exacto.
-- **Verificar/crear una Application Access Policy en Exchange Online** que acote el permiso de correo al buzón compartido de RRHH (hallazgo crítico, ver catálogo de integraciones §2.2) — sin esto, el permiso de aplicación puede dar acceso a todos los buzones del tenant.
+- **Correo delegado OBO**: CV-SunsetBeachClub es la API de mIA y cliente confidencial OBO; exponer allí `access_as_user`, registrar el certificado usado por el backend y conceder permisos Graph delegados. `mia_Login` y `mia_Login_Desktop` son clientes públicos separados: cada uno solicita a la API `api://<client-id-CV>/access_as_user`. En Azure configura `MIA_AUTH__ENTRA_WEB_CLIENT_ID`, `MIA_AUTH__ENTRA_DESKTOP_CLIENT_ID`, `MIA_AUTH__ENTRA_CLIENT_ID` (CV-SunsetBeachClub), tenant/scope y Bicep `delegatedMailEnabled=true`. Para lectura/gestión de correo se usan permisos delegados `Mail.ReadWrite.Shared`; si se habilita envío, `Mail.Send` para el buzón personal y `Mail.Send.Shared` para compartidos. No retirar los permisos Mail de aplicación hasta validar ambos clientes y OBO en producción.
+- **Buzones compartidos**: asignar al usuario los permisos de Exchange necesarios (Full Access para leer/editar; Send As o Send on Behalf para enviar). La persona solicita el buzón con su UPN/dirección; no existe una lista global porque los accesos varían por usuario. Graph/Exchange comprueba cada operación delegada.
+- **No retirar aún los permisos Mail de aplicación**: probar primero Graph OBO sobre el buzón personal, un compartido con Full Access y otro compartido sin acceso. Cuando la prueba negativa falle como se espera y lectura/envío funcionen según privilegios, quitar en Entra `Mail.Read`, `Mail.ReadWrite` y `Mail.Send` de tipo aplicación. Los permisos de SharePoint son independientes.
 
 ### 1.3 Cuentas de terceros
 
@@ -180,7 +181,7 @@ Verificación tras cada fase:
 
 Producción es el último paso y todavía no hay nada contratado — esta checklist es la condición para llegar a ese punto, no una lista ya completada:
 
-- [ ] Confirmar en Exchange Online la Application Access Policy que acota el permiso de correo al buzón de RRHH (crítico).
+- [ ] Revisar en Entra los permisos Mail de aplicación y en Exchange el alcance RBAC; probar el buzón propio y el de otra persona. Registrar qué límite está impuesto por el código y cuál por la plataforma.
 - [ ] Confirmar en Entra ID el alcance exacto de los permisos de aplicación de SharePoint (`Sites.Selected` recomendado).
 - [ ] Corregir el comando del Container Apps Job de sincronización (`mia.sync` → `mia.ingestion.sync`).
 - [ ] Decidir y desplegar la vía de login real: Easy Auth (ya soportado en el bicep) o extender la infraestructura para el modo `entra` (ya implementado en código, no conectado).
@@ -219,8 +220,8 @@ Producción es el último paso y todavía no hay nada contratado — esta checkl
 
 ## 9. Qué necesito de IT — lista priorizada
 
-1. **Consentimiento de administrador** a los permisos de aplicación de Graph/SharePoint del App Registration de mIA — sin esto, la sincronización y el correo no funcionan.
-2. **Confirmación o creación de la Application Access Policy de Exchange Online** que acota el permiso de correo al buzón de RRHH — crítico de seguridad, ver catálogo de integraciones.
+1. **Consentimiento delegado para Graph Mail** y permiso de aplicación para SharePoint, cada uno según su función; no conceder permisos Mail de aplicación tras completar la migración OBO.
+2. **Permisos efectivos en Exchange** — confirmar Full Access para cada buzón compartido, y Send As/Send on Behalf si se habilita envío; validar con una cuenta sin esos permisos que Graph deniega el buzón.
 3. **Grupos de usuarios y App Roles**: decidir qué personas/grupos reciben cada rol (`RRHH`, `RRHH.NoNominas`, `Administracion`, `Legal`) en el App Registration.
 4. **Suscripción de Azure y cuotas**: resource group, presupuesto aprobado, SKU de PostgreSQL para la carga real esperada.
 5. **Reglas de red/firewall**: confirmar que el egress HTTPS a los 5 dominios externos (§1.5) está permitido desde el entorno Azure del cliente si hay restricciones de red corporativas adicionales (p. ej. Azure Firewall con allow-list de FQDN).

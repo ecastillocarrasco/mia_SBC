@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from mia.attachments.service import AttachmentService
+from mia.attachments.storage import AzureBlobStorage, LocalStorage, StorageBackend
 from mia.auth import IdentityProvider, build_identity_provider
 from mia.connectors.graph import GraphClient
 from mia.connectors.sharepoint import CertificateTokenProvider, SharePointClient
@@ -13,9 +14,9 @@ from mia.data import Database
 from mia.ingestion.sync.factory import build_sharepoint_client
 from mia.llm import LLMProvider, build_llm_provider
 from mia.modules import community, finanzas, it
-from mia.modules.rrhh import build_registry
-from mia.modules.rrhh.correo.mailbox import mailbox_available, resolve_mailbox
-from mia.settings import Settings
+from mia.modules.correo.mailbox import mailbox_available, resolve_mailbox
+from mia.modules.registry import build_registry
+from mia.settings import AuthMode, Settings
 from mia.voice import CachedVoice, build_voice
 
 
@@ -24,10 +25,16 @@ def build_graph_client(settings: Settings) -> GraphClient | None:
     if (
         "correo" not in settings.domains.enabled
         or not mailbox_available(settings.mail)
-        or not settings.sharepoint.configured
+        or not settings.sharepoint.app_credentials_configured
     ):
         return None
-    return GraphClient(CertificateTokenProvider(settings.sharepoint, scope="https://graph.microsoft.com/.default"))
+    return GraphClient(
+        CertificateTokenProvider(settings.sharepoint, scope="https://graph.microsoft.com/.default"),
+        delegated_settings=settings.sharepoint,
+        delegated_client_id=settings.auth.entra_client_id,
+        delegated_tenant_id=settings.auth.entra_tenant_id,
+        allow_app_only=settings.auth.mode is AuthMode.DEV,
+    )
 
 
 @dataclass(slots=True)
@@ -44,6 +51,7 @@ class Services:
     graph: GraphClient | None = None
     sharepoint: SharePointClient | None = None
     attachment_service: AttachmentService | None = None
+    report_storage: StorageBackend | None = None
 
     @classmethod
     def build(
@@ -55,6 +63,11 @@ class Services:
         db: Database | None = None,
     ) -> Services:
         database = db or Database(settings.database_url)
+        report_storage: StorageBackend = (
+            AzureBlobStorage(settings.reports.azure_account_url, settings.reports.azure_container)
+            if settings.reports.backend == "azure_blob" and settings.reports.azure_account_url
+            else LocalStorage(settings.reports.directory)
+        )
         provider = llm or build_llm_provider(settings.llm, settings.privacy_gateway)
         graph = build_graph_client(settings)
         sharepoint = build_sharepoint_client(settings) if settings.sharepoint.configured else None
@@ -65,6 +78,7 @@ class Services:
             llm=provider,
             graph=graph,
             sharepoint=sharepoint,
+            report_storage=report_storage,
             enabled=settings.domains.enabled,
         )
         finanzas.register(registry, None)
@@ -101,11 +115,14 @@ class Services:
             graph=graph,
             sharepoint=sharepoint,
             attachment_service=attachment_svc,
+            report_storage=report_storage,
         )
 
     async def aclose(self) -> None:
         if self.attachment_service is not None:
             await self.attachment_service.aclose()
+        if self.report_storage is not None and hasattr(self.report_storage, "aclose"):
+            await self.report_storage.aclose()  # type: ignore[attr-defined]
         await self.llm.aclose()
         await self.voice.aclose()
         if self.graph is not None:

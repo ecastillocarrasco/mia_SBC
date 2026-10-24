@@ -25,7 +25,7 @@ from mia.conversation.tools import remember_table
 from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.data import Payslip
 from mia.llm import ToolCall
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from mia.query.period import period_engine
 from mia.text import normalize_key
 from tests.conftest import make_settings

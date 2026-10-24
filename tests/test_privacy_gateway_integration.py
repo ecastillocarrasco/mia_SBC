@@ -28,7 +28,7 @@ from mia.conversation.tools import ToolRegistry
 from mia.data import Database, Employee, Payslip
 from mia.llm.base import LLMRequest
 from mia.llm.fake import FakeLLMProvider, final_answer, tool_call
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from mia.privacy_gateway.gateway import PrivacyGateway
 from mia.settings import PrivacyGatewaySettings
 from tests.dbutil import fresh_database

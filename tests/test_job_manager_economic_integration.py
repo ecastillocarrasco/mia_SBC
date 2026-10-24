@@ -36,7 +36,7 @@ from mia.conversation import ToolContext, ToolStatus
 from mia.data import Payslip, Report, ReportJob
 from mia.llm import ToolCall
 from mia.main import create_app
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from mia.modules.rrhh.informes.jobs import JOB_KIND_INFORME_ECONOMICO, run_informe_economico_nominas
 from mia.reporting import job_manager
 from mia.reporting.job_manager import JobSnapshot

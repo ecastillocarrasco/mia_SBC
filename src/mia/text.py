@@ -73,7 +73,7 @@ def format_number(value: float) -> str:
 
 
 # ------------------------------------------------------------------ HTML a texto plano
-# Usado por el cuerpo de correo (mia.modules.rrhh.correo) y por el cuerpo rico de listas de
+# Usado por el cuerpo de correo (mia.modules.correo) y por el cuerpo rico de listas de
 # SharePoint (p. ej. Community/Newsletter): ningun dominio es dueno de "convertir HTML a texto
 # legible", asi que vive aqui, no en uno de los dos.
 _HTML_SKIP = {"style", "script", "head", "title", "noscript", "template", "svg"}

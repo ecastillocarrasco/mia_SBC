@@ -4,9 +4,33 @@
  * DOM readiness + actual image load/error events drive the progress.
  */
 import { MiaBootLoader } from '../../core/boot-loader-v43.js';
-import { ensureAuthenticated, ensureAuthorized, mountSignOutButton } from '../../core/auth-gate.js';
-import { start as startMailWatch, ensureNotificationPermission, showNotification } from '../../core/mail-watch.js';
+import { ensureAuthenticated, ensureAuthorized, getAccessToken, mountSignOutButton } from '../../core/auth-gate.js';
+import { start as startMailWatch, ensureNotificationPermission, announceNewMail, mailPromptQuery } from '../../core/mail-watch.js';
+import { getWelcomeText } from '../../core/identity-v45.js';
+import { MiaWelcomeVoiceV45 } from '../../core/welcome-voice-v45.js';
+import { MiaWelcomeAutostartV47 } from '../../core/welcome-autostart-v47.js';
 import './mia-entry-v530.css';
+
+// El saludo hablado, con el nombre real del usuario y la voz configurada en el backend
+// (antes el 2D solo pintaba un saludo genérico de texto, sin voz ni nombre — a diferencia
+// de 3D/Holograma). mia-2d.js (script clásico) ya pintó #greetingEyebrow/#welcomeGreeting
+// con el saludo por franja horaria antes de que este módulo (diferido) llegue aquí; lo
+// sustituimos por el personalizado una vez confirmados login y acceso.
+function playPersonalized2DWelcome() {
+  const text = getWelcomeText();
+  const eyebrow = document.getElementById('greetingEyebrow');
+  const welcome = document.getElementById('welcomeGreeting');
+  if (welcome) welcome.textContent = text;
+  if (eyebrow) eyebrow.textContent = 'MÍA';
+  const voice = new MiaWelcomeVoiceV45({
+    getAuthHeaders: async () => {
+      const token = await getAccessToken();
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    },
+  });
+  const autostart = new MiaWelcomeAutostartV47({ voice, canSpeak: () => !document.hidden });
+  void autostart.start(text);
+}
 
 export function install2DEntry({ root = document.body } = {}) {
   if (!root || document.getElementById('mia2DEntry')) return null;
@@ -101,21 +125,16 @@ if (typeof document !== 'undefined') {
   // (levantando la misma cortina de pintura) y nunca resuelve — install2DEntry() nunca se llama.
   await ensureAuthorized();
   mountSignOutButton('#miaSignOut');
-  // Aviso de correo nuevo (pedido del usuario, igual que mia-desktop): notificación del navegador
-  // con un clic que deja la pregunta de resumen ya escrita en el composer, lista para confirmar.
-  ensureNotificationPermission().then((granted) => {
-    if (!granted) return;
-    startMailWatch((correos) => {
-      for (const correo of correos) {
-        showNotification(correo, (c) => {
-          const input = document.getElementById('input');
-          if (!input) return;
-          input.value = `Resúmeme el correo de ${c.de} sobre "${c.asunto}"`;
-          input.focus();
-        });
-      }
-    });
-  });
+  playPersonalized2DWelcome();
+  // El permiso controla la notificación del navegador, no el sondeo ni el aviso de voz.
+  void ensureNotificationPermission();
+  startMailWatch((correos, { restored = false } = {}) => announceNewMail(correos, {
+    restored,
+    speak: (text) => window.miaSpeakMailNotification?.(text),
+    onSummary: (correo) => window.ask?.(mailPromptQuery(correo, 'summary')),
+    onDetails: (correo) => { window.miaAutoOpenNextMail = true; window.ask?.(mailPromptQuery(correo, 'details')); },
+    onDismiss: () => window.miaSpeakMailNotification?.('De acuerdo, seguimos con lo que estábamos.'),
+  }));
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => install2DEntry(), {once:true});
   } else install2DEntry();

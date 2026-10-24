@@ -18,7 +18,7 @@ from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.conversation import ToolContext, ToolRegistry, ToolStatus
 from mia.data import Database, Payslip, SignedDocument, TtRate, TtTimesheet
 from mia.llm import ToolCall
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from mia.modules.rrhh.nominas.parser import parse_payslip
 from tests.dbutil import fresh_database
 from tests.hr_seed import seed

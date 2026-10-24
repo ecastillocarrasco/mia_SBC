@@ -7,6 +7,12 @@
  *
  * 2D: LLM /api/mia/v4/chat -> NDJSON /api/mia/chat/stream -> JSON /api/mia/chat.
  */
+/** Por defecto no añade ninguna cabecera: en modo dev/easyauth (o en los tests, que no inyectan
+ * nada) el backend no la exige. El llamador real (main.js) inyecta la cabecera Bearer real — ver
+ * `getAuthHeaders` más abajo — para no acoplar este módulo a auth-gate.js (y a su `import` de
+ * CSS, que rompe al cargar este fichero fuera de Vite, como en los tests de Node). */
+const noAuthHeaders = async () => ({});
+
 export class HologramApiError extends Error {
   constructor(message, code = 'backend-unavailable') {
     super(message);
@@ -156,11 +162,11 @@ function traceSafe(callback, value) {
   try { callback(value); } catch (error) { console.warn('[mIA HG] Diagnostico no disponible', error); }
 }
 
-async function postJson(url, payload, {fetchImpl, signal, onTrace, route}) {
+async function postJson(url, payload, {fetchImpl, signal, onTrace, route, getAuthHeaders}) {
   traceSafe(onTrace,{phase:'request', event:'fetch-start',requestStarted:true,route});
   const response = await fetchImpl(url, {
     method: 'POST',
-    headers:{'Content-Type':'application/json; charset=utf-8', 'Accept':'application/json'},
+    headers:{'Content-Type':'application/json; charset=utf-8', 'Accept':'application/json', ...(await getAuthHeaders())},
     body: JSON.stringify(payload), signal, cache: 'no-store',
   });
   traceSafe(onTrace,{phase:'request',event:'http',http:response.status,route});
@@ -172,11 +178,11 @@ async function postJson(url, payload, {fetchImpl, signal, onTrace, route}) {
   return json;
 }
 
-async function postNDJSON(url, payload, {fetchImpl, signal, onTrace, route, onProgress}) {
+async function postNDJSON(url, payload, {fetchImpl, signal, onTrace, route, onProgress, getAuthHeaders}) {
   traceSafe(onTrace,{phase:'request',event:'fetch-start',requestStarted:true,route});
   const response = await fetchImpl(url, {
     method:'POST',
-    headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/x-ndjson'},
+    headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/x-ndjson', ...(await getAuthHeaders())},
     body:JSON.stringify(payload), signal, cache:'no-store',
   });
   traceSafe(onTrace,{phase:'request',event:'http',http:response.status,route});
@@ -243,7 +249,7 @@ export async function sendHologramVia2D({
   message, contextState = createHologramApiContext(), signal = null,
   fetchImpl = fetch, onTrace = () => {}, onProgress = () => {},
   llmTimeoutMs = 75_000, streamTimeoutMs = 40_000, fallbackTimeoutMs = 20_000,
-  routePrefix = '', replyIntegrity = null,
+  routePrefix = '', replyIntegrity = null, getAuthHeaders = noAuthHeaders,
 } = {}) {
   const question = String(message || '').trim();
   if (!question) throw new HologramApiError('Consulta vacia', 'invalid-query');
@@ -263,8 +269,8 @@ export async function sendHologramVia2D({
     traceSafe(onTrace,{phase:'request',event:'attempt',route});
     try {
       const raw = await withTimeout((attemptSignal) => protocol === 'application/x-ndjson'
-        ? postNDJSON(routePrefix+url,payload,{fetchImpl,signal:attemptSignal,onTrace,route,onProgress})
-        : postJson(routePrefix+url,payload,{fetchImpl,signal:attemptSignal,onTrace,route}),
+        ? postNDJSON(routePrefix+url,payload,{fetchImpl,signal:attemptSignal,onTrace,route,onProgress,getAuthHeaders})
+        : postJson(routePrefix+url,payload,{fetchImpl,signal:attemptSignal,onTrace,route,getAuthHeaders}),
       budgets[i], signal);
       // If a replaced turn finishes late, it may NEVER update context or
       // accept a result, even if fetch ignored AbortSignal.

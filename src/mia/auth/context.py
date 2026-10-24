@@ -45,6 +45,10 @@ class Permission(StrEnum):
     TRABAJO_TEMPORAL_LEER = "trabajo_temporal:leer"
     CORREO_LEER = "correo:leer"
     CORREO_ENVIAR = "correo:enviar"
+    NOTICIAS_LEER = "noticias:leer"
+    """Community: noticias corporativas/de grupo y newsletter interna. Ver ``_UNIVERSAL_CON_ROL``:
+    se concede igual que ``CORREO_LEER``, a cualquier usuario con algún rol reconocido, nunca a
+    quien no tiene ninguno."""
     INFORMES_GENERAR = "informes:generar"
     PREDICCIONES_LEER = "predicciones:leer"
     ADMINISTRAR = "sistema:administrar"
@@ -69,8 +73,6 @@ _RRHH_COMPLETO = _LECTURA_RRHH | {
     Permission.DOCUMENTOS_CONTENIDO,
     Permission.DOCUMENTOS_CONTENIDO_MEDICO,
     Permission.CURRICULUMS_LEER,
-    Permission.CORREO_LEER,
-    Permission.CORREO_ENVIAR,
 }
 
 ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
@@ -95,6 +97,11 @@ ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
     "Legal": frozenset({Permission.DOCUMENTOS_LEER, Permission.DOCUMENTOS_CONTENIDO}),
 }
 
+_UNIVERSAL_CON_ROL = frozenset({Permission.CORREO_LEER, Permission.CORREO_ENVIAR, Permission.NOTICIAS_LEER})
+"""Correo (lectura y envío) y Community (noticias + newsletter): se conceden a CUALQUIER usuario
+con algún rol reconocido, sea el que sea — no son privilegios de un rol concreto, pero tampoco son
+públicos: sin ningún rol reconocido no se concede nada (ver ``UserContext.permissions``)."""
+
 
 class PermissionDeniedError(Exception):
     def __init__(self, permission: Permission) -> None:
@@ -110,12 +117,19 @@ class UserContext:
     roles: frozenset[str] = field(default_factory=frozenset)
     auth_method: str = "dev"
     language: str = "es"
+    graph_assertion: str | None = field(default=None, repr=False, compare=False)
+    """Access token de entrada para OBO hacia Microsoft Graph; solo vive durante la petición."""
     """ISO 639-1 (``mia.core.i18n.SUPPORTED_LANGUAGES``). Por ahora siempre «es»: ningún
     proveedor de identidad la rellena todavía desde una preferencia real del usuario."""
 
     @property
     def permissions(self) -> frozenset[Permission]:
-        granted: set[Permission] = set()
+        if not any(role in ROLE_PERMISSIONS for role in self.roles):
+            # Sin ningún rol reconocido no hay acceso de ningún tipo, ni siquiera a lo
+            # "universal" (correo, noticias): ``/api/auth/me`` -> ``has_access=False`` ->
+            # pantalla de acceso no autorizado.
+            return frozenset()
+        granted: set[Permission] = set(_UNIVERSAL_CON_ROL)
         for role in self.roles:
             granted |= ROLE_PERMISSIONS.get(role, frozenset())
         return frozenset(granted)

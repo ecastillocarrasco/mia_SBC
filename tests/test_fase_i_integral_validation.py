@@ -95,7 +95,7 @@ async def _build_payroll_chat_app(tmp_path, *, formato: str, db_name: str):
 
     from mia.api.services import Services
     from mia.conversation import ConversationEngine, Persona
-    from mia.modules.rrhh import build_registry
+    from mia.modules.registry import build_registry
 
     services = Services.build(settings, llm=llm, db=db)
     registry = build_registry(

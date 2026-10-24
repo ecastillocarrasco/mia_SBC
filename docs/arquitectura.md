@@ -1,5 +1,24 @@
 # Arquitectura de mIA
 
+## Identidad de producto y estado actual
+
+mIA es el asistente conversacional de toda la organización. La arquitectura objetivo es un
+orquestador común con dominios independientes (Community, RRHH, Correo, Legal, Finance, etc.),
+cada uno con sus herramientas, fuentes y permisos de Entra ID. `Global` es el rol administrador
+con acceso completo. Community es transversal y no exige permisos de dominio.
+
+El producto todavía no ha alcanzado toda esa separación: RRHH es el dominio funcional más completo;
+Finanzas e IT son registros parciales. Correo ya está separado como paquete/dominio en
+`mia.modules.correo`; su lectura se habilita para todos los roles autenticados y se resuelve al buzón
+de la sesión, mientras que el envío mantiene permiso propio. No se debe presentar la lista de
+dominios objetivo como funcionalidades ya disponibles.
+
+Las cuatro experiencias objetivo (web 2D, web 3D, holograma y mIA Desktop) deben compartir API,
+identidad, permisos y capacidades; la presentación puede variar por cliente, nunca el alcance de
+datos. La integración efectiva de cada cliente debe verificarse al incorporarlo. Las futuras acciones
+de escritura (por ejemplo, actualizar SharePoint) deben añadir permisos por acción, validación de
+parámetros, confirmación explícita de operaciones sensibles y auditoría antes de habilitarse.
+
 ## Principios
 
 1. **Un solo flujo conversacional.** El LLM recibe la pregunta y herramientas
@@ -51,8 +70,8 @@ El objetivo es el tiempo hasta el **primer audio**, no el tiempo total:
 
 - `auth/`: cada petición lleva un `UserContext`; cada herramienta declara el
   permiso que exige. **El LLM solo ve las herramientas permitidas** al usuario.
-- Modos de identidad: `dev` (local, bloqueado en producción) y `easyauth`
-  (Azure). Entra ID con MSAL se añadirá como un proveedor más.
+- Modos de identidad: `dev` (local, bloqueado en producción), `easyauth` y validación de tokens
+  Entra ID. El proveedor configurado y los app roles deben coincidir con el despliegue real.
 - Auditoría de accesos a datos personales (`audit_events`).
 - Una sesión solo puede usarla su propietario.
 - Secretos solo en Key Vault; la aplicación accede con identidad administrada.
@@ -110,6 +129,32 @@ SharePoint (RRHH) ──sincronización──▶ source_items (réplica, seudoni
   de trabajo publicado; si no hay, no se afirma), VAC-002 (saldos negativos), DAT-001.
 - Lo que ve el modelo está limitado a 40 filas; la interfaz recibe la tabla completa.
 
+## Privacidad, retención y almacenamiento
+
+- Presidio inspecciona y anonimiza lo que sale hacia el proveedor LLM; no evita la persistencia local.
+  Los mensajes y respuestas se guardan en `conversation_turns` y el foco conversacional en
+  `conversation_sessions`. La aplicación elimina sesiones inactivas y sus turnos tras 30 días
+  (configurable con `MIA_CONVERSATION_RETENTION_DAYS`); esa limpieza se ejecuta cada seis horas.
+- El registro de auditoría (`audit_events`, evidencia de acceso a recursos sensibles para ENS/RGPD)
+  conserva los argumentos reales de cada herramienta ejecutada. Se elimina tras 1095 días/3 años
+  (configurable con `MIA_AUDIT_RETENTION_DAYS`, justificado por el plazo de prescripción de las
+  infracciones muy graves del art. 76 LOPDGDD), con limpieza cada seis horas. Ver detalle en
+  [auditoria_detalle/audit_ciclo_vida_datos.md](auditoria_detalle/audit_ciclo_vida_datos.md).
+- Las trazas no conservan consulta ni respuesta libre cuando está activa la máscara de PII; en
+  producción el código obliga a habilitar esa máscara si se activan los diagnósticos.
+- Los informes viven en almacenamiento local durante desarrollo. Producción usa el contenedor
+  privado Azure Blob con identidad administrada; el registro incluye el propietario, el permiso
+  sensible y caducidad. La limpieza elimina blobs y registros caducados cada seis horas.
+- El modelo documental, los gráficos y los renderizadores son ahora compartidos en `mia.reporting`;
+  RRHH es el primer dominio conectado. La composición basada en datos de negocio y la orquestación
+  conversacional todavía residen en herramientas de RRHH: eso sigue siendo trabajo para completar
+  antes de llamar al motor transversal completo. El formato Word (DOCX) ya está habilitado junto a
+  PDF, XLSX, PPTX y HTML.
+- La retención propia de mIA no configura las políticas del proveedor LLM. La configuración de
+  Azure, sus características habilitadas y el estado de Modified Abuse Monitoring deben verificarse
+  en el recurso y la suscripción; el código por sí solo no puede garantizar que Microsoft no conserve
+  contenido marcado para revisión.
+
 ## Fase 4: resto de dominios
 
 | Dominio | Herramientas | Fuente |
@@ -141,23 +186,28 @@ SharePoint (RRHH) ──sincronización──▶ source_items (réplica, seudoni
 
 ## Correo y autenticación
 
-El buzón se resuelve en un único punto (`mia/modules/rrhh/correo/mailbox.py`) a partir del usuario de la sesión:
+El dominio independiente `mia.modules.correo` resuelve el buzón personal por el `oid` inmutable del usuario Entra
+y conserva la identidad del buzón al que pertenecen las referencias de mensajes y borradores:
 
 | Fase | `MIA_MAIL__MAILBOX_SOURCE` | Buzón |
 |---|---|---|
-| Desarrollo (hoy) | `configured` | El declarado en `.env` (`MIA_MAIL__MAILBOX`), el mismo para todos |
-| Con MSAL / Entra ID (fase 7) | `user` | El de la cuenta con la que inicia sesión cada usuario (`UserContext.email`) |
+| Desarrollo (`MIA_AUTH__MODE=dev`) | `configured` | El declarado en `.env` (`MIA_MAIL__MAILBOX`), para pruebas |
+| Usuario autenticado (Entra ID, OBO) | `user` | `/users/{oid}` para su cuenta; si indica un compartido, `/users/{UPN o dirección}` |
 
 Garantías ya en su sitio, para que el cambio sea solo de configuración:
 
-- Las herramientas de correo **no reciben el buzón como parámetro**: ni el modelo ni el usuario pueden apuntar a la
-  bandeja de otra persona.
-- Cada **borrador queda ligado al buzón** en el que se creó; otro usuario no puede enviarlo aunque comparta sesión.
+- Cada referencia y borrador queda ligado al buzón de origen. La persona puede pedir un buzón compartido concreto,
+  pero el acceso delegado a Graph y los permisos efectivos de Exchange deciden si puede leer, modificar o enviar.
 - Las instrucciones al modelo llevan el buzón del usuario **en cada turno**, no uno fijo al arrancar.
-- Si la sesión no trae email/UPN, el correo se declara no disponible en lugar de abrir otro buzón.
+- La cuenta personal se direcciona por el `oid` firmado de Entra; el buzón configurado solo se usa en desarrollo.
 
-**Decisión pendiente para la fase 7.** Hoy Graph se llama con la aplicación (certificado) sobre `users/{buzón}`.
-Con buzones personales hay dos caminos: (1) **permisos delegados**, usando el token del propio usuario (flujo
-on-behalf-of): cada persona solo puede ver su bandeja y no hace falta conceder acceso a toda la organización; es
-lo recomendable; (2) **permisos de aplicación** con una *Application Access Policy* de Exchange que limite a qué
-buzones puede entrar la aplicación (sin ella, `Mail.Read` de aplicación da acceso a todos los buzones del tenant).
+**Autenticación delegada implementada, pendiente de habilitar en Entra/despliegue.** En modo `MIA_AUTH__MODE=entra`,
+la API valida el token de la persona y lo intercambia mediante OBO por un token delegado de Graph. Los buzones
+compartidos se solicitan por su dirección/UPN explícitos; Graph y Exchange aplican los permisos efectivos de esa
+persona. No hay una lista global de buzones compartidos: las personas pueden tener accesos distintos.
+Para ello se necesitan permisos delegados `Mail.*.Shared` y
+permisos Full Access/Send As según las operaciones. El certificado de la app sigue siendo necesario para OBO y debe
+estar registrado en la misma app API cuyo ID recibe el token. El modo `easyauth` no proporciona el token de entrada
+necesario para OBO en esta implementación; el despliegue debe habilitar el modo `entra` y exponer el scope API de
+mIA. Mantener permisos de aplicación Mail en Entra conservaría un acceso app-only paralelo: retirarlos solo después
+de probar OBO con una cuenta propia, un buzón compartido autorizado y otro no autorizado.

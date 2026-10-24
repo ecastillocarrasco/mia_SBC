@@ -27,11 +27,15 @@ from mia.conversation import Tool, ToolContext, ToolResult, ToolStatus
 from mia.data import Employee, Payslip
 from mia.modules.rrhh.common import (
     ActivosParams,
+    CohortParams,
     Deps,
     department_problem,
+    no_population,
     population_label,
+    previous_population,
     resolve_department,
     table,
+    wants_previous,
 )
 from mia.modules.rrhh.content import MAX_BYTES, content_unavailable, pdf_lines
 from mia.modules.rrhh.nominas.parser import parse_payslip
@@ -49,7 +53,7 @@ RULE = (
 )
 
 
-class SalarialesParams(ActivosParams):
+class SalarialesParams(CohortParams, ActivosParams):
     puesto: str | None = Field(default=None, description="Parte del puesto: «cocinero», «camarera de pisos»…")
     departamento: str | None = None
     periodo: str | None = Field(default=None, description="AAAA-MM; por defecto la última nómina ordinaria de cada uno")
@@ -141,7 +145,7 @@ def _group_summary(members: list[dict[str, float]], total: int) -> dict[str, Any
 
 
 async def _group_payslips(
-    deps: Deps, p: SalarialesParams
+    deps: Deps, p: SalarialesParams, ctx: ToolContext
 ) -> tuple[list[Employee], dict[str, Payslip], ToolResult | None]:
     """Personas del grupo y su nómina ordinaria (la del periodo pedido o la más reciente de cada una)."""
     async with deps.db.session() as db:
@@ -154,6 +158,11 @@ async def _group_payslips(
                 return [], {}, department_problem(dept, p.departamento)
             if dept.key:
                 stmt = stmt.where(Employee.department_key == dept.key)
+        if wants_previous(p, ctx):
+            previous = previous_population(ctx, p.resultado)
+            if previous is None:
+                return [], {}, no_population()
+            stmt = stmt.where(Employee.sp_id.in_(previous["empleado_ids"]))
         people = [
             e
             for e in (await db.scalars(stmt)).all()
@@ -189,7 +198,7 @@ def ranking_salarial(deps: Deps) -> Tool:
     async def handler(p: RankingParams, ctx: ToolContext) -> ToolResult:
         if problem := content_unavailable(deps):
             return problem
-        people, latest, problem_result = await _group_payslips(deps, p)
+        people, latest, problem_result = await _group_payslips(deps, p, ctx)
         if problem_result:
             return problem_result
         if len(people) < MIN_GROUP:
@@ -254,10 +263,105 @@ def ranking_salarial(deps: Deps) -> Tool:
 
     return Tool(
         "ranking_salarial",
-        f"Quién cobra más o menos dentro de un grupo (departamento o puesto), ordenado sobre TODAS las nóminas del "
-        f"grupo: «los 3 que más cobraron en agosto en Cocina». Máximo 10 y grupos de {MIN_GROUP}+ personas; solo en "
-        f"pantalla, con permiso y auditoría. Nunca ordenes salarios con una muestra parcial: usa esta herramienta.",
+        f"Quién cobra más o menos dentro de un grupo (departamento, puesto, o el resultado anterior con "
+        f"sobre_resultado_anterior), ordenado sobre TODAS las nóminas del grupo: «los 3 que más cobraron en agosto "
+        f"en Cocina». Máximo 10 y grupos de {MIN_GROUP}+ personas; solo en pantalla, con permiso y auditoría. Nunca "
+        f"ordenes salarios con una muestra parcial: usa esta herramienta. Para comparar TODOS los de un grupo "
+        f"nombre a nombre (no solo el top/bottom N) usa comparativa_salarial.",
         RankingParams,
+        handler,
+        permission=Permission.NOMINAS_IMPORTES,
+        audit_resource="nominas_importes",
+        timeout_seconds=120,
+    )
+
+
+class ComparativaSalarialParams(SalarialesParams):
+    importe: Literal["liquido", "devengado"] = "liquido"
+
+
+def comparativa_salarial(deps: Deps) -> Tool:
+    """Salario de CADA persona de un grupo, nombre a nombre, para un mes concreto.
+
+    A diferencia de ``ranking_salarial`` (orden + top/bottom N) y ``estadisticas_salariales`` (solo
+    agregados anónimos), esta herramienta lista a todas las personas del grupo con su importe — el mismo
+    umbral de protección (MIN_GROUP) que ``ranking_salarial`` ya aplica para mostrar un importe ligado a
+    un nombre, extendido aquí a la lista completa en vez de solo al top/bottom N.
+    """
+
+    async def handler(p: ComparativaSalarialParams, ctx: ToolContext) -> ToolResult:
+        if problem := content_unavailable(deps):
+            return problem
+        people, latest, problem_result = await _group_payslips(deps, p, ctx)
+        if problem_result:
+            return problem_result
+        if len(people) < MIN_GROUP:
+            return ToolResult(
+                ToolStatus.PERMISSION_DENIED,
+                {
+                    "mensaje": f"El grupo tiene menos de {MIN_GROUP} personas: no se muestran importes individuales "
+                    "(protección de datos).",
+                    "personas_del_grupo": len(people),
+                },
+            )
+        with_slip = [e for e in people if e.person_key in latest]
+        if len(with_slip) > MAX_RANKING_GROUP:
+            return ToolResult(
+                ToolStatus.INVALID_ARGUMENTS,
+                {
+                    "mensaje": f"El grupo tiene {len(with_slip)} personas con nómina; acota por departamento, "
+                    f"puesto o al resultado anterior (máximo {MAX_RANKING_GROUP}) para compararlas todas."
+                },
+            )
+        gate = asyncio.Semaphore(CONCURRENCY)
+        results = await asyncio.gather(*(_amounts(deps, latest[e.person_key or ""].sp_id, gate) for e in with_slip))
+        key = "liquido" if p.importe == "liquido" else "total_devengado"
+        read = sorted(
+            ((e, r[key]) for e, r in zip(with_slip, results, strict=True) if r and key in r),
+            key=lambda x: x[0].name,
+        )
+        summary: dict[str, Any] = {
+            "poblacion": population_label(p.incluir_inactivos),
+            "criterios": {
+                k: v
+                for k, v in {
+                    "puesto": p.puesto,
+                    "departamento": p.departamento,
+                    "periodo": p.periodo or "última nómina ordinaria",
+                }.items()
+                if v
+            },
+            "personas_del_grupo": len(people),
+            "nominas_comparadas": len(read),
+            "sin_nomina_o_ilegible": len(people) - len(read),
+            "cobertura": f"{len(read)} de {len(people)} personas del grupo",
+            **(
+                {
+                    "aviso": f"{len(people) - len(read)} personas del grupo no tienen nómina legible en ese "
+                    "periodo: la comparativa no las incluye. Dilo al presentarlo."
+                }
+                if len(people) - len(read)
+                else {}
+            ),
+            "comparativa": [{"persona": e.name, "puesto": e.position, "importe": amount} for e, amount in read],
+            "regla": RULE + " Importes individuales solo en pantalla, con permiso y auditoría.",
+        }
+        rows = [[e.name, e.position, format_eur(amount)] for e, amount in read]
+        return ToolResult(
+            ToolStatus.OK if read else ToolStatus.NOT_FOUND,
+            summary,
+            table(f"Comparativa de {p.importe}", ["Persona", "Puesto", "Importe"], rows),
+        )
+
+    return Tool(
+        "comparativa_salarial",
+        f"Compara, persona a persona (nombre + importe de cada una, no ranking ni agregado), el salario de TODAS "
+        f"las personas de un grupo concreto para un mes: «compara el salario de agosto de esos 6», «el sueldo de "
+        f"julio de cada uno de Cocina». El grupo puede venir de departamento, puesto, o el resultado anterior con "
+        f"sobre_resultado_anterior. Grupos de {MIN_GROUP}+ personas (máximo {MAX_RANKING_GROUP}); solo en "
+        f"pantalla, con permiso y auditoría, nunca en voz alta. Para quién cobra más/menos usa ranking_salarial; "
+        f"para agregados (media, mediana, percentiles) usa estadisticas_salariales.",
+        ComparativaSalarialParams,
         handler,
         permission=Permission.NOMINAS_IMPORTES,
         audit_resource="nominas_importes",
@@ -279,6 +383,11 @@ def estadisticas_salariales(deps: Deps) -> Tool:
                     return department_problem(dept, p.departamento)
                 if dept.key:
                     stmt = stmt.where(Employee.department_key == dept.key)
+            if wants_previous(p, ctx):
+                previous = previous_population(ctx, p.resultado)
+                if previous is None:
+                    return no_population()
+                stmt = stmt.where(Employee.sp_id.in_(previous["empleado_ids"]))
             people = [
                 e
                 for e in (await db.scalars(stmt)).all()
@@ -367,7 +476,7 @@ def estadisticas_salariales(deps: Deps) -> Tool:
         "estadisticas_salariales",
         f"Estadísticas salariales de un grupo de la plantilla activa (suma, media, mediana, mínimo, máximo, "
         f"percentiles 25 y 75) de líquido, devengado y coste total empresa (devengado + SS patronal), para UN "
-        f"único mes: por puesto, departamento o totales. "
+        f"único mes: por puesto, departamento, el resultado anterior (sobre_resultado_anterior) o totales. "
         f"Responde «¿cuánto pagó la empresa en nóminas en agosto?», «¿cuál es el coste medio por empleado?», "
         f"«¿cuál es el percentil 25 en Cocina?» y «salario medio por departamento». "
         f"Para comparaciones interanuales (p. ej. «¿ha subido el salario medio de Pisos este año?»), "

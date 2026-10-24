@@ -10,7 +10,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
-from mia.diagnostics.models import DiagnosticEvent, DiagnosticIssue, EventStage, EventStatus, TraceStatus, TraceRecord
+from mia.diagnostics.models import DiagnosticEvent, DiagnosticIssue, EventStage, EventStatus, TraceRecord, TraceStatus
 from mia.diagnostics.sanitizer import redact
 
 _current_trace: ContextVar[TraceContext | None] = ContextVar("_mia_trace", default=None)
@@ -153,7 +153,7 @@ class TraceContext:
             self._record.elapsed_ms = int((now - self._record.started_at).total_seconds() * 1000)
             self._record.status = str(status)
             if answer is not None:
-                self._record.final_answer = answer[:1000]  # nunca datos muy largos
+                self._record.final_answer = "[respuesta omitida]" if self._mask_pii else answer[:1000]
             if llm_model:
                 self._record.llm_model = llm_model
             self.emit(EventStage.TRACE_COMPLETE, status=EventStatus.SUCCESS, data={"elapsed_ms": self._record.elapsed_ms})
@@ -182,11 +182,11 @@ async def begin_trace(
     record = TraceRecord(
         trace_id=trace_id,
         started_at=datetime.now(UTC),
-        query=query,
+        query="[consulta omitida]" if mask_pii else query,
         request_id=request_id,
         session_id=session_id,
-        user_id=user_id,
-        user_name=user_name,
+        user_id=None if mask_pii else user_id,
+        user_name=None if mask_pii else user_name,
     )
     ctx = TraceContext(record, store, broadcaster, mask_pii=mask_pii)
     token = _current_trace.set(ctx)

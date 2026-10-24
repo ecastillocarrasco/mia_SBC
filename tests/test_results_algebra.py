@@ -17,7 +17,7 @@ from mia.ingestion import Pseudonymizer
 from mia.ingestion.mappers import hr
 from mia.ingestion.mappers.common import MapContext
 from mia.llm import ToolCall
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 
 USER = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
 TABLE = {

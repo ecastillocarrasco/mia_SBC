@@ -43,9 +43,37 @@ export function activeIdentity(win = typeof window === 'undefined' ? null : wind
   return null;
 }
 
-export function welcomeText({ name = '' } = {}) {
-  const salutation = name ? `¡Hola ${name}!` : '¡Hola!';
-  return `${salutation} Soy Mía, tu asistente virtual. Estoy aquí para ayudarte con cualquier consulta. ¿Qué te gustaría saber?`;
+// Varias formulaciones equivalentes en tono y contenido: se elige una al azar en cada
+// saludo para que no suene siempre a la misma frase grabada. Todas mantienen el nombre
+// real (o ninguno, si no hay cuenta activa) y la invitación a preguntar.
+const WELCOME_TEMPLATES_WITH_NAME = [
+  (name) => `¡Hola ${name}! Soy Mía, tu asistente virtual. Estoy aquí para ayudarte con cualquier consulta. ¿Qué te gustaría saber?`,
+  (name) => `¡Hola ${name}! Qué alegría verte por aquí. Soy Mía, ¿en qué puedo ayudarte hoy?`,
+  (name) => `Bienvenido de nuevo, ${name}. Soy Mía, tu asistente virtual. Dime qué necesitas y te ayudo.`,
+  (name) => `¡Hola, ${name}! Aquí estoy para lo que necesites. ¿Qué te gustaría consultar?`,
+  (name) => `${name}, un placer tenerte por aquí otra vez. Soy Mía. ¿Qué te gustaría saber?`,
+];
+const WELCOME_TEMPLATES_NO_NAME = [
+  () => '¡Hola! Soy Mía, tu asistente virtual. Estoy aquí para ayudarte con cualquier consulta. ¿Qué te gustaría saber?',
+  () => '¡Hola! Soy Mía. ¿En qué puedo ayudarte hoy?',
+  () => 'Bienvenido. Soy Mía, tu asistente virtual. Dime qué necesitas y te ayudo.',
+];
+
+// Un único número aleatorio por carga de página (no por llamada): getWelcomeText() se
+// invoca dos veces en 3D/Holograma (precarga del audio + reproducción real) y deben
+// coincidir para reutilizar el audio ya precargado — variar en cada llamada forzaría a
+// pedir el audio dos veces y perdería la precarga en paralelo con el GLB pesado.
+let sessionPickSeed = null;
+function stablePick(count) {
+  if (sessionPickSeed === null) sessionPickSeed = Math.floor(Math.random() * 97);
+  return sessionPickSeed % count;
+}
+
+export function welcomeText({ name = '', pick = null } = {}) {
+  const templates = name ? WELCOME_TEMPLATES_WITH_NAME : WELCOME_TEMPLATES_NO_NAME;
+  const chooser = pick || stablePick;
+  const index = Math.min(Math.max(0, chooser(templates.length)), templates.length - 1);
+  return templates[index](name);
 }
 
 export function getWelcomeText() {

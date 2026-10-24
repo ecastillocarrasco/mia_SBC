@@ -34,6 +34,40 @@ Este fichero es solo el mapa: qué está hecho, qué está en marcha, qué está
 
 ## Aparcado
 
+- **Incidencia P1 — continuidad de población y filtros en consultas de empleados/salarios** —
+  retomarla después de cerrar la incidencia actual del correo. Casos reproducidos por el usuario en
+  mIA web privada:
+  1. «¿Quiénes están trabajando ahora mismo?» devuelve correctamente el listado general. En el
+     seguimiento, pide comparar el salario de agosto de 2026 de las seis personas que trabajan en
+     Recepción, pero la comparativa devuelve otras seis personas ajenas a la selección.
+  2. Tras cerrar y reiniciar el backend, la misma pregunta general «¿qué empleados están trabajando
+     ahora mismo?» devuelve solo empleados de Recepción, en vez de incluir todos los departamentos.
+  - Comportamiento esperado: una comparación de salarios debe conservar exactamente la población
+    seleccionada y validar que la respuesta pertenece a esas personas; una pregunta nueva y general
+    debe calcularse sin filtros residuales de una consulta anterior, incluso después de reiniciar.
+  - Al retomarlo, trazar el contexto/filtros entre turnos, las claves de sesión y el estado
+    recordado por las herramientas de fichajes y nóminas; revisar además qué estado persiste o se
+    reconstruye al reiniciar el backend. Prioridad alta por riesgo de atribuir importes salariales a
+    empleados equivocados. No dar por válida una comparativa si la población resultante no coincide
+    con la solicitada.
+
+- **Listado de buzones compartidos accesibles por usuario** — pospuesto hasta después de preparar
+  preproducción y realizar la demo con el cliente. Actualmente, si la persona conoce la dirección
+  del buzón compartido y Exchange le ha concedido acceso, puede indicársela a mIA; Graph valida el
+  acceso delegado al operar con ese buzón. Lo pendiente es descubrir y listar esos buzones sin que
+  el usuario tenga que conocer previamente sus direcciones.
+  - Alcance inicial recomendado: buzones con permiso **Full Access**, concedido directamente o a
+    través de grupos; no incluir permisos **Send As** por sí solos, ya que no habilitan la lectura.
+  - Requiere una fuente de permisos de Exchange y un catálogo sincronizado por usuario/grupo. Como
+    el proyecto no dispone actualmente de Azure Automation, evaluar tras la demo una tarea
+    programada en el servidor Windows de PRE u otra opción operativa disponible. Guardar solo
+    metadatos de buzones y permisos, nunca contenido de correo.
+  - La consulta y las operaciones sobre el correo seguirán usando el token delegado del usuario;
+    Graph/Exchange debe continuar siendo la comprobación efectiva de acceso. Añadir trazabilidad,
+    control de antigüedad/errores de sincronización y pruebas para permisos directos y por grupo.
+  - No es requisito para la demo ni bloquea el uso actual: el usuario puede indicar el buzón
+    compartido que ya conoce.
+
 - **mia-mobile** (app para iOS y Android) — decisión del 2026-10-20: aparcado temporalmente.
   Alcance acordado para cuando se retome: mundos 2D y 3D desde el principio. Enfoque recomendado:
   envolver la web ya existente (Vite, Three.js) en un shell nativo con WebView/Capacitor y puente

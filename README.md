@@ -1,8 +1,8 @@
 # mIA
 
-Asistente conversacional de Recursos Humanos de Sunset Beach Club. mIA es un
-personaje: conversación natural, voz en todas las respuestas y tiempos de
-respuesta mínimos.
+Asistente conversacional inteligente para toda la organización de Sunset Beach Club. mIA
+coordina dominios funcionales con permisos propios; Recursos Humanos es el primer dominio
+desarrollado. Ofrece conversación natural, voz y experiencias de presentación para web y escritorio.
 
 Este repositorio sustituye por completo al sistema anterior (monolito v10.42 +
 capas v11/v12 + gateway v4). Ver [docs/arquitectura.md](docs/arquitectura.md)
@@ -111,8 +111,8 @@ az deployment group create -g rg-mia-dev -f infra/main.bicep -p infra/main.dev.b
 
 Crea: Container Apps, PostgreSQL Flexible Server, Key Vault (todos los secretos),
 identidad administrada, Container Registry, Blob Storage, Log Analytics y
-Application Insights. Producción exige Easy Auth (`easyAuthClientId`); sin él la
-aplicación se niega a arrancar.
+Application Insights. En producción debe activarse Easy Auth o la autenticación directa de Entra (`MIA_AUTH__MODE=entra`).
+Para correo delegado OBO, configura `delegatedMailEnabled=true`, el scope API y el certificado de la app mIA.
 
 ## Estructura
 

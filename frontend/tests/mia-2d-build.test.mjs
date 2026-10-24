@@ -14,10 +14,10 @@ import test from 'node:test';
 const root = resolve(import.meta.dirname, '..');
 
 const REQUIRED_DIST_ASSETS = [
-  'dist/src/worlds/2D/mia-2d.js',
-  'dist/src/worlds/2D/mia-enhance.js',
-  'dist/src/worlds/2D/mia-2d.css',
-  'dist/src/worlds/2D/mia-enhance.css',
+  'dist/src/worlds/2d/mia-2d.js',
+  'dist/src/worlds/2d/mia-enhance.js',
+  'dist/src/worlds/2d/mia-2d.css',
+  'dist/src/worlds/2d/mia-enhance.css',
 ];
 
 test('npm run build ships the classic 2D world scripts/styles in dist/, with real content', () => {
@@ -42,10 +42,10 @@ test('npm run build ships the classic 2D world scripts/styles in dist/, with rea
     assert.ok(content.length > 200, `${rel} parece vacío o truncado (${content.length} bytes)`);
   }
 
-  const js = readFileSync(resolve(root, 'dist/src/worlds/2D/mia-2d.js'), 'utf8');
+  const js = readFileSync(resolve(root, 'dist/src/worlds/2d/mia-2d.js'), 'utf8');
   assert.ok(js.includes('MIA_UI_BUILD'), 'mia-2d.js compilado no contiene su marcador de build esperado');
   assert.ok(js.includes('MIA_JOBS_API'), 'mia-2d.js compilado no incluye el Job Manager de la Fase H');
 
-  const css = readFileSync(resolve(root, 'dist/src/worlds/2D/mia-2d.css'), 'utf8');
+  const css = readFileSync(resolve(root, 'dist/src/worlds/2d/mia-2d.css'), 'utf8');
   assert.ok(css.includes('mia-job-card'), 'mia-2d.css compilado no incluye los estilos del Job Manager de la Fase H');
 });

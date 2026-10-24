@@ -386,8 +386,11 @@ def turnos_dia(deps: Deps) -> Tool:
             people = await employees_for(db, person_keys={s.person_key for s in selected if s.person_key})
         rows = _day_rows(selected, PeopleDirectory(people), summary)
         state.update(population_state(f"turnos {day.isoformat()} ({summary['criterio']})", people))
-        if dept_key:
-            state["foco_departamento"] = shifts[0].department
+        # Fijar explícitamente a None cuando no hay departamento: el merge de turn.state en el motor
+        # conversacional nunca borra claves, solo las sobrescribe. Si esta clave se omitiera, un
+        # departamento fijado en un turno anterior seguiría «pegado» indefinidamente (incluso tras
+        # reiniciar el backend, porque el estado se persiste en Postgres).
+        state["foco_departamento"] = shifts[0].department if dept_key else None
         dept_label = shifts[0].department if dept_key else None
         if all_same_kind:
             # Omitir la columna «Tipo» (índice 3) cuando todos los turnos son iguales

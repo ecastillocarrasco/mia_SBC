@@ -60,16 +60,17 @@ Todos los servicios de la derecha son de **terceros fuera del tenant** (Microsof
 | **Comportamiento ante fallo** | Reintentos con backoff exponencial + jitter, respeto de `Retry-After`; fallo de una fuente no detiene la sincronización de las demás; sin circuit breaker (aceptable para un job en background). |
 | **Credencial — dónde vive** | Certificado PFX en Key Vault (Azure), inyectado vía Managed Identity. |
 
-### 2.2 Microsoft Graph — Correo (buzón RRHH) — ✅ Implementado
+### 2.2 Microsoft Graph — Correo (buzón propio) — ✅ Implementado
 
 | | |
 |---|---|
-| **Propósito** | Leer, buscar y (si está habilitado) enviar correo desde el buzón compartido de RRHH. |
+| **Propósito** | Leer, buscar y (si está habilitado) operar con el buzón de la persona autenticada. |
 | **Protocolo** | HTTPS/REST, Microsoft Graph v1.0. |
 | **Autenticación** | **Mismo certificado de aplicación que SharePoint** (ver hallazgo de credencial compartida más abajo). |
-| **Permisos solicitados** | `Mail.Read`/`Mail.ReadWrite`/`Mail.Send` de aplicación (vía `.default`, no declarado exacto en código). |
-| **⚠️ Hallazgo crítico (pendiente de verificar en el tenant)** | El propio repositorio (`docs/arquitectura.md`) reconoce que el permiso de aplicación de Graph para correo da acceso a **todos los buzones del tenant** salvo que exista una **Application Access Policy de Exchange Online** que lo acote al buzón compartido de RRHH. No hay evidencia en el repositorio de que esa política ya exista (no está en la infraestructura como código, no hay script de Exchange Online). **Acción requerida de IT**: confirmar en Exchange Online si esa política está creada; si no, crearla antes de producción. |
-| **Datos que viajan** | Correo del buzón de RRHH (contenido potencialmente personal: candidaturas, consultas de empleados). |
+| **Permisos para OBO** | Graph delegated: `Mail.Read.Shared` y `Mail.ReadWrite.Shared` para leer/modificar el correo propio y compartido; `Mail.Send` para enviar desde el buzón propio y `Mail.Send.Shared` para enviar desde buzones compartidos, si el envío queda habilitado. `.default` se solicita durante el intercambio OBO. |
+| **Límite de acceso** | OBO representa a la persona autenticada. Para buzones compartidos, Graph/Exchange deben conceder a esa persona el acceso pertinente; leer, modificar y enviar tienen permisos distintos. Las herramientas reciben el UPN o dirección del buzón solicitado; no hay un catálogo global porque los accesos varían por usuario. Graph valida cada recurso con la identidad delegada. Retirar los permisos Mail de aplicación elimina la vía separada de autenticación app-only; conservarlos permitiría que otra ruta con credencial de aplicación aún intentara acceder sin representar al usuario. |
+| **Estado de despliegue** | El código OBO está implementado. Quedan por configurar el scope API de mIA, registrar en la misma app el certificado OBO, conceder consentimiento delegado, habilitar `delegatedMailEnabled`/`MIA_AUTH__MODE=entra`, probar buzones propio, compartido autorizado y no autorizado, y retirar después los permisos Mail de aplicación actuales. Easy Auth solo no aporta la aserción OBO en esta implementación. |
+| **Datos que viajan** | Contenido del buzón que resuelve la sesión autenticada; puede incluir información personal o laboral. |
 | **Envío real** | Desactivado por defecto (`MIA_MAIL__SEND_ENABLED=false`); si se activa, exige además confirmación humana explícita en la conversación (ver `docs/mIA_guia_instalacion_operacion.md`). |
 | **Comportamiento ante fallo** | Cada herramienta captura el error de Graph y devuelve un mensaje de negocio al usuario, nunca una excepción sin control. |
 | **Credencial — dónde vive** | Compartida con SharePoint (mismo certificado en Key Vault). |
@@ -153,7 +154,7 @@ Búsqueda exhaustiva sin resultados. Todo el correo sale vía Microsoft Graph (2
 | Integración | Permiso usado hoy (código) | Mínimo recomendado | Verificable desde el repo |
 |---|---|---|---|
 | SharePoint | `.default` (todo lo concedido en Entra ID) | `Sites.Selected`, acotado a 2 sitios | ❌ No — requiere revisión en el tenant |
-| Correo (Graph) | `.default` (probablemente `Mail.Read`/`Send` de aplicación) | `Mail.Read`/`Send` de aplicación **+ Application Access Policy de Exchange Online** acotando al buzón de RRHH | ❌ No — requiere revisión en Exchange Online |
+| Correo (Graph) | `.default` (permisos de aplicación concedidos en Entra) | Permisos delegados para aislamiento por sesión; si se conserva app-only, revisar Exchange Online RBAC y quitar concesiones Entra sin ámbito que amplíen permisos | ❌ No — requiere revisión en Entra y Exchange Online |
 | Entra ID (login) | Claims `roles` únicamente, nunca `groups` | Igual (ya es mínimo privilegio) | ✅ Sí — confirmado en código |
 | LLM / Voz | Claves de API de cuenta de proveedor, sin alcance granular propio del proveedor | Mismo (limitado por lo que el proveedor permite) | ✅ Sí |
 

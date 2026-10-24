@@ -22,7 +22,7 @@ generar los documentos finales utilizando los datos originales autorizados, sin 
 conozca las cifras individuales".
 
 Dominio Correo: ver ``tests/test_privacy_gateway_mail_integration.py`` para el equivalente de este
-contrato aplicado a correos del buzón de RRHH.
+contrato aplicado a correos del buzón personal autenticado.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ from mia.conversation.events import ResultEvent
 from mia.data import Employee, Payslip, Report
 from mia.llm.base import LLMRequest
 from mia.llm.fake import FakeLLMProvider, final_answer, tool_call
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from mia.privacy_gateway.gateway import PrivacyGateway
 from mia.settings import PrivacyGatewaySettings
 from tests.dbutil import fresh_database

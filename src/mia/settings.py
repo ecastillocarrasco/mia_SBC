@@ -12,6 +12,7 @@ from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -99,13 +100,15 @@ class AuthSettings(BaseModel):
     entra_tenant_id: str = ""
     """El tenant de Entra ID: fija el emisor esperado (issuer) del token."""
     entra_client_id: str = ""
-    """El Application (client) ID de mIA en Entra ID: la audiencia (aud) que debe traer el token."""
+    """Client ID de la API CV-SunsetBeachClub: audiencia del token recibido y cliente confidencial para OBO."""
+    entra_web_client_id: str = ""
+    """Client ID público de la app de login del frontend web (mia_Login)."""
+    entra_desktop_client_id: str = ""
+    """Client ID público de la app de login de Windows (mia_Login_Desktop)."""
     entra_role_claim: str = "roles"
     """El claim del token donde vienen los app roles (p. ej. «mia.rrhh»): por defecto, «roles»."""
     entra_scope: str = ""
-    """Scope que MSAL.js debe pedir desde el front-end para obtener un token con audiencia mIA
-    (p. ej. «api://<client-id>/access_as_user», el nombre exacto depende del scope expuesto en
-    el registro de la aplicación en Entra ID). Vacío → se usa «<entra_client_id>/.default»."""
+    """Scope que los clientes web y escritorio piden a la API (api://<client-id>/access_as_user)."""
 
 
 class SharePointSettings(BaseModel):
@@ -129,9 +132,14 @@ class SharePointSettings(BaseModel):
     concurrency: int = 4
 
     @property
-    def configured(self) -> bool:
+    def app_credentials_configured(self) -> bool:
         has_cert = bool(self.cert_pfx_path or self.cert_pfx_base64 or self.cert_pem_path)
-        return bool(self.tenant_id and self.client_id and self.cert_thumbprint and self.rrhh_site_url and has_cert)
+        return bool(self.tenant_id and self.client_id and self.cert_thumbprint and has_cert)
+
+    @property
+    def configured(self) -> bool:
+        """SharePoint necesita, además de las credenciales, su sitio de RRHH."""
+        return self.app_credentials_configured and bool(self.rrhh_site_url)
 
 
 class DataSettings(BaseModel):
@@ -189,7 +197,7 @@ class NoticiasSettings(BaseModel):
 
 
 class MailSettings(BaseModel):
-    """Buzón compartido (Microsoft Graph, misma aplicación y certificado que SharePoint)."""
+    """Acceso a Correo con buzón por usuario en producción."""
 
     mailbox: str = ""
     mailbox_source: Literal["configured", "user"] = "configured"
@@ -242,6 +250,9 @@ class AttachmentSettings(BaseModel):
 
 class ReportSettings(BaseModel):
     directory: Path = Path("informes")
+    backend: Literal["local", "azure_blob"] = "local"
+    azure_account_url: str | None = None
+    azure_container: str = "informes"
     logo_path: Path | None = None
     """Logo corporativo para la plantilla de informes (antes MIA_SBC_LOGO_PATH)."""
     ttl_hours: int = 24
@@ -323,6 +334,16 @@ class Settings(BaseSettings):
     esto: vive en ``session.state`` (foco de persona/departamento/periodo, última llamada), que no
     se ve afectado por este valor. Bajar esto reduce el coste/latencia de CADA turno de la
     conversación, no solo de los largos."""
+    conversation_retention_days: int = Field(default=30, gt=0)
+    """Días que se conservan sesiones y turnos conversacionales antes de eliminarlos."""
+    audit_retention_days: int = Field(default=1095, gt=0)
+    """Días que se conserva el registro de auditoría (``AuditEvent``) antes de eliminarlo.
+
+    RGPD (art. 5.1.e) exige un plazo de conservación limitado y justificado, no indefinido. El valor
+    por defecto (1095 días = 3 años) se alinea con el plazo de prescripción de las infracciones muy
+    graves de la LOPDGDD (art. 76): es el tiempo durante el que mIA podría necesitar demostrar quién
+    accedió a qué dato. Pasado ese plazo, el propio registro de auditoría deja de tener base para
+    conservarse y debe eliminarse."""
 
     llm: LLMSettings = Field(default_factory=LLMSettings)
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
@@ -345,8 +366,15 @@ class Settings(BaseSettings):
     def _fail_closed_in_production(self) -> Settings:
         if self.environment is Environment.PRODUCTION and self.auth.mode is AuthMode.DEV:
             raise ValueError("MIA_AUTH__MODE=dev no está permitido en producción: usa 'easyauth' o 'entra'.")
-        if self.auth.mode is AuthMode.ENTRA and not (self.auth.entra_tenant_id and self.auth.entra_client_id):
-            raise ValueError("MIA_AUTH__MODE=entra exige MIA_AUTH__ENTRA_TENANT_ID y MIA_AUTH__ENTRA_CLIENT_ID.")
+        if self.auth.mode is AuthMode.ENTRA and not all((
+            self.auth.entra_tenant_id,
+            self.auth.entra_client_id,
+            self.auth.entra_web_client_id,
+            self.auth.entra_desktop_client_id,
+        )):
+            raise ValueError(
+                "MIA_AUTH__MODE=entra exige Tenant ID, Client ID de la API, Client ID web y Client ID desktop."
+            )
         if (
             self.environment is Environment.PRODUCTION
             and self.data.pseudonym_key.get_secret_value() == "solo-para-desarrollo-local"
@@ -358,12 +386,44 @@ class Settings(BaseSettings):
             raise ValueError("MIA_PRIVACY_GATEWAY__ENABLED=false no está permitido en producción.")
         if self.environment is Environment.PRODUCTION and self.privacy_gateway.fail_open:
             raise ValueError("MIA_PRIVACY_GATEWAY__FAIL_OPEN=true no está permitido en producción.")
+        if self.environment is Environment.PRODUCTION and self.diagnostics.enabled and not self.diagnostics.mask_pii:
+            raise ValueError("Con diagnósticos activos en producción, MIA_DIAGNOSTICS__MASK_PII=true es obligatorio.")
         if (
             self.environment is Environment.PRODUCTION
             and self.privacy_gateway.enabled
             and not self.privacy_gateway.vault_key.get_secret_value()
         ):
             raise ValueError("En producción MIA_PRIVACY_GATEWAY__VAULT_KEY debe venir de Key Vault.")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_production_endpoints(self) -> Settings:
+        if self.environment is not Environment.PRODUCTION:
+            return self
+        if self.mail.mailbox_source != "user":
+            raise ValueError("En producción MIA_MAIL__MAILBOX_SOURCE debe ser 'user'.")
+        if self.llm.provider is not LLMProviderName.AZURE_OPENAI:
+            raise ValueError("En producción MIA_LLM__PROVIDER debe ser azure_openai.")
+        endpoint = urlsplit(self.llm.base_url)
+        azure_hosts = (".openai.azure.com", ".openai.azure.cn", ".openai.azure.us")
+        if (
+            endpoint.scheme != "https"
+            or not endpoint.hostname
+            or not endpoint.hostname.endswith(azure_hosts)
+            or endpoint.username
+            or endpoint.password
+            or endpoint.query
+            or endpoint.fragment
+        ):
+            raise ValueError(
+                "En producción MIA_LLM__BASE_URL debe ser un endpoint HTTPS de Azure OpenAI "
+                "(dominio openai.azure.com/.cn/.us), sin credenciales ni parámetros."
+            )
+        if self.reports.backend != "azure_blob" or not self.reports.azure_account_url:
+            raise ValueError(
+                "En producción los informes requieren Blob privado y "
+                "MIA_REPORTS__AZURE_ACCOUNT_URL (MIA_REPORTS__BACKEND=azure_blob)."
+            )
         return self
 
 

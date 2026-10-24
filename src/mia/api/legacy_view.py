@@ -27,12 +27,11 @@ nunca una pérdida silenciosa), aunque sin el formato específico de su tipo.
 
 from __future__ import annotations
 
-import re
 from datetime import date
 from typing import Any
 
-from mia.modules.rrhh.charts import chart_spec
-from mia.modules.rrhh.correo.tools import is_noreply
+from mia.reporting.charts import chart_spec
+from mia.modules.correo.presentation import mail_message_view, sender_parts
 from mia.text import format_number, humanize_label
 
 MAX_CARDS = 8
@@ -332,19 +331,11 @@ def summary_view(
 
 
 # ---------------------------------------------------------------------------------------- correo
-_SENDER = re.compile(r"^\s*(?P<name>.*?)\s*<(?P<address>[^>]+)>\s*$")
-
-
-def _sender_parts(value: Any) -> tuple[str, str]:
-    match = _SENDER.match(str(value or ""))
-    return (match["name"] or match["address"], match["address"]) if match else (str(value or ""), "")
-
-
 def mail_rows_view(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Formato del panel de correo del 2D (mail_rows / mail_summary), con la referencia de cada correo."""
     view = []
     for r in rows:
-        name, address = _sender_parts(r.get("from"))
+        name, address = sender_parts(r.get("from"))
         view.append(
             {
                 "ref": r.get("ref"),
@@ -359,22 +350,7 @@ def mail_rows_view(rows: list[dict[str, Any]]) -> dict[str, Any]:
         )
     return {
         "mail_rows": view,
-        "mail_summary": {"mailbox": "Buzón de RRHH", "total_unread": None, "total_conversations": len(view)},
-    }
-
-
-def _mail_message_view(p: dict[str, Any]) -> dict[str, Any]:
-    name, address = _sender_parts(p.get("de"))
-    return {
-        "ref": p.get("ref"),
-        "from_name": name,
-        "from_address": address,
-        "to": p.get("para") or [],
-        "subject": p.get("asunto"),
-        "received_at": p.get("recibido"),
-        "text": p.get("texto"),
-        "attachments": p.get("adjuntos") or [],
-        "no_reply": is_noreply(str(p.get("de") or "")),
+        "mail_summary": {"mailbox": "Mi buzón", "total_unread": None, "total_conversations": len(view)},
     }
 
 
@@ -406,7 +382,7 @@ def _absorb(
     elif kind == "table" and p.get("mail_rows") is not None:
         data.update(mail_rows_view(p["mail_rows"]))
     elif kind == "mail":
-        data["mail_message"] = _mail_message_view(p)
+        data["mail_message"] = mail_message_view(p)
     elif kind == "mail_thread":
         rows = p.get("mail_rows") or []
         data.update(mail_rows_view(rows))

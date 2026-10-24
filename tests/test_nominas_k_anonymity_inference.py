@@ -23,7 +23,7 @@ from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.conversation import ToolContext, ToolRegistry, ToolStatus
 from mia.data import Payslip
 from mia.llm import ToolCall
-from mia.modules.rrhh import build_registry
+from mia.modules.registry import build_registry
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp
 from tests.test_analisis_economico import Q3_NOW, q3_registry  # noqa: F401 — fixture y reloj reutilizados

@@ -249,7 +249,7 @@ async def test_buscar_en_nominas_emits_rag_and_document_diagnostic_events(db: Da
     from mia.diagnostics.streaming import LiveBroadcaster
     from mia.diagnostics.trace import begin_trace
     from mia.llm import ToolCall
-    from mia.modules.rrhh import build_registry
+    from mia.modules.registry import build_registry
     from mia.settings import DiagnosticsSettings
 
     async with db.session() as s:
