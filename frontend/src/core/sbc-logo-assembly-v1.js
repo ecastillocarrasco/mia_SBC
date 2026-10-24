@@ -27,7 +27,7 @@ export function sbcAssemblyMarkup(base = '/') {
         </div>
         <div class="mia-sbc-intro__caption">Una experiencia más allá de la pantalla</div>
         <div class="mia-sbc-intro__loading" aria-live="polite">
-          <div class="mia-boot__progress" role="progressbar" aria-label="Carga de Mía" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="mia-boot__progress" role="progressbar" aria-label="Carga de mIA" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
             <svg class="mia-boot__ring" viewBox="0 0 120 120" aria-hidden="true">
               <circle class="mia-boot__ring-track" cx="60" cy="60" r="52" />
               <circle class="mia-boot__ring-value" cx="60" cy="60" r="52" />

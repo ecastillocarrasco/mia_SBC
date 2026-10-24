@@ -106,10 +106,13 @@ function renderKeyValues(entries) {
 function renderAttachmentCard(att) {
   const url = safeDocumentUrl(att?.url);
   if (!url) return `<span class="mia-mail-attachment mia-mail-attachment--unavailable">${escapeHtml(att?.nombre || "Adjunto")}</span>`;
-  return `<a class="mia-mail-attachment" href="${escapeHtml(url)}" target="_blank" rel="noopener">
+  // Nunca un <a href> directo: /api/mail/attachment/... exige token (Authorization Bearer), que
+  // un enlace normal no puede mandar y daría 401. Botón + fetch autenticado + blob, delegado por
+  // el mundo que lo monta (mismo patrón que attachmentCard() en mia-enhance.js, 2D).
+  return `<button type="button" class="mia-mail-attachment" data-attachment-url="${escapeHtml(url)}" data-attachment-name="${escapeHtml(att?.nombre || "Adjunto")}">
     <span class="mia-mail-attachment-name">${escapeHtml(att?.nombre || "Adjunto")}</span>
     <span class="mia-mail-attachment-action">Descargar ↓</span>
-  </a>`;
+  </button>`;
 }
 
 function renderMailBody(text) {
@@ -118,6 +121,32 @@ function renderMailBody(text) {
   return `<div class="mia-mail-body">${blocks
     .map((b) => `<p>${escapeHtml(b).replaceAll("\n", "<br>")}</p>`)
     .join("")}</div>`;
+}
+
+function renderMailActions(ref, noReply) {
+  return `<div class="mia-mail-actions">
+    <button type="button" class="mia-mail-action" data-mail-action="open" data-mail-ref="${escapeHtml(ref)}">Abrir correo</button>
+    <button type="button" class="mia-mail-action mia-mail-action--primary" data-mail-action="reply" data-mail-ref="${escapeHtml(ref)}"${noReply ? " disabled title=\"Correo automático: no admite respuesta\"" : ""}>Proponer respuesta</button>
+  </div>`;
+}
+
+function renderMailList(rows) {
+  const items = rows.map((row) => `<li class="mia-mail-list-item${row.is_read ? "" : " mia-mail-list-item--unread"}">
+    <div class="mia-mail-list-top"><b>${escapeHtml(row.from || "")}</b><span>${escapeHtml(row.received_at || "")}</span></div>
+    <div class="mia-mail-list-subject">${escapeHtml(row.subject || "")}</div>
+    ${row.preview ? `<div class="mia-mail-list-preview">${escapeHtml(row.preview)}</div>` : ""}
+    ${row.has_attachments ? '<span class="mia-mail-thread-flag">📎 Con adjuntos</span>' : ""}
+    ${row.ref ? renderMailActions(row.ref, row.no_reply) : ""}
+  </li>`).join("");
+  return `<ul class="mia-mail-list">${items}</ul>`;
+}
+
+function renderMailDraft(rest) {
+  const status = rest.envio_habilitado === false ? "El envío de correos está desactivado en este entorno." : "Borrador guardado. Confírmalo para enviarlo.";
+  return `<article class="mia-mail-card mia-mail-draft">
+    ${renderMailBody(rest.texto)}
+    <p class="mia-mail-draft-status">${escapeHtml(status)}</p>
+  </article>`;
 }
 
 function renderMailMessage(rest) {
@@ -199,6 +228,16 @@ export function renderPresentation(presentation) {
     return `<section class="mia-presentation">${heading}
       <p class="mia-mail-thread-count">${count} mensaje${count === 1 ? "" : "s"} en esta conversación</p>
       ${renderMailThread(rest)}</section>`;
+  }
+  if (type === "mail_draft") {
+    return `<section class="mia-presentation">${heading}${renderMailDraft(rest)}</section>`;
+  }
+
+  // Listado de correos (correos_recientes, correos_sin_leer, buscar_correos): lista de correo
+  // con acciones de abrir/responder, nunca la tabla genérica (que acababa tratándose como datos
+  // estadísticos a comparar — ver la exclusión en statistical-visuals.js).
+  if (type === "table" && Array.isArray(rest.mail_rows) && rest.mail_rows.length) {
+    return `<section class="mia-presentation">${heading}${renderMailList(rest.mail_rows)}</section>`;
   }
 
   // Noticias corporativas y de grupo: tarjetas (título enlazado, empresa/categoría, fuente/fecha)

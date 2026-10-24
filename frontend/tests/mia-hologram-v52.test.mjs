@@ -149,7 +149,7 @@ test('el progreso de backend solo inicia pensando una vez',()=>{
 });
 
 test('saludo y estadísticas no alteran texto ni fabrican números',()=>{
-  assert.deepEqual(premium.projectionCopy('¡Hola Enrique! Soy Mía, tu asistente virtual.', 'welcome').headline,'¡Hola Enrique!');
+  assert.deepEqual(premium.projectionCopy('¡Hola Enrique! Soy mIA, tu asistente virtual.', 'welcome').headline,'¡Hola Enrique!');
   assert.equal(premium.parseProjectionNumber('2.357,25 €'),2357.25);
   assert.equal(premium.parseProjectionNumber('Sin datos'),null);
 });

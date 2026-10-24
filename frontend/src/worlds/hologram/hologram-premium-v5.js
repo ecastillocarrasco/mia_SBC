@@ -8,14 +8,14 @@ const byId = (id) => document.getElementById(id);
 
 export function projectionCopy(input, kind = "answer") {
   const message = String(input ?? "").replace(/\s+/gu, " ").trim();
-  if (!message) return { eyebrow: "mIA · EN DIRECTO", headline: "Mía está preparada", body: "" };
+  if (!message) return { eyebrow: "mIA · EN DIRECTO", headline: "mIA está preparada", body: "" };
   const eyebrow = ({
     welcome: "BIENVENIDO A SUNSET BEACH CLUB",
     waiting: "TRABAJANDO EN TU CONSULTA",
     presenting: "INFORMACIÓN EN PANTALLA",
-    answer: "MÍA TE RESPONDE",
+    answer: "mIA TE RESPONDE",
     error: "REVISAR CONSULTA",
-  })[kind] || "MÍA TE RESPONDE";
+  })[kind] || "mIA TE RESPONDE";
 
   // El encabezado nunca parte una frase a mitad.
   const welcome = message.match(/^(¡?Hola\b[^.!?]{0,76}[.!?])(?:\s+([\s\S]+))?$/iu);

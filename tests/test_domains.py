@@ -109,6 +109,16 @@ async def test_matching_focus_id_and_name_still_resolves_normally(registry: Tool
     assert result.summary["empleado_id"] == 1
 
 
+async def test_nonexistent_focus_id_falls_back_to_the_name_given(registry: ToolRegistry) -> None:
+    """Fallo real reproducido en preprod 2026-10-24, tras el arreglo del test anterior: el
+    modelo puede mandar un empleado_id inventado/adivinado (no solo uno obsoleto de un foco
+    real) junto con el nombre correcto de una persona que SÍ existe — antes, si el id no
+    existía en la base de datos, se devolvía NOT_FOUND sin más, ignorando el nombre válido."""
+    result = await call(registry, "ficha_empleado", empleado_id=999999, nombre="Luis Gil")
+    assert result.status is ToolStatus.OK
+    assert result.summary["nombre"] == "Luis Gil"
+
+
 # ------------------------------------------------------------------ plantilla (POB-001)
 async def test_headcount_is_active_by_default(registry: ToolRegistry) -> None:
     result = await call(registry, "plantilla")

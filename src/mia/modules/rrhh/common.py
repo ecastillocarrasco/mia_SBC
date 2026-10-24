@@ -129,14 +129,16 @@ async def resolve_person(db: AsyncSession, params: PersonaParams) -> PersonMatch
     query = params.nombre or ""
     if params.empleado_id is not None:
         employee = await db.get(Employee, params.empleado_id)
+        # Defensa en profundidad: el modelo puede mandar un empleado_id obsoleto o directamente
+        # inventado (de un foco anterior, o adivinado pese a las instrucciones del prompt) —
+        # nunca confiar en el id a ciegas: si no existe, o existe pero no coincide con el nombre
+        # dado, cae a la búsqueda por nombre de abajo en vez de fallar sin más, siempre que haya
+        # un nombre con el que buscar. Sin nombre, un id inexistente sigue siendo NOT_FOUND.
         if employee is None:
-            return PersonMatch(ToolStatus.NOT_FOUND)
-        # Defensa en profundidad: el modelo puede arrastrar un empleado_id de foco obsoleto
-        # (de una persona ya consultada antes) aunque el turno nombre a alguien distinto —
-        # nunca confiar en el id a ciegas si además viene un nombre que no encaja con él, o
-        # podríamos devolver los datos personales de un tercero a una pregunta sobre otro.
-        if query.strip() and not _name_matches(query, employee.name_key):
-            pass  # cae a la búsqueda por nombre de abajo, ignorando el empleado_id obsoleto
+            if not query.strip():
+                return PersonMatch(ToolStatus.NOT_FOUND)
+        elif query.strip() and not _name_matches(query, employee.name_key):
+            pass  # cae a la búsqueda por nombre de abajo, ignorando el empleado_id obsoleto/erróneo
         else:
             return PersonMatch(ToolStatus.OK, employee)
     matches = await find_people(db, query)

@@ -781,7 +781,7 @@ scene.load((value, detail) => {
 }).catch((error) => {
   boot.fail(error);
   console.error("[mIA V4 HG] Fallo al cargar el modelo", error);
-  sayCaption("No se ha podido cargar la proyección de Mía.", "error");
+  sayCaption("No se ha podido cargar la proyección de mIA.", "error");
 });
 
 // V4.4: micrófono apagado -> una consulta -> continuo -> apagado.

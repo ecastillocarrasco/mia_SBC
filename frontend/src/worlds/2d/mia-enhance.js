@@ -142,11 +142,36 @@
   function attachmentCard(a) {
     var name = (a && a.nombre) || 'Adjunto';
     if (a && /^\/api\/mail\/attachment\//.test(a.url || '')) {
-      var link = document.createElement('a');
-      link.className = 'mia-attachment'; link.href = a.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
-      link.appendChild(el('span', 'mia-attachment-name', name));
-      link.appendChild(el('span', 'mia-attachment-action', 'Descargar ↓'));
-      return link;
+      var btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'mia-attachment';
+      var actionLabel = el('span', 'mia-attachment-action', 'Descargar ↓');
+      btn.appendChild(el('span', 'mia-attachment-name', name));
+      btn.appendChild(actionLabel);
+      btn.addEventListener('click', function () {
+        if (btn.disabled) return;
+        btn.disabled = true; actionLabel.textContent = 'Descargando…';
+        var getToken = typeof window.miaGetAccessToken === 'function' ? window.miaGetAccessToken : null;
+        Promise.resolve(getToken ? getToken() : null).then(function (token) {
+          return fetch(a.url, { headers: token ? { Authorization: 'Bearer ' + token } : {} });
+        }).then(function (res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.blob();
+        }).then(function (blob) {
+          var blobUrl = URL.createObjectURL(blob);
+          var tmp = document.createElement('a');
+          tmp.href = blobUrl; tmp.download = name; tmp.rel = 'noopener noreferrer';
+          document.body.appendChild(tmp); tmp.click(); document.body.removeChild(tmp);
+          setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 30000);
+        }).catch(function (err) {
+          console.warn('[mIA] No se pudo descargar el adjunto:', err);
+          actionLabel.textContent = 'Error al descargar';
+          return;
+        }).finally(function () {
+          btn.disabled = false;
+          if (actionLabel.textContent === 'Descargando…') actionLabel.textContent = 'Descargar ↓';
+        });
+      });
+      return btn;
     }
     var span = el('div', 'mia-attachment mia-attachment--unavailable');
     span.appendChild(el('span', 'mia-attachment-name', name));

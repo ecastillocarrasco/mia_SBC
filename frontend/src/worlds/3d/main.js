@@ -270,6 +270,47 @@ dockClose.addEventListener("click", () => { input.blur(); closeDock({ force: tru
 input.addEventListener("input", scheduleDockAutoHide);
 input.addEventListener("blur", scheduleDockAutoHide);
 
+// Paridad con 2D: abrir un correo o proponer respuesta desde el listado, sin escribirlo a mano.
+// Delegado sobre `conversation` (su innerHTML se reemplaza en cada respuesta, el listener no).
+conversation.addEventListener("click", (event) => {
+  const button = event.target.closest?.("[data-mail-action]");
+  if (!button || button.disabled) return;
+  const ref = button.dataset.mailRef;
+  if (!ref) return;
+  openDock({ focus: true });
+  if (button.dataset.mailAction === "open") void submit(`Abre el correo ${ref}`);
+  else if (button.dataset.mailAction === "reply") void submit(`Propón una respuesta al correo ${ref}`);
+});
+
+// Adjuntos de correo: /api/mail/attachment/... exige token (Authorization Bearer), que un <a href>
+// normal no puede mandar (daría 401, bug ya corregido en 2D con el mismo patrón: fetch + blob).
+conversation.addEventListener("click", async (event) => {
+  const button = event.target.closest?.("[data-attachment-url]");
+  if (!button || button.disabled) return;
+  const url = button.dataset.attachmentUrl;
+  const name = button.dataset.attachmentName || "adjunto";
+  const actionLabel = button.querySelector(".mia-mail-attachment-action");
+  button.disabled = true;
+  if (actionLabel) actionLabel.textContent = "Descargando…";
+  try {
+    const token = await getAccessToken();
+    const response = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl; link.download = name; link.rel = "noopener noreferrer";
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+    if (actionLabel) actionLabel.textContent = "Descargar ↓";
+  } catch (error) {
+    console.warn("[mIA V4] No se pudo descargar el adjunto:", error);
+    if (actionLabel) actionLabel.textContent = "Error al descargar";
+  } finally {
+    button.disabled = false;
+  }
+});
+
 function renderPresentationItem(item, result, answer) {
   if (isEmployee360Payload(result, item?.data ?? {})) {
     try {
@@ -496,7 +537,7 @@ composer.addEventListener("submit", (event) => {
 
 scene.load((progress, detail) => {
   boot.progress(progress, detail);
-  setStatus("Preparando a Mía…", "loading");
+  setStatus("Preparando a mIA…", "loading");
 }).then(async (names) => {
   const sourceClipCount = names.filter((name) =>
     !['mIA_IDLE_SAFE', 'mIA_SEQ_BIENVENIDA_SAFE'].includes(name)).length;
@@ -519,7 +560,7 @@ scene.load((progress, detail) => {
   ]);
   window.clearTimeout(voiceTimeout);
   if (audioReady?.status === 'timeout') welcomeVoice.cancel();
-  setStatus("Mía está preparada", "ready");
+  setStatus("mIA está preparada", "ready");
   await boot.revealAvatar(scene);
   // V4.9: the REAL click on the loading screen starts cached audio.play()
   // immediately. No async preparation, setTimeout, or simulated button click

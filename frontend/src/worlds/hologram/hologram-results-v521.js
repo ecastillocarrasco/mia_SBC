@@ -273,7 +273,7 @@ export function adaptHologramResult(response, presentations = [], { type = 'anal
   const newsHTML = news && !fan ? renderNewsSection(news) : '';
   const status = !metrics.length && !table && !mail && !news ?
     `<p class="hg-result-status">${docs.length ? 'Informe disponible' :
-      (answer ? 'Mía está explicando el resultado por voz' : 'Respuesta recibida')}</p>` : '';
+      (answer ? 'mIA está explicando el resultado por voz' : 'Respuesta recibida')}</p>` : '';
   // In fan mode, structured content without numeric visualizations still needs a
   // clear visible status; the user's answer is delivered by voice.
   const fanFallback = fan && !metrics.length && !numericRows?.length ?

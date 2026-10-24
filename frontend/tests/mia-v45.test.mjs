@@ -23,7 +23,7 @@ test('MSAL given_name overrides dev fallback; no account in prod gives anonymous
   assert.equal(resolveWelcomeName({account, development:true}), 'María');
   assert.equal(firstNameFromAccount({name:'Juan Carlos Martínez'}), 'Juan');
   assert.equal(resolveWelcomeName({account:null,development:false}), '');
-  assert.match(welcomeText(), /Mía/);
+  assert.match(welcomeText(), /mIA/);
   assert.equal(activeIdentity({msalInstance:{getActiveAccount:()=>account}}), account);
   assert.equal(activeIdentity({msalInstance:{getActiveAccount:()=>null}}), null);
 });

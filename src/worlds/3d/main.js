@@ -345,14 +345,14 @@ composer.addEventListener("submit", (event) => {
 
 scene.load((progress, detail) => {
   boot.progress(progress, detail);
-  setStatus("Preparando a Mía…", "loading");
+  setStatus("Preparando a mIA…", "loading");
 }).then(async (names) => {
   const sourceClipCount = names.filter((name) => name !== "mIA_IDLE_SAFE").length;
   if (sourceClipCount !== 84) console.warn(`[mIA V4] Se esperaban 84 clips originales; cargados ${sourceClipCount}`);
   behavior = new MiaBehaviorV4({ scene, mode: "3d" });
   clearPresentation();
   await boot.complete();
-  const greeting = "¡Hola! Soy Mía, tu asistente virtual. Estoy aquí para ayudarte con cualquier consulta. ¿Qué te gustaría saber?";
+  const greeting = "¡Hola! Soy mIA, tu asistente virtual. Estoy aquí para ayudarte con cualquier consulta. ¿Qué te gustaría saber?";
   showCaption(greeting, { kind: "welcome" });
   setStatus("Bienvenida a Sunset Beach Club", "greeting");
   behavior.enter("greeting");

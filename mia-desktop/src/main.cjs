@@ -556,7 +556,7 @@ function setupIPC() {
     greetingTriggered=true;
     if(config.startupGreeting) {
       const h=new Date().getHours(); const salutation=h<13?'Buenos días':h<21?'Buenas tardes':'Buenas noches';
-      const welcome=`${salutation}${config.greetingName ? ', '+config.greetingName : ''}. Soy Mía, estoy aquí para ayudarte.`;
+      const welcome=`${salutation}${config.greetingName ? ', '+config.greetingName : ''}. Soy mIA, estoy aquí para ayudarte.`;
       avatarWin.webContents.send('mia:startup-greeting',{text:welcome, voiceEnabled:config.voiceEnabled, fallbackEnabled:config.voiceFallbackEnabled});
     }
   });

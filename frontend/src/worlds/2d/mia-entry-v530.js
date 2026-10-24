@@ -21,7 +21,7 @@ function playPersonalized2DWelcome() {
   const eyebrow = document.getElementById('greetingEyebrow');
   const welcome = document.getElementById('welcomeGreeting');
   if (welcome) welcome.textContent = text;
-  if (eyebrow) eyebrow.textContent = 'MÍA';
+  if (eyebrow) eyebrow.textContent = 'mIA';
   const voice = new MiaWelcomeVoiceV45({
     getAuthHeaders: async () => {
       const token = await getAccessToken();

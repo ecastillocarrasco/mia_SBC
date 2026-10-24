@@ -33,7 +33,15 @@ function flattenTables(presentation) {
   const tables = [];
   if (!presentation || typeof presentation !== "object") return tables;
 
-  if (presentation.type === "table" && Array.isArray(presentation.columns) && Array.isArray(presentation.rows)) {
+  // Un listado de correos (mail_rows) nunca es "datos a comparar/graficar": tratarlo como
+  // tabla estadística es lo que producía la vista de "categorías/comparativa/CSV" en vez de
+  // un listado de correo legible. present.js ya lo renderiza aparte como lista de correo.
+  if (
+    presentation.type === "table" &&
+    Array.isArray(presentation.columns) &&
+    Array.isArray(presentation.rows) &&
+    !Array.isArray(presentation.mail_rows)
+  ) {
     tables.push({
       title: presentation.title || "Datos",
       columns: presentation.columns,
@@ -54,6 +62,7 @@ function flattenTables(presentation) {
   }
 
   for (const [key, value] of Object.entries(presentation)) {
+    if (key === "mail_rows") continue; // ver nota de arriba: nunca es una tabla de datos a graficar.
     if (!Array.isArray(value) || !value.length || typeof value[0] !== "object" || Array.isArray(value[0])) continue;
     const columns = Object.keys(value[0]);
     if (columns.length < 2) continue;

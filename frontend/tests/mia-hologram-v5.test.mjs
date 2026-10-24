@@ -6,9 +6,9 @@ const script = await fs.readFile(file, "utf8");
 const mod = await import("data:text/javascript;charset=utf-8," + encodeURIComponent(script));
 
 test("saludo dividido en frase completa", () => {
-  const value = mod.projectionCopy("¡Hola Enrique! Soy Mía, tu asistente virtual.", "welcome");
+  const value = mod.projectionCopy("¡Hola Enrique! Soy mIA, tu asistente virtual.", "welcome");
   assert.equal(value.headline, "¡Hola Enrique!");
-  assert.equal(value.body, "Soy Mía, tu asistente virtual.");
+  assert.equal(value.body, "Soy mIA, tu asistente virtual.");
 });
 
 test("no fragmenta frases largas de forma arbitraria", () => {

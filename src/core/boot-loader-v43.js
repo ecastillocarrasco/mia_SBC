@@ -12,13 +12,13 @@ const html = (base) => `
     <div class="mia-boot__figure" aria-hidden="true">
       <img class="mia-boot__art" alt="" src="${base}assets/loading/mia-loading-art.webp" />
     </div>
-    <section class="mia-boot__content" aria-label="Preparando Mía">
+    <section class="mia-boot__content" aria-label="Preparando mIA">
       <img class="mia-boot__logo" src="${base}assets/loading/sunset-beach-club-logo.png"
            alt="Sunset Beach Club" />
       <div class="mia-boot__eyebrow">TU EXPERIENCIA COMIENZA AQUÍ</div>
       <h1>Hola, soy <em>mIA</em></h1>
       <p class="mia-boot__intro">Estoy preparando todo para darte la bienvenida.</p>
-      <div class="mia-boot__progress" role="progressbar" aria-label="Carga de Mía"
+      <div class="mia-boot__progress" role="progressbar" aria-label="Carga de mIA"
            aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
         <svg class="mia-boot__ring" viewBox="0 0 120 120" aria-hidden="true">
           <circle class="mia-boot__ring-track" cx="60" cy="60" r="52" />
@@ -51,7 +51,7 @@ export class MiaBootLoader {
     this.node = document.createElement('div');
     this.node.className = 'mia-boot';
     this.node.dataset.mode = mode;
-    this.node.setAttribute('aria-label', 'Cargando Mía');
+    this.node.setAttribute('aria-label', 'Cargando mIA');
     this.node.innerHTML = html(safeBase);
     root.appendChild(this.node);
     this.percentEl = this.node.querySelector('[data-boot-percent]');
@@ -100,7 +100,7 @@ export class MiaBootLoader {
     this.target = Math.max(this.target, Math.floor(bounded * 100));
     if (details.phase === 'downloading') {
       this.phase = 'downloading';
-      this.statusEl.textContent = 'Cargando los recursos de Mía…';
+      this.statusEl.textContent = 'Cargando los recursos de mIA…';
       if (details.loadedBytes && details.totalBytes) {
         const loaded = (details.loadedBytes / 1048576).toFixed(1);
         const total = (details.totalBytes / 1048576).toFixed(1);
@@ -124,7 +124,7 @@ export class MiaBootLoader {
     this.phase = 'done';
     this.target = this.displayed = 100;
     this.statusEl.textContent = '¡Todo listo para empezar!';
-    this.detailEl.textContent = 'Mía está preparada';
+    this.detailEl.textContent = 'mIA está preparada';
     this._render();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     await new Promise((resolve) => setTimeout(resolve, 460));
@@ -137,7 +137,7 @@ export class MiaBootLoader {
     if (!this.active) return;
     console.error('[mIA Boot] Error de carga:', error);
     this.phase = 'error';
-    this.statusEl.textContent = 'No se ha podido cargar Mía';
+    this.statusEl.textContent = 'No se ha podido cargar mIA';
     this.detailEl.textContent = 'Comprueba la conexión y vuelve a intentarlo.';
     this.retryEl.hidden = false;
     cancelAnimationFrame(this.raf);

@@ -37,7 +37,7 @@ test('loading percentage uses real transfer progress and cannot regress',()=>{
   assert.equal(boot.target,0);
   boot.progress(.25,{phase:'downloading',loadedBytes:100,totalBytes:400});
   assert.equal(boot.target,25);
-  assert.equal(boot.statusEl.textContent,'Cargando los recursos de Mía…');
+  assert.equal(boot.statusEl.textContent,'Cargando los recursos de mIA…');
   boot.progress(.1,{phase:'downloading',loadedBytes:40,totalBytes:400});
   assert.equal(boot.target,25);
   boot.progress(.94,{phase:'processing'});

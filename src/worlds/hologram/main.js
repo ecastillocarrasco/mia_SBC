@@ -168,7 +168,7 @@ scene.load((value, detail) => {
   behavior = new MiaBehaviorV4({ scene, mode: "hologram" });
   await boot.complete();
   behavior.enter("greeting");
-  sayCaption("¡Hola! Soy Mía. Estoy aquí para ayudarte. ¿Qué te gustaría saber?", "welcome");
+  sayCaption("¡Hola! Soy mIA. Estoy aquí para ayudarte. ¿Qué te gustaría saber?", "welcome");
   greetingTimer = window.setTimeout(() => {
     greetingTimer = null;
     if (!busy && behavior?.state === "greeting") behavior.enter("idle");
@@ -176,7 +176,7 @@ scene.load((value, detail) => {
 }).catch((error) => {
   boot.fail(error);
   console.error("[mIA V4 HG] Fallo al cargar el modelo", error);
-  sayCaption("No se ha podido cargar la proyección de Mía.", "error");
+  sayCaption("No se ha podido cargar la proyección de mIA.", "error");
 });
 
 // Micrófono disponible también en HG, pero siempre apagado al entrar.
