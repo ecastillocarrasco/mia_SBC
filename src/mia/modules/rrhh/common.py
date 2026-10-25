@@ -139,6 +139,27 @@ _FICHA_FILLER_WORDS = frozenset({
     "resumen", "detalle", "detallada", "detallado", "informacion", "datos", "perfil",
 })
 
+# Subconjunto de arriba SIN "la"/"el"/"de"/"del"/"sus"/"su"/"por"/"favor": esas sí pueden ser
+# parte real de un apellido español ("de la Cruz", "del Pozo") y nunca deben quitarse de un
+# `nombre` explícito, solo de la extracción heurística del mensaje completo de abajo.
+_FICHA_LEADING_COMMAND_WORDS = frozenset({
+    "ficha", "completa", "completo", "muestrame", "muestrales", "enseñame", "ensename",
+    "quiero", "ver", "dame", "pasame", "resumen", "detalle", "detallada", "detallado",
+    "informacion", "datos", "perfil",
+})
+
+
+def _strip_leading_command_words(nombre: str) -> str:
+    """El modelo a veces incluye la propia palabra de mando al principio del argumento `nombre`
+    en vez de solo el nombre (reproducido en preprod 2026-10-25: nombre="ficha mari camen
+    garcia") -- como la búsqueda exige que TODAS las palabras de `nombre` encajen en el nombre
+    real, una sola palabra de mando de más tira abajo toda la búsqueda. Solo se quitan por
+    delante, nunca en medio de la frase."""
+    words = nombre.split()
+    while words and normalize_key(words[0]) in _FICHA_LEADING_COMMAND_WORDS:
+        words.pop(0)
+    return " ".join(words) if words else nombre
+
 
 def _fallback_name_from_message(user_message: str) -> str:
     """Si el modelo manda ``empleado_id`` sin ``nombre`` (lo normal cuando la pregunta sigue el
@@ -151,7 +172,7 @@ def _fallback_name_from_message(user_message: str) -> str:
 
 
 async def resolve_person(db: AsyncSession, params: PersonaParams, *, ctx: Any = None) -> PersonMatch:
-    query = params.nombre or ""
+    query = _strip_leading_command_words(params.nombre) if params.nombre else ""
     if params.empleado_id is not None:
         employee = await db.get(Employee, params.empleado_id)
         # Defensa en profundidad: el modelo puede mandar un empleado_id obsoleto (de un foco de

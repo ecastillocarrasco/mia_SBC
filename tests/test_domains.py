@@ -61,6 +61,27 @@ async def test_typo_suggests_close_names(registry: ToolRegistry) -> None:
     assert result.summary["quizas_quiso_decir"] == ["Ana Ruiz Sanz"]
 
 
+async def test_leading_command_word_in_explicit_nombre_is_stripped(registry: ToolRegistry) -> None:
+    """Fallo real reproducido en preprod 2026-10-25: el modelo mandó nombre="ficha mari camen
+    garcia" (la propia palabra de mando "ficha" incluida dentro del argumento) para la consulta
+    "ficha mari camen garcia" -- como la búsqueda exige que TODAS las palabras encajen, "ficha"
+    (que no es el nombre de nadie) tira abajo toda la búsqueda aunque el resto sí tendría
+    opciones. "ficha" al principio debe quitarse antes de buscar."""
+    result = await call(registry, "ficha_empleado", nombre="ficha ana gomez")
+    assert result.status is ToolStatus.OK
+    assert result.summary["nombre"] == "Ana Gómez"
+
+
+async def test_de_la_del_inside_a_name_are_never_stripped() -> None:
+    """La defensa del test anterior no debe confundir "de"/"la"/"del" en medio de un apellido
+    español real ("de la Cruz", "del Pozo") con una palabra de mando -- solo se quita por
+    delante, y solo las palabras de mando de verdad (nunca estas)."""
+    from mia.modules.rrhh.common import _strip_leading_command_words  # noqa: PLC0415
+
+    assert _strip_leading_command_words("Juan de la Cruz") == "Juan de la Cruz"
+    assert _strip_leading_command_words("ficha Juan de la Cruz") == "Juan de la Cruz"
+
+
 async def test_ficha_sets_focus_and_keeps_negative_balance(registry: ToolRegistry) -> None:
     result = await call(registry, "ficha_empleado", nombre="Ana Ruiz")
     card = result.summary
