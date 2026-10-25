@@ -6,7 +6,9 @@ document.documentElement.setAttribute('data-mia-ui-build',MIA_UI_BUILD);
 const convo=document.getElementById('conversation'), input=document.getElementById('input'), send=document.getElementById('send'), mic=document.getElementById('mic');
 const avatarStage=document.getElementById('avatarStage'), avatarA=document.getElementById('avatarA'), avatarB=document.getElementById('avatarB');
 const pill=document.getElementById('statePill'), stateDetail=document.getElementById('stateDetail'), voiceSelect=document.getElementById('voiceSelect'), soundToggle=document.getElementById('soundToggle'), voiceStatus=document.getElementById('voiceStatus');
-let context={},speechEnabled=true,voices=[],selectedVoice=null,recognition=null,activeAvatar=0,currentState='reposo',lastProgressSpoken=false,lastAvatarChange=0,avatarTimer=null,recognitionFinalSent=false;
+const VOICE_MUTE_KEY='mia.voice_muted';// misma clave que core/voice-mute.js (3D/holograma): se comparte entre mundos
+let context={},speechEnabled=(safeLocalGet(VOICE_MUTE_KEY)!=='1'),voices=[],selectedVoice=null,recognition=null,activeAvatar=0,currentState='reposo',lastProgressSpoken=false,lastAvatarChange=0,avatarTimer=null,recognitionFinalSent=false;
+if(soundToggle)soundToggle.textContent=speechEnabled?'🔊':'🔇';
 const VOICE_PREF_KEY='mia.voice.v1038';
 const miaProfile={language:'es',locale:'es-ES',company:'Sunset Beach Club',role:null};
 const nf=new Intl.NumberFormat(miaProfile.locale,{maximumFractionDigits:2});
@@ -698,7 +700,7 @@ function speak(text,finalState='sonriendo'){
  if(!speechEnabled||!('speechSynthesis'in window)||!text){setAvatarState(finalState);return}speechSynthesis.cancel();const chunks=splitSpeech(text);let i=0;
  const next=()=>{if(i>=chunks.length){setAvatarState(finalState);return}const chunk=chunks[i++],last=/[!?]$/.test(chunk),u=utteranceFor(chunk,last?.99:.965,1.01);u.onstart=()=>setAvatarState('hablando');u.onend=()=>setTimeout(next,/[,;:]$/.test(chunk)?150:95);u.onerror=()=>setAvatarState(finalState);speechSynthesis.speak(u)};next()
 }
-soundToggle.addEventListener('click',()=>{speechEnabled=!speechEnabled;soundToggle.textContent=speechEnabled?'🔊':'🔇';if(!speechEnabled&&'speechSynthesis'in window)speechSynthesis.cancel()});
+soundToggle.addEventListener('click',()=>{speechEnabled=!speechEnabled;safeLocalSet(VOICE_MUTE_KEY,speechEnabled?'0':'1');soundToggle.textContent=speechEnabled?'🔊':'🔇';if(!speechEnabled&&'speechSynthesis'in window)speechSynthesis.cancel()});
 const MIA_RUNTIME={
   isLocal:['localhost','127.0.0.1'].includes(location.hostname),
   backendBase:null,

@@ -9,6 +9,7 @@ import { start as startMailWatch, ensureNotificationPermission, announceNewMail,
 import { getWelcomeText } from '../../core/identity-v45.js';
 import { MiaWelcomeVoiceV45 } from '../../core/welcome-voice-v45.js';
 import { MiaWelcomeAutostartV47 } from '../../core/welcome-autostart-v47.js';
+import { isVoiceMuted } from '../../core/voice-mute.js';
 import './mia-entry-v530.css';
 
 // El saludo hablado, con el nombre real del usuario y la voz configurada en el backend
@@ -28,7 +29,9 @@ function playPersonalized2DWelcome() {
       return token ? { Authorization: `Bearer ${token}` } : {};
     },
   });
-  const autostart = new MiaWelcomeAutostartV47({ voice, canSpeak: () => !document.hidden });
+  // Respeta el silencio elegido con soundToggle (mia-2d.js) antes de que ese
+  // script clásico llegue a ejecutarse: misma clave que core/voice-mute.js.
+  const autostart = new MiaWelcomeAutostartV47({ voice, canSpeak: () => !document.hidden && !isVoiceMuted() });
   void autostart.start(text);
 }
 

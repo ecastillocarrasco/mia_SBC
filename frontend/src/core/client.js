@@ -8,6 +8,7 @@
  */
 
 import { getAccessToken } from "./auth-gate.js";
+import { withSpokenName } from "./speech-text.js";
 
 export const AVATAR_STATES = [
   "reposo", "escuchando", "pensando", "concentrada", "hablando", "sonriendo", "saludando",
@@ -114,11 +115,12 @@ export class MiaClient extends EventTarget {
   async speak(text, { onStart } = {}) {
     this.stopSpeaking();
     if (!text?.trim()) return;
+    const spoken = withSpokenName(text);
     try {
       const response = await fetch(`${this.apiBase}/api/voice/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await this._authHeaders()) },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: spoken }),
       });
       if (!response.ok) throw new Error(`voice/stream HTTP ${response.status}`);
       const blob = await response.blob();
@@ -135,7 +137,7 @@ export class MiaClient extends EventTarget {
       // Igual que antes: si ElevenLabs no responde, habla la voz del navegador.
       console.warn("[mIA] voz no disponible, uso la del navegador:", error);
       onStart?.();
-      await speakWithBrowser(text);
+      await speakWithBrowser(spoken);
     } finally {
       if (this._voiceAudio) URL.revokeObjectURL(this._voiceAudio.src);
       this._voiceAudio = null;

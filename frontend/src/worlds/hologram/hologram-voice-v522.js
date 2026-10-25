@@ -4,6 +4,8 @@
  * No speechSynthesis fallback. Audio is retained until the NEXT turn or pagehide,
  * so a blocked autoplay can be replayed by a real user gesture without re-TTS.
  */
+import { withSpokenName } from "../../core/speech-text.js";
+
 export class HologramVoiceV522 {
   constructor({ apiBase = '', fetchImpl = (...args) => fetch(...args),
     createAudio = url => new Audio(url), maxMs = 90000,
@@ -112,7 +114,7 @@ export class HologramVoiceV522 {
         const response = await this.fetchImpl(`${this.apiBase}/api/voice/stream`, {
           method:'POST',
           headers:{'Content-Type':'application/json','Accept':'audio/*, application/octet-stream',...authHeaders},
-          body:JSON.stringify({text:summary}),
+          body:JSON.stringify({text:withSpokenName(summary)}),
           signal:controller.signal,
         });
         if (!response.ok) return {status:'voice-http-error',http:response.status};

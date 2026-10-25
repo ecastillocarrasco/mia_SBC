@@ -8,6 +8,13 @@
 .hg-voice-listen:hover { background:rgba(9,82,95,.96); }
 .hg-voice-listen:disabled { opacity:.53; cursor:progress; }
 .hg-voice-listen:focus-visible { outline:2px solid #5df8da; outline-offset:2px; }
+.hg-voice-mute { flex:0 0 auto; display:grid; place-items:center; width:28px; height:28px;
+  appearance:none; cursor:pointer; border-radius:999px; border:1px solid rgba(111,245,227,.35);
+  background:rgba(4,38,53,.92); color:#e3fcfc; transition:opacity .18s,background .18s; }
+.hg-voice-mute svg { width:14px; height:14px; fill:currentColor; }
+.hg-voice-mute:hover { background:rgba(9,82,95,.96); }
+.hg-voice-mute:focus-visible { outline:2px solid #5df8da; outline-offset:2px; }
+.hg-voice-mute.is-muted { opacity:.45; }
 .hg-voice-state { flex:1 1 auto; min-width:0; max-width:480px; overflow-wrap:anywhere;
   color:#a7cacb; font-size:11px; }
 .hg-voice-widget[data-status="playback-blocked"] .hg-voice-state,

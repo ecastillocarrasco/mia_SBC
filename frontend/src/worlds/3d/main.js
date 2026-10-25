@@ -26,6 +26,7 @@ import {
   renderEmployee360PresentationHtml,
 } from "../../core/employee360-presentation.js";
 import { ensureAuthenticated, ensureAuthorized, getAccessToken } from "../../core/auth-gate.js";
+import { isVoiceMuted, setVoiceMuted } from "../../core/voice-mute.js";
 import { start as startMailWatch, ensureNotificationPermission, announceNewMail, mailPromptQuery, consumeMailPrompt } from "../../core/mail-watch.js";
 
 // Si MIA_AUTH__MODE=entra exige login y ya hay sesión (p. ej. iniciada desde el portal), sigue
@@ -90,7 +91,11 @@ const introDirector = new SbcIntroDirectorV2(boot.node, { reducedMotion });
 const stage = new PresentationStage({ root: document.body, reducedMotion, mode: "3d" });
 const holographicResults = new HolographicResults3D({ scene, panel, reducedMotion });
 
-let voiceEnabled = true;
+// Silenciada/activada: persistida y compartida con los otros mundos (mismo
+// navegador). Por defecto mIA NO está silenciada.
+let voiceEnabled = !isVoiceMuted();
+voiceToggle.setAttribute("aria-pressed", String(voiceEnabled));
+voiceToggle.classList.toggle("is-muted", !voiceEnabled);
 let busy = false;
 const deferredMailNotices = [];
 function flushMailNotices() {
@@ -423,6 +428,7 @@ client.addEventListener("progress", (event) => {
 
 voiceToggle.addEventListener("click", () => {
   voiceEnabled = !voiceEnabled;
+  setVoiceMuted(!voiceEnabled);
   voiceToggle.setAttribute("aria-pressed", String(voiceEnabled));
   voiceToggle.classList.toggle("is-muted", !voiceEnabled);
   if (!voiceEnabled) {

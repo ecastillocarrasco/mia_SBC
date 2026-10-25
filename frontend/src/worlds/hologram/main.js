@@ -23,6 +23,7 @@ import { readHologramWorldContext, saveHologramWorldContext, bindHologramWorldNa
 import { extractHologramJob, pollHologramJob, reportDownloadHref, getJobStatusLabel, jobIsActive } from "./hologram-jobs-v529.js";
 import { ensureAuthenticated, ensureAuthorized, getAccessToken } from "../../core/auth-gate.js";
 import { start as startMailWatch, ensureNotificationPermission, announceNewMail, mailPromptQuery, consumeMailPrompt } from "../../core/mail-watch.js";
+import { isVoiceMuted, setVoiceMuted } from "../../core/voice-mute.js";
 
 // Si MIA_AUTH__MODE=entra exige login y no hay sesión, `interactive: false` vuelve al portal (el
 // único punto con login real — ver auth-gate.js) en vez de iniciar aquí su propio redirect a
@@ -72,11 +73,31 @@ const hologramVoice = new HologramVoiceV522({
 const voiceWidget = document.createElement('div');
 voiceWidget.id = 'hgVoiceWidget';
 voiceWidget.className = 'hg-voice-widget';
-voiceWidget.innerHTML = `<button id="hgListenResponse" class="hg-voice-listen" type="button" aria-label="Probar voz de mIA">♫ Probar voz</button>
+voiceWidget.innerHTML = `<button id="hgVoiceMute" class="hg-voice-mute" type="button" title="Silenciar o activar la voz de mIA" aria-label="Silenciar o activar la voz de mIA" aria-pressed="true">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm12.3 3a4.3 4.3 0 0 0-2-3.6v7.2a4.3 4.3 0 0 0 2-3.6zm0-7.4v2.1a9 9 0 0 1 0 14.8v2.1a11 11 0 0 0 0-19z"/></svg>
+  </button>
+  <button id="hgListenResponse" class="hg-voice-listen" type="button" aria-label="Probar voz de mIA">♫ Probar voz</button>
   <span id="hgVoiceState" class="hg-voice-state" role="status" aria-live="polite">Voz configurada en el servidor</span>`;
 document.querySelector('.hud .composer')?.insertAdjacentElement('beforebegin',voiceWidget);
 const voiceReplayButton = voiceWidget.querySelector('#hgListenResponse');
+const voiceMuteButton = voiceWidget.querySelector('#hgVoiceMute');
 const voiceState = voiceWidget.querySelector('#hgVoiceState');
+// Silenciada/activada: persistida y compartida con los otros mundos (mismo
+// navegador). Por defecto mIA NO está silenciada.
+let voiceMuted = isVoiceMuted();
+voiceMuteButton.setAttribute('aria-pressed', String(!voiceMuted));
+voiceMuteButton.classList.toggle('is-muted', voiceMuted);
+voiceMuteButton.addEventListener('click', () => {
+  voiceMuted = !voiceMuted;
+  setVoiceMuted(voiceMuted);
+  voiceMuteButton.setAttribute('aria-pressed', String(!voiceMuted));
+  voiceMuteButton.classList.toggle('is-muted', voiceMuted);
+  if (voiceMuted) {
+    hologramVoice.stop();
+    premiumStage.speaking(false);
+    voiceState.textContent = 'Voz silenciada';
+  }
+});
 let lastSpokenText = '';
 const testVoiceText = 'Hola, soy mIA. Esta es mi voz configurada en el servidor.';
 function describeVoiceStatus(result) {
@@ -110,6 +131,7 @@ function voiceResultUi(result) {
 async function speakHologram(text, {maxMs} = {}) {
   const message = String(text || '').trim();
   if (!message) return {status:'empty'};
+  if (voiceMuted) return {status:'muted'};
   lastSpokenText = message;
   voiceReplayButton.disabled = true;
   voiceState.textContent = 'Preparando voz de mIA desde el servidor…';
@@ -768,6 +790,7 @@ scene.load((value, detail) => {
       sayCaption(welcomeMessage, 'welcome');
       director.enter('greeting');
       scheduleGreetingEnd();
+      if (voiceMuted) return { status: 'skipped-audio' };
       return welcomeVoice.replay(welcomeMessage);
     },
   });

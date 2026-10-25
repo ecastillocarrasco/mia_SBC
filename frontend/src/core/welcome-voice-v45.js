@@ -7,6 +7,8 @@
  * - On TTS service failure, the same button can use browser speech synthesis.
  * Browser autoplay restrictions cannot be bypassed by JavaScript.
  */
+import { withSpokenName } from "./speech-text.js";
+
 export class MiaWelcomeVoiceV45 {
   constructor({ apiBase = '', onBlocked = null, onStart = null, onEnd = null,
     fetchImpl = null, audioFactory = null, getAuthHeaders = null } = {}) {
@@ -67,7 +69,7 @@ export class MiaWelcomeVoiceV45 {
         const response = await this.fetchImpl(`${this.apiBase}/api/voice/stream`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...authHeaders },
-          body: JSON.stringify({ text: message }),
+          body: JSON.stringify({ text: withSpokenName(message) }),
           signal: controller.signal,
         });
         if (!response.ok) throw new Error(`voice/stream HTTP ${response.status}`);
@@ -151,7 +153,7 @@ export class MiaWelcomeVoiceV45 {
       this.onBlocked?.('unavailable');
       return Promise.resolve({ status: 'unavailable' });
     }
-    const utterance = new Utterance(message);
+    const utterance = new Utterance(withSpokenName(message));
     utterance.lang = 'es-ES';
     utterance.rate = 0.96;
     const voices = synth.getVoices?.() || [];
