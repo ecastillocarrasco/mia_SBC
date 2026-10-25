@@ -182,8 +182,14 @@ def build_attachment_context(record: AttachmentRecord) -> str:
 
     parts: list[str] = [
         f"## Adjunto: {record.original_filename}",
-        f"attachment_id: {record.attachment_id}  ← usa EXACTAMENTE este valor, nunca el nombre del "
-        "fichero, en cualquier herramienta que pida 'attachment_id' o 'adjunto_id'.",
+        # El id va en su propia línea, sin nada más -- ni una nota al lado ni un "←" pegado al
+        # valor con solo un par de espacios de separación (como antes). Visto como texto plano
+        # por un LLM, no hay frontera clara entre "valor" y "anotación humana" en ese formato, y
+        # se reprodujo en preprod (2026-10-25) un adjunto_id real con un "←" colado al final,
+        # copiado literalmente de aquí -- el motivo por el que ninguna herramienta lo encontraba.
+        f"attachment_id: {record.attachment_id}",
+        "Usa EXACTAMENTE ese valor (nunca el nombre del fichero) en cualquier herramienta que "
+        "pida 'attachment_id' o 'adjunto_id'.",
     ]
 
     if content.content_type == AttachmentContentType.IMAGE:

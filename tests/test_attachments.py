@@ -513,6 +513,24 @@ async def test_build_attachment_context_exposes_the_real_attachment_id(tmp_path:
     await svc.aclose()
 
 
+async def test_build_attachment_context_attachment_id_line_has_nothing_else_attached(tmp_path: Path) -> None:
+    """Incidencia real (2026-10-25): la línea del id llevaba una nota pegada al valor con solo un
+    par de espacios de separación ("attachment_id: <id>  ← usa EXACTAMENTE..."), sin ninguna
+    frontera clara entre "el valor" y "una anotación para el humano que lee el log" — el modelo
+    copió literalmente el id CON el símbolo "←" incluido al llamar a una herramienta, que entonces
+    no encontraba nada (NOT_FOUND) porque ese id con el símbolo pegado no existe. La línea que
+    contiene el id debe tener el id y nada más."""
+    from mia.attachments.intelligence import build_attachment_context  # noqa: PLC0415
+
+    svc = _make_service(tmp_path)
+    record = await svc.upload(content=_csv_bytes(), filename="datos.csv", declared_mime="text/csv", user_id="user-1", session_id=None)
+    context = build_attachment_context(record)
+    id_lines = [line for line in context.splitlines() if record.attachment_id in line]
+    assert id_lines, "el attachment_id no aparece en ninguna línea del contexto"
+    assert all(line.strip() == f"attachment_id: {record.attachment_id}" for line in id_lines)
+    await svc.aclose()
+
+
 async def test_service_get_bytes_returns_the_raw_upload_unmodified(tmp_path: Path) -> None:
     """``get_bytes`` devuelve el contenido crudo tal cual se subió — herramientas como ``fichajes``
     necesitan releerlo con su propia lógica (hora completa, no solo la fecha, a diferencia del
