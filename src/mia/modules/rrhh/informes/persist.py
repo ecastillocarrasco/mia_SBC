@@ -63,6 +63,41 @@ def render_document(formato: str, document: Document, generated: datetime, logo:
     return RENDERERS[formato](document, generated, resolve_logo(logo))
 
 
+_PREVIEW_MAX_TABLES = 2
+_PREVIEW_MAX_TABLE_ROWS = 12
+_PREVIEW_MAX_CHARTS = 2
+
+
+def _build_preview(document: Document) -> dict[str, Any] | None:
+    """Adelanto ligero del documento para la pantalla (2D/3D) -- nunca el informe entero, que solo
+    se entrega como fichero descargable. Genérico a propósito: toma los bloques ``table``/``chart``
+    que YA construyó el llamador (cualquier informe que pase por ``persist_document_report``, no
+    solo fichajes/turnos) y los recorta, sin derivar nada nuevo. Deja fuera ``kpis``/``annex``: los
+    KPIs ya tienen su propio formato compacto (pensado para Holograma) y un anexo es detalle a
+    granel, no una vista previa. Devuelve ``None`` cuando el documento no tiene ni tablas ni
+    gráficos que mostrar (p. ej. un informe que es solo narrativa), para no añadir una clave vacía."""
+    tables: list[dict[str, Any]] = []
+    charts: list[dict[str, Any]] = []
+    for block in document.blocks:
+        if block.kind == "table" and len(tables) < _PREVIEW_MAX_TABLES:
+            data = block.data or {}
+            columns = data.get("columns") or []
+            rows = data.get("rows") or []
+            if columns and rows:
+                tables.append({
+                    "title": block.title,
+                    "columns": columns,
+                    "rows": rows[:_PREVIEW_MAX_TABLE_ROWS],
+                    "total_rows": len(rows),
+                    "truncated": len(rows) > _PREVIEW_MAX_TABLE_ROWS,
+                })
+        elif block.kind == "chart" and block.data and len(charts) < _PREVIEW_MAX_CHARTS:
+            charts.append(dict(block.data))
+    if not tables and not charts:
+        return None
+    return {"tables": tables, "charts": charts}
+
+
 def _write(path: Path, content: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
@@ -126,8 +161,18 @@ async def persist_document_report(
         items.append({"formato": fmt, "archivo": file_name, "enlace": url})
 
     caduca_en_horas = int(ttl.total_seconds() // 3600)
+    # El preview es solo para pantalla (2D/3D) -- nunca para el modelo, que ya tiene bastante con
+    # "secciones" (un recuento) para confirmar que el informe no salió vacío. Por eso vive
+    # únicamente en la presentation, nunca en el summary.
+    preview = _build_preview(document)
     if len(items) == 1:
         only = items[0]
+        presentation: dict[str, Any] = {
+            "type": "download", "title": document.title, "format": only["formato"],
+            "url": only["enlace"], "file_name": only["archivo"],
+        }
+        if preview is not None:
+            presentation["preview"] = preview
         return ToolResult(
             ToolStatus.OK,
             {
@@ -137,9 +182,15 @@ async def persist_document_report(
                 "caduca_en_horas": caduca_en_horas,
                 **(extra_summary or {}),
             },
-            {"type": "download", "title": document.title, "format": only["formato"],
-             "url": only["enlace"], "file_name": only["archivo"]},
+            presentation,
         )
+    presentation = {
+        "type": "downloads",
+        "title": document.title,
+        "items": [{"url": i["enlace"], "format": i["formato"], "file_name": i["archivo"]} for i in items],
+    }
+    if preview is not None:
+        presentation["preview"] = preview
     return ToolResult(
         ToolStatus.OK,
         {
@@ -148,9 +199,5 @@ async def persist_document_report(
             "caduca_en_horas": caduca_en_horas,
             **(extra_summary or {}),
         },
-        {
-            "type": "downloads",
-            "title": document.title,
-            "items": [{"url": i["enlace"], "format": i["formato"], "file_name": i["archivo"]} for i in items],
-        },
+        presentation,
     )

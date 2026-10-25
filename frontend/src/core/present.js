@@ -101,6 +101,143 @@ function renderKeyValues(entries) {
     .join("")}</dl>`;
 }
 
+// ── Charts (vista previa de informes) ───────────────────────────────────────────
+// Paleta categórica validada (dataviz skill, scripts/validate_palette.js --mode dark): CVD Delta E
+// >= 8 y normal-vision Delta E >= 15 en cada par adyacente. Solo los pasos oscuros -- este fichero
+// nunca alterna claro/oscuro (ver present.css), así que no hace falta la variante clara.
+const MIA_CHART_PALETTE = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"];
+
+function chartSeriesValues(chart) {
+  const series = Array.isArray(chart.series) ? chart.series : [];
+  return series.length ? (Array.isArray(series[0].values) ? series[0].values.map((v) => Number(v) || 0) : []) : [];
+}
+
+function fmtChartValue(value) {
+  return new Intl.NumberFormat("es-ES", { maximumFractionDigits: 2 }).format(Number(value) || 0);
+}
+
+function renderDonutChart(chart) {
+  const labels = Array.isArray(chart.labels) ? chart.labels : [];
+  const values = chartSeriesValues(chart);
+  const total = values.reduce((a, b) => a + Math.abs(b), 0);
+  if (!total) return "";
+  let offset = 0;
+  const slices = values
+    .map((v, i) => {
+      const start = (offset / total) * 100;
+      offset += Math.abs(v);
+      const end = (offset / total) * 100;
+      return `${MIA_CHART_PALETTE[i % MIA_CHART_PALETTE.length]} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+    })
+    .join(",");
+  const legend = values
+    .map((v, i) => {
+      const pct = total ? Math.round((Math.abs(v) / total) * 100) : 0;
+      return `<div><i style="background:${MIA_CHART_PALETTE[i % MIA_CHART_PALETTE.length]}"></i>
+        <span>${escapeHtml(labels[i] ?? "—")}</span>
+        <b>${fmtChartValue(v)} <small>${pct}%</small></b></div>`;
+    })
+    .join("");
+  return `<div class="mia-chart-donut-layout">
+    <div class="mia-chart-donut" style="background:conic-gradient(${slices})"><span>${escapeHtml(fmtChartValue(total))}</span></div>
+    <div class="mia-chart-legend">${legend}</div>
+  </div>`;
+}
+
+function renderBarChart(chart) {
+  const labels = Array.isArray(chart.labels) ? chart.labels : [];
+  const values = chartSeriesValues(chart);
+  if (!labels.length) return "";
+  const max = Math.max(1, ...values.map((v) => Math.abs(v)));
+  const rows = labels
+    .map((label, i) => {
+      const v = values[i] || 0;
+      const width = Math.max(2, (Math.abs(v) / max) * 100);
+      return `<div class="mia-chart-bar-row">
+        <span>${escapeHtml(label)}</span>
+        <div class="mia-chart-bar-track"><div class="mia-chart-bar-fill" style="width:${width}%;background:${MIA_CHART_PALETTE[0]}"></div></div>
+        <strong>${fmtChartValue(v)}</strong>
+      </div>`;
+    })
+    .join("");
+  return `<div class="mia-chart-bars">${rows}</div>`;
+}
+
+function renderLineChart(chart) {
+  const labels = Array.isArray(chart.labels) ? chart.labels : [];
+  const series = Array.isArray(chart.series) ? chart.series : [];
+  if (!series.length) return "";
+  const allValues = series.flatMap((s) => (Array.isArray(s.values) ? s.values.map((v) => Number(v) || 0) : []));
+  if (!allValues.length) return "";
+  const max = Math.max(...allValues), min = Math.min(0, ...allValues);
+  const w = 320, h = 100, pad = 10;
+  const polylines = series
+    .map((s, si) => {
+      const vals = Array.isArray(s.values) ? s.values : [];
+      if (!vals.length) return "";
+      const step = (w - 2 * pad) / Math.max(1, vals.length - 1);
+      const pts = vals
+        .map((v, i) => {
+          const x = pad + i * step;
+          const y = h - pad - (((Number(v) || 0) - min) / ((max - min) || 1)) * (h - 2 * pad);
+          return `${x},${y}`;
+        })
+        .join(" ");
+      return `<polyline points="${pts}" fill="none" stroke="${MIA_CHART_PALETTE[si % MIA_CHART_PALETTE.length]}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+    })
+    .join("");
+  const axis = labels.length
+    ? `<div class="mia-chart-line-axis">${labels.map((l) => `<span>${escapeHtml(l)}</span>`).join("")}</div>`
+    : "";
+  const legend = series.length > 1
+    ? `<div class="mia-chart-legend">${series
+        .map((s, i) => `<div><i style="background:${MIA_CHART_PALETTE[i % MIA_CHART_PALETTE.length]}"></i><span>${escapeHtml(s.name ?? "Serie " + (i + 1))}</span></div>`)
+        .join("")}</div>`
+    : "";
+  return `<svg class="mia-chart-line-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${polylines}</svg>${axis}${legend}`;
+}
+
+function renderCharts(charts) {
+  const list = Array.isArray(charts) ? charts.filter((c) => c && typeof c === "object") : [];
+  if (!list.length) return "";
+  const boxes = list
+    .map((chart) => {
+      const type = String(chart.type || "");
+      const body = type === "donut" ? renderDonutChart(chart) : type === "line" ? renderLineChart(chart) : renderBarChart(chart);
+      if (!body) return "";
+      return `<div class="mia-chart-box">
+        <div class="mia-chart-box-title">${escapeHtml(chart.title || "Gráfico")}</div>
+        ${body}
+      </div>`;
+    })
+    .join("");
+  return boxes ? `<div class="mia-charts-panel">${boxes}</div>` : "";
+}
+
+// Vista previa de un informe (ver persist_document_report -> preview en el backend): un adelanto
+// ampliado -- tabla(s) comparativa(s) recortadas + gráficos de primera clase que el documento ya
+// traía -- nunca el informe completo, que solo se entrega como fichero descargable. Pensado para
+// 2D/3D; Holograma sigue con sus tarjetas KPI compactas (ver legacy_view._absorb_report_preview
+// para la ruta equivalente del mundo 2D, que reutiliza data.table/data.charts ya existentes en vez
+// de este renderizador).
+function renderReportPreview(preview) {
+  if (!preview || typeof preview !== "object") return "";
+  const tables = Array.isArray(preview.tables) ? preview.tables : [];
+  const charts = Array.isArray(preview.charts) ? preview.charts : [];
+  const tablesHtml = tables
+    .map((t) => {
+      if (!t || !Array.isArray(t.columns) || !t.columns.length) return "";
+      const note = t.truncated
+        ? `<p class="mia-report-preview-note">Mostrando ${t.rows.length} de ${t.total_rows} filas -- el detalle completo está en el informe descargable.</p>`
+        : "";
+      const title = t.title ? `<h4 class="mia-section-label">${escapeHtml(t.title)}</h4>` : "";
+      return `${title}${renderTable(t)}${note}`;
+    })
+    .join("");
+  const chartsHtml = renderCharts(charts);
+  return tablesHtml || chartsHtml ? `<div class="mia-report-preview">${tablesHtml}${chartsHtml}</div>` : "";
+}
+
 // ── Mail ───────────────────────────────────────────────────────────────────────
 
 function renderAttachmentCard(att) {
@@ -261,12 +398,17 @@ export function renderPresentation(presentation) {
     return `<section class="mia-presentation">${heading}${kpis}${tables}</section>`;
   }
 
-  // Download button
+  // Download button. Nunca un <a href> directo: /api/reports/... exige token (Authorization
+  // Bearer), que un <a> normal no puede mandar (daría 401 -- incidencia real en preprod
+  // 2026-10-25). Botón con los datos en data-*; el fetch+blob real se cablea en el listener de
+  // clic de cada mundo (mismo patrón ya usado para adjuntos de correo, ver 3d/main.js).
   if (type === "download" && safeDocumentUrl(rest.url)) {
-    return `<section class="mia-presentation">${heading}
-      <a class="mia-download" href="${escapeHtml(safeDocumentUrl(rest.url))}" target="_blank" rel="noopener">
-        Descargar ${escapeHtml(rest.file_name || rest.format || "archivo")}
-      </a></section>`;
+    const name = escapeHtml(rest.file_name || rest.format || "archivo");
+    const preview = renderReportPreview(rest.preview);
+    return `<section class="mia-presentation">${heading}${preview}
+      <button type="button" class="mia-download" data-download-url="${escapeHtml(safeDocumentUrl(rest.url))}" data-download-name="${name}">
+        Descargar ${name}
+      </button></section>`;
   }
 
   // Several formats generated in the same request (p. ej. PDF + Excel a la vez): un botón por
@@ -274,15 +416,16 @@ export function renderPresentation(presentation) {
   if (type === "downloads" && Array.isArray(rest.items) && rest.items.length) {
     const links = rest.items
       .filter((item) => item && safeDocumentUrl(item.url))
-      .map(
-        (item) => `<a class="mia-download" href="${escapeHtml(safeDocumentUrl(item.url))}" target="_blank" rel="noopener">
-        Descargar ${escapeHtml(item.file_name || item.format || "archivo")}
-      </a>`,
-      )
+      .map((item) => {
+        const name = escapeHtml(item.file_name || item.format || "archivo");
+        return `<button type="button" class="mia-download" data-download-url="${escapeHtml(safeDocumentUrl(item.url))}" data-download-name="${name}">
+        Descargar ${name}
+      </button>`;
+      })
       .join("");
-    return links
-      ? `<section class="mia-presentation">${heading}<div class="mia-download-group">${links}</div></section>`
-      : "";
+    if (!links) return "";
+    const preview = renderReportPreview(rest.preview);
+    return `<section class="mia-presentation">${heading}${preview}<div class="mia-download-group">${links}</div></section>`;
   }
 
   // Single document card

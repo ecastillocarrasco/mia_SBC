@@ -106,6 +106,19 @@ async def test_report_in_several_formats_at_once(registry: ToolRegistry) -> None
     assert {item["format"] for item in result.presentation["items"]} == {"html", "docx"}
 
 
+async def test_presentation_carries_a_screen_preview_with_the_real_comparison_table(registry: ToolRegistry) -> None:
+    """La pantalla (2D/3D) necesita algo más que el recuento "secciones": 90 que ya llevaba el
+    summary -- un adelanto real del documento (tabla comparativa recortada, nunca el informe
+    entero), separado del summary que ve el modelo."""
+    result = await _call(registry, ADMIN, departamento="Restaurante", desde="2026-10-12", hasta="2026-10-13", formato="html")
+    assert result.status is ToolStatus.OK, result.summary
+    preview = result.presentation["preview"]
+    assert preview["tables"], "debería haber al menos una tabla de detalle por empleado"
+    table = preview["tables"][0]
+    assert table["columns"] and table["rows"]
+    assert "preview" not in result.summary, "el preview es solo para pantalla, nunca para el modelo"
+
+
 async def test_shift_without_a_matching_catalog_entry_is_reported_not_guessed(tmp_path: Path) -> None:
     db = await fresh_database(tmp_path, "fichajes_informe_no_catalog.db")
     async with db.session() as s:

@@ -363,6 +363,19 @@ def chart_from_table(view: dict[str, Any]) -> dict[str, Any] | None:
     return chart_spec(view.get("title"), columns, rows)
 
 
+def _absorb_report_preview(p: dict[str, Any], tables: list[dict[str, Any]], charts: list[dict[str, Any]]) -> None:
+    """Adelanto ligero de un informe (``preview`` de ``persist_document_report``, ver
+    ``mia.modules.rrhh.informes.persist``): reutiliza el mismo mecanismo ya existente de
+    tablas/gráficos nativos del turno (``data["table"]``/``data["charts"]`` en ``legacy_view()``)
+    en vez de inventar una clave nueva en el 2D -- nunca el informe entero, solo lo que el backend
+    ya decidió mostrar como vista previa."""
+    preview = p.get("preview")
+    if not isinstance(preview, dict):
+        return
+    tables.extend(table_view(t) for t in preview.get("tables") or [] if isinstance(t, dict) and t.get("columns"))
+    charts.extend(c for c in preview.get("charts") or [] if isinstance(c, dict))
+
+
 def _absorb(
     p: dict[str, Any],
     data: dict[str, Any],
@@ -412,6 +425,7 @@ def _absorb(
         tables.extend([table_view(t, "Panel") for t in p.get("tables") or [] if t.get("rows")])
     elif kind == "download" and p.get("url"):
         actions.append({"type": "download", "url": p["url"], "label": f"Descargar {p.get('format', 'informe')}"})
+        _absorb_report_preview(p, tables, charts)
     elif kind == "downloads" and isinstance(p.get("items"), list):
         # Un informe pedido en varios formatos a la vez (p. ej. PDF + Excel): una acción de
         # descarga por formato, misma forma que el caso de un solo formato — el mundo 2D ya sabe
@@ -421,6 +435,7 @@ def _absorb(
             for item in p["items"]
             if isinstance(item, dict) and item.get("url")
         )
+        _absorb_report_preview(p, tables, charts)
     elif kind == "job":
         # Fase H: trabajo en segundo plano (Job Manager) — paso directo de los campos que el mundo 2D
         # necesita para pintar la tarjeta y empezar a sondear su estado real; nunca se simula progreso

@@ -518,6 +518,23 @@ function renderCharts(data,wrap){
 // token de la cuenta MSAL activa a traves del global que esa capa ya expone (window.miaGetAccessToken).
 // Si el login esta desactivado (modo dev/easyauth) ese global no existe o devuelve null.
 async function miaAuthHeaders(){try{const t=typeof window.miaGetAccessToken==='function'?await window.miaGetAccessToken():null;return t?{Authorization:'Bearer '+t}:{}}catch(_){return {}}}
+// Descarga autenticada vía fetch+blob: un <a href> directo a /api/... nunca puede adjuntar el
+// Bearer (incidencia real en preprod 2026-10-25, "Necesita autorización" al pulsar cualquier
+// botón de descarga de informe) -- mismo patrón ya usado para adjuntos de correo en mia-enhance.js.
+async function miaDownloadFile(url,filename){
+ try{
+  const res=await fetch(url,{headers:await miaAuthHeaders()});
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  const blob=await res.blob();
+  const blobUrl=URL.createObjectURL(blob);
+  const tmp=document.createElement('a');tmp.href=blobUrl;tmp.download=filename||'';tmp.rel='noopener noreferrer';
+  document.body.appendChild(tmp);tmp.click();document.body.removeChild(tmp);
+  setTimeout(()=>URL.revokeObjectURL(blobUrl),30000);
+ }catch(error){
+  console.error('[mIA] No se pudo descargar el fichero:',error);
+  alert('No se pudo descargar el fichero. Inténtalo de nuevo.');
+ }
+}
 const MIA_JOBS_API='/api/jobs';
 const MIA_JOB_POLL_MS=2500;
 const miaJobCardsByJob=new Map();
@@ -537,7 +554,7 @@ function paintJobCard(card,job){
  card.querySelector('.mia-job-message').textContent=cleanDisplay(job.progress_message)||'';
  const actions=card.querySelector('.mia-job-actions');actions.innerHTML='';
  if(job.status==='queued'||job.status==='running'){const b=document.createElement('button');b.type='button';b.className='mia-job-cancel';b.textContent='Cancelar trabajo';b.addEventListener('click',()=>cancelJob(job.job_id));actions.appendChild(b)}
- if(job.status==='completed'&&job.report_id){const a=document.createElement('a');a.className='mia-job-download';a.href='/api/reports/'+encodeURIComponent(job.report_id);a.setAttribute('download','');a.textContent='↓ Descargar informe';actions.appendChild(a)}
+ if(job.status==='completed'&&job.report_id){const a=document.createElement('a');a.className='mia-job-download';a.href='#';a.textContent='↓ Descargar informe';a.addEventListener('click',e=>{e.preventDefault();miaDownloadFile('/api/reports/'+encodeURIComponent(job.report_id),'informe')});actions.appendChild(a)}
  let note=card.querySelector('.mia-job-note');
  const firstSeen=miaJobFirstSeenAt.get(job.job_id)||Date.now(),elapsed=Date.now()-firstSeen;
  let noteText='';
@@ -658,7 +675,7 @@ function renderData(r,msg){
  if(turnos.length){renderShiftTimeline(data,turnos,wrap);renderTurnsTable(data,turnos,wrap)}
  renderInsights(data,wrap);renderQuality(data,r,wrap);renderCharts(data,wrap);renderJob(data,wrap);
  visual.forEach(v=>{const p=document.createElement('div');p.className='viz';const h=document.createElement('div');h.className='viz-head';h.innerHTML='<strong>'+encodeText(cleanDisplay(v.title)||'Resumen')+'</strong><span>Visualización</span>';p.appendChild(h);const rows=(v.data||[]).map(x=>({label:cleanDisplay(x.label??x.Mes??''),value:Number(x.value??x.Horas??0)})).filter(x=>x.label);const max=Math.max(1,...rows.map(x=>Math.abs(x.value)));const b=document.createElement('div');b.className='bars';rows.forEach(x=>{const r0=document.createElement('div');r0.className='barrow';r0.innerHTML=`<span>${encodeText(x.label)}</span><div class="track"><div class="fill" style="width:${Math.max(1,Math.abs(x.value)/max*100)}%"></div></div><strong>${encodeText(fmt(x.value))}</strong>`;b.appendChild(r0)});p.appendChild(b);wrap.appendChild(p)});
- if(actions.length){const a=document.createElement('div');a.className='actions';actions.forEach(x=>{if(!x.url)return;const t=cleanDisplay(x.type);if(!['download','open','open_document'].includes(t))return;if(documents.length&&t==='open_document')return;const l=document.createElement('a');l.className='action-btn';l.href=x.url;if(t==='download'){l.setAttribute('download','');l.textContent='↓ '+(cleanDisplay(x.label)||'Descargar')}else{l.target='_blank';l.rel='noopener noreferrer';l.textContent='↗ '+(cleanDisplay(x.label)||'Abrir documento')}a.appendChild(l)});if(a.childNodes.length)wrap.appendChild(a)}
+ if(actions.length){const a=document.createElement('div');a.className='actions';actions.forEach(x=>{if(!x.url)return;const t=cleanDisplay(x.type);if(!['download','open','open_document'].includes(t))return;if(documents.length&&t==='open_document')return;const l=document.createElement('a');l.className='action-btn';if(t==='download'){l.href='#';l.textContent='↓ '+(cleanDisplay(x.label)||'Descargar');l.addEventListener('click',e=>{e.preventDefault();miaDownloadFile(x.url,cleanDisplay(x.label)||'descarga')})}else{l.href=x.url;l.target='_blank';l.rel='noopener noreferrer';l.textContent='↗ '+(cleanDisplay(x.label)||'Abrir documento')}a.appendChild(l)});if(a.childNodes.length)wrap.appendChild(a)}
  const renderedWebSources=renderWebSources(data,wrap);const src=(r.sources||[]).map(cleanDisplay).filter(Boolean);if(src.length&&!renderedWebSources){const d=document.createElement('details');d.className='sources-details';d.innerHTML='<summary>Ver fuentes consultadas</summary><div>'+encodeText(src.join(' · '))+'</div>';wrap.appendChild(d)}msg.appendChild(wrap);convo.scrollTop=convo.scrollHeight
 }
 function safeLocalGet(k){try{return localStorage.getItem(k)}catch(_){return null}}

@@ -72,6 +72,30 @@ def test_several_formats_requested_at_once_become_one_button_each() -> None:
     ]
 
 
+def test_download_with_a_preview_also_fills_the_2d_table_and_charts() -> None:
+    """La vista previa de un informe (``persist_document_report`` -> ``preview``) reutiliza el
+    mecanismo ya existente de tabla/gráficos del turno en el 2D -- nunca una clave nueva que
+    mia-2d.js tendría que aprender a leer."""
+    data, actions = legacy_view([{
+        "type": "download", "url": "/api/reports/abc", "format": "pdf", "title": "Comparativo Pisos",
+        "preview": {
+            "tables": [{"title": "Detalle", "columns": ["Nombre", "Horas"], "rows": [["Ana", 40], ["Luis", 38]]}],
+            "charts": [{"type": "bar", "title": "Horas", "labels": ["Ana", "Luis"], "series": [{"name": "s", "values": [40, 38]}]}],
+        },
+    }])
+    assert actions == [{"type": "download", "url": "/api/reports/abc", "label": "Descargar pdf"}]
+    assert data["table"]["title"] == "Detalle"
+    assert [c["label"] for c in data["table"]["columns"]] == ["Nombre", "Horas"]
+    assert data["table"]["rows"] == [{"Nombre": "Ana", "Horas": 40}, {"Nombre": "Luis", "Horas": 38}]
+    assert data["charts"][0]["type"] == "bar"
+
+
+def test_download_without_a_preview_does_not_touch_table_or_charts() -> None:
+    data, _ = legacy_view([{"type": "download", "url": "/api/reports/abc", "format": "pdf"}])
+    assert "table" not in data
+    assert "charts" not in data
+
+
 async def test_real_employee360_uses_the_2d_schema(registry: ToolRegistry) -> None:  # noqa: F811
     result = await call(registry, "ficha_empleado", empleado_id=1, detalle=True)
     data, _ = legacy_view([result.presentation])

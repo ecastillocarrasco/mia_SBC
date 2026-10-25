@@ -316,6 +316,35 @@ conversation.addEventListener("click", async (event) => {
   }
 });
 
+// Botones de descarga de informes (/api/reports/...): mismo motivo que los adjuntos de correo
+// arriba -- exige Authorization: Bearer, que un <a href> normal no puede mandar.
+conversation.addEventListener("click", async (event) => {
+  const button = event.target.closest?.("[data-download-url]");
+  if (!button || button.disabled) return;
+  const url = button.dataset.downloadUrl;
+  const name = button.dataset.downloadName || "archivo";
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Descargando…";
+  try {
+    const token = await getAccessToken();
+    const response = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl; link.download = name; link.rel = "noopener noreferrer";
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+    button.textContent = originalText;
+  } catch (error) {
+    console.warn("[mIA V4] No se pudo descargar el informe:", error);
+    button.textContent = "Error al descargar";
+  } finally {
+    button.disabled = false;
+  }
+});
+
 function renderPresentationItem(item, result, answer) {
   if (isEmployee360Payload(result, item?.data ?? {})) {
     try {
