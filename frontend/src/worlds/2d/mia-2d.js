@@ -831,13 +831,20 @@ async function miaElevenLabsSpeak(text,finalState='sonriendo',returnState=null){
 
 speak=function(text,finalState='sonriendo'){miaElevenLabsSpeak(text,finalState)};
 speakProgress=function(text,returnState){if(!speechEnabled||miaCurrentAudio)return;miaElevenLabsSpeak(text,returnState||'concentrada',returnState||'concentrada')};
-const miaMailSpeechQueue=[];let miaMailSpeechTimer=null;
+const miaMailSpeechQueue=[];let miaMailSpeechTimer=null;let miaMailSpeaking=false;
+// miaMailSpeaking se marca de forma SÍNCRONA antes de arrancar miaElevenLabsSpeak (que primero
+// hace un fetch asíncrono a /api/mia/voice) y solo se libera cuando esa promesa termina. Sin esto,
+// miaMailSpeechTimer queda en null mientras el fetch está en curso (currentState/miaCurrentAudio
+// todavía no reflejan "hablando" porque eso solo se fija en audio.onplay) y una segunda llamada a
+// miaSpeakMailNotification durante esa ventana volvería a creer que mIA está libre, lanzando una
+// SEGUNDA reproducción en paralelo del aviso de correo (voz duplicada sin pasar por `restored`).
 function drainMiaMailSpeech(){
  miaMailSpeechTimer=null;if(!miaMailSpeechQueue.length||!speechEnabled)return;
- if(['pensando','concentrada','escuchando','hablando'].includes(currentState)||miaCurrentAudio||('speechSynthesis'in window&&speechSynthesis.speaking)){
+ if(miaMailSpeaking||['pensando','concentrada','escuchando','hablando'].includes(currentState)||miaCurrentAudio||('speechSynthesis'in window&&speechSynthesis.speaking)){
   miaMailSpeechTimer=setTimeout(drainMiaMailSpeech,800);return;
  }
- const text=miaMailSpeechQueue.shift();void miaElevenLabsSpeak(text,'avisando','reposo').finally(()=>{if(miaMailSpeechQueue.length)miaMailSpeechTimer=setTimeout(drainMiaMailSpeech,250)});
+ miaMailSpeaking=true;
+ const text=miaMailSpeechQueue.shift();void miaElevenLabsSpeak(text,'avisando','reposo').finally(()=>{miaMailSpeaking=false;if(miaMailSpeechQueue.length)miaMailSpeechTimer=setTimeout(drainMiaMailSpeech,250)});
 }
 window.miaSpeakMailNotification=(text)=>{if(!speechEnabled||!String(text||'').trim())return;miaMailSpeechQueue.push(String(text).slice(0,300));if(!miaMailSpeechTimer)drainMiaMailSpeech()};
 
