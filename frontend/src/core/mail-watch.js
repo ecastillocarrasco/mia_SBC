@@ -16,6 +16,13 @@ let startedAt = 0;
 let primed = false;
 let checking = false;
 let seenMail = new Set();
+// Huellas ya anunciadas POR VOZ en esta página. Independiente de `seenMail` (que solo evita
+// volver a tratar un correo como "nuevo" en el sondeo): este conjunto es la única fuente de verdad
+// de si ya se ha hablado un aviso, y lo comprueba `announceNewMail` antes de llamar a `speak`. Así
+// da igual cuántas veces o desde qué mundo (2D/3D/Holograma) se invoque `announceNewMail` para el
+// mismo correo (sondeo repetido, lote diferido por estar ocupado, etc.): la voz solo suena una vez
+// por correo durante la vida de esta pestaña.
+let spokenMail = new Set();
 let promptNode = null;
 let pendingMail = null;
 const PENDING_MAIL_KEY = 'mia.pending-mail-prompt.v1';
@@ -108,6 +115,7 @@ export function start(onNewMail) {
   startedAt = Date.now();
   primed = false;
   seenMail = new Set();
+  spokenMail = new Set();
   const restoredMail = readPendingMail();
   if (restoredMail) {
     seenMail.add(mailFingerprint(restoredMail));
@@ -240,8 +248,25 @@ export function announceNewMail(correos, { speak, onSummary, onDetails, onDismis
       catch (error) { console.warn('[mIA Mail] Notificación del navegador no disponible:', error); }
     });
   }
-  try { speak?.(announcement); }
-  catch (error) { console.warn('[mIA Mail] No se pudo anunciar el correo con voz:', error); }
+  // La voz solo debe sonar la primera vez que se detecta un correo:
+  //  - `restored` es true cuando este mismo aviso ya se anunció en una página anterior (recuperado
+  //    de sessionStorage al recargar o cambiar de mundo sin haberlo atendido todavía) — hablar aquí
+  //    de nuevo lo duplicaría cada vez que la persona cambia de mundo con un aviso pendiente.
+  //  - `spokenMail` cubre el resto de los casos SIN recarga ni cambio de mundo: algunos mundos
+  //    (3D/Holograma, ver flushMailNotices en 3d/main.js y hologram/main.js) encolan el aviso
+  //    mientras mIA está ocupada y lo vuelven a pasar por `announceNewMail` al vaciar la cola; un
+  //    sondeo que se reintente tras un fallo de UI también volvería a llamar aquí para el mismo
+  //    correo. `spokenMail` es la única fuente de verdad de "ya se ha hablado este correo" en esta
+  //    pestaña y se consulta en el único punto por el que pasa cualquier llamada a `speak`, así que
+  //    da igual cuántas veces o desde qué ruta se invoque `announceNewMail`: la voz suena una vez.
+  const key = mailFingerprint(correo);
+  if (!restored && !spokenMail.has(key)) {
+    spokenMail.add(key);
+    try { speak?.(announcement); }
+    catch (error) { console.warn('[mIA Mail] No se pudo anunciar el correo con voz:', error); }
+  } else if (!restored) {
+    console.info('[mIA Mail] Aviso de voz omitido: este correo ya se anunció en esta página.');
+  }
 }
 
 // El mundo 2D en producción (mia-2d.js) es un script clásico (sin type="module"): no puede hacer

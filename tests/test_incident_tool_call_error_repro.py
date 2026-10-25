@@ -70,7 +70,7 @@ async def _build_repro_app(tmp_path, scripted):
     llm = FakeLLMProvider(scripted)
     settings = make_settings(
         tmp_path, database_url=f"sqlite+aiosqlite:///{tmp_path / 'incident_repro.db'}",
-        diagnostics={"enabled": True},
+        diagnostics={"enabled": True, "admin_users": ["admin@test.local"], "admin_password": "test-password"},
     )
 
     from mia.api.services import Services

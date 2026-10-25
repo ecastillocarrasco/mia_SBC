@@ -300,7 +300,15 @@ class DiagnosticsSettings(BaseModel):
     mask_pii: bool = False
     """Enmascara nombres/IDs/correos en las trazas (``MIA_DIAGNOSTICS__MASK_PII``)."""
     admin_users: list[str] = Field(default_factory=list)
-    """Usuarios adicionales autorizados al panel, por user_id o email."""
+    """Emails autorizados a entrar al panel (``MIA_DIAGNOSTICS__ADMIN_USERS``). Se usan como
+    "usuario" del Basic Auth del panel -- no son roles ni permisos de la app, es una lista
+    cerrada aparte, deliberadamente independiente de ``Permission``/Entra ID: el panel sirve
+    `Authorization: Bearer`, que un navegador nunca puede adjuntar en una navegación directa de
+    página, así que necesita un esquema que el navegador sí sepa negociar solo (Basic Auth)."""
+    admin_password: SecretStr = SecretStr("")
+    """Contraseña compartida del Basic Auth del panel (``MIA_DIAGNOSTICS__ADMIN_PASSWORD``), igual
+    para los usuarios de ``admin_users``. Vacía por defecto -- con diagnósticos activos, el panel
+    debe quedar inaccesible hasta que se fije explícitamente."""
 
 
 class Settings(BaseSettings):
@@ -388,6 +396,15 @@ class Settings(BaseSettings):
             raise ValueError("MIA_PRIVACY_GATEWAY__FAIL_OPEN=true no está permitido en producción.")
         if self.environment is Environment.PRODUCTION and self.diagnostics.enabled and not self.diagnostics.mask_pii:
             raise ValueError("Con diagnósticos activos en producción, MIA_DIAGNOSTICS__MASK_PII=true es obligatorio.")
+        if (
+            self.diagnostics.enabled
+            and (not self.diagnostics.admin_users or not self.diagnostics.admin_password.get_secret_value())
+        ):
+            raise ValueError(
+                "Con MIA_DIAGNOSTICS__ENABLED=true hacen falta MIA_DIAGNOSTICS__ADMIN_USERS "
+                "(lista de emails) y MIA_DIAGNOSTICS__ADMIN_PASSWORD -- sin ambos, el panel no "
+                "tiene con qué autenticar a nadie y debe quedar deshabilitado, no abierto."
+            )
         if (
             self.environment is Environment.PRODUCTION
             and self.privacy_gateway.enabled
