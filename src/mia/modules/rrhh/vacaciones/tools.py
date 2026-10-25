@@ -105,7 +105,7 @@ def solicitudes(deps: Deps) -> Tool:
             who = p.person()
             employee: Employee | None = None
             if who is not None:
-                match = await resolve_person(db, who)
+                match = await resolve_person(db, who, ctx=ctx)
                 if match.employee is None:
                     return person_problem(match, who.nombre)
                 employee = match.employee
@@ -209,7 +209,7 @@ def saldos(deps: Deps) -> Tool:
             stmt = select(VacationBalance).where(VacationBalance.year == year)
             who = p.person()
             if who is not None:
-                match = await resolve_person(db, who)
+                match = await resolve_person(db, who, ctx=ctx)
                 if match.employee is None:
                     return person_problem(match, who.nombre)
                 stmt = stmt.where(VacationBalance.employee_email == match.employee.email)
@@ -296,7 +296,7 @@ def reincorporacion(deps: Deps) -> Tool:
     async def handler(p: ReincorporacionParams, ctx: ToolContext) -> ToolResult:
         ref = p.fecha_referencia or ctx.now.date()
         async with deps.db.session() as db:
-            match = await resolve_person(db, p)
+            match = await resolve_person(db, p, ctx=ctx)
             if match.employee is None:
                 return person_problem(match, p.nombre)
             e = match.employee
@@ -381,7 +381,7 @@ def conflictos_vacaciones(deps: Deps) -> Tool:
         today = ctx.now.date()
         start, end = p.resolve(today, default_days=6)
         async with deps.db.session() as db:
-            match = await resolve_person(db, p)
+            match = await resolve_person(db, p, ctx=ctx)
             if match.employee is None:
                 return person_problem(match, p.nombre)
             e = match.employee

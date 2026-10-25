@@ -31,9 +31,14 @@ async def registry(tmp_path: Path) -> AsyncIterator[ToolRegistry]:
 
 
 async def call(
-    registry: ToolRegistry, name: str, user: UserContext = ADMIN, state: dict[str, Any] | None = None, **args: Any
+    registry: ToolRegistry,
+    name: str,
+    user: UserContext = ADMIN,
+    state: dict[str, Any] | None = None,
+    message: str = "",
+    **args: Any,
 ) -> Any:
-    ctx = ToolContext(user=user, request_id=None, now=NOW, session_state=state or {})
+    ctx = ToolContext(user=user, request_id=None, now=NOW, session_state=state or {}, user_message=message)
     execution = await registry.execute(ToolCall("c", name, json.dumps(args)), ctx)
     return execution.result
 
@@ -117,6 +122,39 @@ async def test_nonexistent_focus_id_falls_back_to_the_name_given(registry: ToolR
     result = await call(registry, "ficha_empleado", empleado_id=999999, nombre="Luis Gil")
     assert result.status is ToolStatus.OK
     assert result.summary["nombre"] == "Luis Gil"
+
+
+async def test_stale_focus_id_without_nombre_arg_is_ignored_when_the_message_names_someone_else(
+    registry: ToolRegistry,
+) -> None:
+    """Fallo real reproducido en preprod 2026-10-25: el modelo llamó a ficha_empleado con el
+    empleado_id de un foco obsoleto (de una persona vista varios turnos antes) SIN rellenar
+    `nombre`, pese a que el turno sí nombraba a otra persona distinta ("ficha completa Luis
+    Gil") — a diferencia del test de arriba (empleado_id + nombre ambos en los argumentos), aquí
+    el único sitio donde aparece el nombre real es el mensaje del turno, nunca en los argumentos
+    de la herramienta. Debe resolver por ese nombre, no devolver a la persona del foco obsoleto."""
+    result = await call(registry, "ficha_empleado", empleado_id=1, message="ficha completa Luis Gil")
+    assert result.status is ToolStatus.OK
+    assert result.summary["nombre"] == "Luis Gil"
+    assert result.summary["empleado_id"] != 1
+
+
+async def test_follow_up_question_with_no_name_in_the_message_keeps_the_focus_id(registry: ToolRegistry) -> None:
+    """La defensa del test anterior no debe romper el caso normal y mucho más frecuente: una
+    pregunta de seguimiento que confía en el foco sin nombrar a nadie ("muéstrame sus turnos")
+    debe seguir usando el empleado_id tal cual, no intentar buscar un nombre donde no lo hay."""
+    result = await call(registry, "ficha_empleado", empleado_id=1, message="muéstrame sus turnos de esta semana")
+    assert result.status is ToolStatus.OK
+    assert result.summary["empleado_id"] == 1
+
+
+async def test_filler_words_alone_do_not_look_like_a_name_and_keep_the_focus_id(registry: ToolRegistry) -> None:
+    """"ficha completa" sin ningún nombre detrás (p. ej. el usuario pulsó un botón genérico) no
+    debe quedarse con ningún token tras quitar las palabras de relleno, así que no hay nada con
+    lo que buscar y el empleado_id de foco sigue siendo de fiar."""
+    result = await call(registry, "ficha_empleado", empleado_id=1, message="ficha completa")
+    assert result.status is ToolStatus.OK
+    assert result.summary["empleado_id"] == 1
 
 
 # ------------------------------------------------------------------ plantilla (POB-001)

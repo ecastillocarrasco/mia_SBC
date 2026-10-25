@@ -78,7 +78,7 @@ class DocumentosPersonaParams(PersonaParams):
 def documentos_persona(deps: Deps) -> Tool:
     async def handler(p: DocumentosPersonaParams, ctx: ToolContext) -> ToolResult:
         async with deps.db.session() as db:
-            match = await resolve_person(db, p)
+            match = await resolve_person(db, p, ctx=ctx)
             if match.employee is None:
                 return person_problem(match, p.nombre)
             e = match.employee
@@ -363,7 +363,7 @@ def buscar_en_documentos(deps: Deps) -> Tool:
             if p.nombre or p.tipo or exclude_medical:
                 stmt = select(SignedDocument.sp_id, SignedDocument.doc_type)
                 if p.nombre:
-                    match = await resolve_person(db, PersonaParams(nombre=p.nombre))
+                    match = await resolve_person(db, PersonaParams(nombre=p.nombre), ctx=ctx)
                     if match.employee is None:
                         return person_problem(match, p.nombre)
                     if not match.employee.person_key:
@@ -480,7 +480,7 @@ def leer_documento(deps: Deps) -> Tool:
         if problem := content_unavailable(deps):
             return problem
         async with deps.db.session() as db:
-            match = await resolve_person(db, p)
+            match = await resolve_person(db, p, ctx=ctx)
             if match.employee is None:
                 return person_problem(match, p.nombre)
             e = match.employee

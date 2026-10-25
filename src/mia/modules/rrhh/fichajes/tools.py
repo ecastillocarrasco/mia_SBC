@@ -139,7 +139,7 @@ def fichajes_persona(deps: Deps) -> Tool:
         lo = p.desde or _week_start(today)
         hi = p.hasta or today
         async with deps.db.session() as db:
-            match = await resolve_person(db, PersonaParams(empleado_id=p.empleado_id, nombre=p.nombre))
+            match = await resolve_person(db, PersonaParams(empleado_id=p.empleado_id, nombre=p.nombre), ctx=ctx)
             if match.employee is None:
                 return person_problem(match, p.nombre)
             e = match.employee
@@ -187,7 +187,7 @@ def comparar_turnos_fichajes(deps: Deps) -> Tool:
 
         async with deps.db.session() as db:
             if p.empleado_id or (p.nombre or "").strip():
-                match = await resolve_person(db, PersonaParams(empleado_id=p.empleado_id, nombre=p.nombre))
+                match = await resolve_person(db, PersonaParams(empleado_id=p.empleado_id, nombre=p.nombre), ctx=ctx)
                 if match.employee is None:
                     return person_problem(match, p.nombre)
                 employees = [match.employee]

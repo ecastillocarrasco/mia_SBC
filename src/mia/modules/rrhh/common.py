@@ -47,7 +47,15 @@ class Deps:
 # ------------------------------------------------------------------ parámetros comunes
 class PersonaParams(BaseModel):
     empleado_id: int | None = Field(default=None, description="ID de la persona (del foco o de una búsqueda previa)")
-    nombre: str | None = Field(default=None, description="Nombre o parte del nombre, si no hay empleado_id")
+    nombre: str | None = Field(
+        default=None,
+        description=(
+            "Nombre o parte del nombre que ha escrito la persona en ESTE turno. OBLIGATORIO "
+            "cuando el turno nombra a alguien, aunque también se mande empleado_id del foco — "
+            "es la única forma de detectar un foco obsoleto (otra persona). Déjalo vacío solo en "
+            "preguntas de seguimiento que no nombran a nadie (\"muéstrame sus turnos\")."
+        ),
+    )
 
     @model_validator(mode="after")
     def _one_of(self) -> PersonaParams:
@@ -125,7 +133,24 @@ def _name_matches(query: str, name_key: str) -> bool:
     return bool(tokens) and all(token in name_key for token in tokens)
 
 
-async def resolve_person(db: AsyncSession, params: PersonaParams) -> PersonMatch:
+_FICHA_FILLER_WORDS = frozenset({
+    "ficha", "completa", "completo", "muestrame", "muestrales", "enseñame", "ensename",
+    "quiero", "ver", "dame", "pasame", "la", "el", "de", "del", "sus", "su", "por", "favor",
+    "resumen", "detalle", "detallada", "detallado", "informacion", "datos", "perfil",
+})
+
+
+def _fallback_name_from_message(user_message: str) -> str:
+    """Si el modelo manda ``empleado_id`` sin ``nombre`` (lo normal cuando la pregunta sigue el
+    foco: "muéstrame sus vacaciones"), este es el único dato adicional disponible para detectar
+    un foco obsoleto -- el propio texto que escribió la persona en este turno. Quita las palabras
+    de relleno más comunes de "ficha de empleado" para quedarse solo con lo que podría ser un
+    nombre; una pregunta de seguimiento normal sin nombre alguno queda vacía tras este filtro."""
+    tokens = [t for t in normalize_key(user_message).split() if len(t) > 1 and t not in _FICHA_FILLER_WORDS]
+    return " ".join(tokens)
+
+
+async def resolve_person(db: AsyncSession, params: PersonaParams, *, ctx: Any = None) -> PersonMatch:
     query = params.nombre or ""
     if params.empleado_id is not None:
         employee = await db.get(Employee, params.empleado_id)
@@ -137,10 +162,27 @@ async def resolve_person(db: AsyncSession, params: PersonaParams) -> PersonMatch
         if employee is None:
             if not query.strip():
                 return PersonMatch(ToolStatus.NOT_FOUND)
-        elif query.strip() and not _name_matches(query, employee.name_key):
-            pass  # cae a la búsqueda por nombre de abajo, ignorando el empleado_id obsoleto/erróneo
+        elif query.strip():
+            if not _name_matches(query, employee.name_key):
+                pass  # cae a la búsqueda por nombre de abajo, ignorando el empleado_id obsoleto/erróneo
+            else:
+                return PersonMatch(ToolStatus.OK, employee)
         else:
-            return PersonMatch(ToolStatus.OK, employee)
+            # Sin nombre explícito en los argumentos: el caso normal es una pregunta de
+            # seguimiento que confía en el foco ("muéstrame sus turnos") y aquí NO hay que tocar
+            # nada. Pero si el propio mensaje del turno nombra de verdad a otra persona (p. ej.
+            # "ficha completa <otro nombre>" sin que el modelo rellenara `nombre`, que es
+            # exactamente como se reprodujo este bug en producción), ese nombre manda por encima
+            # de un empleado_id de foco obsoleto. "de verdad" = existe en la base de datos — así
+            # una pregunta de seguimiento sin ningún nombre ("sus vacaciones de octubre") nunca se
+            # confunde con un nombre real y no rompe el seguimiento de foco normal.
+            fallback = _fallback_name_from_message(getattr(ctx, "user_message", "") or "") if ctx is not None else ""
+            if not fallback or _name_matches(fallback, employee.name_key):
+                return PersonMatch(ToolStatus.OK, employee)
+            fallback_matches = await find_people(db, fallback)
+            if not fallback_matches:
+                return PersonMatch(ToolStatus.OK, employee)
+            query = fallback
     matches = await find_people(db, query)
     active = [m for m in matches if m.active]
     pool = active or matches

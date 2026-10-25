@@ -242,7 +242,7 @@ def turnos_persona(deps: Deps) -> Tool:
     async def handler(p: TurnosPersonaParams, ctx: ToolContext) -> ToolResult:
         start, end = p.resolve(ctx.now.date(), default_days=0 if p.desde else 6)
         async with deps.db.session() as db:
-            match = await resolve_person(db, p)
+            match = await resolve_person(db, p, ctx=ctx)
             if match.employee is None:
                 return person_problem(match, p.nombre)
             e = match.employee
@@ -572,7 +572,7 @@ def ausencias(deps: Deps) -> Tool:
         async with deps.db.session() as db:
             person_keys = None
             if p.empleado_id is not None or (p.nombre or "").strip():
-                match = await resolve_person(db, PersonaParams(empleado_id=p.empleado_id, nombre=p.nombre))
+                match = await resolve_person(db, PersonaParams(empleado_id=p.empleado_id, nombre=p.nombre), ctx=ctx)
                 if match.employee is None:
                     return person_problem(match, p.nombre)
                 person_keys = [match.employee.person_key] if match.employee.person_key else []
@@ -776,7 +776,7 @@ def horas_trabajadas(deps: Deps) -> Tool:
         # ── Por persona ───────────────────────────────────────────────────────
         if p.empleado_id or (p.nombre or "").strip():
             async with deps.db.session() as db:
-                match = await resolve_person(db, PersonaParams(empleado_id=p.empleado_id, nombre=p.nombre))
+                match = await resolve_person(db, PersonaParams(empleado_id=p.empleado_id, nombre=p.nombre), ctx=ctx)
                 if match.employee is None:
                     return person_problem(match, p.nombre)
                 e = match.employee

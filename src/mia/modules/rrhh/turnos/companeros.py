@@ -46,7 +46,7 @@ def companeros_de_turno(deps: Deps) -> Tool:
     async def handler(p: CompanerosParams, ctx: ToolContext) -> ToolResult:
         day = p.fecha or ctx.now.date()
         async with deps.db.session() as db:
-            match = await resolve_person(db, p)
+            match = await resolve_person(db, p, ctx=ctx)
             if match.employee is None:
                 return person_problem(match, p.nombre)
             e: Employee = match.employee

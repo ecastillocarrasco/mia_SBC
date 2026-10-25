@@ -105,7 +105,7 @@ def nominas_persona(deps: Deps) -> Tool:
     async def handler(p: NominasPersonaParams, ctx: ToolContext) -> ToolResult:
         year = p.anio
         async with deps.db.session() as db:
-            match = await resolve_person(db, p)
+            match = await resolve_person(db, p, ctx=ctx)
             if match.employee is None:
                 return person_problem(match, p.nombre)
             e = match.employee
@@ -394,7 +394,7 @@ def nomina_importes(deps: Deps) -> Tool:
         if problem := content_unavailable(deps):
             return problem
         async with deps.db.session() as db:
-            match = await resolve_person(db, p)
+            match = await resolve_person(db, p, ctx=ctx)
             if match.employee is None:
                 return person_problem(match, p.nombre)
             e = match.employee
@@ -442,7 +442,7 @@ def evolucion_nominas(deps: Deps) -> Tool:
             return problem
         year = p.anio or ctx.now.year
         async with deps.db.session() as db:
-            match = await resolve_person(db, p)
+            match = await resolve_person(db, p, ctx=ctx)
             if match.employee is None:
                 return person_problem(match, p.nombre)
             e = match.employee
@@ -554,7 +554,7 @@ def buscar_en_nominas(deps: Deps) -> Tool:
             if p.nombre or p.periodo:
                 stmt = select(Payslip.sp_id)
                 if p.nombre:
-                    match = await resolve_person(db, PersonaParams(nombre=p.nombre))
+                    match = await resolve_person(db, PersonaParams(nombre=p.nombre), ctx=ctx)
                     if match.employee is None:
                         return person_problem(match, p.nombre)
                     stmt = stmt.where(_belongs(match.employee))
