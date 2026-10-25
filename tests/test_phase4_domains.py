@@ -216,6 +216,48 @@ async def test_report_from_last_table(env: Any, fmt: str) -> None:
     assert path.read_bytes()[:4] in (b"%PDF", b"PK\x03\x04")
 
 
+async def test_report_in_several_formats_at_once_produces_one_file_per_format(env: Any) -> None:
+    """Pedir varios formatos a la vez (p. ej. PDF + Excel) debe generarlos en UNA sola petición —
+    no uno a uno (ver mia.reporting.delivery / conversation.engine, "contrato de entrega")."""
+    registry, _, settings = env
+    state: dict[str, Any] = {
+        LAST_TABLE: {
+            "title": "Plantilla Pisos",
+            "columns": ["Nombre", "Puesto"],
+            "rows": [["Ana Ruiz", "Camarera"], ["Eva Sol", "Gobernanta"]],
+        }
+    }
+    result = await call(registry, "generar_informe", state, formato=["pdf", "xlsx"])
+    assert result.status is ToolStatus.OK
+    assert result.presentation["type"] == "downloads"
+    assert {item["format"] for item in result.presentation["items"]} == {"pdf", "xlsx"}
+    assert all(item["url"].startswith("/api/reports/") for item in result.presentation["items"])
+    assert {i["url"] for i in result.presentation["items"]} == {i["enlace"] for i in result.summary["informes"]}
+    # Dos ficheros reales distintos, no uno repetido con dos extensiones.
+    for fmt in ("pdf", "xlsx"):
+        path = next((Path(settings.reports.directory)).glob(f"*.{fmt}"))
+        assert path.read_bytes()[:4] in (b"%PDF", b"PK\x03\x04")
+
+
+async def test_single_format_request_keeps_the_exact_same_shape_as_before(env: Any) -> None:
+    """Pedir un solo formato (la mayoría de peticiones) no debe cambiar de forma: ni
+    summary/presentation ganan una capa nueva, ni rompe a quien lee summary["enlace"]
+    (p. ej. mia.modules.rrhh.informes.jobs.run_informe_economico_nominas)."""
+    registry, _, _ = env
+    state: dict[str, Any] = {
+        LAST_TABLE: {
+            "title": "Plantilla Pisos",
+            "columns": ["Nombre", "Puesto"],
+            "rows": [["Ana Ruiz", "Camarera"]],
+        }
+    }
+    result = await call(registry, "generar_informe", state, formato="pdf")
+    assert result.status is ToolStatus.OK
+    assert result.presentation["type"] == "download"
+    assert result.summary["enlace"] == result.presentation["url"]
+    assert "informes" not in result.summary
+
+
 # ------------------------------------------------------------------ correo (COR-001)
 class _FakeGraph:
     def __init__(self, recipient: str = "ana@x.test") -> None:

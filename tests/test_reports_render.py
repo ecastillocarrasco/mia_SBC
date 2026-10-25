@@ -39,7 +39,7 @@ PROFILE = {
 
 
 @pytest.mark.parametrize("presentation", [TABLE, DASHBOARD, PROFILE], ids=["tabla", "panel", "ficha360"])
-@pytest.mark.parametrize("fmt", ["pdf", "xlsx", "pptx"])
+@pytest.mark.parametrize("fmt", ["pdf", "xlsx", "pptx", "docx"])
 def test_every_result_renders_in_every_format(presentation: dict[str, object], fmt: str) -> None:
     doc = to_document(presentation)
     content = RENDERERS[fmt](doc, NOW, None)
@@ -48,6 +48,11 @@ def test_every_result_renders_in_every_format(presentation: dict[str, object], f
         assert doc.title.split(" · ")[0] in text
     elif fmt == "xlsx":
         assert load_workbook(io.BytesIO(content)).sheetnames
+    elif fmt == "docx":
+        from docx import Document as WordDocument  # noqa: PLC0415
+
+        word = WordDocument(io.BytesIO(content))
+        assert doc.title.split(" · ")[0] in "\n".join(p.text for p in word.paragraphs)
     else:
         slides = Presentation(io.BytesIO(content)).slides
         assert len(slides) >= 2

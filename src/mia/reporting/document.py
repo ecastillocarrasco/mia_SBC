@@ -69,7 +69,17 @@ class Block:
     backend decide el tipo de gráfico y calcula los datos UNA sola vez; los renderizadores (PDF,
     XLSX, PPTX, HTML y DOCX) lo consumen sin volver a derivarlo. Para tablas normales (sin
     este bloque explícito), los renderizadores siguen derivando un gráfico heurísticamente a partir de
-    un bloque ``table`` 2-columnas, como ya hacían (compatibilidad hacia atrás, ver ``render.py``)."""
+    un bloque ``table`` 2-columnas, como ya hacían (compatibilidad hacia atrás, ver ``render.py``).
+
+    Para ``kind="table"`` o ``"annex"``: admite opcionalmente la clave ``data["kpis"]``, un dict
+    etiqueta→valor igual que el ``data`` de un bloque ``kind="kpis"`` independiente. Cuando está
+    presente, todos los renderizadores (PDF/XLSX/PPTX/DOCX/HTML) dibujan esas tarjetas KPI justo antes
+    de la tabla de ESTE MISMO bloque, bajo el mismo título — nunca como un bloque ``kpis`` aparte.
+    Pensado para informes con una entidad por bloque (una persona, un proyecto…) que necesitan
+    "resumen + detalle" juntos en la misma página/pestaña/diapositiva: un bloque ``kpis`` + un bloque
+    ``table`` consecutivos con el mismo título producirían dos pestañas/diapositivas distintas en
+    Excel/PowerPoint para la misma entidad, que es justo lo que este sidecar evita (ver
+    ``mia.modules.rrhh.fichajes.informe._build_document`` para un ejemplo real)."""
 
 
 @dataclass

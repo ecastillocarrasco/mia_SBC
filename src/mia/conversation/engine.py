@@ -538,23 +538,25 @@ class ConversationEngine:
                         message != original_request and bool(turn.state.get("ultima_presentacion"))
                     )
                     if can_export:
+                        # Todos los formatos que faltan se piden en UNA sola llamada (el motor de
+                        # informes los genera todos de una vez, ver persist_document_report) en vez
+                        # de una llamada por formato — ya no hace falta "uno a uno".
                         export_ctx = replace(ctx, user_message=original_request)
-                        for fmt in missing:
-                            execution = await self._tools.execute(
-                                ToolCall(f"delivery:{uuid.uuid4().hex}", "generar_informe",
-                                         json.dumps({"formato": fmt}, ensure_ascii=False)),
-                                export_ctx,
-                            )
-                            turn.executions.append(execution)
-                            yield ToolEvent(
-                                name=execution.call.name,
-                                status=execution.result.status.value,
-                                elapsed_ms=execution.elapsed_ms,
-                            )
+                        execution = await self._tools.execute(
+                            ToolCall(f"delivery:{uuid.uuid4().hex}", "generar_informe",
+                                     json.dumps({"formato": missing}, ensure_ascii=False)),
+                            export_ctx,
+                        )
+                        turn.executions.append(execution)
+                        yield ToolEvent(
+                            name=execution.call.name,
+                            status=execution.result.status.value,
+                            elapsed_ms=execution.elapsed_ms,
+                        )
                 verified = download_formats(turn.executions)
                 successes = [(fmt, verified[fmt]) for fmt in formats if fmt in verified]
                 missing = [fmt for fmt in formats if fmt not in verified]
-                labels = {"pdf": "PDF", "pptx": "PowerPoint", "xlsx": "Excel"}
+                labels = {"pdf": "PDF", "pptx": "PowerPoint", "xlsx": "Excel", "docx": "Word", "html": "HTML"}
                 lines = [
                     f"- [{labels[fmt]}]({presentation['url']})"
                     for fmt, presentation in successes

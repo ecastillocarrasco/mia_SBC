@@ -20,6 +20,15 @@ def test_detecta_ambos_formatos_y_no_acepta_solo_la_promesa_del_llm():
     assert download_formats([]) == {}
 
 
+def test_detecta_word_y_html_igual_que_los_demas_formatos():
+    """``_FORMAT_ORDER`` solo cubría pdf/pptx/xlsx: pedir Word o HTML a la vez que otro formato no
+    activaba el contrato de entrega para esa mitad (incidencia real tras volver Word premium)."""
+    assert requested_formats("Genera el informe en Word y en PDF, quiero descargarlo") == ("pdf", "docx")
+    assert requested_formats("Necesito el informe en PDF y también en HTML") == ("pdf", "html")
+    assert requested_formats("Quiero el documento en docx") == ("docx",)
+    assert requested_formats("¿Usas Word para escribir?") == ()
+
+
 def test_confirma_con_si_y_recupera_el_pedido_original():
     history = [
         SimpleNamespace(role="user", content=PROMPT),
@@ -48,6 +57,24 @@ def test_descarga_requiere_resultado_ok_y_url_real_de_la_herramienta():
         "type": "table", "title": "Datos", "rows": [],
     })
     assert download_formats([good, fake, incorrect]).keys() == {"pptx"}
+
+
+def test_una_sola_llamada_con_varios_formatos_cuenta_como_entregados_todos():
+    """``generar_informe`` ahora puede devolver ambos formatos pedidos en UNA sola ejecución
+    (``type == "downloads"``, ver persist_document_report) en vez de una ejecución por formato —
+    el contrato de entrega debe reconocer esa forma exactamente igual que la de un solo formato,
+    o el motor de conversación repetiría una llamada ya satisfecha (regresión real a evitar)."""
+    batched = execution("generar_informe", "ok", {
+        "type": "downloads", "title": "Costes",
+        "items": [
+            {"url": "/api/reports/123", "format": "pptx", "file_name": "Costes.pptx"},
+            {"url": "/api/reports/456", "format": "xlsx", "file_name": "Costes.xlsx"},
+        ],
+    })
+    verified = download_formats([batched])
+    assert verified.keys() == {"pptx", "xlsx"}
+    assert verified["pptx"]["url"] == "/api/reports/123"
+    assert verified["xlsx"]["url"] == "/api/reports/456"
 
 
 def test_ocho_departamentos_no_pierden_titulo_ni_filas():

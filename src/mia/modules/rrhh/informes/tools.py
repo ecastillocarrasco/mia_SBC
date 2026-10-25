@@ -6,9 +6,9 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -22,7 +22,7 @@ from mia.diagnostics import EventStage
 from mia.diagnostics import emit as diag_emit
 from mia.modules.rrhh.common import Deps, department_problem, resolve_department
 from mia.reporting.document import Document, to_document
-from mia.modules.rrhh.informes.persist import persist_document_report
+from mia.modules.rrhh.informes.persist import ReportFormats, normalize_formats, persist_document_report
 from mia.reporting.render import RENDERERS
 from mia.reporting.comparisons import (
     explicit_month_comparison,
@@ -43,8 +43,14 @@ KEYWORDS = (
 
 
 class InformeParams(BaseModel):
-    formato: Literal["pdf", "xlsx", "pptx", "html", "docx"] = Field(
-        description="pdf, xlsx (Excel), pptx (PowerPoint), html o docx (Word)"
+    formato: ReportFormats = Field(
+        min_length=1,
+        description=(
+            "Uno o varios formatos del documento: pdf, xlsx (Excel), pptx (PowerPoint), html o docx "
+            "(Word). Si el usuario pide varios a la vez (p. ej. 'en PDF y en Excel'), inclúyelos todos "
+            "en esta misma lista para generarlos en una sola petición — nunca llames a esta herramienta "
+            "dos veces para eso."
+        ),
     )
     titulo: str | None = Field(default=None, description="Título (por defecto, el de la tabla)")
     incluir_detalle: bool = Field(
@@ -87,7 +93,7 @@ async def _build_report_result(
     ctx: ToolContext,
     presentation: dict,
     *,
-    formato: str,
+    formato: str | Sequence[str],
     titulo: str | None,
     incluir_detalle: bool,
     incluir_grafico: bool,
@@ -144,59 +150,78 @@ async def _build_report_result(
              "requisitos_pendientes": exc.missing},
         )
     logo_path = settings.logo_path if settings else None
-    content = await asyncio.to_thread(_render, formato, document, ctx.now, logo_path)
-    report_id = _uuid()
-    path = f"{report_id}.{formato}"
-    storage = deps.services.get("report_storage")
-    if storage is None:
-        directory = Path(settings.directory if settings else "informes")
-        await asyncio.to_thread(_write, directory / path, content)
-        path = str(directory / path)
-    else:
-        await storage.write(path, content)
     safe = re.sub(r"[^\w\- ]+", "", title).strip()[:60] or "informe"
-    file_name = f"{safe}.{formato}"
     # Reautorización en la descarga (Fase I, cierre de seguridad): un informe construido a partir de
     # `analisis_economico_nominas` exige NOMINAS_IMPORTES también en el momento de descargarlo, con el
     # usuario que esté autenticado ENTONCES — nunca solo la propiedad, que es lo único que comprobaba
     # antes `GET /api/reports/{id}`. El resto de dominios queda exactamente igual que siempre (`None`).
+    # El permiso no depende del formato: se calcula una sola vez y se aplica a cada uno.
     required_permission = (
         Permission.NOMINAS_IMPORTES.value
         if presentation.get("__source_tool__") in _PAYROLL_SOURCE_TOOLS
         or "analisis_economico_nominas" in tool_name
         else None
     )
-    async with deps.db.session() as db:
-        db.add(
-            Report(
-                id=report_id,
-                user_id=ctx.user.user_id,
-                title=title,
-                format=formato,
-                file_name=file_name,
-                path=str(path),
-                required_permission=required_permission,
-                expires_at=ctx.now + ttl,
+    items: list[dict[str, str]] = []
+    for fmt in normalize_formats(formato):
+        content = await asyncio.to_thread(_render, fmt, document, ctx.now, logo_path)
+        report_id = _uuid()
+        path = f"{report_id}.{fmt}"
+        storage = deps.services.get("report_storage")
+        if storage is None:
+            directory = Path(settings.directory if settings else "informes")
+            await asyncio.to_thread(_write, directory / path, content)
+            path = str(directory / path)
+        else:
+            await storage.write(path, content)
+        file_name = f"{safe}.{fmt}"
+        async with deps.db.session() as db:
+            db.add(
+                Report(
+                    id=report_id,
+                    user_id=ctx.user.user_id,
+                    title=title,
+                    format=fmt,
+                    file_name=file_name,
+                    path=str(path),
+                    required_permission=required_permission,
+                    expires_at=ctx.now + ttl,
+                )
             )
+        url = f"/api/reports/{report_id}"
+        # Trazabilidad (sección 22/requisito 5 del Bloque II): el propio `report_id` ya queda
+        # persistido en la tabla `reports` (user_id/título/formato/fechas, sin datos personales del
+        # contenido); esto solo lo enlaza con la traza de diagnóstico de ESTE turno, si está activa —
+        # nunca guarda cifras ni nombres, solo metadatos estructurales. Un evento por formato: cada
+        # uno es un artefacto real propio, con su propio report_id.
+        diag_emit(
+            EventStage.REPORT_GENERATION,
+            data={"report_id": report_id, "formato": fmt, "secciones": len(document.blocks), "tool": tool_name},
         )
-    url = f"/api/reports/{report_id}"
-    # Trazabilidad (sección 22/requisito 5 del Bloque II): el propio `report_id` ya queda persistido
-    # en la tabla `reports` (user_id/título/formato/fechas, sin datos personales del contenido); esto
-    # solo lo enlaza con la traza de diagnóstico de ESTE turno, si está activa — nunca guarda cifras
-    # ni nombres, solo metadatos estructurales.
-    diag_emit(
-        EventStage.REPORT_GENERATION,
-        data={"report_id": report_id, "formato": formato, "secciones": len(document.blocks), "tool": tool_name},
-    )
+        items.append({"formato": fmt, "archivo": file_name, "enlace": url})
+
+    caduca_en_horas = int(ttl.total_seconds() // 3600)
+    if len(items) == 1:
+        only = items[0]
+        return ToolResult(
+            ToolStatus.OK,
+            {
+                "informe": only["archivo"],
+                "secciones": len(document.blocks),
+                "enlace": only["enlace"],
+                "caduca_en_horas": caduca_en_horas,
+            },
+            {"type": "download", "title": title, "format": only["formato"],
+             "url": only["enlace"], "file_name": only["archivo"]},
+        )
     return ToolResult(
         ToolStatus.OK,
+        {"informes": items, "secciones": len(document.blocks), "caduca_en_horas": caduca_en_horas},
         {
-            "informe": file_name,
-            "secciones": len(document.blocks),
-            "enlace": url,
-            "caduca_en_horas": int(ttl.total_seconds() // 3600),
+            "type": "downloads",
+            "title": title,
+            "items": [{"url": i["enlace"], "format": i["formato"], "file_name": i["archivo"]} for i in items],
         },
-        {"type": "download", "title": title, "format": formato, "url": url, "file_name": file_name},
     )
 
 
@@ -416,10 +441,12 @@ def generar(deps: Deps) -> Tool:
 
     return Tool(
         "generar_informe",
-        "Genera informes PDF, Excel, PowerPoint y HTML con marca corporativa. Si el usuario "
-        "pide comparar nóminas o costes de un mes en dos años, consulta internamente ambos periodos "
-        "en la fuente autorizada y produce un ÚNICO informe comparativo; NO exige que los dos "
-        "resultados estén activos ni almacenados en la sesión. También permite exportar la "
+        "Genera informes PDF, Excel, PowerPoint, Word y HTML con marca corporativa. Si el usuario "
+        "pide varios formatos a la vez (p. ej. 'en PDF y en Excel'), pásalos todos juntos en "
+        "'formato' en una sola llamada — nunca llames a esta herramienta una vez por formato. Si el "
+        "usuario pide comparar nóminas o costes de un mes en dos años, consulta internamente ambos "
+        "periodos en la fuente autorizada y produce un ÚNICO informe comparativo; NO exige que los "
+        "dos resultados estén activos ni almacenados en la sesión. También permite exportar la "
         "última tabla, panel o ficha ya calculada. Nunca inventes que deben activarse dos "
         "resultados a la vez. Ejemplo: «PDF de costes por departamento de agosto 2025 y 2026».",
         InformeParams,
@@ -444,9 +471,10 @@ class InformeEjecutivoParams(BaseModel):
         default=None,
         description="Limitar el informe a un departamento concreto; sin valor: toda la empresa",
     )
-    formato: Literal["pdf", "xlsx", "pptx", "html", "docx"] = Field(
-        default="pdf",
-        description="Formato del documento: pdf (predeterminado), xlsx, pptx, html o docx",
+    formato: ReportFormats = Field(
+        default=["pdf"], min_length=1,
+        description="Uno o varios formatos del documento: pdf (predeterminado), xlsx, pptx, html o docx; "
+        "si el usuario pide varios a la vez, inclúyelos todos en esta misma lista",
     )
     titulo: str | None = Field(default=None, description="Título personalizado del informe")
 
@@ -471,7 +499,7 @@ async def _run_economic_comparison(
     ctx: ToolContext,
     periods: tuple[str, str],
     *,
-    formato: str,
+    formato: str | Sequence[str],
     titulo: str | None,
     incluir_detalle: bool,
     incluir_grafico: bool,
@@ -683,8 +711,9 @@ def generar_ejecutivo(deps: Deps) -> Tool:
         "distribución por departamento y puesto, análisis detallado de absentismo, tendencia mensual, "
         "saldos de vacaciones y trabajo temporal. Admite un periodo personalizado (desde/hasta) para "
         "informes históricos o comparativos (p. ej. los últimos 12 meses). Produce el documento "
-        "directamente sin consultas previas. Formatos: PDF (predeterminado), Excel o PowerPoint. "
-        "Si la petición es sobre coste salarial, gasto en nóminas o cualquier importe económico, esta "
+        "directamente sin consultas previas. Formatos: PDF (predeterminado), Excel, PowerPoint, Word "
+        "o HTML — pásalos todos juntos en 'formato' si el usuario pide varios a la vez, en una sola "
+        "llamada. Si la petición es sobre coste salarial, gasto en nóminas o cualquier importe económico, esta "
         "herramienta redirige automáticamente a 'analisis_economico_nominas' y entrega ESE informe "
         "(mejor usar esa herramienta directamente si ya sabes que la petición es económica).",
         InformeEjecutivoParams,

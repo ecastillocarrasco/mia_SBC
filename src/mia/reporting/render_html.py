@@ -198,13 +198,18 @@ def _annex_notice(block: Block) -> str | None:
     return f"Mostrando {shown} de {total} filas — el resto no se ha omitido en silencio, solo no entra en este documento."
 
 
+def _kpi_cards_html(items: list[tuple[str, Any]]) -> str:
+    cards = "".join(
+        f'<div class="kpi-card"><div class="kpi-value">{_esc(v)}</div><div class="kpi-label">{_esc(k)}</div></div>'
+        for k, v in items
+    )
+    return f'<div class="kpi-grid">{cards}</div>'
+
+
 def _render_block(block: Block, *, chart_of: Any) -> str:
     if block.kind == "kpis":
-        cards = "".join(
-            f'<div class="kpi-card"><div class="kpi-value">{_esc(v)}</div><div class="kpi-label">{_esc(k)}</div></div>'
-            for k, v in block.data.items()
-        )
-        return f'<section class="block"><h2>{_esc(block.title)}</h2><div class="kpi-grid">{cards}</div></section>'
+        cards = _kpi_cards_html(list(block.data.items()))
+        return f'<section class="block"><h2>{_esc(block.title)}</h2>{cards}</section>'
 
     if block.kind == "section":
         rows = "".join(f"<dt>{_esc(k)}</dt><dd>{_esc(v)}</dd>" for k, v in block.data.items())
@@ -253,12 +258,18 @@ def _render_block(block: Block, *, chart_of: Any) -> str:
     spec = chart_of(block)
     if spec:
         chart_html = f'<div class="chart">{_chart_svg(spec)}</div>'
+    # Resumen de indicadores adjunto a esta tabla (p. ej. un informe con una entidad por bloque —
+    # persona, proyecto…): tarjetas KPI bajo el MISMO título, nunca un bloque "kpis" aparte (ver
+    # sidecar equivalente en to_pdf/to_xlsx/to_docx).
+    kpis_html = ""
+    if isinstance(block.data, dict) and isinstance(block.data.get("kpis"), dict) and block.data["kpis"]:
+        kpis_html = _kpi_cards_html(list(block.data["kpis"].items()))
     head = "".join(f"<th scope=\"col\">{_esc(c)}</th>" for c in columns)
     body = "".join(
         "<tr>" + "".join(f"<td>{_esc(v)}</td>" for v in row) + "</tr>" for row in rows
     )
     return (
-        f'<section class="block"><h2>{_esc(block.title)}</h2>{notice_html}{chart_html}'
+        f'<section class="block"><h2>{_esc(block.title)}</h2>{kpis_html}{notice_html}{chart_html}'
         f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div></section>'
     )
 

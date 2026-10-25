@@ -96,6 +96,16 @@ async def test_report_computes_night_and_extra_hours_from_the_shift_catalog(regi
     assert result.presentation["format"] == "html"
 
 
+async def test_report_in_several_formats_at_once(registry: ToolRegistry) -> None:
+    result = await _call(
+        registry, ADMIN, departamento="Restaurante", desde="2026-10-12", hasta="2026-10-13",
+        formato=["html", "docx"],
+    )
+    assert result.status is ToolStatus.OK, result.summary
+    assert result.presentation["type"] == "downloads"
+    assert {item["format"] for item in result.presentation["items"]} == {"html", "docx"}
+
+
 async def test_shift_without_a_matching_catalog_entry_is_reported_not_guessed(tmp_path: Path) -> None:
     db = await fresh_database(tmp_path, "fichajes_informe_no_catalog.db")
     async with db.session() as s:
@@ -216,7 +226,30 @@ def test_detail_table_includes_a_turno_column_with_the_real_shift(registry: Tool
     person = _PersonHours(employee, [result], [day_hours], [], {DAY: shift})
 
     document = _build_document("Restaurante", DAY, DAY, DAY, [person], [], None)
-    detail = next(b for b in document.blocks if b.kind == "table" and b.title.startswith("Detalle"))
+    detail = next(b for b in document.blocks if b.kind == "table" and b.title == employee.name)
     assert "Turno" in detail.data["columns"]
     turno_idx = detail.data["columns"].index("Turno")
     assert detail.data["rows"][0][turno_idx] == "Piscina 10:00-18:00"
+
+
+def test_each_employee_gets_a_single_block_not_a_separate_summary_and_detail(registry: ToolRegistry) -> None:
+    """Antes se generaban DOS bloques por empleado (uno "section" solo con Departamento/Periodo y
+    otro "table" de detalle), que en Excel y PowerPoint se convertían en dos pestañas/diapositivas
+    por persona. Debe quedar uno solo, nombrado con el nombre del empleado."""
+    from mia.data import Employee
+    from mia.modules.rrhh.fichajes.comparison import DayComparison, ShiftExpectation
+    from mia.modules.rrhh.fichajes.hours import compute_day_hours
+    from mia.modules.rrhh.fichajes.informe import _build_document, _PersonHours
+    from mia.modules.rrhh.fichajes.pairing import ClockSession
+
+    employee = Employee(sp_id=1, name="Melania Rosello Diaz", name_key="melania rosello diaz", department_key="restaurante")
+    shift = ShiftExpectation(DAY, "10:00", "18:00", hours=8.0, declared_night_hours=0.0, area="Piscina")
+    session = ClockSession(datetime(2026, 10, 12, 10, 0, tzinfo=TZ), datetime(2026, 10, 12, 18, 0, tzinfo=TZ))
+    result = DayComparison(DAY, "correcto", session, 0, 0)
+    day_hours = compute_day_hours(shift, session)
+    person = _PersonHours(employee, [result], [day_hours], [], {DAY: shift})
+
+    document = _build_document("Restaurante", DAY, DAY, DAY, [person], [], None)
+    employee_blocks = [b for b in document.blocks if b.title == employee.name]
+    assert len(employee_blocks) == 1
+    assert employee_blocks[0].kind == "table"

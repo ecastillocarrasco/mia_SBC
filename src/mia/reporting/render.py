@@ -166,13 +166,23 @@ def to_xlsx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
         ws.sheet_view.zoomScale = 90
         ws.sheet_properties.pageSetUpPr.fitToPage = True
         ws.sheet_format.defaultRowHeight = 20
-        header_row = 6
+        # Bloque "table"/"annex" con un resumen de indicadores adjunto (``data["kpis"]`` — ver
+        # docstring de ``Block``): tarjetas KPI estáticas ANTES de la propia tabla, en la MISMA hoja
+        # — nunca una hoja aparte. A diferencia del bloque "kpis" independiente (tarjetas a la
+        # derecha de su tabla estrecha Concepto/Valor, con fórmula enlazada), aquí la tabla puede
+        # tener muchas columnas (p. ej. detalle diario), así que las tarjetas van ARRIBA, desplazando
+        # la fila de cabecera de la tabla hacia abajo, y el valor es fijo (es un agregado calculado
+        # aparte, no corresponde a ninguna celda concreta de esta tabla).
+        kpi_sidecar = block.data.get("kpis") if isinstance(block.data, dict) else None
+        kpi_items = list(kpi_sidecar.items()) if isinstance(kpi_sidecar, dict) and kpi_sidecar else []
+        kpi_bands = -(-len(kpi_items) // 3) if kpi_items else 0  # techo: 3 tarjetas por fila
+        header_row = 6 + kpi_bands * 5
         for top_row in range(1, 5):
             ws.row_dimensions[top_row].height = 20 if top_row != 2 else 31
             for col in range(1, 15):
                 ws.cell(top_row, col).fill = PatternFill("solid", fgColor="FFFFFF" if top_row < 4 else LIGHT)
         ws.row_dimensions[5].height = 9
-        ws.row_dimensions[6].height = 32
+        ws.row_dimensions[header_row].height = 32
         ws.sheet_properties.outlinePr.summaryBelow = True
         if logo:
             image = Image(str(logo))
@@ -191,6 +201,24 @@ def to_xlsx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
             ws["C4"].font = Font(size=9, italic=True, color=GOLD)
         for col in range(1, 13):
             ws.cell(row=5, column=col).border = Border(top=Side(style="medium", color=GOLD))
+        if kpi_items:
+            for idx, (label, value) in enumerate(kpi_items):
+                panel_row = 6 + (idx // 3) * 5
+                panel_col = 1 + (idx % 3) * 4
+                for rr in range(panel_row, panel_row + 4):
+                    for cc in range(panel_col, panel_col + 3):
+                        ws.cell(rr, cc).fill = PatternFill("solid", fgColor=LIGHT)
+                metric = ws.cell(panel_row + 1, panel_col)
+                parsed, number_format = typed_value(value)
+                metric.value = parsed
+                if number_format:
+                    metric.number_format = number_format
+                elif isinstance(parsed, int | float) and not isinstance(parsed, bool):
+                    metric.number_format = "#,##0.##"
+                metric.font = Font(name="Aptos Display", size=18, color=NAVY, bold=True)
+                metric.alignment = Alignment(vertical="center", horizontal="left", indent=1)
+                ws.cell(panel_row + 2, panel_col, str(label)).font = Font(name="Aptos", size=9, color=MUTED)
+                ws.row_dimensions[panel_row + 1].height = 30
         columns, rows = _rows(block)
         for c, name in enumerate(columns, 1):
             cell = ws.cell(row=header_row, column=c, value=name)
@@ -297,7 +325,7 @@ def to_xlsx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
                 ws.column_dimensions[_colname(panel_col + 1)].width = max(ws.column_dimensions[_colname(panel_col + 1)].width or 0, 12)
         ws.oddFooter.center.text = f"Sunset Beach Club | {doc.title[:45]}"
         ws.oddFooter.right.text = "Pagina &P / &N"
-        ws.print_title_rows = "1:6"
+        ws.print_title_rows = f"1:{header_row}"
         ws.print_options.horizontalCentered = True
         ws.page_margins.left = 0.25
         ws.page_margins.right = 0.25
@@ -542,6 +570,44 @@ def to_pdf(doc: Document, generated: datetime, logo: Path | None = None) -> byte
         )
         return wrapper
 
+    def kpi_grid(items: list[tuple[str, Any]]) -> Table:
+        # 5 per row when there are many KPIs (executive reports); else 4.
+        per_row = 4 if len(items) > 8 else min(3, max(1, len(items)))
+        kpi_w = (width - 0.48 * cm * per_row) / per_row
+        cards = [
+            [
+                Table([[para(v, kpi_value)], [para(k, kpi_label)]], colWidths=[kpi_w])
+                for k, v in items[i : i + per_row]
+            ]
+            for i in range(0, len(items), per_row)
+        ]
+        cards = [[*card_row, *([""] * (per_row - len(card_row)))] for card_row in cards]
+        grid = Table(cards, colWidths=[width / per_row] * per_row)
+        grid.setStyle(
+            TableStyle(
+                [
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]
+            )
+        )
+        for row_index in range(len(cards)):
+            for col_index in range(per_row):
+                if cards[row_index][col_index] != "":
+                    grid.setStyle(
+                        TableStyle(
+                            [
+                                ("BACKGROUND", (col_index, row_index), (col_index, row_index), hexc(LIGHT)),
+                                ("BOX", (col_index, row_index), (col_index, row_index), 0.8, hexc(LINE)),
+                                ("TOPPADDING", (col_index, row_index), (col_index, row_index), 8),
+                                ("BOTTOMPADDING", (col_index, row_index), (col_index, row_index), 8),
+                            ]
+                        )
+                    )
+        return grid
+
     eyebrow = ParagraphStyle("brand_eyebrow", fontName=font_bold, fontSize=8, leading=11,
                              textColor=hexc(GOLD), spaceAfter=6)
     story: list[Any] = [para("ANÁLISIS CORPORATIVO   /   INFORME", eyebrow), para(doc.title, title_style)]
@@ -557,43 +623,7 @@ def to_pdf(doc: Document, generated: datetime, logo: Path | None = None) -> byte
         same_title = block.title == doc.title
         parts: list[Any] = [Spacer(1, 0.05 * cm) if same_title else heading(block.title), Spacer(1, 0.25 * cm)]
         if block.kind == "kpis":
-            items = list(block.data.items())
-            # 5 per row when there are many KPIs (executive reports); else 4.
-            per_row = 4 if len(items) > 8 else min(3, max(1, len(items)))
-            kpi_w = (width - 0.48 * cm * per_row) / per_row
-            cards = [
-                [
-                    Table([[para(v, kpi_value)], [para(k, kpi_label)]], colWidths=[kpi_w])
-                    for k, v in items[i : i + per_row]
-                ]
-                for i in range(0, len(items), per_row)
-            ]
-            cards = [[*card_row, *([""] * (per_row - len(card_row)))] for card_row in cards]
-            grid = Table(cards, colWidths=[width / per_row] * per_row)
-            grid.setStyle(
-                TableStyle(
-                    [
-                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                        ("TOPPADDING", (0, 0), (-1, -1), 5),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                    ]
-                )
-            )
-            for row_index in range(len(cards)):
-                for col_index in range(per_row):
-                    if cards[row_index][col_index] != "":
-                        grid.setStyle(
-                            TableStyle(
-                                [
-                                    ("BACKGROUND", (col_index, row_index), (col_index, row_index), hexc(LIGHT)),
-                                    ("BOX", (col_index, row_index), (col_index, row_index), 0.8, hexc(LINE)),
-                                    ("TOPPADDING", (col_index, row_index), (col_index, row_index), 8),
-                                    ("BOTTOMPADDING", (col_index, row_index), (col_index, row_index), 8),
-                                ]
-                            )
-                        )
-            parts.append(grid)
+            parts.append(kpi_grid(list(block.data.items())))
         elif block.kind == "section":
             pairs = Table(
                 [[para(k, label_style), para(v, value_style)] for k, v in block.data.items()],
@@ -654,6 +684,13 @@ def to_pdf(doc: Document, generated: datetime, logo: Path | None = None) -> byte
             )
             parts.append(grid)
         else:
+            # Bloque "table"/"annex" con un resumen de indicadores adjunto (``data["kpis"]``, p. ej.
+            # un informe con una entidad por bloque — persona, proyecto…): tarjetas KPI justo encima
+            # de su propia tabla, bajo el MISMO título — nunca un bloque "kpis" aparte, que en Excel/
+            # PowerPoint se convertiría en una pestaña/diapositiva propia para lo que es un resumen de
+            # ESTA tabla, no una sección independiente.
+            if isinstance(block.data, dict) and isinstance(block.data.get("kpis"), dict) and block.data["kpis"]:
+                parts += [kpi_grid(list(block.data["kpis"].items())), Spacer(1, 0.3 * cm)]
             if notice := _annex_notice(block):
                 parts += [para(notice, annex_notice_style), Spacer(1, 0.15 * cm)]
             if not has_explicit_chart and (spec := _chart_of(block)):
@@ -787,6 +824,11 @@ def to_pptx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
                 _chart_slide(prs, blank, header, block.title, spec)
         if block.kind == "chart" and has_detail:
             continue
+        sidecar_kpis = block.data.get("kpis") if isinstance(block.data, dict) else None
+        if block.kind in ("table", "annex") and isinstance(sidecar_kpis, dict) and sidecar_kpis:
+            # Mismo bloque, dos diapositivas consecutivas con el MISMO título — resumen y detalle de
+            # la misma entidad, nunca dos entidades distintas (ver sidecar "kpis" en to_pdf/to_xlsx).
+            _kpi_slide(prs, blank, header, Block("kpis", block.title, sidecar_kpis))
         _table_slides(prs, blank, header, block)
     buffer = io.BytesIO()
     prs.save(buffer)

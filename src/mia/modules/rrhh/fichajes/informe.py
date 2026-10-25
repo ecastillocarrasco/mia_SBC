@@ -9,7 +9,7 @@ conversación (``adjunto_id``) — nunca un segundo motor de importación: la mi
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -25,7 +25,7 @@ from mia.modules.rrhh.fichajes.importer import import_from_attachment
 from mia.modules.rrhh.fichajes.shift_match import match_shift_type
 from mia.modules.rrhh.fichajes.tools import MADRID, _localize_marks
 from mia.reporting.document import Block, Document
-from mia.modules.rrhh.informes.persist import persist_document_report
+from mia.modules.rrhh.informes.persist import ReportFormats, persist_document_report
 
 KEYWORDS = (
     "informe de turnos y fichajes", "informe comparativo de turnos", "comparativa de fichajes",
@@ -55,7 +55,11 @@ class InformeComparativoTurnosFichajesParams(BaseModel):
         default=DEFAULT_TOLERANCE_MIN,
         description="Margen en minutos para considerar un fichaje 'correcto' frente al turno programado",
     )
-    formato: Literal["pdf", "xlsx", "pptx", "html", "docx"] = Field(default="pdf", description="Formato del documento")
+    formato: ReportFormats = Field(
+        default=["pdf"], min_length=1,
+        description="Uno o varios formatos del documento (pdf, xlsx, pptx, html, docx); si el usuario "
+        "pide varios a la vez, inclúyelos todos en esta misma lista para generarlos en una sola petición",
+    )
     titulo: str | None = Field(default=None, description="Título personalizado del informe")
 
 
@@ -205,20 +209,69 @@ def _build_document(
         kpis["Marcas importadas"] = import_summary["marcas_importadas"]
     blocks.append(Block("kpis", f"Resumen ejecutivo · {departamento}", kpis))
 
+    sorted_people = sorted(people, key=lambda x: x.employee.name or "")
     summary_rows = []
-    for p in sorted(people, key=lambda x: x.employee.name or ""):
+    person_blocks: list[Block] = []
+    for p in sorted_people:
         t = p.totals
         c = p.status_counts
         pct_turno = (round(t["balance"] / t["horas_programadas"] * 100, 1) if t["horas_programadas"] else None)
         pct_fichaje = (round(t["balance"] / t["horas_trabajadas"] * 100, 1) if t["horas_trabajadas"] else None)
+        pct_turno_label = f"{pct_turno:+.1f}%" if pct_turno is not None else "—"
+        pct_fichaje_label = f"{pct_fichaje:+.1f}%" if pct_fichaje is not None else "—"
         summary_rows.append([
             p.employee.name, t["horas_programadas"], t["horas_trabajadas"],
-            f"{t['balance']:+.2f}",
-            f"{pct_turno:+.1f}%" if pct_turno is not None else "—",
-            f"{pct_fichaje:+.1f}%" if pct_fichaje is not None else "—",
+            f"{t['balance']:+.2f}", pct_turno_label, pct_fichaje_label,
             t["horas_nocturnas_normales"], t["horas_extra_diurnas"], t["horas_extra_nocturnas"],
             c["correcto"], c["desviado"], c["falta_marcaje"], c["sin_turno"], len(p.incomplete),
         ])
+
+        # Una única pestaña/página por empleado, con resumen (tarjetas KPI) y detalle diario
+        # JUNTOS bajo el mismo título — antes se generaban dos bloques (una "section" solo con
+        # Departamento/Periodo y otra "table" de detalle), que en Excel y PowerPoint se convertían
+        # en dos pestañas/diapositivas por persona sin aportar un resumen real. El sidecar
+        # ``data["kpis"]`` (ver docstring de ``Block``) da ese resumen sin reintroducir el bug: lo
+        # dibujan todos los renderizadores en la MISMA hoja/página que la tabla, nunca aparte.
+        person_kpis: dict[str, Any] = {
+            "Horas programadas": t["horas_programadas"],
+            "Horas trabajadas": t["horas_trabajadas"],
+            "Balance": f"{t['balance']:+.2f} h",
+            "Balance % turno": pct_turno_label,
+            "Balance % fichaje": pct_fichaje_label,
+            "Extra diurnas": t["horas_extra_diurnas"],
+            "Extra nocturnas": t["horas_extra_nocturnas"],
+            "Correctos": c["correcto"],
+            "Desviados": c["desviado"],
+            "Faltas de marcaje": c["falta_marcaje"],
+        }
+        if c["sin_turno"]:
+            person_kpis["Fichajes sin turno"] = c["sin_turno"]
+        if p.incomplete:
+            person_kpis["Marcas incompletas"] = len(p.incomplete)
+
+        detail_rows = []
+        for r, h in zip(p.results, p.day_hours, strict=True):
+            session = r.session
+            detail_rows.append([
+                fmt_date(r.day), r.status, _shift_label(p.shift_by_day.get(r.day)),
+                session.entrada.strftime("%H:%M") if session else "—",
+                session.salida.strftime("%H:%M") if session else "—",
+                h.horas_programadas, h.horas_trabajadas, f"{h.balance:+.2f}",
+                h.horas_nocturnas_normales, h.horas_extra_diurnas, h.horas_extra_nocturnas,
+            ])
+        person_blocks.append(Block(
+            "table",
+            p.employee.name,
+            {
+                "columns": [
+                    "Fecha", "Estado", "Turno", "Entrada real", "Salida real",
+                    "Programadas", "Trabajadas", "Balance",
+                    "Nocturnas (horario)", "Extra diurnas", "Extra nocturnas",
+                ],
+                "rows": detail_rows,
+                "kpis": person_kpis,
+            },
+        ))
     blocks.append(Block(
         "table",
         f"Resumen por persona · {periodo_label}",
@@ -231,31 +284,7 @@ def _build_document(
             "rows": summary_rows,
         },
     ))
-
-    for p in sorted(people, key=lambda x: x.employee.name or ""):
-        blocks.append(Block("section", p.employee.name, {"Departamento": departamento, "Periodo": periodo_label}))
-        detail_rows = []
-        for r, h in zip(p.results, p.day_hours, strict=True):
-            session = r.session
-            detail_rows.append([
-                fmt_date(r.day), r.status, _shift_label(p.shift_by_day.get(r.day)),
-                session.entrada.strftime("%H:%M") if session else "—",
-                session.salida.strftime("%H:%M") if session else "—",
-                h.horas_programadas, h.horas_trabajadas, f"{h.balance:+.2f}",
-                h.horas_nocturnas_normales, h.horas_extra_diurnas, h.horas_extra_nocturnas,
-            ])
-        blocks.append(Block(
-            "table",
-            f"Detalle · {p.employee.name}",
-            {
-                "columns": [
-                    "Fecha", "Estado", "Turno", "Entrada real", "Salida real",
-                    "Programadas", "Trabajadas", "Balance",
-                    "Nocturnas (horario)", "Extra diurnas", "Extra nocturnas",
-                ],
-                "rows": detail_rows,
-            },
-        ))
+    blocks.extend(person_blocks)
 
     if warnings:
         blocks.append(Block("warnings", "Avisos de calidad de datos", {"items": warnings}))
@@ -407,7 +436,8 @@ def informe_comparativo_turnos_fichajes(deps: Deps) -> Tool:
         "diurnas y nocturnas) y balance de horas en %, tanto sobre el turno como sobre el fichaje. "
         "Hasta que exista la conexión con Conectia, indica 'adjunto_id' con el Excel de fichajes que el "
         "usuario haya subido en esta conversación para importarlo antes de comparar. Especifica el "
-        "periodo con 'semana_iso' (+ opcionalmente 'anio_iso') o con 'desde'/'hasta'.",
+        "periodo con 'semana_iso' (+ opcionalmente 'anio_iso') o con 'desde'/'hasta'. Si el usuario "
+        "pide varios formatos a la vez, pásalos todos juntos en 'formato' en una sola llamada.",
         InformeComparativoTurnosFichajesParams,
         handler,
         permission=Permission.FICHAJES_LEER,

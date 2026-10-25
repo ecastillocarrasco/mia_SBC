@@ -55,6 +55,23 @@ def test_download_becomes_a_button() -> None:
     assert actions == [{"type": "download", "url": "/api/reports/abc", "label": "Descargar pdf"}]
 
 
+def test_several_formats_requested_at_once_become_one_button_each() -> None:
+    """Pedir PDF + Excel en una sola llamada a generar_informe (``type == "downloads"``) debe dar
+    exactamente el mismo resultado en el 2D que pedirlos uno a uno: una acción "download" por
+    formato, mismo contrato de siempre (``mia-2d.js`` ya sabe pintar varias)."""
+    _, actions = legacy_view([{
+        "type": "downloads", "title": "Costes por departamento",
+        "items": [
+            {"url": "/api/reports/abc", "format": "pdf", "file_name": "Costes.pdf"},
+            {"url": "/api/reports/def", "format": "xlsx", "file_name": "Costes.xlsx"},
+        ],
+    }])
+    assert actions == [
+        {"type": "download", "url": "/api/reports/abc", "label": "Descargar pdf"},
+        {"type": "download", "url": "/api/reports/def", "label": "Descargar xlsx"},
+    ]
+
+
 async def test_real_employee360_uses_the_2d_schema(registry: ToolRegistry) -> None:  # noqa: F811
     result = await call(registry, "ficha_empleado", empleado_id=1, detalle=True)
     data, _ = legacy_view([result.presentation])

@@ -9,7 +9,7 @@ import re
 import unicodedata
 from typing import Any
 
-_FORMAT_ORDER = ("pdf", "pptx", "xlsx")
+_FORMAT_ORDER = ("pdf", "pptx", "xlsx", "docx", "html")
 _EXPORT_ACTION = re.compile(
     r"\b(gener\w*|crea\w*|export\w*|descarg\w*|prepar\w*|entrega\w*|"
     r"quiero|necesito|documentos?|informes?|archivos?)\b"
@@ -31,6 +31,8 @@ def requested_formats(message: str) -> tuple[str, ...]:
         "pdf": bool(re.search(r"\bpdf\b", text)),
         "pptx": bool(re.search(r"\b(power\s*point|pptx?|diapositivas?)\b", text)),
         "xlsx": bool(re.search(r"\b(excel|xlsx?|hoja[s]? de calculo)\b", text)),
+        "docx": bool(re.search(r"\b(word|docx?)\b", text)),
+        "html": bool(re.search(r"\b(html|pagina\s*web)\b", text)),
     }
     return tuple(fmt for fmt in _FORMAT_ORDER if mentioned[fmt])
 
@@ -54,18 +56,35 @@ def resolve_export_request(message: str, history: list[Any]) -> tuple[str, tuple
 
 
 def download_formats(executions: list[Any]) -> dict[str, dict[str, Any]]:
-    """Únicamente cuenta descargas verificadas devueltas por la herramienta."""
+    """Únicamente cuenta descargas verificadas devueltas por la herramienta — ya sea una sola
+    ("download", una ejecución = un formato) o varias generadas en la MISMA llamada ("downloads":
+    un informe pedido en varios formatos a la vez, ver ``persist_document_report``). Ambas formas se
+    normalizan al mismo dict de salida para que el resto del contrato de entrega no tenga que
+    distinguir el origen."""
     results = {}
     for execution in executions:
         result = execution.result
         presentation = result.presentation or {}
+        if str(result.status.value) != "ok":
+            continue
         if (
-            str(result.status.value) == "ok"
-            and presentation.get("type") == "download"
+            presentation.get("type") == "download"
             and presentation.get("url", "").startswith("/api/reports/")
             and presentation.get("format") in _FORMAT_ORDER
         ):
             results[presentation["format"]] = presentation
+        elif presentation.get("type") == "downloads":
+            for item in presentation.get("items") or []:
+                if (
+                    isinstance(item, dict)
+                    and str(item.get("url", "")).startswith("/api/reports/")
+                    and item.get("format") in _FORMAT_ORDER
+                ):
+                    results[item["format"]] = {
+                        "type": "download", "format": item["format"],
+                        "url": item["url"], "file_name": item.get("file_name"),
+                        "title": presentation.get("title"),
+                    }
     return results
 
 

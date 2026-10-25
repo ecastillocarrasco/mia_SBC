@@ -412,6 +412,15 @@ def _absorb(
         tables.extend([table_view(t, "Panel") for t in p.get("tables") or [] if t.get("rows")])
     elif kind == "download" and p.get("url"):
         actions.append({"type": "download", "url": p["url"], "label": f"Descargar {p.get('format', 'informe')}"})
+    elif kind == "downloads" and isinstance(p.get("items"), list):
+        # Un informe pedido en varios formatos a la vez (p. ej. PDF + Excel): una acción de
+        # descarga por formato, misma forma que el caso de un solo formato — el mundo 2D ya sabe
+        # pintar varias acciones "download" sin necesitar un tipo de acción nuevo.
+        actions.extend(
+            {"type": "download", "url": item["url"], "label": f"Descargar {item.get('format', 'informe')}"}
+            for item in p["items"]
+            if isinstance(item, dict) and item.get("url")
+        )
     elif kind == "job":
         # Fase H: trabajo en segundo plano (Job Manager) — paso directo de los campos que el mundo 2D
         # necesita para pintar la tarjeta y empezar a sondear su estado real; nunca se simula progreso

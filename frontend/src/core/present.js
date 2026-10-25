@@ -269,6 +269,22 @@ export function renderPresentation(presentation) {
       </a></section>`;
   }
 
+  // Several formats generated in the same request (p. ej. PDF + Excel a la vez): un botón por
+  // formato, mismo contrato de seguridad de URL que el botón de descarga individual.
+  if (type === "downloads" && Array.isArray(rest.items) && rest.items.length) {
+    const links = rest.items
+      .filter((item) => item && safeDocumentUrl(item.url))
+      .map(
+        (item) => `<a class="mia-download" href="${escapeHtml(safeDocumentUrl(item.url))}" target="_blank" rel="noopener">
+        Descargar ${escapeHtml(item.file_name || item.format || "archivo")}
+      </a>`,
+      )
+      .join("");
+    return links
+      ? `<section class="mia-presentation">${heading}<div class="mia-download-group">${links}</div></section>`
+      : "";
+  }
+
   // Single document card
   if (type === "document" && rest.url) {
     return `<section class="mia-presentation">${heading}${renderDocumentCard(rest)}</section>`;
