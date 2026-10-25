@@ -695,6 +695,19 @@ app.whenReady().then(async () => {
     app.quit();
     return;
   }
+  // Autenticación (token válido) y autorización (algún rol asignado en mIA) son cosas distintas;
+  // sin esto, una cuenta logueada pero sin permisos veía el avatar y el bocadillo con normalidad y
+  // solo descubría que no tiene acceso al intentar preguntar algo. Mismo criterio que
+  // ensureAuthorized() en frontend/src/core/auth-gate.js, antes de montar ninguna ventana real.
+  const access = await auth.ensureAuthorized(config.backendBase);
+  if (!access.ok) {
+    diagnostics.record('startup', { mode: 'auth', code: access.reason === 'unauthorized' ? 'ACCESS_DENIED' : 'ACCESS_CHECK_FAILED' });
+    dialog.showErrorBox('mIA Desktop', access.reason === 'unauthorized'
+      ? 'Tu cuenta ha iniciado sesión correctamente, pero todavía no tiene ningún permiso asignado en mIA. Contacta con el administrador de tu organización.'
+      : 'No se ha podido comprobar tu acceso a mIA. Puede ser un problema pasajero de conexión; vuelve a abrir mIA Desktop para reintentarlo.');
+    app.quit();
+    return;
+  }
   speech.configure(app.getPath('userData'));
   speech.setEnabled(config.voiceMode!=='off');
   protocol.handle('mia', async request => {

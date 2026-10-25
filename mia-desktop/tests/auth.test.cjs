@@ -51,3 +51,27 @@ test('/api/auth/config con HTTP no-ok: fail-open igual que un fallo de red', asy
     assert.equal(result, null);
   } finally { global.fetch = original; }
 });
+
+test('ensureAuthorized en modo dev (sin ensureAuthenticated previo): ok:true, nunca llama a la red', async () => {
+  const auth = freshAuth();
+  const original = global.fetch;
+  global.fetch = async () => { throw new Error('No debería llamarse a /api/auth/me sin login real'); };
+  try {
+    const result = await auth.ensureAuthorized('http://127.0.0.1:5001');
+    assert.deepEqual(result, { ok: true });
+  } finally { global.fetch = original; }
+});
+
+test('ensureAuthorized tras requires_login:false: ok:true, nunca llama a la red', async () => {
+  const auth = freshAuth();
+  const original = global.fetch;
+  global.fetch = async (url) => {
+    if (String(url).endsWith('/api/auth/me')) throw new Error('No debería llamarse a /api/auth/me en modo dev');
+    return { ok: true, json: async () => ({ mode: 'dev', requires_login: false, entra: null }) };
+  };
+  try {
+    await auth.ensureAuthenticated('/tmp/mia-desktop-test', 'http://127.0.0.1:5001');
+    const result = await auth.ensureAuthorized('http://127.0.0.1:5001');
+    assert.deepEqual(result, { ok: true });
+  } finally { global.fetch = original; }
+});

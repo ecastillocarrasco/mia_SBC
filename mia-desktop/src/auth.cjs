@@ -122,4 +122,33 @@ async function getAccessToken() {
   }
 }
 
-module.exports = { ensureAuthenticated, getAccessToken };
+/**
+ * Equivalente de `ensureAuthorized()` en frontend/src/core/auth-gate.js. Debe llamarse justo
+ * después de `ensureAuthenticated()`, antes de crear ninguna ventana real: autenticación (¿tiene
+ * un token válido?) y autorización (¿tiene algún permiso/rol asignado en mIA?) son cosas
+ * distintas, y un login de Entra correcto no implica lo segundo (ver GET /api/auth/me,
+ * mia.api.routes.auth.auth_me). No-op (`{ok:true}`) si el login está desactivado (dev/easyauth),
+ * igual que el resto de esta puerta.
+ *
+ * A diferencia de `ensureAuthenticated()` (que falla abierto si /api/auth/config no responde,
+ * porque todavía no hay sesión que proteger), aquí cualquier fallo de red o HTTP se trata como
+ * "sin acceso" (`reason:'error'`): ya hay un token real en juego y el backend ya ha confirmado
+ * antes que exige login, así que una comprobación que no se puede completar no debe dejar pasar
+ * al avatar — mismo criterio que la web.
+ */
+async function ensureAuthorized(base) {
+  if (!pca || !authConfig?.requires_login) return { ok: true };
+  try {
+    const token = await getAccessToken();
+    const response = await fetch(base + '/api/auth/me', { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!response.ok) return { ok: false, reason: 'error' };
+    const payload = await response.json();
+    if (!payload.has_access) return { ok: false, reason: 'unauthorized', displayName: payload.display_name, email: payload.email };
+    return { ok: true };
+  } catch (error) {
+    console.error('[mIA Auth] No se pudo comprobar el acceso:', error);
+    return { ok: false, reason: 'error' };
+  }
+}
+
+module.exports = { ensureAuthenticated, getAccessToken, ensureAuthorized };
