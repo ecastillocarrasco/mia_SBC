@@ -154,35 +154,37 @@ async def resolve_person(db: AsyncSession, params: PersonaParams, *, ctx: Any = 
     query = params.nombre or ""
     if params.empleado_id is not None:
         employee = await db.get(Employee, params.empleado_id)
-        # Defensa en profundidad: el modelo puede mandar un empleado_id obsoleto o directamente
-        # inventado (de un foco anterior, o adivinado pese a las instrucciones del prompt) —
-        # nunca confiar en el id a ciegas: si no existe, o existe pero no coincide con el nombre
-        # dado, cae a la búsqueda por nombre de abajo en vez de fallar sin más, siempre que haya
-        # un nombre con el que buscar. Sin nombre, un id inexistente sigue siendo NOT_FOUND.
-        if employee is None:
-            if not query.strip():
-                return PersonMatch(ToolStatus.NOT_FOUND)
-        elif query.strip():
-            if not _name_matches(query, employee.name_key):
-                pass  # cae a la búsqueda por nombre de abajo, ignorando el empleado_id obsoleto/erróneo
-            else:
+        # Defensa en profundidad: el modelo puede mandar un empleado_id obsoleto (de un foco de
+        # turnos atrás) o directamente inventado (ninguno de los dos existe de verdad, no solo el
+        # "obsoleto" apunta a otra persona) — ambos casos reproducidos de verdad en preprod, el
+        # segundo con el nombre correcto SIN rellenar el argumento `nombre`, solo en el mensaje
+        # del turno. Nunca confiar en el id a ciegas.
+        if query.strip():
+            # Nombre explícito en los argumentos junto al id.
+            if employee is not None and _name_matches(query, employee.name_key):
                 return PersonMatch(ToolStatus.OK, employee)
+            # No existe, o existe pero no coincide -> cae a la búsqueda por nombre de abajo,
+            # ignorando el empleado_id obsoleto/erróneo.
         else:
             # Sin nombre explícito en los argumentos: el caso normal es una pregunta de
             # seguimiento que confía en el foco ("muéstrame sus turnos") y aquí NO hay que tocar
-            # nada. Pero si el propio mensaje del turno nombra de verdad a otra persona (p. ej.
-            # "ficha completa <otro nombre>" sin que el modelo rellenara `nombre`, que es
-            # exactamente como se reprodujo este bug en producción), ese nombre manda por encima
-            # de un empleado_id de foco obsoleto. "de verdad" = existe en la base de datos — así
-            # una pregunta de seguimiento sin ningún nombre ("sus vacaciones de octubre") nunca se
-            # confunde con un nombre real y no rompe el seguimiento de foco normal.
+            # nada. El único dato adicional disponible para detectar un id obsoleto/inventado es
+            # el propio mensaje del turno — si nombra de verdad a otra persona que existe en la
+            # base de datos, eso manda por encima del id (exista o no); si no nombra a nadie (o
+            # solo palabras sueltas que no son un nombre real), el id sigue mandando si existe.
             fallback = _fallback_name_from_message(getattr(ctx, "user_message", "") or "") if ctx is not None else ""
-            if not fallback or _name_matches(fallback, employee.name_key):
+            if fallback and not (employee is not None and _name_matches(fallback, employee.name_key)):
+                fallback_matches = await find_people(db, fallback)
+                if fallback_matches:
+                    query = fallback
+                elif employee is not None:
+                    return PersonMatch(ToolStatus.OK, employee)
+                else:
+                    return PersonMatch(ToolStatus.NOT_FOUND)
+            elif employee is not None:
                 return PersonMatch(ToolStatus.OK, employee)
-            fallback_matches = await find_people(db, fallback)
-            if not fallback_matches:
-                return PersonMatch(ToolStatus.OK, employee)
-            query = fallback
+            else:
+                return PersonMatch(ToolStatus.NOT_FOUND)
     matches = await find_people(db, query)
     active = [m for m in matches if m.active]
     pool = active or matches

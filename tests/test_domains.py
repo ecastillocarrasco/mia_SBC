@@ -139,6 +139,17 @@ async def test_stale_focus_id_without_nombre_arg_is_ignored_when_the_message_nam
     assert result.summary["empleado_id"] != 1
 
 
+async def test_nonexistent_focus_id_without_nombre_arg_falls_back_to_the_message(registry: ToolRegistry) -> None:
+    """Fallo real reproducido en preprod 2026-10-25, variante más dañina del test de arriba: el
+    empleado_id no era solo obsoleto, directamente NO EXISTÍA en la base de datos (inventado), y
+    el nombre tampoco venía en los argumentos — solo en el mensaje del turno ("ficha completa
+    Jose Enrique Luque Avila"). Antes, un id inexistente con `nombre` vacío cortaba camino a
+    NOT_FOUND sin ni siquiera mirar el mensaje, pese a que la persona sí existe."""
+    result = await call(registry, "ficha_empleado", empleado_id=999999, message="ficha completa Luis Gil")
+    assert result.status is ToolStatus.OK
+    assert result.summary["nombre"] == "Luis Gil"
+
+
 async def test_follow_up_question_with_no_name_in_the_message_keeps_the_focus_id(registry: ToolRegistry) -> None:
     """La defensa del test anterior no debe romper el caso normal y mucho más frecuente: una
     pregunta de seguimiento que confía en el foco sin nombrar a nadie ("muéstrame sus turnos")
