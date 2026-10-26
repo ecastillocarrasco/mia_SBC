@@ -215,6 +215,21 @@ async def resolve_person(db: AsyncSession, params: PersonaParams, *, ctx: Any = 
         exact = [m for m in pool if m.name_key == normalize_key(query)]
         if len(exact) == 1:
             return PersonMatch(ToolStatus.OK, exact[0])
+        # Defensa en profundidad adicional, reproducida en preprod 2026-10-26: el modelo a veces
+        # recorta un apellido real al construir `nombre` (p. ej. nombre="mari carmen" para la
+        # pregunta "ficha mari carmen salas") -- el texto completo del turno SÍ tenía el apellido
+        # que habría desambiguado. Antes de preguntar, probar con ese texto completo (limpio de
+        # palabras de mando); si estrecha a una única persona real, usarla. Si no estrecha nada
+        # (p. ej. un typo real, "camen" por "carmen", sin palabras nuevas que aportar), se sigue
+        # preguntando como antes -- nunca se adivina.
+        if ctx is not None:
+            richer = _fallback_name_from_message(getattr(ctx, "user_message", "") or "")
+            if richer and richer != normalize_key(query):
+                richer_matches = await find_people(db, richer)
+                richer_active = [m for m in richer_matches if m.active]
+                richer_pool = richer_active or richer_matches
+                if len(richer_pool) == 1:
+                    return PersonMatch(ToolStatus.OK, richer_pool[0])
         return PersonMatch(ToolStatus.AMBIGUOUS, candidates=tuple(pool[:10]))
     if loose := await _without_one_word(db, query):
         return loose

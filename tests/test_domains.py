@@ -72,6 +72,25 @@ async def test_leading_command_word_in_explicit_nombre_is_stripped(registry: Too
     assert result.summary["nombre"] == "Ana Gómez"
 
 
+async def test_ambiguous_match_is_narrowed_using_the_full_turn_message(registry: ToolRegistry) -> None:
+    """Fallo real reproducido en preprod 2026-10-26: el modelo recortó un apellido real al
+    construir el argumento nombre (nombre="mari carmen" para la pregunta "ficha mari carmen
+    salas", existiendo una única "Salas" real) -- el apellido que habría desambiguado SÍ estaba
+    en el mensaje del turno, solo que no llegó al argumento. Aquí: "Ana" es ambigua (Ruiz Sanz /
+    Gómez) por sí sola, pero el mensaje completo trae el apellido real."""
+    result = await call(registry, "ficha_empleado", nombre="Ana", message="ficha ana ruiz")
+    assert result.status is ToolStatus.OK
+    assert result.summary["nombre"] == "Ana Ruiz Sanz"
+
+
+async def test_ambiguous_match_with_a_typo_in_the_message_still_asks(registry: ToolRegistry) -> None:
+    """La defensa del test anterior no debe inventar una desambiguación cuando el mensaje
+    completo no aporta ninguna palabra nueva de verdad (p. ej. porque es justo el mismo texto,
+    o trae un typo que tampoco encaja con nadie) -- sigue preguntando, nunca adivina."""
+    result = await call(registry, "ficha_empleado", nombre="Ana", message="ficha ana")
+    assert result.status is ToolStatus.AMBIGUOUS
+
+
 async def test_de_la_del_inside_a_name_are_never_stripped() -> None:
     """La defensa del test anterior no debe confundir "de"/"la"/"del" en medio de un apellido
     español real ("de la Cruz", "del Pozo") con una palabra de mando -- solo se quita por
