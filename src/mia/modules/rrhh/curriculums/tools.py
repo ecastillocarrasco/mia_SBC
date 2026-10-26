@@ -470,6 +470,11 @@ def _result(  # noqa: PLR0917
     }
     mark = {"metadatos": "✓ metadatos", "cv": "✓ CV", "posible": "≈ posible", "no": "—"}
     columns = ["Candidatura", "Departamento", "Estado", "Fecha", *[r.termino for r in p.requisitos]]
+    # La tabla visible usa "shown" (misma persona, una sola fila; tope p.mostrar), igual que
+    # summary["muestra"] -- antes se construía de "full + possible" sin pasar por el dedup de
+    # person_identity(), así que una persona con varias candidaturas (mismo email) salía
+    # repetida en pantalla aunque el resumen ya la contara una sola vez (incidencia real en
+    # preprod 2026-10-26: "Pedro Santiago" x3, mismo email y teléfono en las tres).
     rows = [
         [
             m.candidate.name,
@@ -478,7 +483,7 @@ def _result(  # noqa: PLR0917
             fmt_date(m.candidate.applied_on),
             *[f"{mark[e.where]} · {e.detail[:90]}" if e.detail else mark[e.where] for e in m.evidence],
         ]
-        for m in full + possible
+        for m in shown
     ]
     return ToolResult(
         ToolStatus.OK if full or possible else ToolStatus.NOT_FOUND,

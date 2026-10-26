@@ -483,6 +483,58 @@ async def test_filter_candidates_with_and_or_not_and_unique_people(env: Any) -> 
 
 
 @requires_postgres
+async def test_candidates_table_rows_are_also_deduplicated_by_person(env: Any) -> None:
+    """Fallo real: "Pedro Santiago" salia 3 veces en la tabla visible (mismo email y telefono en
+    las tres candidaturas) aunque summary["personas_unicas"] ya contaba 1 -- _result() dedupe el
+    summary pero la tabla (`rows`) se montaba de "full + possible" sin pasar por person_identity()."""
+    registry, db, _ = env
+    async with db.session() as s:
+        s.add_all(
+            [
+                Candidate(
+                    sp_id=9399,
+                    name="Pedro Santiago",
+                    name_key="pedro santiago",
+                    email="zapatos@example.com",
+                    phone="6510923333",
+                    department="Cocinas",
+                    department_key="cocinas",
+                    status="Pendiente de Cita",
+                    experience="Ayudante de cocina",
+                ),
+                Candidate(
+                    sp_id=9400,
+                    name="Pedro Santiago",
+                    name_key="pedro santiago",
+                    email="zapatos@example.com",
+                    phone="6510923333",
+                    department="Cocinas",
+                    department_key="cocinas",
+                    status="Pendiente de Cita",
+                    experience="Ayudante de cocina",
+                ),
+                Candidate(
+                    sp_id=9401,
+                    name="Pedro Santiago",
+                    name_key="pedro santiago",
+                    email="zapatos@example.com",
+                    phone="6510923333",
+                    department="Cocinas",
+                    department_key="cocinas",
+                    status="Pendiente de Cita",
+                    experience="Ayudante de cocina",
+                ),
+            ]
+        )
+    result = await call(
+        registry, "buscar_candidatos", requisitos=[{"termino": "cocina", "equivalentes": ["ayudante"]}]
+    )
+    rows = result.presentation["rows"]
+    assert len(rows) == 1
+    assert rows[0][0] == "Pedro Santiago"
+
+
+@requires_postgres
 async def test_requirements_check_metadata_first_then_the_cv(env: Any) -> None:
     """Caso real: «cocina, inglés y cocina japonesa» solo encontraba el inglés y no miraba los CV."""
     registry, db, _ = env
