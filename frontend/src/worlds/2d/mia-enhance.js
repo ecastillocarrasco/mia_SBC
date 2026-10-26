@@ -503,9 +503,17 @@
       if (data.mail_thread) extras.push(mailThreadCard(data.mail_thread));
       if (data.mail_draft) extras.push(draftCard(data.mail_draft));
       if (Array.isArray(data.news_rows) && data.news_rows.length) extras.push(newsListCard(data.news_rows));
-      (Array.isArray(data.charts) ? data.charts : []).forEach(function (spec) {
-        if (spec && spec.series && spec.series[0] && spec.labels) extras.push(chartCard(spec));
-      });
+      // Solo para correo: ese es el único kind cuyo renderData base NO llega a pintar data.charts
+      // (vuelve antes, ver el "return" tras renderMailWorkspace en mia-2d.js) -- para cualquier
+      // otro kind (p. ej. "analytics", que es lo que toca para la vista previa de un informe),
+      // el renderCharts() base ya los pinta una vez; repetirlo aquí sin condición los duplicaba
+      // (incidencia real en preprod 2026-10-26, nunca visible antes porque data.charts casi nunca
+      // tenía contenido fuera del correo).
+      if (typeof detectResultKind === 'function' && detectResultKind(r, data) === 'mail') {
+        (Array.isArray(data.charts) ? data.charts : []).forEach(function (spec) {
+          if (spec && spec.series && spec.series[0] && spec.labels) extras.push(chartCard(spec));
+        });
+      }
       var all = msg.querySelectorAll('.results'), wrap = all.length > before ? all[all.length - 1] : null;
       if (wrap && Array.isArray(data.mail_rows) && data.mail_rows.length) decorateMailList(wrap, data.mail_rows);
       if (window.miaAutoOpenNextMail) {
