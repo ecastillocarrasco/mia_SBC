@@ -84,6 +84,14 @@ export function renderHologramBrief(presentations = [], { type = 'analytics' } =
     <header class="hg-brief-head"><span>mIA · INSIGHTS</span><h2>${esc(title)}</h2></header>
     ${kpis.length ? `<div class="hg-kpis">${kpis.map((k) => `<article class="hg-kpi"><span>${esc(k.name)}</span><strong>${esc(k.value)}</strong>${k.unit ? `<small>${esc(k.unit)}</small>` : ''}</article>`).join('')}</div>` : ''}
     ${table ? `<div class="hg-mini-table"><div class="hg-mini-head"><b>${esc(table.title)}</b><small>${table.count} registros en el informe completo</small></div><table><thead><tr>${table.columns.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${table.rows.map((r) => `<tr>${r.map((cell) => `<td>${esc(fmt(cell))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
-    ${docs.length ? `<div class="hg-documents">${docs.map((d) => `<a href="${esc(safeUrl(d.url))}" target="_blank" rel="noopener noreferrer">${esc(d.name)} ↗</a>`).join('')}</div>` : ''}
+    ${docs.length ? `<div class="hg-documents">${docs.map((d) => {
+      const url = safeUrl(d.url);
+      // /api/... exige Authorization: Bearer, que un <a href> normal no puede mandar (401 real
+      // en preprod 2026-10-26) -- boton con data-download-url, recogido por el listener
+      // delegado de #result en main.js. Una URL externa genuina sigue como enlace normal.
+      return /^\/api\//.test(url)
+        ? `<button type="button" class="hg-doc-link" data-download-url="${esc(url)}" data-download-name="${esc(d.name)}">${esc(d.name)} ↓</button>`
+        : `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(d.name)} ↗</a>`;
+    }).join('')}</div>` : ''}
   </section>`;
 }

@@ -55,8 +55,9 @@ html,body{overflow:hidden}
 .hg-mini-table th,.hg-mini-table td{padding:7px;border-bottom:1px solid rgba(113,233,241,.1);text-align:left;overflow-wrap:anywhere}
 .hg-mini-table th{font-size:9px;color:#86e2e2;text-transform:uppercase;letter-spacing:.07em}
 .hg-documents{display:flex;flex-wrap:wrap;gap:8px}
-.hg-documents a{padding:9px 12px;border:1px solid rgba(113,233,241,.26);border-radius:10px;text-decoration:none;color:#d9ffff;font-size:11px;background:rgba(113,233,241,.08)}
-.hg-documents a:hover{background:rgba(113,233,241,.18)}
+.hg-documents a,.hg-documents button{padding:9px 12px;border:1px solid rgba(113,233,241,.26);border-radius:10px;text-decoration:none;color:#d9ffff;font-size:11px;background:rgba(113,233,241,.08);font-family:inherit;cursor:pointer}
+.hg-documents a:hover,.hg-documents button:hover{background:rgba(113,233,241,.18)}
+.hg-documents button:disabled{cursor:default;opacity:.7}
 .composer{background:rgba(1,21,28,.64);padding:6px;border:1px solid rgba(113,233,241,.17);border-radius:999px;backdrop-filter:blur(15px)}
 .composer input{font-size:13px;min-width:0;flex:1}
 @media(max-width:600px){.hud{width:calc(100vw - 16px);bottom:8px}.result{max-height:34dvh}.hg-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.hg-brief{padding:11px}.hg-mini-table{padding:8px}.caption{font-size:15px}}

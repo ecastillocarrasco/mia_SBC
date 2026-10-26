@@ -386,14 +386,65 @@ function appendDirectReportLinks(response) {
     if (!/^\/api\/[A-Za-z0-9_/?=&%.\-]+$/.test(url)) continue;
     if (!links.some(x=>x.url===url)) links.push({url,label:String(action.label||action.title||'Descargar informe').slice(0,70)});
   }
+  // /api/... exige Authorization: Bearer, que un <a href> normal no puede mandar (401 real en
+  // preprod 2026-10-26, mismo bug que el CV de un candidato y el informe de hg-report-job).
   for (const item of links.slice(0,3)) {
     const link = document.createElement('a');
-    link.href = item.url; link.download=''; link.className = 'hg-report-download';
+    link.href = '#'; link.className = 'hg-report-download';
     link.textContent = '↓ ' + item.label;
+    link.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const original = link.textContent;
+      link.textContent = 'Descargando…';
+      try {
+        const token = await getAccessToken();
+        const res = await fetch(item.url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const tmp = document.createElement('a');
+        tmp.href = blobUrl; tmp.download = ''; tmp.rel = 'noopener noreferrer';
+        document.body.appendChild(tmp); tmp.click(); document.body.removeChild(tmp);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+        link.textContent = original;
+      } catch (error) {
+        console.warn('[mIA Holograma] No se pudo descargar:', error);
+        link.textContent = 'Error al descargar';
+      }
+    });
     resultEl.appendChild(link);
   }
   return links.length;
 }
+
+// Documentos de hologram-brief.js (vista de respaldo, insertada vía innerHTML): mismo bug de
+// auth que arriba, un solo listener delegado en #result en vez de cablearlo por botón.
+resultEl.addEventListener('click', async (e) => {
+  const button = e.target.closest?.('[data-download-url]');
+  if (!button || button.disabled) return;
+  e.preventDefault();
+  const url = button.dataset.downloadUrl;
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Descargando…';
+  try {
+    const token = await getAccessToken();
+    const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const tmp = document.createElement('a');
+    tmp.href = blobUrl; tmp.download = button.dataset.downloadName || ''; tmp.rel = 'noopener noreferrer';
+    document.body.appendChild(tmp); tmp.click(); document.body.removeChild(tmp);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+    button.textContent = original;
+  } catch (error) {
+    console.warn('[mIA Holograma] No se pudo descargar:', error);
+    button.textContent = 'Error al descargar';
+  } finally {
+    button.disabled = false;
+  }
+});
 
 let queryPhase = 'ready'; // No permitir que progreso tardío sobrescriba respuestas
 let greetingTimer = null;

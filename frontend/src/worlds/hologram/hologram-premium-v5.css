@@ -473,7 +473,7 @@ body.hg-v5 {
   border-color:rgba(71,228,254,.15);
 }
 .hg-v5 .hg-mini-table table {min-width:100%;font-size:11px}
-.hg-v5 .hg-documents a{color:#bbfcff}
+.hg-v5 .hg-documents a,.hg-v5 .hg-documents button{color:#bbfcff}
 .hg-v5 .hg-mail-meta{color:#92dbe6;font-size:11px;margin:0}
 .hg-v5 .hg-mail-body{color:#e5ffff;font-size:13px;line-height:1.5;margin:0}
 .hg-v5 .hg-mail-thread{list-style:none;margin:0;padding:0;display:grid;gap:8px}
