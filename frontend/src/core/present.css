@@ -21,15 +21,17 @@
 
 /* Inline URL link (inside table cells or key-value) */
 .mia-doc-link { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
-  font-size: 0.78rem; font-weight: 600; text-decoration: none; color: var(--mia-accent, #7cc6c3);
-  border: 1px solid currentColor; opacity: .9; transition: opacity .15s ease, background .15s ease; }
+  font: inherit; font-size: 0.78rem; font-weight: 600; text-decoration: none; color: var(--mia-accent, #7cc6c3);
+  background: transparent; border: 1px solid currentColor; opacity: .9; cursor: pointer;
+  transition: opacity .15s ease, background .15s ease; }
 .mia-doc-link:hover { opacity: 1; background: rgba(124, 198, 195, .10); }
 .mia-doc-link::after { content: " ↗"; font-size: .7em; opacity: .7; }
 
 /* Document card list */
 .mia-doc-list { display: grid; gap: 6px; margin-top: 8px; }
-.mia-doc-card { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 11px;
+.mia-doc-card { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 11px; width: 100%;
   border: 1px solid var(--mia-line, rgba(255,255,255,.12)); text-decoration: none; color: inherit;
+  font: inherit; text-align: left; cursor: pointer;
   background: var(--mia-line, rgba(255,255,255,.05)); transition: border-color .18s ease, background .18s ease; }
 .mia-doc-card:hover { border-color: var(--mia-accent, #7cc6c3); background: rgba(124,198,195,.07); }
 .mia-doc-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }

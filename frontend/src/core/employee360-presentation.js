@@ -23,8 +23,17 @@ function urlLabelE360(url) {
   return 'Ver'
 }
 
+// /api/... exige Authorization: Bearer, que un <a href> normal no puede mandar (401 real en
+// preprod 2026-10-26 al abrir el CV de un candidato: "Necesitas iniciar sesion"). Boton con
+// data-download-url en vez de href -- lo recoge el mismo listener de clic ya cableado para
+// informes y adjuntos (ver worlds/3d/main.js). Una URL externa genuina (http/https fuera de
+// /api/) no necesita auth y sigue como enlace normal.
 function renderApiLink(url) {
-  return `<a class="mia-doc-link" href="${esc(url)}" target="_blank" rel="noopener">${esc(urlLabelE360(url))}</a>`
+  const label = esc(urlLabelE360(url))
+  if (/^\/api\//.test(String(url ?? '').trim())) {
+    return `<button type="button" class="mia-doc-link" data-download-url="${esc(url)}" data-download-name="${label}">${label}</button>`
+  }
+  return `<a class="mia-doc-link" href="${esc(url)}" target="_blank" rel="noopener">${label}</a>`
 }
 
 function esc(value) {

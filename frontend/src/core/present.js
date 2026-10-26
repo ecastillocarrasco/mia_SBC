@@ -35,24 +35,38 @@ function safeDocumentUrl(value) {
   } catch { return ""; }
 }
 
+// /api/... exige Authorization: Bearer, que un <a href> normal no puede mandar (401 real en
+// preprod 2026-10-26 al abrir el CV de un candidato) -- mismo patron de boton+data-download-url
+// ya cableado para informes, con el listener de clic de cada mundo (ver 3d/main.js).
+function isApiPath(url) {
+  return typeof url === "string" && url.startsWith("/api/");
+}
+
 function renderLink(url, label) {
   url = safeDocumentUrl(url);
   if (!url) return "—";
+  if (isApiPath(url)) {
+    return `<button type="button" class="mia-doc-link" data-download-url="${escapeHtml(url)}" data-download-name="${escapeHtml(label)}">${escapeHtml(label)}</button>`;
+  }
   return `<a class="mia-doc-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
 }
 
 // ── Document card ─────────────────────────────────────────────────────────────
 
 function renderDocumentCard(doc) {
-  if (!safeDocumentUrl(doc?.url)) return "";
+  const url = safeDocumentUrl(doc?.url);
+  if (!url) return "";
   const meta = [doc.subtitle, doc.date].filter(Boolean).map(escapeHtml).join(" · ");
-  return `<a class="mia-doc-card" href="${escapeHtml(safeDocumentUrl(doc.url))}" target="_blank" rel="noopener">
-    <span class="mia-doc-body">
-      <b>${escapeHtml(doc.title || urlLabel(doc.url))}</b>
+  const title = escapeHtml(doc.title || urlLabel(doc.url));
+  const body = `<span class="mia-doc-body">
+      <b>${title}</b>
       ${meta ? `<small>${meta}</small>` : ""}
     </span>
-    <span class="mia-doc-arrow">↗</span>
-  </a>`;
+    <span class="mia-doc-arrow">↗</span>`;
+  if (isApiPath(url)) {
+    return `<button type="button" class="mia-doc-card" data-download-url="${escapeHtml(url)}" data-download-name="${title}">${body}</button>`;
+  }
+  return `<a class="mia-doc-card" href="${escapeHtml(url)}" target="_blank" rel="noopener">${body}</a>`;
 }
 
 function renderDocumentList(docs) {

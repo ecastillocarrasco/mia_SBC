@@ -309,9 +309,30 @@ function renderReportJob(job, question, currentView) {
   if (download) {
     const link = document.createElement('a');
     link.className = 'hg-report-download';
-    link.href = download;
-    link.download = '';
+    link.href = '#';
     link.textContent = '↓ Descargar informe generado';
+    // /api/reports/... exige Authorization: Bearer, que un <a href> normal no puede mandar
+    // (401 real en preprod 2026-10-26, mismo bug ya corregido en 2D/3D para CVs y adjuntos).
+    link.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const original = link.textContent;
+      link.textContent = 'Descargando…';
+      try {
+        const token = await getAccessToken();
+        const res = await fetch(download, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const tmp = document.createElement('a');
+        tmp.href = blobUrl; tmp.download = ''; tmp.rel = 'noopener noreferrer';
+        document.body.appendChild(tmp); tmp.click(); document.body.removeChild(tmp);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+        link.textContent = original;
+      } catch (error) {
+        console.warn('[mIA Holograma] No se pudo descargar el informe:', error);
+        link.textContent = 'Error al descargar';
+      }
+    });
     root.appendChild(link);
   } else if (job.status === 'failed') {
     const error = document.createElement('p');
