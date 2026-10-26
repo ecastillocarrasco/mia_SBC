@@ -265,8 +265,17 @@ def ficha_candidato(deps: Deps) -> Tool:
 
 
 def person_identity(c: Candidate) -> str:
-    """Una fila de CurriculosVitae es una candidatura; la persona se identifica por email o, si no, por nombre."""
-    return (c.email or "").lower() or c.name_key
+    """Una fila de CurriculosVitae es una candidatura; varias candidaturas de la misma persona
+    (CV reenviado, aplicación repetida...) se deduplican por la señal más fiable disponible:
+    email -> teléfono (solo dígitos, para que "610 97 6969" y "610976969" cuenten como el mismo)
+    -> nombre normalizado, como último recurso. Confirmado con el usuario 2026-10-26: duplicados
+    reales vistos en producción con el mismo teléfono en formatos distintos, sin email."""
+    if c.email:
+        return c.email.strip().lower()
+    phone_digits = re.sub(r"\D", "", c.phone or "")
+    if phone_digits:
+        return f"tel:{phone_digits}"
+    return c.name_key
 
 
 def _terms(values: list[str] | None) -> list[str]:

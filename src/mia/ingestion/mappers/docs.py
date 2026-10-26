@@ -83,7 +83,11 @@ def candidate_extra(item: dict[str, Any]) -> dict[str, str]:
 
 
 def candidate(item: dict[str, Any], ctx: MapContext) -> list[Row]:
-    name = " ".join(filter(None, [text(item.get("FirstName")), text(item.get("Title"))])) or f"Candidatura {item['ID']}"
+    # "Title" (mostrado como "Apellidos" en la vista de SharePoint) ya trae el nombre completo de
+    # la persona, no solo el apellido -- confirmado por el usuario 2026-10-26 tras ver nombres
+    # duplicados en producción ("Paloma Paloma Sierra Cuña"): antes se unía con "FirstName"
+    # ("Nombre"), que repite el nombre de pila ya incluido en "Title". Se usa solo "Title".
+    name = text(item.get("Title")) or text(item.get("FirstName")) or f"Candidatura {item['ID']}"
     department = text(item.get("DepartamentoCV"))
     return [
         {

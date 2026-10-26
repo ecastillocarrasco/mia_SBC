@@ -577,6 +577,34 @@ async def test_candidate_with_several_applications_is_not_ambiguous(env: Any) ->
     assert result.summary["candidato_id"] == 7002 and result.summary["otras_candidaturas_de_la_misma_persona"] == 1
 
 
+async def test_candidate_with_same_phone_in_different_formats_is_not_duplicated(env: Any) -> None:
+    """Fallo real: misma persona, dos candidaturas con el mismo teléfono pero formateado distinto
+    y sin email -- antes se deduplicaba por nombre, ahora el teléfono (solo dígitos) tiene prioridad."""
+    registry, db, _ = env
+    async with db.session() as s:
+        s.add_all(
+            [
+                Candidate(
+                    sp_id=7101,
+                    name="Pedro Santiago",
+                    name_key="pedro santiago",
+                    phone="610 97 69 69",
+                    applied_on=date(2026, 2, 1),
+                ),
+                Candidate(
+                    sp_id=7102,
+                    name="Pedro Santiago",
+                    name_key="pedro santiago",
+                    phone="610976969",
+                    applied_on=date(2026, 8, 10),
+                ),
+            ]
+        )
+    result = await call(registry, "ficha_candidato", nombre="Pedro Santiago")
+    assert result.status.value == "ok"
+    assert result.summary["candidato_id"] == 7102 and result.summary["otras_candidaturas_de_la_misma_persona"] == 1
+
+
 async def test_requirements_with_exclusion(env: Any) -> None:
     """«Cocina pero sin inglés»: fuera quien lo tiene en metadatos o en el CV, contando aparte el caso del CV."""
     registry, db, _ = env

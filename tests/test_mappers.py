@@ -165,3 +165,19 @@ def test_candidate_keeps_every_custom_column_as_metadata() -> None:
         CTX,
     )[0]
     assert row["extra"] == {"Puesto solicitado": "Sushiman", "Carnet": "Sí", "Especialidades": "Sushi, Ramen"}
+
+
+def test_candidate_name_uses_only_title_when_it_already_has_the_full_name() -> None:
+    """"Title" (Apellidos en la UI de SharePoint) puede traer ya nombre+apellidos; no se concatena
+    con FirstName para evitar nombres duplicados ("Paloma Paloma Sierra Cuña")."""
+    from mia.ingestion.mappers.docs import candidate  # noqa: PLC0415
+
+    row = candidate({"ID": 11, "FirstName": "Paloma", "Title": "Paloma Sierra Cuña"}, CTX)[0]
+    assert row["name"] == "Paloma Sierra Cuña"
+
+
+def test_candidate_name_falls_back_to_first_name_when_title_is_empty() -> None:
+    from mia.ingestion.mappers.docs import candidate  # noqa: PLC0415
+
+    row = candidate({"ID": 12, "FirstName": "Kenji", "Title": ""}, CTX)[0]
+    assert row["name"] == "Kenji"
