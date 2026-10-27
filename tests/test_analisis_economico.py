@@ -100,9 +100,7 @@ async def registry(tmp_path: Path) -> AsyncIterator[ToolRegistry]:
 
 async def call(registry: ToolRegistry, user: UserContext = ADMIN, **args: Any) -> Any:
     ctx = ToolContext(user=user, request_id=None, now=NOW, session_state={})
-    return (
-        await registry.execute(ToolCall("c", "analisis_economico_nominas", json.dumps(args)), ctx)
-    ).result
+    return (await registry.execute(ToolCall("c", "analisis_economico_nominas", json.dumps(args)), ctx)).result
 
 
 async def test_resolves_natural_language_quarter(registry: ToolRegistry) -> None:
@@ -280,7 +278,11 @@ async def q3_registry(tmp_path: Path) -> AsyncIterator[ToolRegistry]:
         emp_id = 1000
         for dept_name, dept_data in Q3_DEPARTMENTS.items():
             person_keys = sorted(dept_data[Q3_MESES[0]])
-            position = "Cocinero" if dept_name == "Cocina" else ("Recepcionista" if dept_name == "Recepción" else "Jefe de sala")
+            position = (
+                "Cocinero"
+                if dept_name == "Cocina"
+                else ("Recepcionista" if dept_name == "Recepción" else "Jefe de sala")
+            )
             for pk in person_keys:
                 emp_id += 1
                 s.add(_emp(emp_id, f"Empleado {pk}", dept_name, position=position, person_key=pk))
@@ -316,9 +318,7 @@ async def q3_registry(tmp_path: Path) -> AsyncIterator[ToolRegistry]:
 async def _q3_call(registry: ToolRegistry, periodo: str) -> Any:
     ctx = ToolContext(user=ADMIN, request_id=None, now=Q3_NOW, session_state={})
     return (
-        await registry.execute(
-            ToolCall("c", "analisis_economico_nominas", json.dumps({"periodo": periodo})), ctx
-        )
+        await registry.execute(ToolCall("c", "analisis_economico_nominas", json.dumps({"periodo": periodo})), ctx)
     ).result
 
 
@@ -331,7 +331,9 @@ async def test_q3_all_natural_phrasings_produce_the_identical_quarter(q3_registr
     total — ninguna debe «colapsar» a julio solo."""
     result = await _q3_call(q3_registry, periodo)
     assert result.status is ToolStatus.OK, f"{periodo!r} -> {result.summary}"
-    assert result.summary["meses_analizados"] == Q3_MESES, f"{periodo!r} perdió meses: {result.summary['meses_analizados']}"
+    assert result.summary["meses_analizados"] == Q3_MESES, (
+        f"{periodo!r} perdió meses: {result.summary['meses_analizados']}"
+    )
     assert result.summary["total_periodo"] == Q3_VISIBLE_TOTAL
 
 
@@ -379,6 +381,69 @@ async def test_q3_covers_all_departments_not_just_one(q3_registry: ToolRegistry)
     result = await _q3_call(q3_registry, "julio a septiembre de 2026")
     assert set(result.summary["por_departamento"]) == {"Cocina", "Recepción", "Sala"}
     assert result.summary["personas_del_grupo"] == 4 + 4 + 2
+
+
+async def test_q3_departamentos_compares_only_the_named_group_with_correct_totals(q3_registry: ToolRegistry) -> None:
+    """Fallo real en preprod 2026-10-27: "comparativo de Cocina y Restaurante" exportaba solo el
+    último departamento consultado, sin total combinado ni peso % real -- porque cada departamento
+    se pedía con una llamada aparte a "departamento" (uno solo). "departamentos" (plural) calcula
+    todo en una sola llamada: total del GRUPO comparado, peso de cada uno dentro del grupo, y su
+    peso respecto al total de toda la empresa."""
+    ctx = ToolContext(user=ADMIN, request_id=None, now=Q3_NOW, session_state={})
+    result = (
+        await q3_registry.execute(
+            ToolCall(
+                "c",
+                "analisis_economico_nominas",
+                json.dumps({"periodo": "julio a septiembre de 2026", "departamentos": ["Cocina", "Recepción"]}),
+            ),
+            ctx,
+        )
+    ).result
+    assert result.status is ToolStatus.OK
+    summary = result.summary
+    # Cocina y Recepción son, en este escenario, TODOS los departamentos visibles (Sala sigue oculta
+    # por NOM-005) -- el total del grupo coincide con el de toda la empresa, pero ambos campos deben
+    # existir y ser coherentes entre sí.
+    assert set(summary["por_departamento"]) == {"Cocina", "Recepción"}  # nunca "Sala"
+    assert summary["total_periodo"] == Q3_VISIBLE_TOTAL  # 120 000: Cocina + Recepción, el GRUPO
+    assert summary["gasto_total_empresa"] == Q3_VISIBLE_TOTAL
+    cocina = summary["por_departamento"]["Cocina"]
+    assert cocina["total"] == 60000.0
+    assert cocina["peso_pct"] == 50.0  # 60 000 / 120 000 (grupo), no 100% como antes del arreglo
+    assert cocina["peso_pct_empresa"] == 50.0
+
+    presentation = result.presentation
+    assert presentation["columns"][-2:] == ["Peso %", "Peso % empresa"]
+    dept_rows = {row[0]: row for row in presentation["rows"] if row[0] not in {"TOTAL", "TOTAL (grupo)"}}
+    assert set(dept_rows) == {"Cocina", "Recepción"}
+    total_row = next(row for row in presentation["rows"] if str(row[0]).startswith("TOTAL"))
+    assert total_row[-3] == "120.000,00 €"  # columna "Total" de la fila TOTAL (grupo)
+
+
+async def test_q3_departamentos_rejects_a_single_name_and_mixing_with_departamento(q3_registry: ToolRegistry) -> None:
+    ctx = ToolContext(user=ADMIN, request_id=None, now=Q3_NOW, session_state={})
+    only_one = (
+        await q3_registry.execute(
+            ToolCall(
+                "c", "analisis_economico_nominas", json.dumps({"periodo": "T3 2026", "departamentos": ["Cocina"]})
+            ),
+            ctx,
+        )
+    ).result
+    assert only_one.status is ToolStatus.INVALID_ARGUMENTS
+
+    both = (
+        await q3_registry.execute(
+            ToolCall(
+                "c",
+                "analisis_economico_nominas",
+                json.dumps({"periodo": "T3 2026", "departamento": "Cocina", "departamentos": ["Cocina", "Recepción"]}),
+            ),
+            ctx,
+        )
+    ).result
+    assert both.status is ToolStatus.INVALID_ARGUMENTS
 
 
 async def test_q3_charts_reflect_all_three_months_and_departments(q3_registry: ToolRegistry) -> None:
@@ -475,13 +540,15 @@ async def _run_scale_scenario(
                 for mes in meses:
                     sp_id += 1
                     year, month = (int(x) for x in mes.split("-"))
-                    s.add(
-                        Payslip(sp_id=sp_id, person_key=pk, year=year, month=month, period=mes, special=False)
-                    )
+                    s.add(Payslip(sp_id=sp_id, person_key=pk, year=year, month=month, period=mes, special=False))
 
     registry = build_registry(db, sharepoint=object())
     ctx = ToolContext(user=ADMIN, request_id=None, now=SCALE_NOW, session_state={})
-    periodo = "enero 2026" if n_months == 1 else f"enero-{'marzo' if n_months == 3 else 'junio' if n_months == 6 else 'diciembre'} 2026"
+    periodo = (
+        "enero 2026"
+        if n_months == 1
+        else f"enero-{'marzo' if n_months == 3 else 'junio' if n_months == 6 else 'diciembre'} 2026"
+    )
     execution = await registry.execute(
         ToolCall("c", "analisis_economico_nominas", json.dumps({"periodo": periodo})), ctx
     )
@@ -529,9 +596,7 @@ async def test_scales_to_500_employees_twelve_months_without_artificial_rejectio
     assert result.status is not ToolStatus.INVALID_ARGUMENTS
 
 
-async def test_rectificative_payslips_are_not_double_counted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_rectificative_payslips_are_not_double_counted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Nóminas adicionales/rectificativas: si una persona tiene DOS filas de Payslip para el mismo mes
     (p. ej. una ordinaria y una rectificativa posterior), el agregador debe contar una sola vez, no sumar
     ambas (ya lo hacía `slip_index`, que se queda con la primera; esto lo deja probado explícitamente)."""

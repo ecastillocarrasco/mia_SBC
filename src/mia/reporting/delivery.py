@@ -3,6 +3,7 @@
 No crea otro motor: solo comprueba que el motor de informes existente
 produzca TODOS los formatos pedidos antes de anunciar una descarga.
 """
+
 from __future__ import annotations
 
 import re
@@ -81,8 +82,10 @@ def download_formats(executions: list[Any]) -> dict[str, dict[str, Any]]:
                     and item.get("format") in _FORMAT_ORDER
                 ):
                     results[item["format"]] = {
-                        "type": "download", "format": item["format"],
-                        "url": item["url"], "file_name": item.get("file_name"),
+                        "type": "download",
+                        "format": item["format"],
+                        "url": item["url"],
+                        "file_name": item.get("file_name"),
                         "title": presentation.get("title"),
                     }
     return results
@@ -108,9 +111,13 @@ def merge_report_sources(executions: list[Any], *, title: str) -> dict[str, Any]
     No mezcla distintos análisis: cada tabla conserva título, columnas y filas.
     Si es una única presentación, la devuelve tal cual.
     """
-    sources = [e for e in executions if str(e.result.status.value) == "ok"
-               and isinstance(e.result.presentation, dict)
-               and e.result.presentation.get("type") in {"table", "dashboard"}]
+    sources = [
+        e
+        for e in executions
+        if str(e.result.status.value) == "ok"
+        and isinstance(e.result.presentation, dict)
+        and e.result.presentation.get("type") in {"table", "dashboard"}
+    ]
     if len(sources) == 1:
         result = dict(sources[0].result.presentation)
         if notes := _quality_notes(sources):
@@ -140,8 +147,7 @@ def merge_report_sources(executions: list[Any], *, title: str) -> dict[str, Any]
                     return None  # Inconsistencia entre consultas; no exportar números ambiguos.
                 dedup[key] = list(row)
         ordered = [dedup[key] for key in sorted(dedup)]
-        result = {"type": "table", "title": title[:160],
-                  "columns": columns, "rows": ordered}
+        result = {"type": "table", "title": title[:160], "columns": columns, "rows": ordered}
         if notes := _quality_notes(sources):
             result["__summary__"] = notes
         return result
@@ -169,19 +175,20 @@ def merge_report_sources(executions: list[Any], *, title: str) -> dict[str, Any]
                 dedup_by_dept[dept_value] = list(row)
         if len(dedup_by_dept) > 1:
             ordered = [dedup_by_dept[key] for key in sorted(dedup_by_dept)]
-            result = {"type": "table", "title": title[:160],
-                      "columns": columns, "rows": ordered}
+            result = {"type": "table", "title": title[:160], "columns": columns, "rows": ordered}
             if notes := _quality_notes(sources):
                 result["__summary__"] = notes
             return result
     tables = []
     for execution in sources:
         p = execution.result.presentation
-        tables.append({
-            "title": p.get("title") or "Resultados",
-            "columns": p.get("columns", []),
-            "rows": p.get("rows", []),
-        })
+        tables.append(
+            {
+                "title": p.get("title") or "Resultados",
+                "columns": p.get("columns", []),
+                "rows": p.get("rows", []),
+            }
+        )
     # Sin departamento en las filas, los títulos deben diferenciar la
     # procedencia. Ocho tablas indistinguibles NO son un desglose válido.
     if len({t["title"] for t in tables}) != len(tables):

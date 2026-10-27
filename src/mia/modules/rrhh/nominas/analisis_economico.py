@@ -120,6 +120,18 @@ class AnalisisEconomicoParams(ActivosParams):
         default=None,
         description="Filtrar a un solo departamento (vacío = todos).",
     )
+    departamentos: list[str] | None = Field(
+        default=None,
+        description=(
+            "Comparar DOS O MÁS departamentos concretos nombrados a la vez "
+            "(p. ej. ['Cocina', 'Restaurante']) en UNA sola llamada: calcula un total real del GRUPO "
+            "comparado (suma de esos departamentos), el peso de cada uno dentro de ese grupo, y "
+            "además su peso respecto al total de TODA la empresa. Usa esto, no 'departamento' "
+            "(que filtra a uno solo), en cuanto se nombren 2+ departamentos a comparar entre sí — "
+            "nunca llames dos veces a esta herramienta con 'departamento' distinto para una "
+            "comparativa: el total y los porcentajes combinados solo salen bien en una sola llamada."
+        ),
+    )
     concepto: Literal["liquido", "devengado", "coste_empresa"] = Field(
         default="liquido",
         description=(
@@ -168,7 +180,12 @@ def _group_stats(values: list[float], people_count: int, hidden: bool, min_group
             "importes": f"ocultos: grupo por debajo del mínimo de {min_group} personas (protección de datos)",
         }
     if observations == 0:
-        return {"personas_con_nomina": 0, "observaciones_nomina": 0, "personas_del_grupo": people_count, "importes": "sin datos"}
+        return {
+            "personas_con_nomina": 0,
+            "observaciones_nomina": 0,
+            "personas_del_grupo": people_count,
+            "importes": "sin datos",
+        }
     return {
         "personas_con_nomina": people_count,
         "observaciones_nomina": observations,
@@ -191,18 +208,27 @@ def _department_summary(
     people_count: int,
     hidden: bool,
     min_grp: int,
+    total_empresa: float | None = None,
 ) -> dict[str, Any]:
     """Resumen de un departamento para el LLM; igual que la tabla, los grupos pequeños no exponen totales
-    (con solo 1-2 personas el total y el desglose mensual permiten deducir el sueldo de cada una)."""
+    (con solo 1-2 personas el total y el desglose mensual permiten deducir el sueldo de cada una).
+
+    ``total_visible`` es el total respecto al que se calcula "peso_pct": el del GRUPO comparado
+    cuando se piden varios departamentos (idéntico al de toda la empresa si no se filtró nada).
+    ``total_empresa``, cuando se da, añade "peso_pct_empresa" -- el peso respecto a TODA la
+    empresa, aparte del peso dentro del grupo comparado."""
     stats = _group_stats(all_vals, people_count, hidden, min_grp)
     if hidden:
         return stats
-    return {
+    result = {
         "total": round(dept_total, 2),
         "peso_pct": _pct(dept_total, total_visible),
         "por_mes": {m: round(sum(dept_month_values.get((dk, m), [])), 2) or None for m in meses},
         **stats,
     }
+    if total_empresa is not None:
+        result["peso_pct_empresa"] = _pct(dept_total, total_empresa)
+    return result
 
 
 def analisis_economico_nominas(deps: Deps) -> Tool:
@@ -212,13 +238,30 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
         if problem := content_unavailable(deps):
             return problem
 
+        if p.departamento and p.departamentos:
+            return ToolResult(
+                ToolStatus.INVALID_ARGUMENTS,
+                {
+                    "mensaje": "Usa 'departamento' para uno solo o 'departamentos' para comparar varios, no ambos a la vez."
+                },
+            )
+        if p.departamentos is not None and len(p.departamentos) < 2:
+            return ToolResult(
+                ToolStatus.INVALID_ARGUMENTS,
+                {
+                    "mensaje": "Da al menos dos departamentos distintos en 'departamentos' para comparar; para uno solo usa 'departamento'."
+                },
+            )
+
         # 1. Resolver periodo natural → lista de meses AAAA-MM
         today = ctx.now.date() if ctx.now else date.today()
         resolved: ResolvedPeriod | None = period_engine.resolve(p.periodo, today=today)
         if resolved is None:
             return ToolResult(
                 ToolStatus.INVALID_ARGUMENTS,
-                {"mensaje": f"No he podido interpretar el periodo «{p.periodo}». Usa expresiones como 'T3 2026', 'último trimestre', 'julio 2026', '2026'…"},
+                {
+                    "mensaje": f"No he podido interpretar el periodo «{p.periodo}». Usa expresiones como 'T3 2026', 'último trimestre', 'julio 2026', '2026'…"
+                },
             )
         meses = _month_iter(resolved)
         if not meses:
@@ -226,7 +269,9 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
         if len(meses) > 24:
             return ToolResult(
                 ToolStatus.INVALID_ARGUMENTS,
-                {"mensaje": f"El periodo abarca {len(meses)} meses. Acota a máximo 24 meses para un análisis detallado."},
+                {
+                    "mensaje": f"El periodo abarca {len(meses)} meses. Acota a máximo 24 meses para un análisis detallado."
+                },
             )
 
         concepto_key = _CONCEPTO_KEY[p.concepto]
@@ -244,6 +289,18 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
                     return department_problem(dept, p.departamento)
                 if dept.key:
                     stmt = stmt.where(Employee.department_key == dept.key)
+            # "departamentos" (plural) NO filtra la consulta -- se necesita el total de TODA la
+            # empresa (igual que cuando no se filtra nada) para calcular el peso de cada uno
+            # respecto al resto; qué filas se MUESTRAN se decide más abajo, una vez agregado.
+            requested_keys: set[str] | None = None
+            if p.departamentos:
+                requested_keys = set()
+                for name in p.departamentos:
+                    dept = await resolve_department(db, name)
+                    if dept.status is not ToolStatus.OK:
+                        return department_problem(dept, name)
+                    if dept.key:
+                        requested_keys.add(dept.key)
             stmt = stmt.order_by(Employee.sp_id)
             people: list[Employee] = list((await db.scalars(stmt)).all())
 
@@ -360,6 +417,25 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
         meses_sin_datos = [m for m in meses if month_totals.get(m, 0) == 0]
         total_visible = round(sum(month_totals.values()), 2)
 
+        # Comparativa de varios departamentos nombrados ("departamentos"): qué filas se MUESTRAN
+        # (display_keys) frente al resto de la empresa, que sigue agregado arriba para poder
+        # calcular el peso de cada departamento respecto al total general, no solo entre sí.
+        display_keys = (
+            [dk for dk in dept_keys_sorted if dk in requested_keys] if requested_keys is not None else dept_keys_sorted
+        )
+        departamentos_sin_datos = (
+            sorted(dept_display.get(dk, dk) for dk in requested_keys - set(dept_keys_sorted))
+            if requested_keys is not None
+            else []
+        )
+        group_month_totals: dict[str, float] = {mes: 0.0 for mes in meses}
+        for dk in display_keys:
+            if dk in hidden_keys:
+                continue
+            for mes in meses:
+                group_month_totals[mes] += sum(dept_month_values.get((dk, mes), []))
+        group_total = round(sum(group_month_totals.values()), 2) if requested_keys is not None else total_visible
+
         # Metadatos de integridad temporal para el diagnóstico automático (sin importes ni datos personales):
         # permite que el analizador compare el periodo pedido por el usuario con el realmente ejecutado y
         # marque TEMPORAL_SCOPE_MISMATCH si, p. ej., se pidió un trimestre y solo se resolvió un mes.
@@ -378,17 +454,27 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
             )
 
         # Columnas de la tabla: Dept | mes1 | mes2 | ... | Total | Peso%
+        # Comparando varios departamentos nombrados, "Peso %" pasa a ser DENTRO del grupo
+        # comparado (suma de esos departamentos = 100%, el "sobre sí mismo" que tiene sentido en
+        # una comparativa) y se añade "Peso % empresa" aparte, respecto al total de TODA la
+        # empresa (incidencia real en preprod 2026-10-27: antes, cada departamento se consultaba
+        # por separado y "Peso %" salía siempre "100%" -- el total de una consulta de un solo
+        # departamento consigo mismo).
         mes_labels = [_mes_label(m) for m in meses]
         table_cols = ["Departamento"] + mes_labels + ["Total", "Peso %"]
+        if requested_keys is not None:
+            table_cols = table_cols + ["Peso % empresa"]
         table_rows: list[list[Any]] = []
 
-        for dk in dept_keys_sorted:
+        for dk in display_keys:
             display = dept_display.get(dk, dk)
             total_dk = dept_totals.get(dk, 0.0)
 
             if dk in hidden_keys:
                 row_vals = ["—" for _ in meses]
                 row = [display] + row_vals + ["—", "—"]
+                if requested_keys is not None:
+                    row.append("—")
             else:
                 row_vals = []
                 for mes in meses:
@@ -397,121 +483,169 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
                         row_vals.append("—")
                     else:
                         row_vals.append(_fmt(round(sum(m_vals), 2)))
-                peso = _pct(total_dk, total_visible)
+                peso = _pct(total_dk, group_total)
                 row = [display] + row_vals + [_fmt(total_dk), f"{peso:.1f}%" if peso else "—"]
+                if requested_keys is not None:
+                    peso_empresa = _pct(total_dk, total_visible)
+                    row.append(f"{peso_empresa:.1f}%" if peso_empresa else "—")
             table_rows.append(row)
 
-        # Fila TOTAL (solo departamentos visibles — ver nota de NOM-005 más arriba)
-        total_row: list[Any] = ["TOTAL (autorizado)" if hidden_keys else "TOTAL"]
+        # Fila TOTAL: de solo los departamentos comparados si se pidieron varios (coherente con
+        # que las filas de arriba sumen a esta), o de toda la empresa si no se filtró nada.
+        any_hidden_in_group = any(dk in hidden_keys for dk in display_keys)
+        total_label = "TOTAL (grupo)" if requested_keys is not None else "TOTAL"
+        if any_hidden_in_group:
+            total_label += " (autorizado)"
+        total_row: list[Any] = [total_label]
+        totals_by_month = group_month_totals if requested_keys is not None else month_totals
         for mes in meses:
-            mt = month_totals.get(mes)
+            mt = totals_by_month.get(mes)
             total_row.append(_fmt(round(mt, 2)) if mt else "—")
-        total_row += [_fmt(total_visible), "100%"]
+        total_row += [_fmt(group_total), "100%"]
+        if requested_keys is not None:
+            peso_grupo_empresa = _pct(group_total, total_visible)
+            total_row.append(f"{peso_grupo_empresa:.1f}%" if peso_grupo_empresa else "—")
         table_rows.append(total_row)
 
         # 6. Tabla estadísticas salariales por departamento
-        stats_cols = ["Departamento", "Personas distintas", "Media por nómina", "Mediana por nómina", "Mínimo", "Máximo"]
+        stats_cols = [
+            "Departamento",
+            "Personas distintas",
+            "Media por nómina",
+            "Mediana por nómina",
+            "Mínimo",
+            "Máximo",
+        ]
         stats_rows: list[list[Any]] = []
-        for dk in dept_keys_sorted:
+        for dk in display_keys:
             display = dept_display.get(dk, dk)
             all_vals = dept_all_values.get(dk, [])
             grp = _group_stats(all_vals, len(dept_distinct_people.get(dk, ())), dk in hidden_keys, min_grp)
             if "total" in grp:
-                stats_rows.append([
-                    display,
-                    grp["personas_con_nomina"],
-                    _fmt(grp.get("media")),
-                    _fmt(grp.get("mediana")),
-                    _fmt(grp.get("minimo")),
-                    _fmt(grp.get("maximo")),
-                ])
+                stats_rows.append(
+                    [
+                        display,
+                        grp["personas_con_nomina"],
+                        _fmt(grp.get("media")),
+                        _fmt(grp.get("mediana")),
+                        _fmt(grp.get("minimo")),
+                        _fmt(grp.get("maximo")),
+                    ]
+                )
             else:
                 stats_rows.append([display, grp.get("personas_del_grupo", 0), grp.get("importes", "—"), "—", "—", "—"])
 
         # 7. Insights automáticos
         # 7a. Distribución por departamento
-        dist_groups = {
-            dept_display.get(dk, dk): dept_totals[dk]
-            for dk in dept_keys_sorted
-            if dk not in hidden_keys
-        }
-        dist_insights = _insight_engine.from_distribution(
-            dist_groups,
-            label="departamento",
-            metric="gasto salarial trimestral",
-            unit="€",
-        ) if dist_groups else []
+        dist_groups = {dept_display.get(dk, dk): dept_totals[dk] for dk in display_keys if dk not in hidden_keys}
+        dist_insights = (
+            _insight_engine.from_distribution(
+                dist_groups,
+                label="departamento",
+                metric="gasto salarial trimestral",
+                unit="€",
+            )
+            if dist_groups
+            else []
+        )
 
-        # 7b. Evolución temporal (solo si hay ≥2 meses con datos)
-        ts_points = [
-            TimePoint(label=_mes_label(m), value=round(month_totals.get(m, 0.0), 2))
-            for m in meses
-        ]
-        ts_insights = _insight_engine.from_time_series(
-            ts_points,
-            label="gasto salarial",
-            unit="€",
-        ) if len(meses_con_datos) >= 2 else []
+        # 7b. Evolución temporal (solo si hay ≥2 meses con datos). "group_month_totals" es el total
+        # del GRUPO comparado cuando se piden varios departamentos (idéntico a "month_totals" si no
+        # se filtró nada -- mismos departamentos, mismo cálculo).
+        ts_points = [TimePoint(label=_mes_label(m), value=round(group_month_totals.get(m, 0.0), 2)) for m in meses]
+        ts_insights = (
+            _insight_engine.from_time_series(
+                ts_points,
+                label="gasto salarial",
+                unit="€",
+            )
+            if len(meses_con_datos) >= 2
+            else []
+        )
 
         all_insights = _insight_engine.top_insights(dist_insights + ts_insights, n=6)
 
         # 8. Datos de gráficos para el frontend
         # 8a. Donut: distribución del gasto por departamento
-        depts_with_data = [dk for dk in dept_keys_sorted if dk not in hidden_keys]
-        donut_chart = {
-            "type": "donut",
-            "title": f"Distribución del gasto · {resolved.label}",
-            "labels": [dept_display.get(dk, dk) for dk in depts_with_data],
-            "series": [{"name": concepto_label, "values": [dept_totals[dk] for dk in depts_with_data]}],
-        } if depts_with_data else None
+        depts_with_data = [dk for dk in display_keys if dk not in hidden_keys]
+        donut_chart = (
+            {
+                "type": "donut",
+                "title": f"Distribución del gasto · {resolved.label}",
+                "labels": [dept_display.get(dk, dk) for dk in depts_with_data],
+                "series": [{"name": concepto_label, "values": [dept_totals[dk] for dk in depts_with_data]}],
+            }
+            if depts_with_data
+            else None
+        )
 
         # 8b. Barras horizontales: ranking por coste total
-        bar_chart = {
-            "type": "bar",
-            "title": f"Ranking de gasto salarial · {resolved.label}",
-            "labels": [dept_display.get(dk, dk) for dk in depts_with_data],
-            "series": [{"name": concepto_label, "values": [dept_totals[dk] for dk in depts_with_data]}],
-        } if depts_with_data else None
+        bar_chart = (
+            {
+                "type": "bar",
+                "title": f"Ranking de gasto salarial · {resolved.label}",
+                "labels": [dept_display.get(dk, dk) for dk in depts_with_data],
+                "series": [{"name": concepto_label, "values": [dept_totals[dk] for dk in depts_with_data]}],
+            }
+            if depts_with_data
+            else None
+        )
 
-        # 8c. Línea: evolución mensual del gasto total
-        line_chart = {
-            "type": "line",
-            "title": "Evolución mensual del gasto salarial",
-            "labels": [_mes_label(m) for m in meses],
-            "series": [{"name": concepto_label, "values": [round(month_totals.get(m, 0.0), 2) for m in meses]}],
-        } if len(meses) >= 2 else None
+        # 8c. Línea: evolución mensual del gasto total (del grupo comparado)
+        line_chart = (
+            {
+                "type": "line",
+                "title": "Evolución mensual del gasto salarial",
+                "labels": [_mes_label(m) for m in meses],
+                "series": [
+                    {"name": concepto_label, "values": [round(group_month_totals.get(m, 0.0), 2) for m in meses]}
+                ],
+            }
+            if len(meses) >= 2
+            else None
+        )
 
         charts = [c for c in [donut_chart, bar_chart, line_chart] if c is not None]
 
-        # 9. Variaciones mes a mes
+        # 9. Variaciones mes a mes (del grupo comparado)
         variaciones: list[dict[str, Any]] = []
         for i in range(1, len(meses)):
             prev, curr = meses[i - 1], meses[i]
-            t_prev = month_totals.get(prev, 0.0)
-            t_curr = month_totals.get(curr, 0.0)
+            t_prev = group_month_totals.get(prev, 0.0)
+            t_curr = group_month_totals.get(curr, 0.0)
             if t_prev > 0:
                 diff_pct = round((t_curr - t_prev) / t_prev * 100, 1)
-                variaciones.append({
-                    "de": _mes_label(prev),
-                    "a": _mes_label(curr),
-                    "variacion_eur": round(t_curr - t_prev, 2),
-                    "variacion_pct": diff_pct,
-                })
+                variaciones.append(
+                    {
+                        "de": _mes_label(prev),
+                        "a": _mes_label(curr),
+                        "variacion_eur": round(t_curr - t_prev, 2),
+                        "variacion_pct": diff_pct,
+                    }
+                )
 
         # 10. KPIs
+        total_kpi_label = "Gasto total del grupo comparado" if requested_keys is not None else "Gasto total del periodo"
+        if any_hidden_in_group:
+            total_kpi_label += " (grupos autorizados)"
         kpis: list[dict[str, Any]] = [
-            {
-                "label": "Gasto total del periodo (grupos autorizados)" if hidden_keys else "Gasto total del periodo",
-                "value": _fmt(total_visible),
-                "highlight": True,
-            },
+            {"label": total_kpi_label, "value": _fmt(group_total), "highlight": True},
         ]
+        if requested_keys is not None:
+            # El "respecto al resto" pedido explícitamente: el total del grupo comparado solo no
+            # dice nada sin el total de la empresa al lado para poner ese peso en contexto.
+            empresa_label = (
+                "Gasto total de la empresa (grupos autorizados)" if hidden_keys else "Gasto total de la empresa"
+            )
+            kpis.append({"label": empresa_label, "value": _fmt(total_visible)})
         for mes in meses_con_datos:
-            kpis.append({"label": _mes_label(mes), "value": _fmt(round(month_totals.get(mes, 0.0), 2))})
+            kpis.append({"label": _mes_label(mes), "value": _fmt(round(group_month_totals.get(mes, 0.0), 2))})
         if variaciones:
             last_var = variaciones[-1]
             sign = "+" if last_var["variacion_pct"] >= 0 else ""
-            kpis.append({"label": f"Var. {last_var['de']} → {last_var['a']}", "value": f"{sign}{last_var['variacion_pct']}%"})
+            kpis.append(
+                {"label": f"Var. {last_var['de']} → {last_var['a']}", "value": f"{sign}{last_var['variacion_pct']}%"}
+            )
         if depts_with_data:
             dk_top = depts_with_data[0]
             kpis.append({"label": "Mayor gasto", "value": dept_display.get(dk_top, dk_top)})
@@ -522,11 +656,12 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
             advertencias.append(volume_advertencia)
         if meses_sin_datos:
             advertencias.append(
-                f"Sin datos para: {', '.join(_mes_label(m) for m in meses_sin_datos)}. "
-                "El análisis es parcial."
+                f"Sin datos para: {', '.join(_mes_label(m) for m in meses_sin_datos)}. El análisis es parcial."
             )
         if len(meses_con_datos) < len(meses):
-            advertencias.append("El periodo está incompleto: no se muestran totales como si fuera un trimestre completo.")
+            advertencias.append(
+                "El periodo está incompleto: no se muestran totales como si fuera un trimestre completo."
+            )
         if hidden_keys:
             advertencias.append(
                 f"{len(hidden_keys)} departamento(s) no cumplen el mínimo de {min_grp} personas y no se "
@@ -541,6 +676,11 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
                 "PDF: no se cuentan como coste_empresa (nunca se sustituyen por el devengado, son magnitudes "
                 "distintas). El total de coste_empresa puede estar incompleto para esas nóminas."
             )
+        if departamentos_sin_datos:
+            advertencias.append(
+                f"Sin datos de nómina en este periodo para: {', '.join(departamentos_sin_datos)}. "
+                "No aparecen en la comparativa."
+            )
 
         # 12. Summary para el LLM
         summary: dict[str, Any] = {
@@ -550,15 +690,19 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
             "meses_sin_datos": meses_sin_datos if meses_sin_datos else None,
             "concepto_economico": concepto_label,
             "poblacion": population_label(p.incluir_inactivos),
-            "personas_del_grupo": len(people),
-            "total_periodo": total_visible,
-            "total_periodo_es_solo_grupos_autorizados": bool(hidden_keys),
-            "total_por_mes": {m: round(month_totals.get(m, 0.0), 2) for m in meses},
+            "personas_del_grupo": (
+                sum(1 for e in people if normalize_key(e.department or "Sin departamento") in display_keys)
+                if requested_keys is not None
+                else len(people)
+            ),
+            "total_periodo": group_total,
+            "total_periodo_es_solo_grupos_autorizados": bool(any_hidden_in_group),
+            "total_por_mes": {m: round(group_month_totals.get(m, 0.0), 2) for m in meses},
             "variaciones": variaciones if variaciones else None,
             "por_departamento": {
                 dept_display.get(dk, dk): _department_summary(
                     dept_totals.get(dk, 0.0),
-                    total_visible,
+                    group_total,
                     dept_month_values,
                     dk,
                     meses,
@@ -566,13 +710,17 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
                     len(dept_distinct_people.get(dk, ())),
                     dk in hidden_keys,
                     min_grp,
+                    total_empresa=total_visible if requested_keys is not None else None,
                 )
-                for dk in dept_keys_sorted
+                for dk in display_keys
             },
             "insights": all_insights,
             "advertencias": advertencias if advertencias else None,
             "regla": RULE,
         }
+        if requested_keys is not None:
+            summary["gasto_total_empresa"] = total_visible
+            summary["gasto_total_empresa_es_solo_grupos_autorizados"] = bool(hidden_keys)
 
         # 13. Construir las presentaciones
         status = ToolStatus.OK if meses_con_datos else ToolStatus.NOT_FOUND
@@ -604,6 +752,9 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
             "Usa 'coste_empresa' cuando el usuario pregunte por 'gasto en nóminas' o 'coste salarial'. "
             "Para consultas de un solo mes, esta herramienta también funciona (p. ej. periodo='septiembre 2026'). "
             "Para comparativas entre periodos distintos, llámala dos veces con periodos diferentes. "
+            "Para comparar DOS O MÁS departamentos concretos nombrados (p. ej. 'cocina y restaurante'), usa el "
+            "parámetro 'departamentos' (lista) en UNA sola llamada, nunca 'departamento' repetido en varias "
+            "llamadas — solo así el total y los porcentajes combinados del grupo salen correctos. "
             "Esta es la herramienta correcta para cualquier 'comparativa de costes/nóminas por "
             "departamento': después de ejecutarla, usa 'generar_informe' para exportar el resultado a "
             "PDF/Excel/PowerPoint/HTML — nunca 'generar_informe_ejecutivo', que no calcula importes."

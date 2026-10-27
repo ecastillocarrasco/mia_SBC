@@ -46,6 +46,8 @@ from mia.conversation.tools import (
 )
 from mia.data import Database
 from mia.data.repositories import AuditRepository, ConversationRepository
+from mia.diagnostics import EventStage, EventStatus, begin_trace
+from mia.diagnostics import emit as diag_emit
 from mia.llm import (
     LLMCompleted,
     LLMError,
@@ -57,15 +59,17 @@ from mia.llm import (
     ToolCallRequested,
     WebSources,
 )
-from mia.diagnostics import EventStage, EventStatus, begin_trace, emit as diag_emit
 from mia.observability import current_request_id, get_logger
 from mia.presentation.intent import build_presentation_hint, classify_query
 from mia.privacy_gateway.context_manager import set_operation_context
-from mia.reporting.planner import planner
-from mia.reporting.delivery import download_formats, merge_report_sources, resolve_export_request
 from mia.reporting.comparisons import (
-    LAST_PAYROLL_COMPARISON, explicit_month_comparison, is_export_followup, remembered_comparison,
+    LAST_PAYROLL_COMPARISON,
+    explicit_month_comparison,
+    is_export_followup,
+    remembered_comparison,
 )
+from mia.reporting.delivery import download_formats, merge_report_sources, resolve_export_request
+from mia.reporting.planner import planner
 from mia.rules import rules_for_prompt
 
 log = get_logger(__name__)
@@ -73,6 +77,7 @@ log = get_logger(__name__)
 MAX_MESSAGE_CHARS = 4000
 NEUTRAL_SPEECH = "Te lo dejo en pantalla."
 MAX_WEB_SOURCES = 12
+
 
 @lru_cache(maxsize=1)
 def _module_keywords() -> dict[str, tuple[str, ...]]:
@@ -90,10 +95,10 @@ def _module_keywords() -> dict[str, tuple[str, ...]]:
     """
     from mia.modules.community.newsletter import KEYWORDS as newsletter
     from mia.modules.community.noticias import KEYWORDS as noticias
+    from mia.modules.correo import KEYWORDS as correo
     from mia.modules.finanzas import KEYWORDS as finanzas
     from mia.modules.it import KEYWORDS as it
     from mia.modules.rrhh.analitica import KEYWORDS as analitica
-    from mia.modules.correo import KEYWORDS as correo
     from mia.modules.rrhh.curriculums import KEYWORDS as curriculums
     from mia.modules.rrhh.documentos import KEYWORDS as documentos
     from mia.modules.rrhh.empleados import KEYWORDS as empleados
@@ -392,16 +397,22 @@ class ConversationEngine:
                         turn.state[LAST_PAYROLL_COMPARISON] = latest
                     break
 
-            diag_emit(EventStage.USER_CONTEXT, data={
-                "user_id": user.user_id,
-                "display_name": user.display_name,
-                "permissions": list(user.permissions),
-            })
-            diag_emit(EventStage.CONVERSATION_CONTEXT, data={
-                "session_id": turn.session_id,
-                "history_turns": len(history),
-                "session_state_keys": list(turn.state.keys()),
-            })
+            diag_emit(
+                EventStage.USER_CONTEXT,
+                data={
+                    "user_id": user.user_id,
+                    "display_name": user.display_name,
+                    "permissions": list(user.permissions),
+                },
+            )
+            diag_emit(
+                EventStage.CONVERSATION_CONTEXT,
+                data={
+                    "session_id": turn.session_id,
+                    "history_turns": len(history),
+                    "session_state_keys": list(turn.state.keys()),
+                },
+            )
 
             yield SessionEvent(session_id=turn.session_id)
             yield AvatarEvent(state=AvatarState.PENSANDO.value)
@@ -446,18 +457,27 @@ class ConversationEngine:
                     self.persona.hint_for(message, mailbox)
                     + _module_hint(selected_modules)
                     + _report_hint(message, user, now.date())
-                    + ("\n\n## Continuación de comparativa salarial\n"
-                       "El usuario pide exportar la comparativa previa de nóminas. Ejecuta "
-                       "generar_informe: recuperará los dos periodos de la petición anterior y "
-                       "consultará ambas fuentes sin que deban estar simultáneamente activas."
-                       if remembered_comparison(turn.state, message) else "")
+                    + (
+                        "\n\n## Continuación de comparativa salarial\n"
+                        "El usuario pide exportar la comparativa previa de nóminas. Ejecuta "
+                        "generar_informe: recuperará los dos periodos de la petición anterior y "
+                        "consultará ambas fuentes sin que deban estar simultáneamente activas."
+                        if remembered_comparison(turn.state, message)
+                        else ""
+                    )
                     + ("\n" + _pres_hint if _pres_hint else "")
                 ).strip(),
             )
             # Adjuntos: procesar IDs recibidos y actualizar session state
             attachment_context = ""
             if attachment_ids and attachment_service is not None:
-                from mia.attachments.model import AttachmentRef, get_active_refs, merge_refs, set_active_refs  # noqa: PLC0415
+                from mia.attachments.model import (  # noqa: PLC0415
+                    AttachmentRef,
+                    get_active_refs,
+                    merge_refs,
+                    set_active_refs,
+                )
+
                 new_refs: list[AttachmentRef] = []
                 ctx_parts: list[str] = []
                 for aid in attachment_ids[:10]:
@@ -469,18 +489,24 @@ class ConversationEngine:
                     existing = get_active_refs(turn.state)
                     set_active_refs(turn.state, merge_refs(existing, new_refs))
                     attachment_context = "\n\n## Archivos adjuntos en este mensaje\n" + "\n\n".join(ctx_parts)
-                    diag_emit(EventStage.ATTACHMENT_CONTEXT_INJECTED, data={
-                        "count": len(ctx_parts),
-                        "ids": attachment_ids[:10],
-                    })
+                    diag_emit(
+                        EventStage.ATTACHMENT_CONTEXT_INJECTED,
+                        data={
+                            "count": len(ctx_parts),
+                            "ids": attachment_ids[:10],
+                        },
+                    )
 
             messages[-1] = Message(role="user", content=message + context + attachment_context)
-            diag_emit(EventStage.PROMPT_BUILD_COMPLETE, data={
-                "system_chars": len(system),
-                "context_chars": len(context),
-                "attachment_context_chars": len(attachment_context),
-                "total_history_messages": len(messages),
-            })
+            diag_emit(
+                EventStage.PROMPT_BUILD_COMPLETE,
+                data={
+                    "system_chars": len(system),
+                    "context_chars": len(context),
+                    "attachment_context_chars": len(attachment_context),
+                    "total_history_messages": len(messages),
+                },
+            )
 
             ctx = ToolContext(
                 user=user,
@@ -526,14 +552,16 @@ class ConversationEngine:
                     # última pisaba las anteriores. Consolidar las de la MISMA
                     # herramienta con sus etiquetas antes de exportar.
                     merged = merge_report_sources(
-                        turn.executions, title=original_request,
+                        turn.executions,
+                        title=original_request,
                     )
                     if merged is not None:
-                        source = next(e.call.name for e in turn.executions
-                                      if e.result.presentation and
-                                      e.result.presentation.get("type") in {"table", "dashboard"})
-                        remember_table(turn.state, merged, self._max_report_rows,
-                                       source_tool=source)
+                        source = next(
+                            e.call.name
+                            for e in turn.executions
+                            if e.result.presentation and e.result.presentation.get("type") in {"table", "dashboard"}
+                        )
+                        remember_table(turn.state, merged, self._max_report_rows, source_tool=source)
                     can_export = bool(merged) or (
                         message != original_request and bool(turn.state.get("ultima_presentacion"))
                     )
@@ -543,8 +571,11 @@ class ConversationEngine:
                         # de una llamada por formato — ya no hace falta "uno a uno".
                         export_ctx = replace(ctx, user_message=original_request)
                         execution = await self._tools.execute(
-                            ToolCall(f"delivery:{uuid.uuid4().hex}", "generar_informe",
-                                     json.dumps({"formato": missing}, ensure_ascii=False)),
+                            ToolCall(
+                                f"delivery:{uuid.uuid4().hex}",
+                                "generar_informe",
+                                json.dumps({"formato": missing}, ensure_ascii=False),
+                            ),
                             export_ctx,
                         )
                         turn.executions.append(execution)
@@ -557,13 +588,11 @@ class ConversationEngine:
                 successes = [(fmt, verified[fmt]) for fmt in formats if fmt in verified]
                 missing = [fmt for fmt in formats if fmt not in verified]
                 labels = {"pdf": "PDF", "pptx": "PowerPoint", "xlsx": "Excel", "docx": "Word", "html": "HTML"}
-                lines = [
-                    f"- [{labels[fmt]}]({presentation['url']})"
-                    for fmt, presentation in successes
-                ]
+                lines = [f"- [{labels[fmt]}]({presentation['url']})" for fmt, presentation in successes]
                 if missing:
                     lines.append(
-                        "No se han generado: " + ", ".join(labels[f] for f in missing)
+                        "No se han generado: "
+                        + ", ".join(labels[f] for f in missing)
                         + ". No se confirma una entrega que no existe."
                     )
                     failures = [
@@ -576,16 +605,14 @@ class ConversationEngine:
                     if failures:
                         lines.append("Motivo comunicado por el motor: " + failures[-1])
                     elif not successes:
-                        lines.append(
-                            "No hay datos verificables y completos para exportar desde esta ejecución."
-                        )
+                        lines.append("No hay datos verificables y completos para exportar desde esta ejecución.")
                 else:
                     lines.insert(0, "Archivos generados y disponibles para descargar:")
                 confirmed = "\n".join(lines)
                 spoken = (
                     "Los archivos solicitados están generados y disponibles para descargar."
-                    if not missing else
-                    "No se han podido entregar todos los documentos solicitados. Consulta el detalle en pantalla."
+                    if not missing
+                    else "No se han podido entregar todos los documentos solicitados. Consulta el detalle en pantalla."
                 )
                 final = FinalAnswer(spoken, final.avatar_state, confirmed)
                 if missing and not successes:
@@ -643,13 +670,19 @@ class ConversationEngine:
                             detail={"arguments": json.loads(execution.call.arguments or "{}")},
                         )
 
-            diag_emit(EventStage.RESPONSE_SENT, status=EventStatus.SUCCESS, data={
-                "status": status,
-                "elapsed_ms": result.elapsed_ms,
-                "tools_called": len(result.tools),
-                "tokens": result.usage,
-                "presentations": [p.get("type") for p in result.presentations if isinstance(p, dict) and p.get("type")],
-            })
+            diag_emit(
+                EventStage.RESPONSE_SENT,
+                status=EventStatus.SUCCESS,
+                data={
+                    "status": status,
+                    "elapsed_ms": result.elapsed_ms,
+                    "tools_called": len(result.tools),
+                    "tokens": result.usage,
+                    "presentations": [
+                        p.get("type") for p in result.presentations if isinstance(p, dict) and p.get("type")
+                    ],
+                },
+            )
             if trace is not None:
                 trace.finish(
                     answer=final.text,
@@ -691,7 +724,10 @@ class ConversationEngine:
             allow_tools = bool(tools) and round_index < self._max_tool_rounds and not over_budget
             if over_budget and round_index:
                 log.warning("conversation.turn_budget_exceeded", elapsed_s=round(time.perf_counter() - turn.started, 1))
-                diag_emit(EventStage.WARNING, data={"reason": "turn_budget_exceeded", "elapsed_s": round(time.perf_counter() - turn.started, 1)})
+                diag_emit(
+                    EventStage.WARNING,
+                    data={"reason": "turn_budget_exceeded", "elapsed_s": round(time.perf_counter() - turn.started, 1)},
+                )
             request = LLMRequest(
                 system=system,
                 messages=messages,
@@ -704,12 +740,16 @@ class ConversationEngine:
             calls: list[ToolCall] = []
             llm_started = time.perf_counter()
             first_token = False
-            diag_emit(EventStage.LLM_REQUEST, data={"round": round_index, "tools_offered": len(tools) if allow_tools else 0})
+            diag_emit(
+                EventStage.LLM_REQUEST, data={"round": round_index, "tools_offered": len(tools) if allow_tools else 0}
+            )
             async for event in self._llm.stream(request):
                 if isinstance(event, TextDelta):
                     if not first_token:
                         first_token = True
-                        diag_emit(EventStage.LLM_FIRST_TOKEN, duration_ms=int((time.perf_counter() - llm_started) * 1000))
+                        diag_emit(
+                            EventStage.LLM_FIRST_TOKEN, duration_ms=int((time.perf_counter() - llm_started) * 1000)
+                        )
                     raw.append(event.text)
                     for speech_event in self._speak(extractor.feed(event.text), turn):
                         yield speech_event
@@ -758,8 +798,11 @@ class ConversationEngine:
                 for source_exec in source_execs:
                     turn.state.update(source_exec.result.state_updates)
                     remember_table(
-                        turn.state, source_exec.result.presentation, self._max_report_rows,
-                        source_exec.result.summary, source_tool=source_exec.call.name,
+                        turn.state,
+                        source_exec.result.presentation,
+                        self._max_report_rows,
+                        source_exec.result.summary,
+                        source_tool=source_exec.call.name,
                     )
                 # Un exportador puede depender del resultado del informe autónomo
                 # anterior. Evitar también concurrencia entre exportadores.
