@@ -11,7 +11,6 @@ from typing import Any
 
 from mia.attachments.model import AttachmentContent, AttachmentContentType, TableBlock, TextBlock
 
-
 _MIN_TEXT_PER_PAGE = 30
 """Mínimo de caracteres por página para considerar que hay texto nativo."""
 
@@ -48,8 +47,7 @@ def parse_pdf(content: bytes) -> AttachmentContent:
     parse_error = ""
     if scanned_pages and not text_blocks:
         parse_error = (
-            f"El PDF contiene {scanned_pages} página(s) escaneada(s). "
-            "Usa Vision para interpretar las imágenes."
+            f"El PDF contiene {scanned_pages} página(s) escaneada(s). Usa Vision para interpretar las imágenes."
         )
     elif scanned_pages:
         parse_error = f"{scanned_pages} página(s) escaneada(s) sin texto extraíble."

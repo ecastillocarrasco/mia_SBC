@@ -48,7 +48,8 @@ async def test_salary_cost_comparison_request_end_to_end_three_formats(q3_regist
     execution_result = (
         await q3_registry.execute(
             ToolCall(
-                "c", "analisis_economico_nominas",
+                "c",
+                "analisis_economico_nominas",
                 json.dumps({"periodo": "julio a septiembre de 2026"}),
             ),
             ctx,
@@ -115,9 +116,7 @@ async def test_salary_cost_comparison_request_end_to_end_three_formats(q3_regist
 
     # XLSX: mismos departamentos, mismo recuento de advertencias.
     wb = load_workbook(io.BytesIO(RENDERERS["xlsx"](doc, NOW, LOGO)))
-    flat = " ".join(
-        str(c.value) for ws in wb.worksheets for row in ws.iter_rows() for c in row if c.value is not None
-    )
+    flat = " ".join(str(c.value) for ws in wb.worksheets for row in ws.iter_rows() for c in row if c.value is not None)
     assert "Cocina" in flat
     assert "no cumplen el mínimo" in flat
 

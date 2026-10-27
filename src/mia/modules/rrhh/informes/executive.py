@@ -18,8 +18,8 @@ from mia.analytics.stats import TimePoint
 from mia.data import Employee, Payslip, ShiftDay, TtTimesheet, Vacation, VacationBalance
 from mia.ingestion.mappers.hr import ShiftKind
 from mia.modules.rrhh.common import Deps, fmt_date
-from mia.reporting.document import Block, Document
 from mia.modules.rrhh.turnos.periods import absence_periods
+from mia.reporting.document import Block, Document
 
 _insight_engine = InsightEngine()
 

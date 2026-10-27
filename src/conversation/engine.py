@@ -125,9 +125,7 @@ class ConversationEngine:
         self._max_tool_rounds = max_tool_rounds
         self._max_output_tokens = max_output_tokens
 
-    async def run(
-        self, *, message: str, user: UserContext, session_id: str | None
-    ) -> AsyncIterator[TurnEvent]:
+    async def run(self, *, message: str, user: UserContext, session_id: str | None) -> AsyncIterator[TurnEvent]:
         message = message.strip()[:MAX_MESSAGE_CHARS]
         request_id = current_request_id()
 
@@ -170,9 +168,7 @@ class ConversationEngine:
         except LLMError as exc:
             log.error("conversation.llm_failed", error=str(exc))
             status = "error"
-            final = FinalAnswer(
-                self.persona.error_phrase, AvatarState.CONFUNDIDA.value, self.persona.error_phrase
-            )
+            final = FinalAnswer(self.persona.error_phrase, AvatarState.CONFUNDIDA.value, self.persona.error_phrase)
             yield SpeechEvent(text=final.speech)
 
         yield AvatarEvent(state=final.avatar_state)
@@ -289,9 +285,7 @@ class ConversationEngine:
             for execution in executions:
                 turn.state.update(execution.result.state_updates)
                 messages.append(
-                    Message(
-                        role="tool", content=execution.as_llm_output(), tool_call_id=execution.call.call_id
-                    )
+                    Message(role="tool", content=execution.as_llm_output(), tool_call_id=execution.call.call_id)
                 )
                 yield ToolEvent(
                     name=execution.call.name,

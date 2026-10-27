@@ -17,9 +17,19 @@ from mia.modules.rrhh.content import MAX_BYTES, content_unavailable, document_te
 from mia.text import normalize_key
 
 KEYWORDS = (
-    "ett", "trabajo temporal", "boletin", "boletín", "boletines", "empresa de trabajo temporal",
-    "tarifa tt", "trabajador cedido", "trabajadores cedidos", "variacion de coste tt",
-    "estimar coste tt", "trabajador temporal", "trabajadores temporales",
+    "ett",
+    "trabajo temporal",
+    "boletin",
+    "boletín",
+    "boletines",
+    "empresa de trabajo temporal",
+    "tarifa tt",
+    "trabajador cedido",
+    "trabajadores cedidos",
+    "variacion de coste tt",
+    "estimar coste tt",
+    "trabajador temporal",
+    "trabajadores temporales",
 )
 """Ver `empleados.tools.KEYWORDS` para el criterio."""
 
@@ -430,10 +440,7 @@ def contactos_ett(deps: Deps) -> Tool:
         if not companies:
             return ToolResult(ToolStatus.NOT_FOUND, {"empresa": p.empresa, "nota": "Sin empresas ETT registradas."})
 
-        rows = [
-            [c.name, c.cif or "—", c.email or "—", c.phone or "—"]
-            for c in companies
-        ]
+        rows = [[c.name, c.cif or "—", c.email or "—", c.phone or "—"] for c in companies]
         return ToolResult(
             ToolStatus.OK,
             {"empresas": [{"nombre": c.name, "cif": c.cif, "email": c.email, "telefono": c.phone} for c in companies]},
@@ -479,7 +486,17 @@ def ett_hoy(deps: Deps) -> Tool:
             by_company[s.company or "Sin dato"] += 1
             total_h += s.hours_total or 0
 
-        rows = [[s.worker_name or "—", s.company or "—", s.department or "—", s.start_time or "—", s.end_time or "—", s.hours_total or 0] for s in sheets]
+        rows = [
+            [
+                s.worker_name or "—",
+                s.company or "—",
+                s.department or "—",
+                s.start_time or "—",
+                s.end_time or "—",
+                s.hours_total or 0,
+            ]
+            for s in sheets
+        ]
         return ToolResult(
             ToolStatus.OK,
             {
@@ -670,7 +687,12 @@ def variacion_coste(deps: Deps) -> Tool:
                 "Variación coste ETT",
                 ["Concepto", "Referencia", "Actual", "Variación"],
                 [
-                    ["Importe (€)", importe_ref, importe_actual, f"{_pct(importe_ref, importe_actual)} ({delta_importe:+.2f} €)"],
+                    [
+                        "Importe (€)",
+                        importe_ref,
+                        importe_actual,
+                        f"{_pct(importe_ref, importe_actual)} ({delta_importe:+.2f} €)",
+                    ],
                     ["Horas", horas_ref, horas_actual, f"{_pct(horas_ref, horas_actual)} ({delta_horas:+.2f} h)"],
                     ["Boletines", len(rows_ref), len(rows_actual), f"{delta_boletines:+d}"],
                 ],

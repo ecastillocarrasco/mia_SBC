@@ -23,18 +23,18 @@ import json
 import httpx
 import pytest
 from pypdf import PdfReader
+from sqlalchemy import select
 
 from mia.auth import UserContext
+from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.conversation import ToolContext, ToolStatus
 from mia.conversation.tools import remember_table
-from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.data import Payslip, Report
 from mia.llm import ToolCall
 from mia.modules.registry import build_registry
 from mia.modules.rrhh.informes.jobs import JOB_KIND_INFORME_ECONOMICO, run_informe_economico_nominas
 from mia.reporting import job_manager
 from mia.reporting.worker import ReportJobWorker
-from sqlalchemy import select
 from tests.conftest import make_settings
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp
@@ -112,7 +112,9 @@ async def _run_direct_path(services, *, periodo: str, concepto: str, formato: st
     )
     eco_result = eco_execution.result
     assert eco_result.status is ToolStatus.OK
-    remember_table(ctx.session_state, eco_result.presentation, 5000, eco_result.summary, source_tool="analisis_economico_nominas")
+    remember_table(
+        ctx.session_state, eco_result.presentation, 5000, eco_result.summary, source_tool="analisis_economico_nominas"
+    )
 
     informe_execution = await services.registry.execute(
         ToolCall("direct:informe", "generar_informe", json.dumps({"formato": formato, "incluir_narrativa": False})), ctx
@@ -128,21 +130,30 @@ async def _run_direct_path(services, *, periodo: str, concepto: str, formato: st
     return eco_result.summary, content
 
 
-async def _run_job_path(services, *, periodo: str, concepto: str, formato: str, user_id: str = "u") -> tuple[str, bytes]:
+async def _run_job_path(
+    services, *, periodo: str, concepto: str, formato: str, user_id: str = "u"
+) -> tuple[str, bytes]:
     """Camino de trabajo: encola exactamente el mismo `kind`/parámetros que usaría la herramienta
     conversacional `informe_economico_en_segundo_plano` (o el endpoint REST equivalente), lo procesa con
     el worker real de la Fase G, y descarga el documento resultante. Devuelve el `report_id` y el
     contenido del documento."""
     params = {
-        "periodo": periodo, "departamento": None, "concepto": concepto,
-        "incluir_grupos_pequenos": False, "incluir_inactivos": False, "formato": formato, "titulo": None,
+        "periodo": periodo,
+        "departamento": None,
+        "concepto": concepto,
+        "incluir_grupos_pequenos": False,
+        "incluir_inactivos": False,
+        "formato": formato,
+        "titulo": None,
         "_auth": {"user_id": user_id, "display_name": "Enrique", "roles": ["mia.admin"]},
     }
     async with services.db.session() as db:
         job_id = await job_manager.submit(db, user_id=user_id, kind=JOB_KIND_INFORME_ECONOMICO, params=params)
 
-    worker = ReportJobWorker(services, {JOB_KIND_INFORME_ECONOMICO: run_informe_economico_nominas}, worker_id="fase-i-cmp")
-    claimed = await worker._run_once()  # noqa: SLF001
+    worker = ReportJobWorker(
+        services, {JOB_KIND_INFORME_ECONOMICO: run_informe_economico_nominas}, worker_id="fase-i-cmp"
+    )
+    claimed = await worker._run_once()
     assert claimed is True
 
     async with services.db.session() as db:
@@ -195,17 +206,23 @@ async def test_job_path_document_matches_the_direct_path_document_exactly(compar
         assert "total" in dept_stats, f"el departamento {dept} no debería estar oculto en este escenario: {dept_stats}"
         figure = format_eur(dept_stats["total"])
         assert figure in direct_text, f"[directo] falta la cifra real de {dept} ({figure!r}) en su propio documento"
-        assert figure in job_text, f"[Job Manager] falta la cifra real de {dept} ({figure!r}) — diverge del camino directo"
+        assert figure in job_text, (
+            f"[Job Manager] falta la cifra real de {dept} ({figure!r}) — diverge del camino directo"
+        )
 
         peso_pct = dept_stats.get("peso_pct")
         if peso_pct is not None:
             pct_text = f"{peso_pct:.1f}%"
             assert pct_text in direct_text, f"[directo] falta el porcentaje real de {dept} ({pct_text!r})"
-            assert pct_text in job_text, f"[Job Manager] falta el porcentaje real de {dept} ({pct_text!r}) — diverge del camino directo"
+            assert pct_text in job_text, (
+                f"[Job Manager] falta el porcentaje real de {dept} ({pct_text!r}) — diverge del camino directo"
+            )
 
     total_figure = format_eur(direct_summary["total_periodo"])
     assert total_figure in direct_text
-    assert total_figure in job_text, f"el total general real ({total_figure!r}) no aparece en el documento del Job Manager"
+    assert total_figure in job_text, (
+        f"el total general real ({total_figure!r}) no aparece en el documento del Job Manager"
+    )
 
     assert "Cocina" in job_text
     assert "Recepción" in job_text
@@ -235,7 +252,9 @@ async def test_job_path_respects_nom_005_masking_and_warnings_like_the_direct_pa
     direct_text = _pdf_text(direct_pdf)
     job_text = _pdf_text(job_pdf)
     assert "NOM-005" in direct_text, "el documento directo no incluye la advertencia real de NOM-005"
-    assert "NOM-005" in job_text, "el documento del Job Manager no incluye la advertencia de NOM-005 — supresión perdida en el camino asíncrono"
+    assert "NOM-005" in job_text, (
+        "el documento del Job Manager no incluye la advertencia de NOM-005 — supresión perdida en el camino asíncrono"
+    )
 
     # La cifra individual de la única persona del departamento oculto (1.800,00 €) no debe filtrarse
     # por ningún camino.
@@ -270,8 +289,13 @@ async def test_a_role_permission_revoked_while_a_job_is_queued_is_caught_at_exec
     ROLE_PERMISSIONS[role_name] = frozenset({Permission.NOMINAS_IMPORTES})
     try:
         params = {
-            "periodo": "agosto de 2026", "departamento": None, "concepto": "coste_empresa",
-            "incluir_grupos_pequenos": False, "incluir_inactivos": False, "formato": "pdf", "titulo": None,
+            "periodo": "agosto de 2026",
+            "departamento": None,
+            "concepto": "coste_empresa",
+            "incluir_grupos_pequenos": False,
+            "incluir_inactivos": False,
+            "formato": "pdf",
+            "titulo": None,
             "_auth": {"user_id": "u", "display_name": "Enrique", "roles": [role_name]},
         }
         async with services.db.session() as db:
@@ -281,8 +305,10 @@ async def test_a_role_permission_revoked_while_a_job_is_queued_is_caught_at_exec
         # pidió el usuario: "autorizaciones vigentes en trabajos en cola".
         ROLE_PERMISSIONS[role_name] = frozenset()
 
-        worker = ReportJobWorker(services, {JOB_KIND_INFORME_ECONOMICO: run_informe_economico_nominas}, worker_id="fase-i-revoke")
-        claimed = await worker._run_once()  # noqa: SLF001
+        worker = ReportJobWorker(
+            services, {JOB_KIND_INFORME_ECONOMICO: run_informe_economico_nominas}, worker_id="fase-i-revoke"
+        )
+        claimed = await worker._run_once()
         assert claimed is True
 
         async with services.db.session() as db:
@@ -355,7 +381,9 @@ async def test_job_manager_handles_a_larger_volume_through_the_real_worker_witho
 
     text = _pdf_text(content)
     for dept in ("Cocina", "Recepción", "Mantenimiento"):
-        assert dept in text, f"el departamento {dept} se perdió en el informe de {len(_LARGE_VOLUME_DEPARTMENTS)*15} nóminas"
+        assert dept in text, (
+            f"el departamento {dept} se perdió en el informe de {len(_LARGE_VOLUME_DEPARTMENTS) * 15} nóminas"
+        )
 
     # Referencia real de este entorno (45 nóminas simuladas, worker real, sin el timeout de 280s de la
     # propia herramienta) — no un SLA estricto, solo evidencia de que se midió, no que se asumió.

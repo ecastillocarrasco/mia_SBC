@@ -6,13 +6,14 @@ Run from the mIA project root, with the same .env as the backend:
 
 Prints counts only. Never prints personal content or credentials.
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import and_, func, select
 
@@ -36,24 +37,24 @@ async def _scalar(session, stmt):
 
 async def _cv_status(session):
     total = await _scalar(session, select(func.count()).select_from(CvDocument))
-    counts = dict((str(status), int(count)) for status, count in (
-        await session.execute(select(CvText.status, func.count()).group_by(CvText.status))
-    ).all())
+    counts = dict(
+        (str(status), int(count))
+        for status, count in (await session.execute(select(CvText.status, func.count()).group_by(CvText.status))).all()
+    )
     indexed_with_vectors = await _scalar(
         session,
         select(func.count(func.distinct(CvChunk.document_id))).select_from(CvChunk),
     )
     stale = await _scalar(
         session,
-        select(func.count()).select_from(CvDocument).join(
-            CvText, CvText.document_id == CvDocument.sp_id, isouter=True
-        ).where(
-            (CvText.document_id.is_(None))
-            | CvText.source_modified.is_distinct_from(CvDocument.modified_at)
-        ),
+        select(func.count())
+        .select_from(CvDocument)
+        .join(CvText, CvText.document_id == CvDocument.sp_id, isouter=True)
+        .where((CvText.document_id.is_(None)) | CvText.source_modified.is_distinct_from(CvDocument.modified_at)),
     )
     return {
-        "source": "cv_docs", "total_metadata": total,
+        "source": "cv_docs",
+        "total_metadata": total,
         "with_vectors": indexed_with_vectors,
         "pending_new_or_modified": stale,
         "statuses": counts,
@@ -63,30 +64,36 @@ async def _cv_status(session):
 
 async def _document_status(session, domain, model):
     total = await _scalar(session, select(func.count()).select_from(model))
-    counts = dict((str(status), int(count)) for status, count in (
-        await session.execute(
-            select(HrDocumentText.status, func.count())
-            .where(HrDocumentText.domain == domain).group_by(HrDocumentText.status)
-        )
-    ).all())
+    counts = dict(
+        (str(status), int(count))
+        for status, count in (
+            await session.execute(
+                select(HrDocumentText.status, func.count())
+                .where(HrDocumentText.domain == domain)
+                .group_by(HrDocumentText.status)
+            )
+        ).all()
+    )
     indexed_with_vectors = await _scalar(
         session,
-        select(func.count(func.distinct(HrDocumentChunk.document_id)))
-        .where(HrDocumentChunk.domain == domain),
+        select(func.count(func.distinct(HrDocumentChunk.document_id))).where(HrDocumentChunk.domain == domain),
     )
     stale = await _scalar(
         session,
-        select(func.count()).select_from(model).join(
+        select(func.count())
+        .select_from(model)
+        .join(
             HrDocumentText,
             and_(HrDocumentText.domain == domain, HrDocumentText.document_id == model.sp_id),
             isouter=True,
-        ).where(
-            HrDocumentText.document_id.is_(None)
-            | HrDocumentText.source_modified.is_distinct_from(model.modified_at)
+        )
+        .where(
+            HrDocumentText.document_id.is_(None) | HrDocumentText.source_modified.is_distinct_from(model.modified_at)
         ),
     )
     return {
-        "source": domain, "total_metadata": total,
+        "source": domain,
+        "total_metadata": total,
         "with_vectors": indexed_with_vectors,
         "pending_new_or_modified": stale,
         "statuses": counts,
@@ -100,11 +107,13 @@ async def collect():
     try:
         async with db.session() as session:
             states = {}
-            for state in (await session.scalars(
-                select(SourceSyncState).where(SourceSyncState.source.in_([
-                    "curriculums", "cv_docs", "nominas", "documentos_firmados"
-                ]))
-            )).all():
+            for state in (
+                await session.scalars(
+                    select(SourceSyncState).where(
+                        SourceSyncState.source.in_(["curriculums", "cv_docs", "nominas", "documentos_firmados"])
+                    )
+                )
+            ).all():
                 states[state.source] = {
                     "status": state.status,
                     "last_success_at": state.last_success_at.isoformat() if state.last_success_at else None,
@@ -112,7 +121,7 @@ async def collect():
                     "last_error": bool(state.last_error),
                 }
             data = {
-                "checked_at_utc": datetime.now(timezone.utc).isoformat(),
+                "checked_at_utc": datetime.now(UTC).isoformat(),
                 "storage": "PostgreSQL + pgvector",
                 "sensitive_indexing_enabled": settings.data.index_sensitive_content,
                 "sync_sources": states,

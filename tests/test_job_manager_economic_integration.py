@@ -26,6 +26,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 from pypdf import PdfReader
+from sqlalchemy import select
 
 from mia.api.services import Services
 from mia.auth import UserContext
@@ -39,10 +40,8 @@ from mia.main import create_app
 from mia.modules.registry import build_registry
 from mia.modules.rrhh.informes.jobs import JOB_KIND_INFORME_ECONOMICO, run_informe_economico_nominas
 from mia.reporting import job_manager
-from mia.reporting.job_manager import JobSnapshot
 from mia.reporting.worker import ReportJobWorker
 from mia.settings import AuthSettings
-from sqlalchemy import select
 from tests.conftest import make_settings
 from tests.dbutil import fresh_database
 from tests.dbutil import test_database_url as _test_database_url
@@ -147,7 +146,7 @@ async def test_large_report_end_to_end_via_the_real_persistent_worker(job_servic
     job_id = await _submit(job_services)
     worker = _worker(job_services)
 
-    claimed = await worker._run_once()  # noqa: SLF001 — una sola iteración, determinista, sin sondeo real
+    claimed = await worker._run_once()
     assert claimed is True
 
     async with job_services.db.session() as db:
@@ -196,7 +195,7 @@ async def test_restart_recovery_requeues_a_job_abandoned_by_a_crashed_worker(job
     assert reaped == 1
 
     worker = _worker(job_services)
-    claimed = await worker._run_once()  # noqa: SLF001
+    claimed = await worker._run_once()
     assert claimed is True
     async with job_services.db.session() as db:
         snapshot = await job_manager.get(db, job_id)
@@ -216,7 +215,7 @@ async def test_cancellation_requested_before_execution_is_honored_not_silently_r
     worker = _worker(job_services)
     async with job_services.db.session() as db:
         snapshot = await job_manager.get(db, job_id)
-    await worker._execute(snapshot)  # noqa: SLF001 — mismo camino que recorrería el bucle real
+    await worker._execute(snapshot)
 
     async with job_services.db.session() as db:
         final = await job_manager.get(db, job_id)
@@ -260,9 +259,7 @@ async def test_payroll_job_still_enforces_the_nominas_permission_at_execution_ti
 _SUBMIT_BODY = {"periodo": "agosto de 2026", "concepto": "coste_empresa", "formato": "pdf"}
 
 
-async def test_submit_endpoint_requires_the_nominas_permission(
-    client: httpx.AsyncClient, services: Services
-) -> None:
+async def test_submit_endpoint_requires_the_nominas_permission(client: httpx.AsyncClient, services: Services) -> None:
     services.identity = DevIdentityProvider(AuthSettings(dev_user_id="resp", dev_roles=["mia.responsable"]))
     response = await client.post("/api/jobs/informe-economico", json=_SUBMIT_BODY)
     assert response.status_code == 403
@@ -369,7 +366,8 @@ async def test_real_app_startup_processes_jobs_and_recovers_after_a_simulated_re
     db_url = _test_database_url(tmp_path, "restart_real.db")
     await fresh_database(tmp_path, "restart_real.db")  # crea el esquema real antes del primer arranque
     settings = make_settings(
-        tmp_path, database_url=db_url,
+        tmp_path,
+        database_url=db_url,
         jobs={"enabled": True, "poll_interval_seconds": 0.05, "lease_seconds": 1, "allow_sensitive_async": True},
     )
 
@@ -378,7 +376,9 @@ async def test_real_app_startup_processes_jobs_and_recovers_after_a_simulated_re
         services1 = app1.state.services
         async with services1.db.session() as db:
             job_id = await job_manager.submit(
-                db, user_id="dev-user", kind=JOB_KIND_INFORME_ECONOMICO,
+                db,
+                user_id="dev-user",
+                kind=JOB_KIND_INFORME_ECONOMICO,
                 params={"periodo": "agosto de 2026", "concepto": "liquido", "_auth": AUTH_ADMIN},
             )
             # Lo fuerza a "running" con un lease cortísimo: simula que el worker real de app1 lo
@@ -419,7 +419,7 @@ async def test_concurrent_workers_never_execute_the_same_job_twice(job_services)
     # no una simulación de paralelismo exacto a nivel de hilo sobre SQLite. El resultado real —4
     # trabajos, 4 informes distintos, ninguno repetido— es lo que demuestra la ausencia de duplicados.
     for w in (worker_a, worker_b, worker_a, worker_b):
-        assert await w._run_once() is True  # noqa: SLF001
+        assert await w._run_once() is True
 
     async with job_services.db.session() as db:
         snapshots = [await job_manager.get(db, jid) for jid in job_ids]
@@ -439,12 +439,16 @@ async def test_idempotency_is_isolated_per_user_not_shared_by_hash_coincidence(j
 
     async with job_services.db.session() as db:
         job_a = await job_manager.submit(
-            db, user_id="user-a", kind=JOB_KIND_INFORME_ECONOMICO,
+            db,
+            user_id="user-a",
+            kind=JOB_KIND_INFORME_ECONOMICO,
             params={**business, "_auth": {"user_id": "user-a", "display_name": "A", "roles": ["mia.admin"]}},
             idempotency_key=key_a,
         )
         job_b = await job_manager.submit(
-            db, user_id="user-b", kind=JOB_KIND_INFORME_ECONOMICO,
+            db,
+            user_id="user-b",
+            kind=JOB_KIND_INFORME_ECONOMICO,
             params={**business, "_auth": {"user_id": "user-b", "display_name": "B", "roles": ["mia.admin"]}},
             idempotency_key=key_b,
         )
@@ -470,7 +474,7 @@ async def test_heartbeat_task_is_cancelled_cleanly_after_execution(job_services)
     assert job is not None and job.id == job_id
 
     before = {t for t in asyncio.all_tasks() if not t.done()}
-    await worker._execute(job)  # noqa: SLF001
+    await worker._execute(job)
     await asyncio.sleep(0)  # deja que la cancelación de la tarea de heartbeat se propague
     after = {t for t in asyncio.all_tasks() if not t.done()}
     assert after - before == set(), "la tarea de heartbeat quedó huérfana tras terminar la ejecución"
@@ -541,11 +545,11 @@ async def test_the_conversational_job_tool_is_only_registered_when_both_gates_ar
     for jobs_settings in cases:
         settings = SimpleNamespace(**base, jobs=jobs_settings)
         registry = build_registry(job_services.db, settings=settings, sharepoint=None)
-        assert "informe_economico_en_segundo_plano" not in registry._tools, jobs_settings  # noqa: SLF001
+        assert "informe_economico_en_segundo_plano" not in registry._tools, jobs_settings
 
     settings_both_open = SimpleNamespace(**base, jobs=SimpleNamespace(enabled=True, allow_sensitive_async=True))
     registry = build_registry(job_services.db, settings=settings_both_open, sharepoint=None)
-    assert "informe_economico_en_segundo_plano" in registry._tools  # noqa: SLF001
+    assert "informe_economico_en_segundo_plano" in registry._tools
 
 
 async def test_the_conversational_job_tool_submits_to_the_same_job_manager_as_the_rest_endpoint(
@@ -554,7 +558,7 @@ async def test_the_conversational_job_tool_submits_to_the_same_job_manager_as_th
     """La herramienta y el endpoint REST (`POST /api/jobs/informe-economico`) son dos puertas de
     entrada al MISMO backend: mismo `kind`, mismos parámetros de negocio, mismo trabajo persistido."""
     registry = build_registry(job_services.db, settings=job_services.settings, sharepoint=None)
-    assert "informe_economico_en_segundo_plano" in registry._tools  # noqa: SLF001
+    assert "informe_economico_en_segundo_plano" in registry._tools
 
     ctx = ToolContext(user=ADMIN, request_id=None, now=Q3_NOW, session_state={}, user_message="")
     args = {"periodo": "agosto de 2026", "concepto": "coste_empresa", "formato": "pdf"}

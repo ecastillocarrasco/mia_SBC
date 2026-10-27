@@ -30,8 +30,8 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from mia.reporting.charts import chart_spec
 from mia.modules.correo.presentation import mail_message_view, sender_parts
+from mia.reporting.charts import chart_spec
 from mia.text import format_number, humanize_label
 
 MAX_CARDS = 8
@@ -314,7 +314,9 @@ def summary_view(
                     ]
             elif isinstance(value, dict) and value and all(_is_scalar(v) for v in value.values()):
                 if "por_" in key or key.startswith("grupos"):
-                    _chart_lbl = _label(key[key.index("_por_") + 1:] if "_por_" in key and not key.startswith("por_") else key)
+                    _chart_lbl = _label(
+                        key[key.index("_por_") + 1 :] if "_por_" in key and not key.startswith("por_") else key
+                    )
                     spec = chart_spec(_chart_lbl, [_chart_lbl, "Personas"], [[k, v] for k, v in value.items()])
                     if spec:
                         charts.append(spec)

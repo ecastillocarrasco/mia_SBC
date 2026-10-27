@@ -11,20 +11,20 @@ G. Consulta sin señales específicas → DIRECT_LOOKUP (fallback)
 + Tests de build_presentation_hint()
 + Tests de suppress_comparison en summary_view()
 """
+
 from __future__ import annotations
 
 import pytest
 
 from mia.presentation.intent import (
     PresentationIntent,
-    QueryAnalysis,
     ResponseDepth,
     build_presentation_hint,
     classify_query,
 )
 
-
 # ── Caso A: consulta operativa con "ahora" ───────────────────────────────────
+
 
 def test_case_a_quien_trabaja_ahora_operacional():
     qa = classify_query("quien esta trabajando ahora en restaurante y en cocina")
@@ -55,6 +55,7 @@ def test_case_a_actualmente():
 
 # ── Caso B: comparativa explícita ────────────────────────────────────────────
 
+
 def test_case_b_comparativa_departamentos():
     qa = classify_query("compara el departamento de cocina con el de restaurante")
     assert qa.presentation_intent == PresentationIntent.COMPARISON
@@ -76,6 +77,7 @@ def test_case_b_diferencia_entre():
 
 # ── Caso C: análisis ──────────────────────────────────────────────────────────
 
+
 def test_case_c_analizar_departamento():
     qa = classify_query("analiza la cobertura del departamento de cocina esta semana")
     assert qa.presentation_intent == PresentationIntent.ANALYSIS
@@ -96,6 +98,7 @@ def test_case_c_hay_algo_preocupante():
 
 # ── Caso D: conteo puro ───────────────────────────────────────────────────────
 
+
 def test_case_d_cuantos():
     qa = classify_query("cuántas personas trabajan hoy")
     assert "count" in qa.requested_output
@@ -114,6 +117,7 @@ def test_case_d_cuantas_sin_ahora_es_direct_lookup():
 
 # ── Caso E: listado ───────────────────────────────────────────────────────────
 
+
 def test_case_e_lista():
     qa = classify_query("dame la lista de personas en turno hoy")
     assert "list" in qa.requested_output
@@ -126,6 +130,7 @@ def test_case_e_quien_sin_ahora_es_operational():
 
 
 # ── Caso F: informe ───────────────────────────────────────────────────────────
+
 
 def test_case_f_informe():
     qa = classify_query("genera un informe de los turnos de esta semana")
@@ -141,6 +146,7 @@ def test_case_f_reporte():
 
 # ── Caso G: fallback ──────────────────────────────────────────────────────────
 
+
 def test_case_g_fallback_sin_senales():
     qa = classify_query("muéstrame los turnos de hoy")
     assert qa.presentation_intent == PresentationIntent.DIRECT_LOOKUP
@@ -155,6 +161,7 @@ def test_case_g_pregunta_generica():
 
 
 # ── Tests de build_presentation_hint ─────────────────────────────────────────
+
 
 def test_hint_no_comparativa_para_operacional():
     qa = classify_query("quien trabaja ahora")
@@ -245,6 +252,7 @@ def test_hint_direct_response_instruction_still_applies_without_summary() -> Non
 
 # ── Tests de suppress_comparison en legacy_view.summary_view ─────────────────
 
+
 def test_suppress_comparison_elimina_comparativa_de_dict_of_dicts():
     from mia.api.legacy_view import summary_view
 
@@ -321,6 +329,7 @@ def test_legacy_view_suppress_comparison():
 
 # ── _merge_same_schema_tables ─────────────────────────────────────────────────
 
+
 def _make_table(title: str, cols: list[str], rows: list[list]) -> dict:
     return {"type": "table", "title": title, "columns": [{"label": c} for c in cols], "rows": rows, "total": len(rows)}
 
@@ -367,10 +376,16 @@ def test_legacy_view_merges_two_dept_tables():
     from mia.api.legacy_view import legacy_view
     from mia.modules.rrhh.common import table
 
-    p1 = table("Turnos 07/10/2026 — Restaurante", ["Persona", "Puesto", "Departamento", "Tipo", "Turno", "Área", "Comentario"],
-                [["Ana", "CAMARERO", "Restaurante", "Trabajo", "08:00-16:00", None, None]] * 14)
-    p2 = table("Turnos 07/10/2026 — Cocina", ["Persona", "Puesto", "Departamento", "Tipo", "Turno", "Área", "Comentario"],
-                [["Bob", "FREGADOR", "Cocina", "Trabajo", "10:00-18:00", None, None]] * 3)
+    p1 = table(
+        "Turnos 07/10/2026 — Restaurante",
+        ["Persona", "Puesto", "Departamento", "Tipo", "Turno", "Área", "Comentario"],
+        [["Ana", "CAMARERO", "Restaurante", "Trabajo", "08:00-16:00", None, None]] * 14,
+    )
+    p2 = table(
+        "Turnos 07/10/2026 — Cocina",
+        ["Persona", "Puesto", "Departamento", "Tipo", "Turno", "Área", "Comentario"],
+        [["Bob", "FREGADOR", "Cocina", "Trabajo", "10:00-18:00", None, None]] * 3,
+    )
 
     data, _ = legacy_view([p1, p2])
     assert data["table"]["total"] == 17
@@ -381,6 +396,7 @@ def test_legacy_view_merges_two_dept_tables():
 
 
 # ── QueryAnalysis es frozen/hashable ─────────────────────────────────────────
+
 
 def test_query_analysis_is_frozen():
     qa = classify_query("quien trabaja ahora")

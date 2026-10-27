@@ -40,14 +40,16 @@ def dataset_info(content: AttachmentContent) -> dict[str, Any]:
     """Devuelve descripción estructural del dataset."""
     sheets_info = []
     for s in content.sheets:
-        sheets_info.append({
-            "name": s.name,
-            "headers": s.headers,
-            "row_count": s.row_count,
-            "col_count": len(s.headers),
-            "inferred_types": s.inferred_types,
-            "null_counts": _null_counts(s),
-        })
+        sheets_info.append(
+            {
+                "name": s.name,
+                "headers": s.headers,
+                "row_count": s.row_count,
+                "col_count": len(s.headers),
+                "inferred_types": s.inferred_types,
+                "null_counts": _null_counts(s),
+            }
+        )
     return {
         "sheet_count": len(content.sheets),
         "sheets": sheets_info,
@@ -131,10 +133,7 @@ def dataset_query(
 
     # Sin agrupación: devolver filas
     result_headers = headers
-    result_data = [
-        {h: (row[i] if i < len(row) else None) for i, h in enumerate(headers)}
-        for row in rows[:limit]
-    ]
+    result_data = [{h: (row[i] if i < len(row) else None) for i, h in enumerate(headers)} for row in rows[:limit]]
 
     return {
         "sheet": sheet.name,

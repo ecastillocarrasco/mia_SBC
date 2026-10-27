@@ -20,9 +20,9 @@ import httpx
 import pytest
 
 from mia.auth import UserContext
+from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.conversation import ToolContext, ToolStatus
 from mia.conversation.tools import remember_table
-from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.data import Payslip
 from mia.llm import ToolCall
 from mia.modules.registry import build_registry
@@ -77,7 +77,7 @@ async def august_registry(tmp_path):
 
 
 def test_numeric_and_named_month_forms_produce_the_identical_label() -> None:
-    """"2026-08" (como lo normalizaría un LLM al construir argumentos de herramienta) y "agosto de
+    """ "2026-08" (como lo normalizaría un LLM al construir argumentos de herramienta) y "agosto de
     2026" (como lo escribe el usuario) deben producir la MISMA etiqueta — nunca "August 2026" vs
     "Agosto 2026", que es exactamente lo que rompía la guarda de coherencia temporal."""
     numeric = period_engine.resolve("2026-08", today=date(2026, 10, 12))
@@ -94,8 +94,18 @@ def test_no_period_label_depends_on_the_process_locale() -> None:
     """Ninguna etiqueta debe contener nunca un nombre de mes en inglés — confirma que no queda ningún
     ``strftime('%B')`` (dependiente del locale) en ninguna rama de resolución."""
     english_months = (
-        "january", "february", "march", "april", "may", "june",
-        "july", "august", "september", "october", "november", "december",
+        "january",
+        "february",
+        "march",
+        "april",
+        "may",
+        "june",
+        "july",
+        "august",
+        "september",
+        "october",
+        "november",
+        "december",
     )
     today = date(2026, 10, 12)
     expressions = ["este mes", "mes pasado", "el mes pasado", "2026-01", "2026-08", "2026-12"]
@@ -109,7 +119,7 @@ def test_no_period_label_depends_on_the_process_locale() -> None:
 
 
 def test_current_and_previous_month_labels_are_also_locale_independent() -> None:
-    """"este mes"/"mes pasado" (las otras dos ramas que usaban ``strftime('%B %Y')``) deben seguir
+    """ "este mes"/"mes pasado" (las otras dos ramas que usaban ``strftime('%B %Y')``) deben seguir
     produciendo una etiqueta española reconocible, sin importar el locale del proceso."""
     today = date(2026, 8, 15)
     this_month = period_engine.resolve("este mes", today=today)
@@ -126,24 +136,33 @@ async def test_exact_trace_sequence_no_longer_rejects_the_export(august_registry
     (etiquetas "August 2026" vs "Agosto 2026" para el mismo mes) — nunca una excepción visible, un
     rechazo silencioso de una exportación legítima."""
     ctx = ToolContext(
-        user=ADMIN, request_id=None, now=datetime(2026, 10, 12, tzinfo=UTC), session_state={},
+        user=ADMIN,
+        request_id=None,
+        now=datetime(2026, 10, 12, tzinfo=UTC),
+        session_state={},
         user_message="Genera un informe completo en PDF de comparativa de costes en nóminas por departamento en agosto de 2026",
     )
     eco_execution = await august_registry.execute(
-        ToolCall("call_1", "analisis_economico_nominas", json.dumps({"periodo": "2026-08", "concepto": "coste_empresa"})),
+        ToolCall(
+            "call_1", "analisis_economico_nominas", json.dumps({"periodo": "2026-08", "concepto": "coste_empresa"})
+        ),
         ctx,
     )
     assert eco_execution.result.status is ToolStatus.OK
     # El ConversationEngine real hace esto tras cada ejecución (engine.py); se reproduce aquí porque
     # se llama a registry.execute() directamente, sin pasar por el motor de conversación completo.
     remember_table(
-        ctx.session_state, eco_execution.result.presentation, 5000, eco_execution.result.summary,
+        ctx.session_state,
+        eco_execution.result.presentation,
+        5000,
+        eco_execution.result.summary,
         source_tool="analisis_economico_nominas",
     )
 
     informe_execution = await august_registry.execute(
         ToolCall(
-            "call_2", "generar_informe",
+            "call_2",
+            "generar_informe",
             json.dumps({"formato": "pdf", "titulo": "Comparativa de costes en nóminas por departamento - Agosto 2026"}),
         ),
         ctx,

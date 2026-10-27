@@ -36,8 +36,10 @@ PALETTE = ["#1B2559", "#D8A565", "#3A8F8A", "#D9776B", "#5B8DEF", "#8A6BB0", "#7
 SEVERITY_COLOR = {"blocker": "#B3261E", "data_quality": "#A66A1E", "info": "#3A8F8A"}
 SEVERITY_LABEL = {"blocker": "BLOQUEANTE", "data_quality": "CALIDAD DE DATOS", "info": "INFO"}
 NARRATIVE_LABEL = {
-    "fact": "HECHO VERIFICADO", "interpretation": "INTERPRETACIÓN",
-    "hypothesis": "HIPÓTESIS", "recommendation": "RECOMENDACIÓN",
+    "fact": "HECHO VERIFICADO",
+    "interpretation": "INTERPRETACIÓN",
+    "hypothesis": "HIPÓTESIS",
+    "recommendation": "RECOMENDACIÓN",
 }
 
 
@@ -73,7 +75,9 @@ def _svg_bar(spec: dict[str, Any], *, horizontal: bool = False) -> str:
     positive_width, negative_width = (210, 170) if has_negative else (340, 0)
     bars = []
     if has_negative:
-        bars.append(f'<line x1="{zero_x}" x2="{zero_x}" y1="3" y2="{height-10}" stroke="{LINE}" stroke-width="1.5" />')
+        bars.append(
+            f'<line x1="{zero_x}" x2="{zero_x}" y1="3" y2="{height - 10}" stroke="{LINE}" stroke-width="1.5" />'
+        )
     for i, label in enumerate(labels):
         y = 16 + i * row_h
         bars.append(f'<text x="0" y="{y + 12}" font-size="11" fill="{MUTED}">{_esc(str(label)[:22])}</text>')
@@ -90,12 +94,20 @@ def _svg_bar(spec: dict[str, Any], *, horizontal: bool = False) -> str:
             )
     if n > 1:
         legend = " ".join(
-            f'<span class="legend-dot" style="background:{PALETTE[j % len(PALETTE)]}"></span>{_esc(str(s.get("name", f"Serie {j+1}")))}'
+            f'<span class="legend-dot" style="background:{PALETTE[j % len(PALETTE)]}"></span>{_esc(str(s.get("name", f"Serie {j + 1}")))}'
             for j, s in enumerate(series)
         )
         bars.append(f'<foreignObject x="0" y="{height - 5}" width="650" height="1"></foreignObject>')
-        return f'<div><div class="legend">{legend}</div><svg viewBox="0 0 {width} {height}" width="100%" role="img" aria-label="{_esc(spec.get("title"))}">' + "".join(bars) + "</svg></div>"
-    return f'<svg viewBox="0 0 {width} {height}" width="100%" role="img" aria-label="{_esc(spec.get("title"))}">' + "".join(bars) + "</svg>"
+        return (
+            f'<div><div class="legend">{legend}</div><svg viewBox="0 0 {width} {height}" width="100%" role="img" aria-label="{_esc(spec.get("title"))}">'
+            + "".join(bars)
+            + "</svg></div>"
+        )
+    return (
+        f'<svg viewBox="0 0 {width} {height}" width="100%" role="img" aria-label="{_esc(spec.get("title"))}">'
+        + "".join(bars)
+        + "</svg>"
+    )
 
 
 def _svg_donut(spec: dict[str, Any]) -> str:
@@ -119,10 +131,14 @@ def _svg_donut(spec: dict[str, Any]) -> str:
         )
         legend.append(
             f'<span class="legend-dot" style="background:{color}"></span>{_esc(label)} '
-            f'<strong>{round(frac * 100, 1)}%</strong>'
+            f"<strong>{round(frac * 100, 1)}%</strong>"
         )
         offset += length
-    svg = f'<svg viewBox="0 0 {size} {size}" width="220" height="220" role="img" aria-label="{_esc(spec.get("title"))}">' + "".join(segments) + "</svg>"
+    svg = (
+        f'<svg viewBox="0 0 {size} {size}" width="220" height="220" role="img" aria-label="{_esc(spec.get("title"))}">'
+        + "".join(segments)
+        + "</svg>"
+    )
     return f'<div class="donut-wrap">{svg}<div class="legend">{"<br/>".join(legend)}</div></div>'
 
 
@@ -158,8 +174,14 @@ def _svg_line(spec: dict[str, Any], *, area: bool = False) -> str:
             parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3" fill="{color}" />')
     for i, label in enumerate(labels):
         x = pad + i * step
-        parts.append(f'<text x="{x:.1f}" y="{height - 8}" font-size="10" fill="{MUTED}" text-anchor="middle">{_esc(label)[:10]}</text>')
-    svg = f'<svg viewBox="0 0 {width} {height}" width="100%" role="img" aria-label="{_esc(spec.get("title"))}">' + "".join(parts) + "</svg>"
+        parts.append(
+            f'<text x="{x:.1f}" y="{height - 8}" font-size="10" fill="{MUTED}" text-anchor="middle">{_esc(label)[:10]}</text>'
+        )
+    svg = (
+        f'<svg viewBox="0 0 {width} {height}" width="100%" role="img" aria-label="{_esc(spec.get("title"))}">'
+        + "".join(parts)
+        + "</svg>"
+    )
     if len(series) > 1:
         legend = " ".join(
             f'<span class="legend-dot" style="background:{PALETTE[i % len(PALETTE)]}"></span>{_esc(str(s.get("name", f"Serie {i + 1}")))}'
@@ -195,7 +217,9 @@ def _annex_notice(block: Block) -> str | None:
     if block.kind != "annex" or not block.data.get("truncated"):
         return None
     shown, total = len(block.data.get("rows", [])), block.data.get("total_rows")
-    return f"Mostrando {shown} de {total} filas — el resto no se ha omitido en silencio, solo no entra en este documento."
+    return (
+        f"Mostrando {shown} de {total} filas — el resto no se ha omitido en silencio, solo no entra en este documento."
+    )
 
 
 def _kpi_cards_html(items: list[tuple[str, Any]]) -> str:
@@ -223,8 +247,8 @@ def _render_block(block: Block, *, chart_of: Any) -> str:
         items = "".join(
             f'<li class="warning-item" style="border-left-color:{SEVERITY_COLOR.get(i.get("severity"), MUTED)}">'
             f'<span class="warning-badge" style="color:{SEVERITY_COLOR.get(i.get("severity"), MUTED)}">'
-            f'{_esc(SEVERITY_LABEL.get(i.get("severity"), i.get("severity")))} · {_esc(i.get("code"))}</span>'
-            f'<p>{_esc(i.get("message"))}</p></li>'
+            f"{_esc(SEVERITY_LABEL.get(i.get('severity'), i.get('severity')))} · {_esc(i.get('code'))}</span>"
+            f"<p>{_esc(i.get('message'))}</p></li>"
             for i in block.data.get("items", [])
         )
         return f'<section class="block"><h2>{_esc(block.title)}</h2><ul class="warning-list">{items}</ul></section>'
@@ -232,7 +256,7 @@ def _render_block(block: Block, *, chart_of: Any) -> str:
     if block.kind == "narrative":
         items = "".join(
             f'<li class="narrative-item"><span class="narrative-badge">{_esc(NARRATIVE_LABEL.get(s.get("kind"), s.get("kind")))}</span>'
-            f'<p>{_esc(s.get("text"))}</p>'
+            f"<p>{_esc(s.get('text'))}</p>"
             + (
                 f'<p class="evidence">Evidencia: {_esc(", ".join(f"{k}: {v}" for k, v in (s.get("evidence") or {}).items()))}</p>'
                 if s.get("evidence")
@@ -264,10 +288,8 @@ def _render_block(block: Block, *, chart_of: Any) -> str:
     kpis_html = ""
     if isinstance(block.data, dict) and isinstance(block.data.get("kpis"), dict) and block.data["kpis"]:
         kpis_html = _kpi_cards_html(list(block.data["kpis"].items()))
-    head = "".join(f"<th scope=\"col\">{_esc(c)}</th>" for c in columns)
-    body = "".join(
-        "<tr>" + "".join(f"<td>{_esc(v)}</td>" for v in row) + "</tr>" for row in rows
-    )
+    head = "".join(f'<th scope="col">{_esc(c)}</th>' for c in columns)
+    body = "".join("<tr>" + "".join(f"<td>{_esc(v)}</td>" for v in row) + "</tr>" for row in rows)
     return (
         f'<section class="block"><h2>{_esc(block.title)}</h2>{kpis_html}{notice_html}{chart_html}'
         f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div></section>'
@@ -326,7 +348,7 @@ def to_html(doc: Document, generated: datetime, logo: Path | None = None) -> byt
     logo_uri = _logo_data_uri(resolve_logo(logo))
     if not logo_uri:
         raise FileNotFoundError("El logotipo de Sunset Beach Club es obligatorio")
-    logo_html = f'<img src="{logo_uri}" alt="Logotipo Sunset Beach Club" />' 
+    logo_html = f'<img src="{logo_uri}" alt="Logotipo Sunset Beach Club" />'
     meta = "  ·  ".join(x for x in [doc.subtitle, *doc.badges] if x)
     has_explicit_chart = any(b.kind == "chart" for b in doc.blocks)
 

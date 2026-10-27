@@ -11,6 +11,7 @@ a la derecha de una tabla estrecha Concepto/Valor) colisionaban con las columnas
 
 All values are synthetic. No corporate data, network access, or live LLM calls.
 """
+
 from __future__ import annotations
 
 import io
@@ -28,11 +29,16 @@ NOW = datetime(2026, 10, 25)
 # Una tabla ANCHA (6 columnas) a propósito: la tabla estrecha Concepto/Valor que usa un bloque "kpis"
 # independiente nunca habría revelado la colisión de columnas en Excel.
 WIDE_TABLE_KPIS = {
-    "Horas programadas": 40, "Horas trabajadas": 39, "Balance": "-1,00 h",
-    "Balance % turno": "-2,5%", "Correctos": 4, "Desviados": 1,
+    "Horas programadas": 40,
+    "Horas trabajadas": 39,
+    "Balance": "-1,00 h",
+    "Balance % turno": "-2,5%",
+    "Correctos": 4,
+    "Desviados": 1,
 }
 WIDE_TABLE = Block(
-    "table", "Melania Rosello Diaz",
+    "table",
+    "Melania Rosello Diaz",
     {
         "columns": ["Fecha", "Estado", "Turno", "Entrada", "Salida", "Balance"],
         "rows": [
@@ -47,7 +53,8 @@ WIDE_TABLE = Block(
 def make_document() -> Document:
     return Document(
         "Informe comparativo turnos · fichajes — Restaurante",
-        subtitle="Periodo de prueba", badges=["Restaurante"],
+        subtitle="Periodo de prueba",
+        badges=["Restaurante"],
         blocks=[
             Block("kpis", "Resumen ejecutivo · Restaurante", {"Personas analizadas": 1}),
             WIDE_TABLE,
@@ -109,7 +116,13 @@ def test_pptx_kpi_slide_and_table_slide_share_the_same_title_consecutively():
 
     deck = Presentation(io.BytesIO(to_pptx(make_document(), NOW)))
     titled = [
-        (i, next((sh.text_frame.text for sh in slide.shapes if sh.has_text_frame and "Melania" in sh.text_frame.text), None))
+        (
+            i,
+            next(
+                (sh.text_frame.text for sh in slide.shapes if sh.has_text_frame and "Melania" in sh.text_frame.text),
+                None,
+            ),
+        )
         for i, slide in enumerate(deck.slides)
     ]
     melania_slides = [i for i, title in titled if title]

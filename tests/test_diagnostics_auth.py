@@ -54,6 +54,7 @@ async def diagnostics_client(tmp_path: Path) -> httpx.AsyncClient:
 
 # ── Settings: sin admin_users/admin_password, diagnostics no debe arrancar ───
 
+
 def test_settings_reject_diagnostics_enabled_without_admin_credentials(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="ADMIN_USERS"):
         make_settings(tmp_path, diagnostics={"enabled": True})
@@ -115,7 +116,9 @@ async def test_email_comparison_is_case_insensitive(diagnostics_client: httpx.As
 
 
 async def test_status_endpoint_with_valid_credentials_returns_data(diagnostics_client: httpx.AsyncClient) -> None:
-    response = await diagnostics_client.get("/api/admin/diagnostics/status", headers=_basic_header(ALLOWED_EMAILS[1], PASSWORD))
+    response = await diagnostics_client.get(
+        "/api/admin/diagnostics/status", headers=_basic_header(ALLOWED_EMAILS[1], PASSWORD)
+    )
     assert response.status_code == 200
     assert response.json()["diagnostics_enabled"] is True
 

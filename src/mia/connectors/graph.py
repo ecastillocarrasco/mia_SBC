@@ -11,8 +11,7 @@ import httpx
 import msal
 
 from mia.auth.context import UserContext
-from mia.connectors.sharepoint.auth import _private_key_pem
-from mia.connectors.sharepoint.auth import TokenProvider
+from mia.connectors.sharepoint.auth import TokenProvider, _private_key_pem
 from mia.settings import SharePointSettings
 
 GRAPH = "https://graph.microsoft.com/v1.0"
@@ -87,7 +86,9 @@ class GraphClient:
                 if response.status_code == 403:
                     raise GraphError("La cuenta conectada no tiene permiso para acceder al buzón solicitado (HTTP 403)")
                 if response.status_code == 404:
-                    raise GraphError("No se ha encontrado el buzón solicitado o no está disponible para esta cuenta (HTTP 404)")
+                    raise GraphError(
+                        "No se ha encontrado el buzón solicitado o no está disponible para esta cuenta (HTTP 404)"
+                    )
                 raise GraphError(f"Graph HTTP {response.status_code}: {response.text[:300]}")
             if response.status_code == 204 or not response.content:
                 return {}

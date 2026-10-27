@@ -43,11 +43,25 @@ sí solo baste para no caer en el fallback dejaría fuera un dominio real cuyo v
 no cubría esta frase en concreto (visto con datos reales: "indicadores de rotación de personal"
 coincide con "empleados" vía "personal" y debe seguir trayendo también ``analitica``)."""
 
-_GREETING_PHRASES = frozenset({
-    "hola", "holaa", "holaaa", "ey", "hey", "buenas", "saludos",
-    "buenos dias", "buenas tardes", "buenas noches",
-    "que tal", "que tal estas", "que tal vas", "como estas", "como andas",
-})
+_GREETING_PHRASES = frozenset(
+    {
+        "hola",
+        "holaa",
+        "holaaa",
+        "ey",
+        "hey",
+        "buenas",
+        "saludos",
+        "buenos dias",
+        "buenas tardes",
+        "buenas noches",
+        "que tal",
+        "que tal estas",
+        "que tal vas",
+        "como estas",
+        "como andas",
+    }
+)
 """Frases completas de saludo puro (la normalización ya ha quitado tildes/puntuación). Comparación
 EXACTA contra el mensaje completo, no por subcadena: así "hola, ¿cómo va la nómina de este mes?" no
 se confunde con un saludo (tiene contenido de negocio real) y solo cae aquí un saludo sin nada más que
@@ -78,11 +92,7 @@ def select_modules(message: str, module_keywords: dict[str, tuple[str, ...]]) ->
     normalized = normalize_key(message)
     if _is_pure_greeting(normalized):
         return ALWAYS_ON
-    matched = {
-        module
-        for module, keywords in module_keywords.items()
-        if any(_matches(k, normalized) for k in keywords)
-    }
+    matched = {module for module, keywords in module_keywords.items() if any(_matches(k, normalized) for k in keywords)}
     if not (matched - _SOFT_SIGNAL):
         # Nada reconocido (o solo señales "blandas" como "empleados"): catálogo completo, igual
         # que si no se filtrara nada. Si al menos "finanzas" coincidió, SÍ cuenta como "algo

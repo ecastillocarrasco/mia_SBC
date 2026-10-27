@@ -31,9 +31,7 @@ def _input_items(messages: list[Message]) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for message in messages:
         if message.role == "tool":
-            items.append(
-                {"type": "function_call_output", "call_id": message.tool_call_id, "output": message.content}
-            )
+            items.append({"type": "function_call_output", "call_id": message.tool_call_id, "output": message.content})
             continue
         if message.content:
             items.append({"role": message.role, "content": message.content})

@@ -27,7 +27,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
-from mia.diagnostics.models import EventStage, EventStatus, TraceStatus  # noqa: F401
+from mia.diagnostics.models import EventStage, EventStatus, TraceStatus
 from mia.diagnostics.trace import TraceContext, current_call_id, current_trace, noop_trace  # noqa: F401
 
 if TYPE_CHECKING:
@@ -101,14 +101,14 @@ def emit(
 
 
 __all__ = [
-    "is_enabled",
-    "setup",
-    "begin_trace",
-    "emit",
-    "current_trace",
-    "current_call_id",
     "EventStage",
     "EventStatus",
-    "TraceStatus",
     "TraceContext",
+    "TraceStatus",
+    "begin_trace",
+    "current_call_id",
+    "current_trace",
+    "emit",
+    "is_enabled",
+    "setup",
 ]

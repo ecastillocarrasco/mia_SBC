@@ -23,16 +23,34 @@ def _ctx() -> ToolContext:
 
 
 def _item(
-    sp_id: int, title: str, *, category: str | None = "Corporativa", featured: bool = False,
-    active: bool = True, order: int | None = None, expires_at: date | None = None,
-    summary: str | None = "Resumen breve.", link_url: str | None = None, image_url: str | None = None,
+    sp_id: int,
+    title: str,
+    *,
+    category: str | None = "Corporativa",
+    featured: bool = False,
+    active: bool = True,
+    order: int | None = None,
+    expires_at: date | None = None,
+    summary: str | None = "Resumen breve.",
+    link_url: str | None = None,
+    image_url: str | None = None,
     created_at: datetime | None = None,
 ) -> NewsletterItem:
     return NewsletterItem(
-        sp_id=sp_id, title=title, summary=summary, body="Cuerpo completo de la noticia.",
-        category=category, featured=featured, active=active, order=order, expires_at=expires_at,
-        image_url=image_url, link_url=link_url, button_text="Consultar",
-        created_at=created_at or datetime(2026, 10, 1), modified_at=created_at or datetime(2026, 10, 1),
+        sp_id=sp_id,
+        title=title,
+        summary=summary,
+        body="Cuerpo completo de la noticia.",
+        category=category,
+        featured=featured,
+        active=active,
+        order=order,
+        expires_at=expires_at,
+        image_url=image_url,
+        link_url=link_url,
+        button_text="Consultar",
+        created_at=created_at or datetime(2026, 10, 1),
+        modified_at=created_at or datetime(2026, 10, 1),
     )
 
 
@@ -44,13 +62,16 @@ async def _seed(tmp_path: Path, rows: list[NewsletterItem]) -> Any:
 
 
 async def test_returns_only_active_non_expired_items_sorted_by_order(tmp_path: Path) -> None:
-    db = await _seed(tmp_path, [
-        _item(1, "Jubilación Blas", order=1),
-        _item(2, "Semana Saludable", order=2),
-        _item(3, "Inactiva", active=False, order=0),
-        _item(4, "Caducada", order=0, expires_at=TODAY - timedelta(days=1)),
-        _item(5, "Vigente hasta hoy", order=3, expires_at=TODAY),
-    ])
+    db = await _seed(
+        tmp_path,
+        [
+            _item(1, "Jubilación Blas", order=1),
+            _item(2, "Semana Saludable", order=2),
+            _item(3, "Inactiva", active=False, order=0),
+            _item(4, "Caducada", order=0, expires_at=TODAY - timedelta(days=1)),
+            _item(5, "Vigente hasta hoy", order=3, expires_at=TODAY),
+        ],
+    )
     tool = newsletter_corporativo(Deps(db=db))
     result = await tool.handler(tool.params(), _ctx())
 
@@ -61,10 +82,13 @@ async def test_returns_only_active_non_expired_items_sorted_by_order(tmp_path: P
 
 
 async def test_destacadas_filters_to_featured_only(tmp_path: Path) -> None:
-    db = await _seed(tmp_path, [
-        _item(1, "Normal", order=1, featured=False),
-        _item(2, "Importante", order=2, featured=True),
-    ])
+    db = await _seed(
+        tmp_path,
+        [
+            _item(1, "Normal", order=1, featured=False),
+            _item(2, "Importante", order=2, featured=True),
+        ],
+    )
     tool = newsletter_corporativo(Deps(db=db))
     result = await tool.handler(tool.params(destacadas=True), _ctx())
 
@@ -76,10 +100,13 @@ async def test_destacadas_filters_to_featured_only(tmp_path: Path) -> None:
 
 
 async def test_categoria_filter_is_natural_language_substring_match(tmp_path: Path) -> None:
-    db = await _seed(tmp_path, [
-        _item(1, "A", order=1, category="Corporativa"),
-        _item(2, "B", order=2, category="Salud y bienestar"),
-    ])
+    db = await _seed(
+        tmp_path,
+        [
+            _item(1, "A", order=1, category="Corporativa"),
+            _item(2, "B", order=2, category="Salud y bienestar"),
+        ],
+    )
     tool = newsletter_corporativo(Deps(db=db))
     result = await tool.handler(tool.params(categoria="salud"), _ctx())
 
@@ -94,10 +121,13 @@ async def test_company_name_as_categoria_is_ignored_not_treated_as_a_filter(tmp_
     categoria="Sunset Beach Club"; como ninguna categoría real se llama así, el resultado quedaba
     vacío aunque hubiera newsletters activas. Esta newsletter ya es, por definición, la de Sunset
     Beach Club, así que mencionar la empresa no debe filtrar nada."""
-    db = await _seed(tmp_path, [
-        _item(1, "A", order=1, category="Corporativa"),
-        _item(2, "B", order=2, category="General"),
-    ])
+    db = await _seed(
+        tmp_path,
+        [
+            _item(1, "A", order=1, category="Corporativa"),
+            _item(2, "B", order=2, category="General"),
+        ],
+    )
     tool = newsletter_corporativo(Deps(db=db))
     for noise in ("Sunset Beach Club", "sbc", "SBC", "sunset beach club"):
         result = await tool.handler(tool.params(categoria=noise), _ctx())
@@ -133,10 +163,13 @@ async def test_presentation_reuses_the_news_list_card_panel(tmp_path: Path) -> N
 async def test_image_only_enlace_is_not_presented_as_a_read_more_link(tmp_path: Path) -> None:
     """Dato real: «Enlace» a veces apunta a una imagen suelta reutilizada de otra tarjeta del
     portal, no a un artículo — mostrarla como «leer más» llevaría a una imagen sin contexto."""
-    db = await _seed(tmp_path, [
-        _item(1, "Con imagen suelta", order=1, link_url="https://x.test/imagesNewsLetter/imgHomeTurnos.png"),
-        _item(2, "Con enlace real", order=2, link_url="https://x.test/noticias/articulo"),
-    ])
+    db = await _seed(
+        tmp_path,
+        [
+            _item(1, "Con imagen suelta", order=1, link_url="https://x.test/imagesNewsLetter/imgHomeTurnos.png"),
+            _item(2, "Con enlace real", order=2, link_url="https://x.test/noticias/articulo"),
+        ],
+    )
     tool = newsletter_corporativo(Deps(db=db))
     result = await tool.handler(tool.params(), _ctx())
 
@@ -150,10 +183,13 @@ async def test_presentation_carries_a_proxied_image_url_for_the_detail_popup(tmp
     """La URL de SharePoint se guarda, pero NUNCA se expone tal cual al navegador: responde 403 sin
     sesión ahí (verificado). La presentación debe llevar la ruta propia de mIA que la sirve con sus
     propias credenciales (``api.routes.community``), no la URL directa de SharePoint."""
-    db = await _seed(tmp_path, [
-        _item(1, "Jubilación Blas", order=1, image_url="https://x.test/images/blas.png"),
-        _item(2, "Sin imagen", order=2, image_url=None),
-    ])
+    db = await _seed(
+        tmp_path,
+        [
+            _item(1, "Jubilación Blas", order=1, image_url="https://x.test/images/blas.png"),
+            _item(2, "Sin imagen", order=2, image_url=None),
+        ],
+    )
     tool = newsletter_corporativo(Deps(db=db))
     result = await tool.handler(tool.params(), _ctx())
 

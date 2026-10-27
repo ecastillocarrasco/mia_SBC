@@ -4,6 +4,7 @@ Helper de preparación de datos para el ÚNICO motor documental: no exporta
 PDF/Excel/PPTX ni consulta fuentes directamente. Conserva reglas NOM-005:
 solo calcula diferencias cuando ambos periodos permiten exponer ese agregado.
 """
+
 from __future__ import annotations
 
 import re
@@ -11,9 +12,26 @@ from typing import Any
 
 from mia.text import normalize_key
 
-_MONTHS = {name: i for i, name in enumerate(
-    ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
-     "agosto", "septiembre", "octubre", "noviembre", "diciembre"), 1)}
+_MONTHS = {
+    name: i
+    for i, name in enumerate(
+        (
+            "enero",
+            "febrero",
+            "marzo",
+            "abril",
+            "mayo",
+            "junio",
+            "julio",
+            "agosto",
+            "septiembre",
+            "octubre",
+            "noviembre",
+            "diciembre",
+        ),
+        1,
+    )
+}
 
 
 def explicit_month_comparison(request: str) -> tuple[str, str] | None:
@@ -44,10 +62,10 @@ def explicit_month_comparison(request: str) -> tuple[str, str] | None:
         return None
     if years[0].group() == years[1].group():
         return None
-    connector = text[years[0].end():years[1].start()]
-    valid_connector = bool(re.fullmatch(
-        r"\s*(?:y|e|vs|versus|contra|con|frente a|respecto a)\s*(?:de(?:l)?\s+)?", connector
-    ))
+    connector = text[years[0].end() : years[1].start()]
+    valid_connector = bool(
+        re.fullmatch(r"\s*(?:y|e|vs|versus|contra|con|frente a|respecto a)\s*(?:de(?:l)?\s+)?", connector)
+    )
     # normalize_key quita «/» y «-»; distinguir "2025/2026" de dos años
     # meramente yuxtapuestos para no deducir una comparativa inexistente.
     if not valid_connector and not connector.strip():
@@ -57,8 +75,8 @@ def explicit_month_comparison(request: str) -> tuple[str, str] | None:
     month = all_months[0]
     # Dos años deben estar vinculados al mes; si el mes está lejos o
     # acompañado de otra referencia temporal, no extrapolamos.
-    before = text[month.end():years[0].start()] if month.end() <= years[0].start() else ""
-    after = text[years[1].end():month.start()] if years[1].end() <= month.start() else ""
+    before = text[month.end() : years[0].start()] if month.end() <= years[0].start() else ""
+    after = text[years[1].end() : month.start()] if years[1].end() <= month.start() else ""
     before_ok = bool(re.fullmatch(r"\s*(?:de(?:l)?\s+)?(?:(?:los\s+)?anos\s+)?", before))
     after_ok = bool(re.fullmatch(r"\s*(?:en|de(?:l)?|para(?:\s+el\s+mes\s+de)?)\s+", after))
     if not before_ok and not after_ok:
@@ -80,18 +98,35 @@ def is_export_followup(text: str) -> bool:
         return False
     if any(re.search(rf"\b{name}\b", norm) for name in _MONTHS):
         return False
-    export = any(re.search(rf"\b{word}\b", norm) for word in (
-        "pdf", "excel", "xlsx", "pptx", "powerpoint", "exporta", "exportar", "descarga", "descargar"))
-    reference = any(re.search(rf"\b{word}\b", norm) for word in (
-        "informe", "comparativa", "comparacion", "anterior", "resultado", "tabla", "ese", "esa", "esto", "esta"))
+    export = any(
+        re.search(rf"\b{word}\b", norm)
+        for word in ("pdf", "excel", "xlsx", "pptx", "powerpoint", "exporta", "exportar", "descarga", "descargar")
+    )
+    reference = any(
+        re.search(rf"\b{word}\b", norm)
+        for word in (
+            "informe",
+            "comparativa",
+            "comparacion",
+            "anterior",
+            "resultado",
+            "tabla",
+            "ese",
+            "esa",
+            "esto",
+            "esta",
+        )
+    )
     # Un informe nuevo con descripción larga no debe reaprovechar automáticamente
     # una comparativa salarial anterior. El seguimiento es una referencia breve.
     if len(norm.split()) > 14:
         return False
-    generic_previous = bool(re.fullmatch(
-        r"(?:ahora )?(?:genera|generame|haz|prepara|pasame|dame|quiero|exporta) (?:el |un |la )?(?:informe )?(?:en )?(?:pdf|excel|xlsx|pptx|powerpoint)(?: del informe)?",
-        norm,
-    ))
+    generic_previous = bool(
+        re.fullmatch(
+            r"(?:ahora )?(?:genera|generame|haz|prepara|pasame|dame|quiero|exporta) (?:el |un |la )?(?:informe )?(?:en )?(?:pdf|excel|xlsx|pptx|powerpoint)(?: del informe)?",
+            norm,
+        )
+    )
     return export and (reference or generic_previous)
 
 
@@ -104,16 +139,21 @@ def remembered_comparison(state: dict, message: str) -> tuple[tuple[str, str], s
         return None
     periods = item.get("periodos")
     fields = item.get("campos")
-    if (not isinstance(periods, list) or len(periods) != 2
+    if (
+        not isinstance(periods, list)
+        or len(periods) != 2
         or not all(isinstance(p, str) and re.fullmatch(r"20\d{2}-(?:0[1-9]|1[0-2])", p) for p in periods)
-        or not isinstance(fields, list) or not fields
-        or not all(isinstance(f, str) for f in fields)):
+        or not isinstance(fields, list)
+        or not fields
+        or not all(isinstance(f, str) for f in fields)
+    ):
         return None
     return tuple(sorted(periods)), set(fields)
 
 
 def merge_payroll_comparison(
-    first: dict[str, Any], second: dict[str, Any],
+    first: dict[str, Any],
+    second: dict[str, Any],
     periods: tuple[str, str],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Une resultados ya autorizados sin reconstruir datos de empleados.
@@ -143,8 +183,7 @@ def merge_payroll_comparison(
         if not isinstance(lv, int | float) or not isinstance(rv, int | float):
             excluded.append(name)
             continue
-        included.append((name, float(lv), float(rv),
-                         left.get("personas_con_nomina"), right.get("personas_con_nomina")))
+        included.append((name, float(lv), float(rv), left.get("personas_con_nomina"), right.get("personas_con_nomina")))
     if not included:
         raise ValueError("No hay departamentos con datos visibles en ambos periodos")
     included.sort(key=lambda r: -r[2])
@@ -154,9 +193,17 @@ def merge_payroll_comparison(
     pct = round(difference / left_sum * 100, 2) if left_sum else None
     rows = []
     for name, lv, rv, left_people, right_people in included:
-        rows.append([name, round(lv, 2), round(rv, 2), round(rv - lv, 2),
-                     round((rv - lv) / lv * 100, 2) if lv else None,
-                     left_people, right_people])
+        rows.append(
+            [
+                name,
+                round(lv, 2),
+                round(rv, 2),
+                round(rv - lv, 2),
+                round((rv - lv) / lv * 100, 2) if lv else None,
+                left_people,
+                right_people,
+            ]
+        )
     rows.append(["TOTAL comparable", left_sum, right_sum, difference, pct, None, None])
     warnings = [
         "La comparación considera exclusivamente departamentos con importes visibles en AMBOS periodos; "
@@ -170,8 +217,10 @@ def merge_payroll_comparison(
             "(ausentes, incompletos u ocultos por privacidad): no se calculan diferencias para ellos."
         )
     if any(x[3] != x[4] for x in included):
-        warnings.append("El número de personas con nómina difiere en uno o más departamentos; "
-                        "la variación mezcla cambios de coste y de tamaño de plantilla.")
+        warnings.append(
+            "El número de personas con nómina difiere en uno o más departamentos; "
+            "la variación mezcla cambios de coste y de tamaño de plantilla."
+        )
     for source in (a, b):
         for warning in source.get("advertencias") or []:
             if isinstance(warning, str) and warning not in warnings:
@@ -185,19 +234,35 @@ def merge_payroll_comparison(
     presentation = {
         "type": "table",
         "title": f"Comparativa {source_name} por departamento · {label_a} / {label_b}",
-        "columns": ["Departamento", label_a + " (€)", label_b + " (€)",
-                    "Variación (€)", "Variación (%)", "Personas " + label_a, "Personas " + label_b],
+        "columns": [
+            "Departamento",
+            label_a + " (€)",
+            label_b + " (€)",
+            "Variación (€)",
+            "Variación (%)",
+            "Personas " + label_a,
+            "Personas " + label_b,
+        ],
         "rows": rows,
         "kpis": [
             {"label": f"Total comparable {label_a}", "value": euro(left_sum)},
             {"label": f"Total comparable {label_b}", "value": euro(right_sum)},
             {"label": "Variación (€)", "value": euro(difference)},
-            {"label": "Variación (%)", "value": f"{pct:.2f}%".replace(".", ",") if pct is not None else "No calculable"},
+            {
+                "label": "Variación (%)",
+                "value": f"{pct:.2f}%".replace(".", ",") if pct is not None else "No calculable",
+            },
         ],
         "charts": [
-            {"type": "grouped_bar", "title": "Comparativa por departamento", "labels": [x[0] for x in included],
-             "series": [{"name": label_a, "values": [x[1] for x in included]},
-                        {"name": label_b, "values": [x[2] for x in included]}]},
+            {
+                "type": "grouped_bar",
+                "title": "Comparativa por departamento",
+                "labels": [x[0] for x in included],
+                "series": [
+                    {"name": label_a, "values": [x[1] for x in included]},
+                    {"name": label_b, "values": [x[2] for x in included]},
+                ],
+            },
         ],
     }
     summary = {

@@ -42,9 +42,7 @@ def age(birth: date | None, today: date) -> int | None:
 # ------------------------------------------------------------------ buscar
 class BuscarParams(BaseModel):
     nombre: str = Field(description="Nombre o parte del nombre")
-    incluir_inactivos: bool = Field(
-        default=False, description="Incluir personas que ya no están en plantilla"
-    )
+    incluir_inactivos: bool = Field(default=False, description="Incluir personas que ya no están en plantilla")
 
 
 def buscar(deps: Deps) -> Tool:
@@ -117,9 +115,7 @@ def ficha(deps: Deps) -> Tool:
             "email": e.email,
             "telefono": e.phone,
             "turno_hoy": (
-                {"tipo": shift.kind, "horario": shift.raw_value, "comentario": shift.comment}
-                if shift
-                else None
+                {"tipo": shift.kind, "horario": shift.raw_value, "comentario": shift.comment} if shift else None
             ),
             "vacaciones_en_curso_o_proximas": [
                 {

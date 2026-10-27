@@ -70,15 +70,14 @@ _VISION_INSTRUCTION = (
 )
 
 _SCANNED_PDF_INSTRUCTION = (
-    "Transcribe y describe el contenido de esta página de documento. "
-    "Incluye todos los textos, tablas y datos visibles."
+    "Transcribe y describe el contenido de esta página de documento. Incluye todos los textos, tablas y datos visibles."
 )
 
 
 async def process_attachment(
     record: AttachmentRecord,
     raw_content: bytes,
-    llm: "LLMProvider | None",
+    llm: LLMProvider | None,
     vision_enabled: bool = True,
 ) -> AttachmentRecord:
     """Procesa el archivo y rellena record.content. Modifica record in-place."""
@@ -109,6 +108,7 @@ async def process_attachment(
                 # PDF escaneado: renderizar primeras páginas y usar Vision
                 try:
                     from mia.modules.rrhh.curriculums.indexer import render_pdf_pages  # noqa: PLC0415
+
                     pages = await asyncio.to_thread(render_pdf_pages, raw_content, 3)
                     descriptions = []
                     for i, page_img in enumerate(pages, 1):
@@ -116,18 +116,19 @@ async def process_attachment(
                         descriptions.append(f"[Página {i}]\n{desc}")
                         record.vision_used = True
                     from mia.attachments.model import TextBlock  # noqa: PLC0415
+
                     content.text_blocks = [
                         TextBlock(text=d, source_ref=f"page={i}") for i, d in enumerate(descriptions, 1)
                     ]
                     content.vision_description = "\n\n".join(descriptions)
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     log.warning("attachment.vision_pdf_failed", error=str(exc))
 
         record.status = AttachmentStatus.READY
         record.classification = classify_data(record.original_filename, record.content_type)
         record.parser_used = _parser_name(record.detected_mime_type)
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.error("attachment.processing_failed", attachment_id=record.attachment_id, error=str(exc))
         record.status = AttachmentStatus.ERROR
         record.error_message = str(exc)
@@ -151,6 +152,7 @@ def _parse_sync(mime: str, content: bytes) -> AttachmentContent:
         return parse_image(content)
     if mime in ("text/plain", "text/markdown", "text/x-markdown"):
         from mia.attachments.model import AttachmentContentType, TextBlock  # noqa: PLC0415
+
         text = content.decode("utf-8", errors="replace")
         return AttachmentContent(
             content_type=AttachmentContentType.DOCUMENT,

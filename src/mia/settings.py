@@ -374,12 +374,14 @@ class Settings(BaseSettings):
     def _fail_closed_in_production(self) -> Settings:
         if self.environment is Environment.PRODUCTION and self.auth.mode is AuthMode.DEV:
             raise ValueError("MIA_AUTH__MODE=dev no está permitido en producción: usa 'easyauth' o 'entra'.")
-        if self.auth.mode is AuthMode.ENTRA and not all((
-            self.auth.entra_tenant_id,
-            self.auth.entra_client_id,
-            self.auth.entra_web_client_id,
-            self.auth.entra_desktop_client_id,
-        )):
+        if self.auth.mode is AuthMode.ENTRA and not all(
+            (
+                self.auth.entra_tenant_id,
+                self.auth.entra_client_id,
+                self.auth.entra_web_client_id,
+                self.auth.entra_desktop_client_id,
+            )
+        ):
             raise ValueError(
                 "MIA_AUTH__MODE=entra exige Tenant ID, Client ID de la API, Client ID web y Client ID desktop."
             )
@@ -396,9 +398,8 @@ class Settings(BaseSettings):
             raise ValueError("MIA_PRIVACY_GATEWAY__FAIL_OPEN=true no está permitido en producción.")
         if self.environment is Environment.PRODUCTION and self.diagnostics.enabled and not self.diagnostics.mask_pii:
             raise ValueError("Con diagnósticos activos en producción, MIA_DIAGNOSTICS__MASK_PII=true es obligatorio.")
-        if (
-            self.diagnostics.enabled
-            and (not self.diagnostics.admin_users or not self.diagnostics.admin_password.get_secret_value())
+        if self.diagnostics.enabled and (
+            not self.diagnostics.admin_users or not self.diagnostics.admin_password.get_secret_value()
         ):
             raise ValueError(
                 "Con MIA_DIAGNOSTICS__ENABLED=true hacen falta MIA_DIAGNOSTICS__ADMIN_USERS "

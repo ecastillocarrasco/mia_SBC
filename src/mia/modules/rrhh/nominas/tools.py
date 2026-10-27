@@ -21,7 +21,8 @@ from sqlalchemy import and_, or_, select
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.data import Employee, Payslip
-from mia.diagnostics import EventStage, current_call_id, emit as diag_emit
+from mia.diagnostics import EventStage, current_call_id
+from mia.diagnostics import emit as diag_emit
 from mia.ingestion.mappers.docs import _month_in_text as month_in_text
 from mia.modules.rrhh.common import (
     MAX_ROWS_FOR_MODEL,
@@ -48,10 +49,31 @@ from mia.text import normalize_key
 RULE = "Metadatos (existencia, periodo, lectura). Para importes: nomina_importes o evolucion_nominas (NOM-002)."
 
 KEYWORDS = (
-    "nomina", "nómina", "nominas", "nóminas", "salario", "salarios", "sueldo", "sueldos",
-    "retribucion", "retribución", "coste salarial", "paga extra", "pagas extra",
-    "paga extraordinaria", "irpf", "importe de la nomina", "nomina no leida", "ranking salarial",
-    "estadisticas salariales", "cobra", "cobro", "cobró", "cobrar", "cuanto gana", "cuánto gana",
+    "nomina",
+    "nómina",
+    "nominas",
+    "nóminas",
+    "salario",
+    "salarios",
+    "sueldo",
+    "sueldos",
+    "retribucion",
+    "retribución",
+    "coste salarial",
+    "paga extra",
+    "pagas extra",
+    "paga extraordinaria",
+    "irpf",
+    "importe de la nomina",
+    "nomina no leida",
+    "ranking salarial",
+    "estadisticas salariales",
+    "cobra",
+    "cobro",
+    "cobró",
+    "cobrar",
+    "cuanto gana",
+    "cuánto gana",
 )
 """Ver `empleados.tools.KEYWORDS` para el criterio."""
 
@@ -261,9 +283,7 @@ def anomalias_nominas(deps: Deps) -> Tool:
                     return no_population()
                 emp_stmt = emp_stmt.where(Employee.sp_id.in_(previous["empleado_ids"]))
             employees = list((await db.scalars(emp_stmt)).all())
-            slips = list(
-                (await db.scalars(select(Payslip).where(Payslip.period == p.periodo))).all()
-            )
+            slips = list((await db.scalars(select(Payslip).where(Payslip.period == p.periodo))).all())
             fresh = await deps.freshness(db, "nominas", "empleados")
 
         # Construir índices
@@ -283,13 +303,15 @@ def anomalias_nominas(deps: Deps) -> Tool:
             matched = (by_folder.get(key or "") or []) + (by_email.get(emp.email or "") if not key else [])
             ordinary = [s for s in matched if not s.special]
             if len(ordinary) > 1:
-                issues.append({
-                    "tipo": "duplicado",
-                    "persona": emp.name,
-                    "departamento": emp.department,
-                    "nominas": len(ordinary),
-                    "detalle": "más de una nómina ordinaria en el mismo período",
-                })
+                issues.append(
+                    {
+                        "tipo": "duplicado",
+                        "persona": emp.name,
+                        "departamento": emp.department,
+                        "nominas": len(ordinary),
+                        "detalle": "más de una nómina ordinaria en el mismo período",
+                    }
+                )
 
         # 2. Faltantes: empleados activos sin ninguna nómina en el periodo
         missing_emp = []
@@ -303,7 +325,8 @@ def anomalias_nominas(deps: Deps) -> Tool:
         active_keys = {e.person_key for e in employees if e.person_key}
         active_emails = {e.email for e in employees if e.email}
         orphan_slips = [
-            s for s in slips
+            s
+            for s in slips
             if (s.person_key and s.person_key not in active_keys)
             or (not s.person_key and s.employee_email and s.employee_email not in active_emails)
         ]
@@ -546,7 +569,9 @@ def buscar_en_nominas(deps: Deps) -> Tool:
         call_id = current_call_id()
         if deps.llm is None:
             diag_emit(
-                EventStage.RAG_SEARCH_ERROR, data={"dominio": "nominas", "motivo": "llm_no_configurado"}, call_id=call_id
+                EventStage.RAG_SEARCH_ERROR,
+                data={"dominio": "nominas", "motivo": "llm_no_configurado"},
+                call_id=call_id,
             )
             return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, "La búsqueda semántica no está configurada")
         async with deps.db.session() as db:

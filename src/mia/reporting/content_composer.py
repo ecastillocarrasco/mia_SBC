@@ -88,14 +88,20 @@ async def compose_for_request(
     inventory = _inventory(document)
     metadata = json.dumps(
         {"peticion": request[:1800], "titulo": document.title, "bloques": inventory},
-        ensure_ascii=False, default=str,
+        ensure_ascii=False,
+        default=str,
     )
     model = model_for_tier(llm_settings, ModelTier.ADVANCED) if llm_settings is not None else None
     try:
         raw: list[str] = []
         async for event in llm.stream(
-            LLMRequest(system=_SYSTEM, messages=[Message(role="user", content=metadata)],
-                       response_schema=_SCHEMA, max_output_tokens=750, model=model)
+            LLMRequest(
+                system=_SYSTEM,
+                messages=[Message(role="user", content=metadata)],
+                response_schema=_SCHEMA,
+                max_output_tokens=750,
+                model=model,
+            )
         ):
             if isinstance(event, TextDelta):
                 raw.append(event.text)

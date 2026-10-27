@@ -29,7 +29,6 @@ from mia.data import Payslip
 from mia.llm.fake import FakeLLMProvider, final_answer, tool_call
 from mia.main import create_app
 from mia.modules.rrhh.informes.jobs import JOB_KIND_INFORME_ECONOMICO, run_informe_economico_nominas
-from mia.reporting import job_manager
 from mia.reporting.worker import ReportJobWorker
 from tests.conftest import make_settings
 from tests.dbutil import fresh_database
@@ -37,9 +36,7 @@ from tests.hr_seed import _emp, seed
 from tests.test_phase4b import _pdf
 from tests.test_report_routing_semantic_validation import _AUG_DEPARTMENTS, _payslip_text_with_ss
 
-INCIDENT_REQUEST = (
-    "Genera un informe completo de comparativa de costes en nóminas por departamento en agosto de 2026"
-)
+INCIDENT_REQUEST = "Genera un informe completo de comparativa de costes en nóminas por departamento en agosto de 2026"
 
 
 @pytest.fixture
@@ -134,7 +131,10 @@ async def test_cost_comparison_request_reaches_the_2d_screen_with_period_kpis_ch
 
     # Periodo: agosto 2026, nunca octubre (el mes en curso) — ver sección 15.
     table = data["table"]
-    assert any("Agosto" in str(col.get("label", "")) or "2026-08" in str(col.get("key", "")) for col in table["columns"]) or "Agosto" in table["title"]
+    assert (
+        any("Agosto" in str(col.get("label", "")) or "2026-08" in str(col.get("key", "")) for col in table["columns"])
+        or "Agosto" in table["title"]
+    )
     row_labels = [r.get("Departamento") for r in table["rows"]]
     assert {"Cocina", "Recepción"} <= set(row_labels)
 
@@ -209,14 +209,25 @@ async def chat_app_with_hidden_department(tmp_path):
 
     services = Services.build(settings, llm=llm, db=db)
     registry = build_registry(
-        db, settings.data.stale_after_minutes, settings=settings, llm=llm, sharepoint=sp, enabled=settings.domains.enabled
+        db,
+        settings.data.stale_after_minutes,
+        settings=settings,
+        llm=llm,
+        sharepoint=sp,
+        enabled=settings.domains.enabled,
     )
     services.registry = registry
     services.sharepoint = sp
     services.engine = ConversationEngine(
-        llm=llm, tools=registry, db=db, persona=Persona(), timezone=settings.timezone,
-        history_turns=settings.history_turns, max_tool_rounds=settings.llm.max_tool_rounds,
-        turn_budget_seconds=settings.llm.turn_budget_seconds, max_output_tokens=settings.llm.max_output_tokens,
+        llm=llm,
+        tools=registry,
+        db=db,
+        persona=Persona(),
+        timezone=settings.timezone,
+        history_turns=settings.history_turns,
+        max_tool_rounds=settings.llm.max_tool_rounds,
+        turn_budget_seconds=settings.llm.turn_budget_seconds,
+        max_output_tokens=settings.llm.max_output_tokens,
     )
     app = create_app(settings, services=services)
     yield app
@@ -284,9 +295,7 @@ async def chat_app_jobs_enabled(tmp_path):
 
     def scripted(req):
         if req.messages[-1].role == "tool":
-            return final_answer(
-                "He encolado el análisis en segundo plano. Te aviso cuando esté listo.", "Encolado."
-            )
+            return final_answer("He encolado el análisis en segundo plano. Te aviso cuando esté listo.", "Encolado.")
         return tool_call(
             "informe_economico_en_segundo_plano",
             {"periodo": "agosto de 2026", "concepto": "coste_empresa", "formato": "pdf"},
@@ -294,7 +303,8 @@ async def chat_app_jobs_enabled(tmp_path):
 
     llm = FakeLLMProvider(scripted)
     settings = make_settings(
-        tmp_path, database_url=f"sqlite+aiosqlite:///{tmp_path / 'fase_h_2d_jobs.db'}",
+        tmp_path,
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'fase_h_2d_jobs.db'}",
         jobs={"enabled": True, "allow_sensitive_async": True},
     )
 
@@ -304,14 +314,25 @@ async def chat_app_jobs_enabled(tmp_path):
 
     services = Services.build(settings, llm=llm, db=db)
     registry = build_registry(
-        db, settings.data.stale_after_minutes, settings=settings, llm=llm, sharepoint=sp, enabled=settings.domains.enabled
+        db,
+        settings.data.stale_after_minutes,
+        settings=settings,
+        llm=llm,
+        sharepoint=sp,
+        enabled=settings.domains.enabled,
     )
     services.registry = registry
     services.sharepoint = sp
     services.engine = ConversationEngine(
-        llm=llm, tools=registry, db=db, persona=Persona(), timezone=settings.timezone,
-        history_turns=settings.history_turns, max_tool_rounds=settings.llm.max_tool_rounds,
-        turn_budget_seconds=settings.llm.turn_budget_seconds, max_output_tokens=settings.llm.max_output_tokens,
+        llm=llm,
+        tools=registry,
+        db=db,
+        persona=Persona(),
+        timezone=settings.timezone,
+        history_turns=settings.history_turns,
+        max_tool_rounds=settings.llm.max_tool_rounds,
+        turn_budget_seconds=settings.llm.turn_budget_seconds,
+        max_output_tokens=settings.llm.max_output_tokens,
     )
     app = create_app(settings, services=services)
     yield app, services
@@ -354,7 +375,7 @@ async def test_background_job_request_is_queued_tracked_and_downloadable_from_th
             worker = ReportJobWorker(
                 services, {JOB_KIND_INFORME_ECONOMICO: run_informe_economico_nominas}, worker_id="fase-h-test-worker"
             )
-            claimed = await worker._run_once()  # noqa: SLF001
+            claimed = await worker._run_once()
             assert claimed is True
 
             # Punto 1: "recuperación de trabajos tras refrescar la página" — una consulta nueva (como la
@@ -400,9 +421,7 @@ async def test_shift_domain_reaches_the_2d_screen_as_a_table(client: Any, servic
         return final_answer("Aquí tienes sus ausencias de esa semana.", "Listo.")
 
     script[0] = scripted
-    response = await client.post(
-        "/api/mia/chat", json={"message": "Ausencias de Eva Sol la primera semana de agosto"}
-    )
+    response = await client.post("/api/mia/chat", json={"message": "Ausencias de Eva Sol la primera semana de agosto"})
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
@@ -449,9 +468,7 @@ async def test_employee_roster_domain_reaches_the_2d_screen_as_a_table(
     assert body["data"].get("table"), "el listado de plantilla no llegó como tabla al mundo 2D"
 
 
-async def test_a_simple_conversational_reply_never_gets_cards_in_the_2d_world(
-    client: Any, services: Any
-) -> None:
+async def test_a_simple_conversational_reply_never_gets_cards_in_the_2d_world(client: Any, services: Any) -> None:
     """Selección semántica de presentación (requisito 5 de la Fase H): una respuesta puramente
     conversacional (el guion por defecto de `script`, un saludo sin ninguna herramienta de datos) no
     debe llevar tarjetas/tablas/gráficos — nunca cards innecesarias para una charla simple."""

@@ -74,9 +74,7 @@ async def legacy_chat(body: LegacyChatRequest, services: ServicesDep, user: User
 
 
 @router.post("/api/mia/chat/stream")
-async def legacy_chat_stream(
-    body: LegacyChatRequest, services: ServicesDep, user: UserDep
-) -> StreamingResponse:
+async def legacy_chat_stream(body: LegacyChatRequest, services: ServicesDep, user: UserDep) -> StreamingResponse:
     events = await prime(services.engine.run(message=body.message, user=user, session_id=body.session_id))
     return StreamingResponse(to_ndjson(events, _legacy_stream_event), media_type="application/x-ndjson")
 

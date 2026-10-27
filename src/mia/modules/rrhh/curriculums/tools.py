@@ -32,9 +32,21 @@ from mia.text import normalize_key
 RULE = "SEL-001: resultados por coincidencia con la búsqueda, no un ranking de idoneidad. No descartes a nadie."
 
 KEYWORDS = (
-    "curriculum", "currículum", "curriculums", "currículums", "cv", "candidato", "candidatos",
-    "candidatura", "candidaturas", "seleccion", "selección", "entrevista", "vacante",
-    "puesto vacante", "proceso de seleccion",
+    "curriculum",
+    "currículum",
+    "curriculums",
+    "currículums",
+    "cv",
+    "candidato",
+    "candidatos",
+    "candidatura",
+    "candidaturas",
+    "seleccion",
+    "selección",
+    "entrevista",
+    "vacante",
+    "puesto vacante",
+    "proceso de seleccion",
 )
 """Ver `empleados.tools.KEYWORDS` para el criterio."""
 
@@ -117,7 +129,10 @@ def parecidos(deps: Deps) -> Tool:
         return ToolResult(
             ToolStatus.OK,
             {"consulta": p.consulta, "coincidencias": results, "regla": RULE, **fresh},
-            {**table(f"CVs: {p.consulta}", ["Candidatura", "Departamento", "Estado", "Fecha", "Evidencia"], rows), "documents": cv_documents},
+            {
+                **table(f"CVs: {p.consulta}", ["Candidatura", "Departamento", "Estado", "Fecha", "Evidencia"], rows),
+                "documents": cv_documents,
+            },
         )
 
     return Tool(
@@ -135,7 +150,10 @@ def parecidos(deps: Deps) -> Tool:
 class CandidaturasParams(BaseModel):
     departamento: str | None = None
     estado: str | None = None
-    desde: date | None = Field(default=None, description="Recibidas desde AAAA-MM-DD (por fecha de candidatura o, si no existe, por fecha de alta en el sistema)")
+    desde: date | None = Field(
+        default=None,
+        description="Recibidas desde AAAA-MM-DD (por fecha de candidatura o, si no existe, por fecha de alta en el sistema)",
+    )
     hasta: date | None = Field(default=None, description="Recibidas hasta AAAA-MM-DD")
 
 
@@ -152,6 +170,7 @@ def candidaturas(deps: Deps) -> Tool:
 
         # Filtrar por fecha: applied_on si está relleno, si no created_at
         if p.desde or p.hasta:
+
             def _entry_date(c: Candidate) -> date | None:
                 if c.applied_on:
                     return c.applied_on
@@ -176,7 +195,15 @@ def candidaturas(deps: Deps) -> Tool:
             table(
                 "Candidaturas",
                 ["Nombre", "Departamento", "Estado", "Fecha"],
-                [[c.name, c.department, c.status, fmt_date(c.applied_on or (c.created_at.date() if c.created_at else None))] for c in rows],
+                [
+                    [
+                        c.name,
+                        c.department,
+                        c.status,
+                        fmt_date(c.applied_on or (c.created_at.date() if c.created_at else None)),
+                    ]
+                    for c in rows
+                ],
             ),
         )
 

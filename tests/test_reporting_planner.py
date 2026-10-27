@@ -19,7 +19,8 @@ def test_plan_resolves_multiple_fields_dimension_and_metric() -> None:
     planner = ReportPlanner()
     plan = planner.plan(
         "Genera un informe de evolución de plantilla de los últimos tres años, desglosado por departamentos",
-        user=ADMIN, today=TODAY,
+        user=ADMIN,
+        today=TODAY,
     )
     assert plan.period is not None
     assert plan.period.start == date(2023, 10, 11)

@@ -43,9 +43,7 @@ def _backfill_down(table: str) -> None:
     rows = bind.execute(sa.text(f"SELECT id, embedding_vec FROM {table} WHERE embedding_vec IS NOT NULL")).fetchall()
     for start in range(0, len(rows), BATCH):
         batch = rows[start : start + BATCH]
-        params = [
-            {"id": r.id, "raw": np.asarray(r.embedding_vec, dtype=np.float32).tobytes()} for r in batch
-        ]
+        params = [{"id": r.id, "raw": np.asarray(r.embedding_vec, dtype=np.float32).tobytes()} for r in batch]
         bind.execute(sa.text(f"UPDATE {table} SET embedding = :raw WHERE id = :id"), params)
 
 

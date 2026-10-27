@@ -38,8 +38,10 @@ PALETTE = ["1B2559", "D8A565", "3A8F8A", "D9776B", "5B8DEF", "8A6BB0", "7FA37A",
 SEVERITY_COLOR = {"blocker": "B3261E", "data_quality": "A66A1E", "info": "3A8F8A"}
 SEVERITY_LABEL = {"blocker": "BLOQUEANTE", "data_quality": "CALIDAD DE DATOS", "info": "INFO"}
 NARRATIVE_LABEL = {
-    "fact": "HECHO VERIFICADO", "interpretation": "INTERPRETACIÓN",
-    "hypothesis": "HIPÓTESIS", "recommendation": "RECOMENDACIÓN",
+    "fact": "HECHO VERIFICADO",
+    "interpretation": "INTERPRETACIÓN",
+    "hypothesis": "HIPÓTESIS",
+    "recommendation": "RECOMENDACIÓN",
 }
 
 
@@ -148,8 +150,11 @@ def _chart_image(spec: dict[str, Any], width_in: float, *, caption: str | None =
         values = [max(0.0, float(v or 0)) for v in series[0]["values"]]
         total = sum(values) or 1.0
         ax.pie(
-            values, labels=None, colors=[hexes[i % len(hexes)] for i in range(len(values))],
-            wedgeprops={"width": 0.45, "edgecolor": "white", "linewidth": 1.5}, startangle=90,
+            values,
+            labels=None,
+            colors=[hexes[i % len(hexes)] for i in range(len(values))],
+            wedgeprops={"width": 0.45, "edgecolor": "white", "linewidth": 1.5},
+            startangle=90,
         )
         legend_labels = [f"{label}  ({value / total:.0%})" for label, value in zip(labels, values, strict=True)]
         ax.legend(legend_labels, loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False, fontsize=8)
@@ -162,8 +167,15 @@ def _chart_image(spec: dict[str, Any], width_in: float, *, caption: str | None =
         for i, s in enumerate(series):
             color = hexes[i % len(hexes)]
             values = [float(v or 0) for v in s["values"]]
-            ax.plot(x, values, color=color, linewidth=2.2, marker="o", markersize=4,
-                    label=str(s.get("name", f"Serie {i + 1}")))
+            ax.plot(
+                x,
+                values,
+                color=color,
+                linewidth=2.2,
+                marker="o",
+                markersize=4,
+                label=str(s.get("name", f"Serie {i + 1}")),
+            )
             if kind == "area":
                 ax.fill_between(x, values, color=color, alpha=0.15)
         ax.set_xticks(list(x))
@@ -179,8 +191,13 @@ def _chart_image(spec: dict[str, Any], width_in: float, *, caption: str | None =
             band = 0.8 / n
             for i, s in enumerate(series):
                 offsets = [p + (i - (n - 1) / 2) * band for p in positions]
-                ax.barh(offsets, [float(v or 0) for v in s["values"]], height=band * 0.92,
-                        color=hexes[i % len(hexes)], label=str(s.get("name", f"Serie {i + 1}")))
+                ax.barh(
+                    offsets,
+                    [float(v or 0) for v in s["values"]],
+                    height=band * 0.92,
+                    color=hexes[i % len(hexes)],
+                    label=str(s.get("name", f"Serie {i + 1}")),
+                )
             ax.set_yticks(list(positions))
             ax.set_yticklabels(labels)
             ax.invert_yaxis()
@@ -189,8 +206,13 @@ def _chart_image(spec: dict[str, Any], width_in: float, *, caption: str | None =
             band = 0.8 / n
             for i, s in enumerate(series):
                 offsets = [p + (i - (n - 1) / 2) * band for p in positions]
-                ax.bar(offsets, [float(v or 0) for v in s["values"]], width=band * 0.92,
-                       color=hexes[i % len(hexes)], label=str(s.get("name", f"Serie {i + 1}")))
+                ax.bar(
+                    offsets,
+                    [float(v or 0) for v in s["values"]],
+                    width=band * 0.92,
+                    color=hexes[i % len(hexes)],
+                    label=str(s.get("name", f"Serie {i + 1}")),
+                )
             ax.set_xticks(list(positions))
             rotation, align = (0, "center") if len(labels) <= 8 else (45, "right")
             ax.set_xticklabels(labels, rotation=rotation, ha=align)
@@ -334,8 +356,7 @@ def _annex_notice(block: Block) -> str | None:
         return None
     shown, total = len(block.data.get("rows", [])), block.data.get("total_rows")
     return (
-        f"Mostrando {shown} de {total} filas — el resto no se ha omitido en silencio, "
-        "solo no entra en este documento."
+        f"Mostrando {shown} de {total} filas — el resto no se ha omitido en silencio, solo no entra en este documento."
     )
 
 

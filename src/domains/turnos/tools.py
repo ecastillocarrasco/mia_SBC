@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import date
 from typing import Any
 
+from mia.sources.mappers.hr import ShiftKind
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -26,7 +27,6 @@ from mia.modules.rrhh.common import (
     resolve_person,
     table,
 )
-from mia.sources.mappers.hr import ShiftKind
 from mia.text import normalize_key
 
 DAY_NAMES = {
@@ -112,9 +112,7 @@ def turnos_persona(deps: Deps) -> Tool:
 class TurnosDepartamentoParams(BaseModel):
     departamento: str = Field(description="Departamento")
     fecha: date | None = Field(default=None, description="Día AAAA-MM-DD (por defecto hoy)")
-    tipo: str | None = Field(
-        default=None, description="Filtrar por tipo: Trabajo, Descanso, Vacaciones, Baja/IT…"
-    )
+    tipo: str | None = Field(default=None, description="Filtrar por tipo: Trabajo, Descanso, Vacaciones, Baja/IT…")
 
 
 def turnos_departamento(deps: Deps) -> Tool:
@@ -184,11 +182,7 @@ class AusenciasParams(Periodo):
 def ausencias(deps: Deps) -> Tool:
     async def handler(p: AusenciasParams, ctx: ToolContext) -> ToolResult:
         start, end = p.resolve(ctx.now.date())
-        kinds = [
-            k
-            for k in ABSENCE_KINDS
-            if not p.tipos or any(normalize_key(t) in normalize_key(k) for t in p.tipos)
-        ]
+        kinds = [k for k in ABSENCE_KINDS if not p.tipos or any(normalize_key(t) in normalize_key(k) for t in p.tipos)]
         async with deps.db.session() as db:
             stmt = select(ShiftDay).where(ShiftDay.day.between(start, end), ShiftDay.kind.in_(kinds))
             if p.departamento:

@@ -44,9 +44,17 @@ from mia.text import normalize_key
 ESTADOS = {"aceptadas": "aceptada", "pendientes": "pendiente", "rechazadas": "rechazada"}
 
 KEYWORDS = (
-    "vacacion", "vacaciones", "saldo de vacaciones", "dias libres", "días libres",
-    "asuntos propios", "conflicto de vacaciones", "solicitud de vacaciones", "reincorporacion",
-    "reincorporación", "vuelve de vacaciones",
+    "vacacion",
+    "vacaciones",
+    "saldo de vacaciones",
+    "dias libres",
+    "días libres",
+    "asuntos propios",
+    "conflicto de vacaciones",
+    "solicitud de vacaciones",
+    "reincorporacion",
+    "reincorporación",
+    "vuelve de vacaciones",
 )
 """Ver `empleados.tools.KEYWORDS` para el criterio."""
 
@@ -407,12 +415,16 @@ def conflictos_vacaciones(deps: Deps) -> Tool:
                 )
             )
             # Saldo de vacaciones de la persona
-            balance_row = await db.scalar(
-                select(VacationBalance).where(
-                    VacationBalance.year == start.year,
-                    VacationBalance.employee_email == e.email,
+            balance_row = (
+                await db.scalar(
+                    select(VacationBalance).where(
+                        VacationBalance.year == start.year,
+                        VacationBalance.employee_email == e.email,
+                    )
                 )
-            ) if e.email else None
+                if e.email
+                else None
+            )
             fresh = await deps.freshness(db, "vacaciones")
 
         days_requested = (end - start).days + 1

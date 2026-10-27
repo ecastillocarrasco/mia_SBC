@@ -166,9 +166,7 @@ async def test_comparativa_restricts_to_the_previous_population_not_the_whole_de
         "person_keys": [],
         "emails": [],
     }
-    ctx = ToolContext(
-        user=ADMIN, request_id=None, now=NOW, session_state={"ultima_poblacion": previous_subgroup}
-    )
+    ctx = ToolContext(user=ADMIN, request_id=None, now=NOW, session_state={"ultima_poblacion": previous_subgroup})
     result = (
         await registry.execute(
             ToolCall("c", "comparativa_salarial", json.dumps({"sobre_resultado_anterior": True})), ctx

@@ -38,11 +38,22 @@ _DIST_KEYS = (
 )
 
 # Claves escalares del resumen que NO son interesantes como KPIs de presentación
-_SKIP_KPI_KEYS = frozenset({
-    "fecha", "desde", "hasta", "periodo", "criterio", "nota", "departamento",
-    "poblacion", "mensaje", "ultima_sincronizacion", "actualizacion",
-    "personas",  # lista de objetos, no escalar
-})
+_SKIP_KPI_KEYS = frozenset(
+    {
+        "fecha",
+        "desde",
+        "hasta",
+        "periodo",
+        "criterio",
+        "nota",
+        "departamento",
+        "poblacion",
+        "mensaje",
+        "ultima_sincronizacion",
+        "actualizacion",
+        "personas",  # lista de objetos, no escalar
+    }
+)
 
 LABELS = {
     "hoy": "Hoy",
@@ -105,9 +116,7 @@ def warnings_block(title: str, issues: list[dict[str, Any]]) -> Block:
     return Block("warnings", title, {"items": issues})
 
 
-def narrative_statement(
-    kind: NarrativeKind, text: str, *, evidence: dict[str, Any] | None = None
-) -> dict[str, Any]:
+def narrative_statement(kind: NarrativeKind, text: str, *, evidence: dict[str, Any] | None = None) -> dict[str, Any]:
     """Una afirmación narrativa individual. Un ``fact`` EXIGE evidencia verificable (fuente/métrica/
     periodo/valor, sección 16) — nunca una cifra sin respaldo del backend; se rechaza en el momento de
     construirla, no en el de mostrarla."""
@@ -127,9 +136,7 @@ def methodology_block(title: str, notes: list[str]) -> Block:
     return Block("methodology", title, {"notes": list(notes)})
 
 
-def annex_block(
-    title: str, columns: list[str], rows: list[list[Any]], *, max_rows: int = 5000
-) -> Block:
+def annex_block(title: str, columns: list[str], rows: list[list[Any]], *, max_rows: int = 5000) -> Block:
     """Tabla extensa de detalle. Nunca trunca en silencio (sección 19): si ``rows`` supera
     ``max_rows``, se recortan las filas mostradas pero ``total_rows``/``truncated`` quedan explícitos
     en el propio bloque para que el renderizador SIEMPRE pueda avisarlo."""
@@ -259,7 +266,8 @@ def to_document(
         if isinstance(explicit_kpis, list) and explicit_kpis:
             doc.blocks.append(
                 Block(
-                    "kpis", "Indicadores",
+                    "kpis",
+                    "Indicadores",
                     {str(k.get("label")): _flat(k.get("value")) for k in explicit_kpis if isinstance(k, dict)},
                 )
             )
@@ -291,7 +299,13 @@ def to_document(
                     "context": dict(a.get("context") or {}),
                 }
                 if isinstance(a, dict)
-                else {"severity": "info", "code": "ANALYSIS_NOTE", "message": str(a), "source": "analysis", "context": {}}
+                else {
+                    "severity": "info",
+                    "code": "ANALYSIS_NOTE",
+                    "message": str(a),
+                    "source": "analysis",
+                    "context": {},
+                }
                 for a in advertencias
             ]
             doc.blocks.append(warnings_block("Advertencias del análisis", items))
@@ -306,9 +320,12 @@ def to_document(
                     # Ranking y donut de la misma distribución no aportan dos lecturas
                     # distintas al informe y ocupaban páginas completas duplicadas.
                     import json
+
                     signature = json.dumps(
                         [spec["labels"], [s.get("values") for s in spec["series"]]],
-                        ensure_ascii=False, sort_keys=True, default=str,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        default=str,
                     )
                     if signature in seen_chart_values:
                         continue

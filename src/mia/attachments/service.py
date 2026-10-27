@@ -16,8 +16,8 @@ from mia.attachments.intelligence import (
 )
 from mia.attachments.model import (
     AttachmentContent,
-    AttachmentRef,
     AttachmentRecord,
+    AttachmentRef,
     AttachmentScope,
     AttachmentStatus,
 )
@@ -44,7 +44,7 @@ class AttachmentService:
         self,
         *,
         storage: StorageBackend,
-        llm: "LLMProvider | None",
+        llm: LLMProvider | None,
         max_files: int = 10,
         max_file_mb: int = 25,
         retention_hours: int = 24,
@@ -71,13 +71,17 @@ class AttachmentService:
         tenant_id: str = "default",
     ) -> AttachmentRecord:
         """Valida, almacena y procesa un archivo. Devuelve el registro resultante."""
-        from mia.diagnostics import EventStage, EventStatus, emit as diag_emit  # noqa: PLC0415
+        from mia.diagnostics import EventStage, EventStatus  # noqa: PLC0415
+        from mia.diagnostics import emit as diag_emit
 
-        diag_emit(EventStage.ATTACHMENT_RECEIVED, data={
-            "filename": filename,
-            "size": len(content),
-            "declared_mime": declared_mime,
-        })
+        diag_emit(
+            EventStage.ATTACHMENT_RECEIVED,
+            data={
+                "filename": filename,
+                "size": len(content),
+                "declared_mime": declared_mime,
+            },
+        )
 
         # Validar
         diag_emit(EventStage.ATTACHMENT_VALIDATION_START)
@@ -88,9 +92,13 @@ class AttachmentService:
             record = self._make_error_record(safe_name, declared_mime, user_id, session_id, tenant_id, result.error)
             return record
 
-        diag_emit(EventStage.ATTACHMENT_VALIDATION_COMPLETE, status=EventStatus.SUCCESS, data={
-            "detected_mime": result.detected_mime,
-        })
+        diag_emit(
+            EventStage.ATTACHMENT_VALIDATION_COMPLETE,
+            status=EventStatus.SUCCESS,
+            data={
+                "detected_mime": result.detected_mime,
+            },
+        )
 
         attachment_id = self._new_id()
         now = datetime.now(UTC)
@@ -201,7 +209,8 @@ class AttachmentService:
 
     async def expire_old(self) -> int:
         """Elimina adjuntos vencidos. Devuelve el número eliminado."""
-        from mia.diagnostics import EventStage, emit as diag_emit  # noqa: PLC0415
+        from mia.diagnostics import EventStage  # noqa: PLC0415
+        from mia.diagnostics import emit as diag_emit
 
         now = datetime.now(UTC)
         expired_ids = [aid for aid, r in self._records.items() if r.expires_at <= now]
@@ -209,7 +218,7 @@ class AttachmentService:
             r = self._records[aid]
             try:
                 await self._storage.delete(r.storage_location)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
             r.status = AttachmentStatus.EXPIRED
             del self._records[aid]
@@ -227,7 +236,7 @@ class AttachmentService:
             await asyncio.sleep(interval)
             try:
                 await self.expire_old()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 log.warning("attachment.cleanup_error", error=str(exc))
 
     async def aclose(self) -> None:
@@ -241,11 +250,7 @@ class AttachmentService:
 
     def _find_duplicate(self, candidate: AttachmentRecord) -> AttachmentRecord | None:
         for r in self._records.values():
-            if (
-                r.user_id == candidate.user_id
-                and r.sha256 == candidate.sha256
-                and r.status == AttachmentStatus.READY
-            ):
+            if r.user_id == candidate.user_id and r.sha256 == candidate.sha256 and r.status == AttachmentStatus.READY:
                 return r
         return None
 
@@ -277,7 +282,7 @@ class AttachmentService:
         return r
 
     @classmethod
-    def build(cls, settings: Any, llm: "LLMProvider | None") -> "AttachmentService":
+    def build(cls, settings: Any, llm: LLMProvider | None) -> AttachmentService:
         from pathlib import Path  # noqa: PLC0415
 
         att = settings.attachments

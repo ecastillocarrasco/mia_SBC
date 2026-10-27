@@ -52,7 +52,11 @@ def analyze(record: TraceRecord) -> None:
     existing_types = {i.type for i in record.issues}
 
     # Rendimiento
-    if record.elapsed_ms and record.elapsed_ms > 10_000 and DiagnosticIssueType.PERFORMANCE_WARNING not in existing_types:
+    if (
+        record.elapsed_ms
+        and record.elapsed_ms > 10_000
+        and DiagnosticIssueType.PERFORMANCE_WARNING not in existing_types
+    ):
         record.issues.append(
             _issue(
                 DiagnosticIssueType.PERFORMANCE_WARNING,
@@ -73,8 +77,7 @@ def analyze(record: TraceRecord) -> None:
             record.issues.append(
                 _issue(
                     DiagnosticIssueType.TOOL_NOT_SELECTED,
-                    "El LLM respondió sin invocar ninguna herramienta. "
-                    "Posible gap de capacidad o routing incorrecto.",
+                    "El LLM respondió sin invocar ninguna herramienta. Posible gap de capacidad o routing incorrecto.",
                     domain=record.domain,
                 )
             )

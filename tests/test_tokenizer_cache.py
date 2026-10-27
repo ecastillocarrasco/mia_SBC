@@ -3,6 +3,7 @@
 El system prompt es el mismo texto en todas las rondas de un turno (varios segundos de análisis NLP
 sobre ~30.000 caracteres si no se cachea); repetir el análisis en cada ronda es desperdicio puro.
 """
+
 from __future__ import annotations
 
 from mia.privacy_gateway.policy_engine import Policy

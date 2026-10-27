@@ -84,7 +84,10 @@ async def run_informe_economico_nominas(services: Any, job: JobSnapshot) -> str:
 
     max_rows = services.settings.reports.max_rows if services.settings else 5000
     remember_table(
-        ctx.session_state, eco_result.presentation, max_rows, eco_result.summary,
+        ctx.session_state,
+        eco_result.presentation,
+        max_rows,
+        eco_result.summary,
         source_tool="analisis_economico_nominas",
     )
 

@@ -20,8 +20,7 @@ if TYPE_CHECKING:
 
 MANIFEST = ModuleManifest(
     name="finanzas",
-    description="Finanzas: facturación, contabilidad, presupuestos, tesorería. Sin fuente de "
-    "datos conectada todavía.",
+    description="Finanzas: facturación, contabilidad, presupuestos, tesorería. Sin fuente de datos conectada todavía.",
     permissions=(),
     languages=("es",),
     sources=(),

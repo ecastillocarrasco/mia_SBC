@@ -4,19 +4,20 @@ Nunca invoca SyncRunner, ejecuta migraciones ni limpia indices globales.
 Predeterminado: simulacion de solo lectura. Requiere dos banderas para escrituras.
 No usa, muestra ni registra identificadores de empleados ni contenido documental.
 """
+
 from __future__ import annotations
 
 import argparse
 import ast
 import asyncio
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
 import hashlib
 import inspect
 import json
-from pathlib import Path
 import re
 import sys
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from pathlib import Path
 from urllib.parse import urlsplit
 
 POLICY = "nominas_min_v1"
@@ -56,16 +57,22 @@ def parse_child_output(lines: list[str]) -> tuple[int | None, dict[str, int] | N
             except (SyntaxError, ValueError):
                 continue
             if isinstance(raw, dict) and all(
-                isinstance(k, str) and k in (STOP_STATUSES | {"ok"})
-                and type(v) is int and v >= 0 for k, v in raw.items()
+                isinstance(k, str) and k in (STOP_STATUSES | {"ok"}) and type(v) is int and v >= 0
+                for k, v in raw.items()
             ):
                 summary = raw
     return candidates, summary
 
 
-def check_batch_result(before: Snapshot, after: Snapshot, *, expected_candidates: int,
-                       reported_candidates: int | None, summary: dict[str, int] | None,
-                       return_code: int) -> None:
+def check_batch_result(
+    before: Snapshot,
+    after: Snapshot,
+    *,
+    expected_candidates: int,
+    reported_candidates: int | None,
+    summary: dict[str, int] | None,
+    return_code: int,
+) -> None:
     """Strong stop conditions: only fresh records, no historical or cross-domain mutation."""
     if return_code != 0:
         raise SafetyStop("El indexador ha devuelto un error; se ha detenido la ejecucion.")
@@ -87,27 +94,30 @@ def check_batch_result(before: Snapshot, after: Snapshot, *, expected_candidates
         before.pending - after.pending,
     )
     if any(delta != succeeded for delta in deltas):
-        raise SafetyStop(
-            "Descuadre de contadores de privacidad, vectores o pendientes. "
-            "No continuar hasta investigar."
-        )
+        raise SafetyStop("Descuadre de contadores de privacidad, vectores o pendientes. No continuar hasta investigar.")
 
 
 def validate_config(settings, script_path: Path) -> None:
     from sqlalchemy.engine import make_url
+
     from mia.modules.rrhh.document_indexing import DocumentIndexer
     from mia.modules.rrhh.payroll_embedding_privacy import (
-        PAYROLL_EMBEDDING_POLICY_VERSION, project_payroll_embedding,
+        PAYROLL_EMBEDDING_POLICY_VERSION,
+        project_payroll_embedding,
     )
+
     if not script_path.is_file():
         raise SafetyStop("Falta tools/mia_index_lote_controlado.py (script existente).")
     checksum = hashlib.sha256(script_path.read_bytes()).hexdigest()
     if checksum != ORIGINAL_SCRIPT_SHA256:
         raise SafetyStop("El script de lotes difiere de la version auditada. No ejecutar automaticamente.")
     url = make_url(settings.database_url)
-    if (url.get_backend_name() != "postgresql" or url.database != "mia"
+    if (
+        url.get_backend_name() != "postgresql"
+        or url.database != "mia"
         or (url.host or "").lower() not in {"localhost", "127.0.0.1", "::1"}
-        or (url.port or 5432) != 5432):
+        or (url.port or 5432) != 5432
+    ):
         raise SafetyStop("Solo se permite PostgreSQL local en la BD mia, puerto 5432.")
     if not (settings.privacy_gateway.enabled and not settings.privacy_gateway.fail_open):
         raise SafetyStop("Privacy Gateway debe estar activado y FAIL_OPEN=false.")
@@ -131,10 +141,11 @@ def validate_config(settings, script_path: Path) -> None:
 
 async def snapshot(db, *, size: int) -> tuple[Snapshot, int, bool]:
     """SELECT only; verifies that next candidate set excludes previously indexed OK rows."""
-    from sqlalchemy import and_, func, or_, select, text
-    from mia.data import HrDocumentChunk, HrDocumentText, Payslip
     # Reuse original selector, rather than duplicating its candidate logic.
     from mia_index_lote_controlado import _candidate_query
+    from sqlalchemy import and_, func, or_, select, text
+
+    from mia.data import HrDocumentChunk, HrDocumentText
 
     async with db.session() as session:
         name = await session.scalar(text("SELECT current_database()"))
@@ -142,29 +153,32 @@ async def snapshot(db, *, size: int) -> tuple[Snapshot, int, bool]:
             raise SafetyStop("Base de datos inesperada.")
         marker = "%embeddings=" + POLICY + "%"
         base_new = (
-            (HrDocumentText.domain == "nominas")
-            & (HrDocumentText.status == "ok")
-            & HrDocumentText.detail.like(marker)
+            (HrDocumentText.domain == "nominas") & (HrDocumentText.status == "ok") & HrDocumentText.detail.like(marker)
         )
         new_ok = await session.scalar(select(func.count()).select_from(HrDocumentText).where(base_new))
         new_with_vectors = await session.scalar(
             select(func.count(func.distinct(HrDocumentText.document_id)))
             .select_from(HrDocumentText)
-            .join(HrDocumentChunk, and_(
-                HrDocumentChunk.domain == HrDocumentText.domain,
-                HrDocumentChunk.document_id == HrDocumentText.document_id,
-            ))
+            .join(
+                HrDocumentChunk,
+                and_(
+                    HrDocumentChunk.domain == HrDocumentText.domain,
+                    HrDocumentChunk.document_id == HrDocumentText.document_id,
+                ),
+            )
             .where(base_new)
         )
         old_ok = await session.scalar(
-            select(func.count()).select_from(HrDocumentText).where(
-                HrDocumentText.domain == "nominas", HrDocumentText.status == "ok",
+            select(func.count())
+            .select_from(HrDocumentText)
+            .where(
+                HrDocumentText.domain == "nominas",
+                HrDocumentText.status == "ok",
                 or_(HrDocumentText.detail.is_(None), ~HrDocumentText.detail.like(marker)),
             )
         )
         with_vectors = await session.scalar(
-            select(func.count(func.distinct(HrDocumentChunk.document_id)))
-            .where(HrDocumentChunk.domain == "nominas")
+            select(func.count(func.distinct(HrDocumentChunk.document_id))).where(HrDocumentChunk.domain == "nominas")
         )
         pending = await session.scalar(
             select(func.count()).select_from(_candidate_query("nominas").order_by(None).subquery())
@@ -173,23 +187,35 @@ async def snapshot(db, *, size: int) -> tuple[Snapshot, int, bool]:
         document_ids = [item.sp_id for item in candidates]
         historical_candidate = False
         if document_ids:
-            exists = await session.scalar(select(func.count()).select_from(HrDocumentText).where(
-                HrDocumentText.domain == "nominas",
-                HrDocumentText.document_id.in_(document_ids),
-                HrDocumentText.status == "ok",
-            ))
+            exists = await session.scalar(
+                select(func.count())
+                .select_from(HrDocumentText)
+                .where(
+                    HrDocumentText.domain == "nominas",
+                    HrDocumentText.document_id.in_(document_ids),
+                    HrDocumentText.status == "ok",
+                )
+            )
             historical_candidate = bool(exists)
         return (
-            Snapshot(int(pending or 0), int(new_ok or 0), int(new_with_vectors or 0),
-                     int(old_ok or 0), int(with_vectors or 0)),
-            len(candidates), historical_candidate,
+            Snapshot(
+                int(pending or 0),
+                int(new_ok or 0),
+                int(new_with_vectors or 0),
+                int(old_ok or 0),
+                int(with_vectors or 0),
+            ),
+            len(candidates),
+            historical_candidate,
         )
 
 
 async def run_child(script: Path, *, size: int) -> tuple[int, int | None, dict[str, int] | None]:
     cmd = [sys.executable, str(script), "--domain", "nominas", "--limit", str(size), "--execute"]
     process = await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
     )
     lines: list[str] = []
 
@@ -209,31 +235,36 @@ async def run_child(script: Path, *, size: int) -> tuple[int, int | None, dict[s
     try:
         await asyncio.wait_for(read_and_filter(), timeout=1800)
         rc = await asyncio.wait_for(process.wait(), timeout=15)
-    except (asyncio.TimeoutError, asyncio.CancelledError, KeyboardInterrupt):
+    except (TimeoutError, asyncio.CancelledError, KeyboardInterrupt):
         process.kill()
         await process.wait()
         raise SafetyStop("Interrumpido/tiempo agotado; comprobar estado antes de reanudar.")
     return rc, *parse_child_output(lines)
 
 
-def log_safe(root: Path, *, batch: int, before: Snapshot, after: Snapshot,
-             summary: dict[str, int] | None, outcome: str) -> None:
+def log_safe(
+    root: Path, *, batch: int, before: Snapshot, after: Snapshot, summary: dict[str, int] | None, outcome: str
+) -> None:
     folder = root / "logs"
     folder.mkdir(parents=True, exist_ok=True)
     destination = folder / "mia_indexacion_nominas_supervisada.jsonl"
     record = {
-        "at_utc": datetime.now(timezone.utc).isoformat(),
-        "domain": "nominas", "policy": POLICY, "batch": batch,
-        "before": asdict(before), "after": asdict(after),
-        "statuses": summary, "outcome": outcome,
+        "at_utc": datetime.now(UTC).isoformat(),
+        "domain": "nominas",
+        "policy": POLICY,
+        "batch": batch,
+        "before": asdict(before),
+        "after": asdict(after),
+        "statuses": summary,
+        "outcome": outcome,
     }
     with destination.open("a", encoding="utf-8") as file:
         file.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
 async def main(args) -> int:
-    from mia.settings import get_settings
     from mia.data import Database
+    from mia.settings import get_settings
 
     root = Path(__file__).resolve().parent.parent
     script = root / "tools" / "mia_index_lote_controlado.py"
@@ -241,11 +272,12 @@ async def main(args) -> int:
     db = Database(get_settings().database_url)
     try:
         before, available, historical_candidate = await snapshot(db, size=args.batch_size)
-        print(f"PREFLIGHT OK | politica={POLICY} | lotes_max={args.max_batches} "
-              f"| documentos/lote={args.batch_size}")
+        print(f"PREFLIGHT OK | politica={POLICY} | lotes_max={args.max_batches} | documentos/lote={args.batch_size}")
         print(f"BD=mia | pendientes_elegibles={before.pending} | siguientes_candidatos={available}")
-        print(f"Nuevos_politica={before.new_policy_ok} | nuevos_con_vectores={before.new_policy_with_vectors} "
-              f"| historicos_no_migrados={before.historical_ok} | vectores_totales={before.all_with_vectors}")
+        print(
+            f"Nuevos_politica={before.new_policy_ok} | nuevos_con_vectores={before.new_policy_with_vectors} "
+            f"| historicos_no_migrados={before.historical_ok} | vectores_totales={before.all_with_vectors}"
+        )
         if before.historical_ok != EXPECTED_HISTORICAL_OK:
             raise SafetyStop("El numero de indices historicos cambio respecto a la referencia aprobada.")
         if before.new_policy_ok != before.new_policy_with_vectors:
@@ -273,20 +305,29 @@ async def main(args) -> int:
             rc, reported, summary = await run_child(script, size=args.batch_size)
             after, _, _ = await snapshot(db, size=args.batch_size)
             try:
-                check_batch_result(before, after, expected_candidates=available,
-                                   reported_candidates=reported, summary=summary, return_code=rc)
+                check_batch_result(
+                    before,
+                    after,
+                    expected_candidates=available,
+                    reported_candidates=reported,
+                    summary=summary,
+                    return_code=rc,
+                )
             except SafetyStop:
-                log_safe(root, batch=batch, before=before, after=after, summary=summary,
-                         outcome="STOP_NEEDS_REVIEW")
+                log_safe(root, batch=batch, before=before, after=after, summary=summary, outcome="STOP_NEEDS_REVIEW")
                 raise
             log_safe(root, batch=batch, before=before, after=after, summary=summary, outcome="OK")
             total_ok += summary.get("ok", 0) if summary else 0
-            print(f"LOTE {batch} OK | total nuevos={after.new_policy_ok} "
-                  f"| historicos={after.historical_ok} | pendientes={after.pending}")
+            print(
+                f"LOTE {batch} OK | total nuevos={after.new_policy_ok} "
+                f"| historicos={after.historical_ok} | pendientes={after.pending}"
+            )
             if batch < args.max_batches:
                 await asyncio.sleep(args.pause_seconds)
-        print(f"FINALIZADO: nuevos documentos OK en esta ejecucion={total_ok}. "
-              "No se ha ejecutado SyncRunner ni migracion historica.")
+        print(
+            f"FINALIZADO: nuevos documentos OK en esta ejecucion={total_ok}. "
+            "No se ha ejecutado SyncRunner ni migracion historica."
+        )
         return 0
     finally:
         await db.dispose()
@@ -313,8 +354,9 @@ def entrypoint():
         if isinstance(exc, SafetyStop):
             print(f"BLOQUEADO: {exc}", file=sys.stderr)
         else:
-            print(f"BLOQUEADO: incidencia no prevista ({type(exc).__name__}). "
-                  "No reintentar sin revisar.", file=sys.stderr)
+            print(
+                f"BLOQUEADO: incidencia no prevista ({type(exc).__name__}). No reintentar sin revisar.", file=sys.stderr
+            )
         raise SystemExit(2)
     except KeyboardInterrupt:
         print("INTERRUMPIDO: comprueba la auditoria antes de reanudar.", file=sys.stderr)

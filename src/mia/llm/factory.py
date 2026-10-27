@@ -6,9 +6,7 @@ from mia.llm.openai_responses import OpenAIResponsesProvider
 from mia.settings import LLMProviderName, LLMSettings, PrivacyGatewaySettings
 
 
-def build_llm_provider(
-    settings: LLMSettings, privacy_settings: PrivacyGatewaySettings | None = None
-) -> LLMProvider:
+def build_llm_provider(settings: LLMSettings, privacy_settings: PrivacyGatewaySettings | None = None) -> LLMProvider:
     """Único punto de construcción de un LLMProvider en todo mIA. SIEMPRE devuelve una instancia
     envuelta en PrivacyGateway — no existe otra forma de obtener un proveedor real, así que ningún
     módulo nuevo puede "olvidarse" de pasar por la protección de privacidad (ver mia.privacy_gateway).

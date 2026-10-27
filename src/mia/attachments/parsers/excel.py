@@ -11,7 +11,6 @@ from typing import Any
 
 from mia.attachments.model import AttachmentContent, AttachmentContentType, DatasetSheet
 
-
 _MAX_ROWS_PER_SHEET = 5000
 _MAX_COLS = 50
 
@@ -65,7 +64,7 @@ def parse_excel(content: bytes) -> AttachmentContent:
         headers: list[str] = []
         for cell in list(header_row)[:_MAX_COLS]:
             v = cell.value
-            headers.append(str(v).strip() if v is not None else f"Col{len(headers)+1}")
+            headers.append(str(v).strip() if v is not None else f"Col{len(headers) + 1}")
 
         if not any(h.strip() for h in headers):
             sheets.append(DatasetSheet(name=sheet_name, headers=[], rows=[], row_count=0))
@@ -75,7 +74,7 @@ def parse_excel(content: bytes) -> AttachmentContent:
         for row in rows_iter:
             if len(data_rows) >= _MAX_ROWS_PER_SHEET:
                 break
-            values = [_cell_value(cell) for cell in list(row)[:len(headers)]]
+            values = [_cell_value(cell) for cell in list(row)[: len(headers)]]
             if any(v is not None for v in values):
                 data_rows.append(values)
 
@@ -88,13 +87,15 @@ def parse_excel(content: bytes) -> AttachmentContent:
 
         inferred = {h: _infer_type(col_values[h]) for h in headers}
 
-        sheets.append(DatasetSheet(
-            name=sheet_name,
-            headers=headers,
-            rows=data_rows,
-            inferred_types=inferred,
-            row_count=len(data_rows),
-        ))
+        sheets.append(
+            DatasetSheet(
+                name=sheet_name,
+                headers=headers,
+                rows=data_rows,
+                inferred_types=inferred,
+                row_count=len(data_rows),
+            )
+        )
 
     wb.close()
     metadata["total_rows"] = sum(s.row_count for s in sheets)

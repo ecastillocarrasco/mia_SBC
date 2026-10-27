@@ -200,7 +200,7 @@ async def test_follow_up_question_with_no_name_in_the_message_keeps_the_focus_id
 
 
 async def test_filler_words_alone_do_not_look_like_a_name_and_keep_the_focus_id(registry: ToolRegistry) -> None:
-    """"ficha completa" sin ningún nombre detrás (p. ej. el usuario pulsó un botón genérico) no
+    """ "ficha completa" sin ningún nombre detrás (p. ej. el usuario pulsó un botón genérico) no
     debe quedarse con ningún token tras quitar las palabras de relleno, así que no hay nada con
     lo que buscar y el empleado_id de foco sigue siendo de fiar."""
     result = await call(registry, "ficha_empleado", empleado_id=1, message="ficha completa")

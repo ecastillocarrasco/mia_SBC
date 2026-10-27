@@ -530,9 +530,7 @@ async def test_candidates_table_rows_are_also_deduplicated_by_person(env: Any) -
                 CvDocument(sp_id=9401, candidate_id=9401, file_name="9401.pdf", file_ref="/x/9401.pdf"),
             ]
         )
-    result = await call(
-        registry, "buscar_candidatos", requisitos=[{"termino": "cocina", "equivalentes": ["ayudante"]}]
-    )
+    result = await call(registry, "buscar_candidatos", requisitos=[{"termino": "cocina", "equivalentes": ["ayudante"]}])
     rows = result.presentation["rows"]
     assert len(rows) == 1
     assert rows[0][0] == "Pedro Santiago"

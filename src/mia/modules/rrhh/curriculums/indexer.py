@@ -18,16 +18,13 @@ from mia.connectors.sharepoint import SharePointClient, SharePointError
 from mia.data import CvChunk, CvDocument, CvText, Database
 from mia.llm import LLMProvider
 from mia.modules.rrhh.document_indexing import (
-    OCR_INSTRUCTION,  # compatibilidad: importaciones anteriores desde curriculums.indexer
-    OCR_MAX_PAGES,
     LocalOCRError,
     chunk_text,
-    clean_text,
+    clean_text,  # noqa: F401  (re-exportado: lo usa tests/test_phase4_sources.py)
     extract_document_text_local,
-    extract_text,
-    image_media_type,
-    normalize,
-    render_pdf_pages,  # lo usa el modulo de adjuntos/vision
+    extract_text,  # noqa: F401  (re-exportado: lo usa tests/test_phase4_sources.py)
+    normalize,  # lo usa el modulo de adjuntos/vision
+    render_pdf_pages,  # noqa: F401  (re-exportado: lo usa tests/test_mia_ocr_local.py)
 )
 from mia.observability import get_logger
 
@@ -113,9 +110,7 @@ class CvIndexer:
         text = ""
         try:
             content = await self._client.download(document.file_ref, self._max_bytes)
-            status, text, detail = await asyncio.to_thread(
-                extract_document_text_local, content, document.file_name
-            )
+            status, text, detail = await asyncio.to_thread(extract_document_text_local, content, document.file_name)
         except LocalOCRError as exc:
             # Fail closed y conserva cualquier indice previo.
             log.warning("cv_index.local_ocr_failed", document=document.sp_id, reason=str(exc))

@@ -49,6 +49,7 @@ def descriptive(values: list[float], *, label: str = "valor") -> dict[str, Any]:
 
     # percentiles via interpolación lineal
     if n >= 4:
+
         def pct(p: float) -> float:
             idx = (n - 1) * p
             lo, hi = int(idx), min(int(idx) + 1, n - 1)
@@ -70,9 +71,7 @@ def descriptive(values: list[float], *, label: str = "valor") -> dict[str, Any]:
 
 
 # ────────────────────────────────────────────────────────────────── frecuencia
-def frequency_distribution(
-    values: list[Any], *, max_buckets: int = 20
-) -> dict[str, Any]:
+def frequency_distribution(values: list[Any], *, max_buckets: int = 20) -> dict[str, Any]:
     """Distribución de frecuencias para valores categóricos o numéricos discretos."""
     cnt = Counter(str(v) if not isinstance(v, (int, float, bool)) else v for v in values if v is not None)
     total = sum(cnt.values())
@@ -82,10 +81,7 @@ def frequency_distribution(
     return {
         "total": total,
         "unique": len(cnt),
-        "distribution": [
-            {"value": k, "count": v, "pct": round(v / total * 100, 2)}
-            for k, v in top
-        ],
+        "distribution": [{"value": k, "count": v, "pct": round(v / total * 100, 2)} for k, v in top],
     }
 
 
@@ -134,12 +130,14 @@ def time_series_stats(points: list[TimePoint]) -> dict[str, Any]:
             prev, curr = values[i - 1], values[i]
             abs_d = curr - prev
             pct_d = (abs_d / abs(prev) * 100) if prev != 0 else None
-            mom.append({
-                "from": labels[i - 1],
-                "to": labels[i],
-                "absolute": round(abs_d, 4),
-                "pct": round(pct_d, 2) if pct_d is not None else None,
-            })
+            mom.append(
+                {
+                    "from": labels[i - 1],
+                    "to": labels[i],
+                    "absolute": round(abs_d, 4),
+                    "pct": round(pct_d, 2) if pct_d is not None else None,
+                }
+            )
         out["period_changes"] = mom
         # Mayor incremento / mayor caída
         mom_pct = [(m, m["pct"]) for m in mom if m["pct"] is not None]
@@ -168,7 +166,7 @@ def time_series_stats(points: list[TimePoint]) -> dict[str, Any]:
             if i < window - 1:
                 rolling.append(None)
             else:
-                rolling.append(round(mean(values[i - window + 1: i + 1]), 4))
+                rolling.append(round(mean(values[i - window + 1 : i + 1]), 4))
         out["rolling_avg_3"] = rolling
 
     # Acumulado
@@ -210,8 +208,15 @@ def detect_outliers(
         for v, lab in pairs:
             if v is not None and (v < lo or v > hi):
                 outliers.append({"label": lab, "value": v, "direction": "high" if v > hi else "low"})
-        return {"method": "iqr", "q1": round(q1, 4), "q3": round(q3, 4), "iqr": round(iqr, 4),
-                "fence_low": round(lo, 4), "fence_high": round(hi, 4), "outliers": outliers}
+        return {
+            "method": "iqr",
+            "q1": round(q1, 4),
+            "q3": round(q3, 4),
+            "iqr": round(iqr, 4),
+            "fence_low": round(lo, 4),
+            "fence_high": round(hi, 4),
+            "outliers": outliers,
+        }
     else:  # z-score
         m = mean(clean)
         sd = stdev(clean) if n > 1 else 0
@@ -220,14 +225,17 @@ def detect_outliers(
                 z = abs(v - m) / sd
                 if z > 2.5:
                     outliers.append({"label": lab, "value": v, "z_score": round(z, 3)})
-        return {"method": "z-score", "mean": round(m, 4), "stddev": round(sd, 4), "threshold": 2.5,
-                "outliers": outliers}
+        return {
+            "method": "z-score",
+            "mean": round(m, 4),
+            "stddev": round(sd, 4),
+            "threshold": 2.5,
+            "outliers": outliers,
+        }
 
 
 # ────────────────────────────────────────────────────────────────── abrupt changes
-def detect_abrupt_changes(
-    points: list[TimePoint], *, threshold_pct: float = 30.0
-) -> list[dict[str, Any]]:
+def detect_abrupt_changes(points: list[TimePoint], *, threshold_pct: float = 30.0) -> list[dict[str, Any]]:
     """Detecta cambios bruscos en una serie temporal (variación > threshold_pct %)."""
     valid = [(p.label, p.value) for p in points if p.value is not None]
     changes = []
@@ -237,14 +245,16 @@ def detect_abrupt_changes(
         if prev_v and prev_v != 0:
             pct = abs((curr_v - prev_v) / abs(prev_v) * 100)
             if pct >= threshold_pct:
-                changes.append({
-                    "from": valid[i - 1][0],
-                    "to": valid[i][1],
-                    "label_from": valid[i - 1][0],
-                    "label_to": valid[i][0],
-                    "prev_value": round(prev_v, 4),
-                    "curr_value": round(curr_v, 4),
-                    "pct_change": round((curr_v - prev_v) / abs(prev_v) * 100, 2),
-                    "direction": "up" if curr_v > prev_v else "down",
-                })
+                changes.append(
+                    {
+                        "from": valid[i - 1][0],
+                        "to": valid[i][1],
+                        "label_from": valid[i - 1][0],
+                        "label_to": valid[i][0],
+                        "prev_value": round(prev_v, 4),
+                        "curr_value": round(curr_v, 4),
+                        "pct_change": round((curr_v - prev_v) / abs(prev_v) * 100, 2),
+                        "direction": "up" if curr_v > prev_v else "down",
+                    }
+                )
     return changes

@@ -81,8 +81,11 @@ async def test_fetch_google_news_filters_out_unrelated_local_news_by_relevance_t
     handler = httpx.MockTransport(lambda request: httpx.Response(200, text=_SAMPLE_RSS_BENALMADENA_NOISE))
     async with _mock_client(handler) as client:
         items = await fetch_google_news(
-            client, "https://news.google.com/rss/search?q=x", grupo=GROUP_SUNSET,
-            fuente_label="Google News: Sunset Beach Club", relevance_terms=("sunset beach",),
+            client,
+            "https://news.google.com/rss/search?q=x",
+            grupo=GROUP_SUNSET,
+            fuente_label="Google News: Sunset Beach Club",
+            relevance_terms=("sunset beach",),
         )
 
     assert len(items) == 1
@@ -151,6 +154,7 @@ async def test_fetch_all_dates_are_all_timezone_aware_and_sortable() -> None:
     offset-aware datetimes`` en cuanto una respuesta real combinaba las dos fuentes (visto en
     producción al pedir noticias del Grupo FBD, que junta el feed de Google News con la web
     oficial)."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         if "farmerbusinessdevelopments" in str(request.url):
             return httpx.Response(200, text=_SAMPLE_FBD_HTML)
@@ -179,6 +183,9 @@ async def test_sunset_feed_is_tagged_with_sunset_group() -> None:
     handler = httpx.MockTransport(lambda request: httpx.Response(200, text=_SAMPLE_RSS))
     async with _mock_client(handler) as client:
         items = await fetch_google_news(
-            client, "https://news.google.com/rss/search?q=sunset", grupo=GROUP_SUNSET, fuente_label="Google News: Sunset"
+            client,
+            "https://news.google.com/rss/search?q=sunset",
+            grupo=GROUP_SUNSET,
+            fuente_label="Google News: Sunset",
         )
     assert all(i.grupo == GROUP_SUNSET for i in items)

@@ -33,10 +33,7 @@ _CONTEXTUAL_POLICIES = frozenset({Policy.STRICT, Policy.AGGREGATED})
 
 
 def _has_identified_person(obj: dict[str, Any]) -> bool:
-    return any(
-        isinstance(obj.get(key), str) and _PERSON_TOKEN_RE.search(obj[key])
-        for key in _PERSON_KEYS
-    )
+    return any(isinstance(obj.get(key), str) and _PERSON_TOKEN_RE.search(obj[key]) for key in _PERSON_KEYS)
 
 
 def _walk(obj: Any) -> Any:

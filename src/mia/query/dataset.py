@@ -137,16 +137,22 @@ class NormalizedDataset:
         for k in all_keys:
             sample = next((row[k] for row in rows if row.get(k) is not None), None)
             ftype = (
-                "bool" if isinstance(sample, bool)
-                else "int" if isinstance(sample, int)
-                else "float" if isinstance(sample, float)
-                else "date" if isinstance(sample, date)
+                "bool"
+                if isinstance(sample, bool)
+                else "int"
+                if isinstance(sample, int)
+                else "float"
+                if isinstance(sample, float)
+                else "date"
+                if isinstance(sample, date)
                 else "string"
             )
-            schema.append(Schema(
-                name=k,
-                label=(labels or {}).get(k, k.replace("_", " ").title()),
-                type=ftype,
-                aggregable=ftype in ("int", "float"),
-            ))
+            schema.append(
+                Schema(
+                    name=k,
+                    label=(labels or {}).get(k, k.replace("_", " ").title()),
+                    type=ftype,
+                    aggregable=ftype in ("int", "float"),
+                )
+            )
         return cls(title=title, schema=schema, rows=rows, source=source or [], **kwargs)

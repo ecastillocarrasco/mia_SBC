@@ -26,10 +26,22 @@ from mia.privacy_gateway.gateway import PrivacyGateway
 from mia.settings import PrivacyGatewaySettings
 
 _CORPUS = [
-    ("cocina", "El cocinero Marta Ruiz, DNI 12345678Z, prepara mariscos y paellas en la cocina del restaurante cada mediodía."),
-    ("mantenimiento", "El técnico Carlos López, DNI 23456789D, revisa la caldera y los aires acondicionados del hotel cada semana."),
-    ("recepcion", "La recepcionista Sofía Pérez, DNI 34567890V, gestiona el check-in de huéspedes y las reservas de habitaciones."),
-    ("animacion", "El animador Diego Vidal, DNI 45678901G, organiza actividades infantiles y juegos en la piscina para los turistas."),
+    (
+        "cocina",
+        "El cocinero Marta Ruiz, DNI 12345678Z, prepara mariscos y paellas en la cocina del restaurante cada mediodía.",
+    ),
+    (
+        "mantenimiento",
+        "El técnico Carlos López, DNI 23456789D, revisa la caldera y los aires acondicionados del hotel cada semana.",
+    ),
+    (
+        "recepcion",
+        "La recepcionista Sofía Pérez, DNI 34567890V, gestiona el check-in de huéspedes y las reservas de habitaciones.",
+    ),
+    (
+        "animacion",
+        "El animador Diego Vidal, DNI 45678901G, organiza actividades infantiles y juegos en la piscina para los turistas.",
+    ),
 ]
 
 _TOPIC_QUERIES = [

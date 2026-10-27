@@ -114,7 +114,7 @@ def test_pure_greeting_does_not_fall_back_to_every_domain() -> None:
 
 
 def test_greeting_with_business_content_is_not_treated_as_pure_greeting() -> None:
-    """"hola" seguido de una pregunta real de negocio sigue reconociendo el dominio con normalidad."""
+    """ "hola" seguido de una pregunta real de negocio sigue reconociendo el dominio con normalidad."""
     result = select_modules("hola, ¿cuánto cobra Ana este mes?", _REAL_MODULE_KEYWORDS)
     assert "nominas" in result
 

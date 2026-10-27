@@ -12,6 +12,7 @@ This still modifies per-document vector and extracted text tables and may call
 remote OCR / embedding providers configured by mIA. Do not run concurrently
 with another synchronization or indexing process.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,27 +36,38 @@ def _candidate_query(domain: str):
         return (
             select(CvDocument)
             .outerjoin(CvText, CvText.document_id == CvDocument.sp_id)
-            .where(or_(
-                CvText.document_id.is_(None),
-                CvText.source_modified != CvDocument.modified_at,
-                and_(CvText.status.in_(("empty", "unsupported")),
-                     or_(CvText.detail.is_(None), CvText.detail.not_like("ocr%"))),
-            ))
+            .where(
+                or_(
+                    CvText.document_id.is_(None),
+                    CvText.source_modified != CvDocument.modified_at,
+                    and_(
+                        CvText.status.in_(("empty", "unsupported")),
+                        or_(CvText.detail.is_(None), CvText.detail.not_like("ocr%")),
+                    ),
+                )
+            )
             .order_by(CvDocument.modified_at.desc())
         )
     model = Payslip if domain == "nominas" else SignedDocument
     return (
         select(model)
-        .outerjoin(HrDocumentText, and_(
-            HrDocumentText.domain == domain,
-            HrDocumentText.document_id == model.sp_id,
-        ))
-        .where(or_(
-            HrDocumentText.document_id.is_(None),
-            HrDocumentText.source_modified != model.modified_at,
-            and_(HrDocumentText.status.in_(("empty", "unsupported")),
-                 or_(HrDocumentText.detail.is_(None), HrDocumentText.detail.not_like("ocr%"))),
-        ))
+        .outerjoin(
+            HrDocumentText,
+            and_(
+                HrDocumentText.domain == domain,
+                HrDocumentText.document_id == model.sp_id,
+            ),
+        )
+        .where(
+            or_(
+                HrDocumentText.document_id.is_(None),
+                HrDocumentText.source_modified != model.modified_at,
+                and_(
+                    HrDocumentText.status.in_(("empty", "unsupported")),
+                    or_(HrDocumentText.detail.is_(None), HrDocumentText.detail.not_like("ocr%")),
+                ),
+            )
+        )
         .order_by(model.modified_at.desc())
     )
 
@@ -63,9 +75,12 @@ def _candidate_query(domain: str):
 async def _run(domain: str, limit: int, execute: bool) -> int:
     settings = get_settings()
     url = make_url(settings.database_url)
-    if (url.get_backend_name() != "postgresql" or url.database != "mia"
-            or (url.host or "").lower() not in ("localhost", "127.0.0.1", "::1")
-            or (url.port or 5432) != 5432):
+    if (
+        url.get_backend_name() != "postgresql"
+        or url.database != "mia"
+        or (url.host or "").lower() not in ("localhost", "127.0.0.1", "::1")
+        or (url.port or 5432) != 5432
+    ):
         print("BLOQUEADO: la configuracion no apunta a PostgreSQL local /mia puerto 5432.")
         return 2
     if execute and domain != "cv_docs" and not settings.data.index_sensitive_content:
@@ -102,11 +117,14 @@ async def _run(domain: str, limit: int, execute: bool) -> int:
                 from mia.llm import build_llm_provider
                 from mia.modules.rrhh.curriculums.indexer import CvIndexer
                 from mia.modules.rrhh.document_indexing import DocumentIndexer
+
                 client = build_sharepoint_client(settings)
                 llm = build_llm_provider(settings.llm, settings.privacy_gateway)
                 try:
                     common = dict(
-                        db=db, client=client, llm=llm,
+                        db=db,
+                        client=client,
+                        llm=llm,
                         embedding_model=settings.curriculums.embedding_model,
                         batch=limit,
                         max_bytes=settings.curriculums.max_file_mb * 1024 * 1024,
@@ -114,10 +132,10 @@ async def _run(domain: str, limit: int, execute: bool) -> int:
                     if domain == "cv_docs":
                         indexer = CvIndexer(**common)
                     else:
-                        model, title = ((Payslip, "Nominas") if domain == "nominas"
-                                        else (SignedDocument, "DocumentosFirmadosV2"))
-                        indexer = DocumentIndexer(domain=domain, list_title=title,
-                                                  model=model, **common)
+                        model, title = (
+                            (Payslip, "Nominas") if domain == "nominas" else (SignedDocument, "DocumentosFirmadosV2")
+                        )
+                        indexer = DocumentIndexer(domain=domain, list_title=title, model=model, **common)
                     results = Counter()
                     for i, document in enumerate(candidates, 1):
                         try:
@@ -144,11 +162,11 @@ async def _run(domain: str, limit: int, execute: bool) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--domain", required=True,
-                        choices=["cv_docs", "nominas", "documentos_firmados"])
+    parser.add_argument("--domain", required=True, choices=["cv_docs", "nominas", "documentos_firmados"])
     parser.add_argument("--limit", type=int, default=5)
-    parser.add_argument("--execute", action="store_true",
-                        help="procesa de verdad el lote; por defecto solo diagnostica")
+    parser.add_argument(
+        "--execute", action="store_true", help="procesa de verdad el lote; por defecto solo diagnostica"
+    )
     args = parser.parse_args()
     if not 1 <= args.limit <= 20:
         parser.error("--limit debe ser entre 1 y 20 para la fase de validacion")

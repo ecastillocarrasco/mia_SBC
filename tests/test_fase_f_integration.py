@@ -263,13 +263,18 @@ async def test_generar_informe_rejects_a_payroll_request_exported_from_an_unrela
     `analisis_economico_nominas` (``__source_tool__``, puesto por ``remember_table`` junto a ESA tabla
     concreta) pero la petición original pide coste salarial, `generar_informe` debe rechazar la
     exportación — nunca exportar una tabla que no coincide con lo pedido."""
-    from mia.conversation.tools import remember_table
-    from mia.conversation import ToolContext, ToolStatus as TS
-    from mia.llm import ToolCall as TC
     import json as _json
 
+    from mia.conversation import ToolContext
+    from mia.conversation import ToolStatus as TS
+    from mia.conversation.tools import remember_table
+    from mia.llm import ToolCall as TC
+
     ctx = ToolContext(
-        user=ADMIN, request_id=None, now=Q3_NOW, session_state={},
+        user=ADMIN,
+        request_id=None,
+        now=Q3_NOW,
+        session_state={},
         user_message="comparativa de costes en nóminas por departamento en agosto de 2026",
     )
     unrelated_presentation = {"type": "table", "title": "Plantilla", "columns": ["Nombre"], "rows": [["Ana"]]}
@@ -287,17 +292,23 @@ async def test_generar_informe_rejects_bare_gastos_phrasing_exported_from_ficha_
     siendo la última tabla de la sesión (de una consulta anterior, no relacionada), con un título nuevo
     que sonaba a lo pedido pero un contenido que no tenía nada que ver. Corregido ampliando los
     sinónimos de `coste_empresa` en mia.query.fields."""
-    from mia.conversation.tools import remember_table
-    from mia.conversation import ToolContext, ToolStatus as TS
-    from mia.llm import ToolCall as TC
     import json as _json
 
+    from mia.conversation import ToolContext
+    from mia.conversation import ToolStatus as TS
+    from mia.conversation.tools import remember_table
+    from mia.llm import ToolCall as TC
+
     ctx = ToolContext(
-        user=ADMIN, request_id=None, now=Q3_NOW, session_state={},
+        user=ADMIN,
+        request_id=None,
+        now=Q3_NOW,
+        session_state={},
         user_message="Genera importe de gastos por departamento en 2026",
     )
     ficha_presentation = {
-        "type": "profile", "title": "Ficha laboral",
+        "type": "profile",
+        "title": "Ficha laboral",
         "columns": ["Campo", "Valor"],
         "rows": [["Departamento", "RRHH"], ["Saldo vacaciones", "9"]],
     }
@@ -312,13 +323,18 @@ async def test_generar_informe_still_exports_normally_when_the_source_tool_match
 ) -> None:
     """Control negativo: si la tabla SÍ viene de `analisis_economico_nominas` y su periodo coincide,
     la exportación debe seguir funcionando exactamente igual que antes de esta validación."""
-    from mia.conversation.tools import remember_table
-    from mia.conversation import ToolContext, ToolStatus as TS
-    from mia.llm import ToolCall as TC
     import json as _json
 
+    from mia.conversation import ToolContext
+    from mia.conversation import ToolStatus as TS
+    from mia.conversation.tools import remember_table
+    from mia.llm import ToolCall as TC
+
     ctx = ToolContext(
-        user=ADMIN, request_id=None, now=Q3_NOW, session_state={},
+        user=ADMIN,
+        request_id=None,
+        now=Q3_NOW,
+        session_state={},
         user_message="comparativa de costes en nóminas por departamento en agosto de 2026",
     )
     presentation = {"type": "table", "title": "Gasto salarial", "columns": ["Departamento"], "rows": [["Cocina"]]}
@@ -333,13 +349,18 @@ async def test_generar_informe_rejects_a_source_tool_result_from_a_different_per
     `analisis_economico_nominas` (herramienta correcta), pero para un periodo DISTINTO del pedido ahora
     —p. ej. una tabla de julio que seguía siendo la última de la sesión cuando llega una petición nueva
     sobre agosto— debe rechazarse igual, nunca exportarse como si fuera la respuesta a la nueva petición."""
-    from mia.conversation.tools import remember_table
-    from mia.conversation import ToolContext, ToolStatus as TS
-    from mia.llm import ToolCall as TC
     import json as _json
 
+    from mia.conversation import ToolContext
+    from mia.conversation import ToolStatus as TS
+    from mia.conversation.tools import remember_table
+    from mia.llm import ToolCall as TC
+
     ctx = ToolContext(
-        user=ADMIN, request_id=None, now=Q3_NOW, session_state={},
+        user=ADMIN,
+        request_id=None,
+        now=Q3_NOW,
+        session_state={},
         user_message="comparativa de costes en nóminas por departamento en agosto de 2026",
     )
     presentation = {"type": "table", "title": "Gasto salarial", "columns": ["Departamento"], "rows": [["Cocina"]]}
@@ -356,13 +377,18 @@ async def test_generar_informe_is_not_fooled_by_an_auxiliary_tool_called_afterwa
     (correcto, produce la tabla) y DESPUÉS una herramienta auxiliar que NO devuelve presentación (p. ej.
     una consulta de capacidades) — la tabla de la economía sigue siendo ``LAST_TABLE`` con su
     ``__source_tool__`` intacto, así que la exportación debe seguir permitida."""
-    from mia.conversation.tools import remember_table
-    from mia.conversation import ToolContext, ToolStatus as TS
-    from mia.llm import ToolCall as TC
     import json as _json
 
+    from mia.conversation import ToolContext
+    from mia.conversation import ToolStatus as TS
+    from mia.conversation.tools import remember_table
+    from mia.llm import ToolCall as TC
+
     ctx = ToolContext(
-        user=ADMIN, request_id=None, now=Q3_NOW, session_state={},
+        user=ADMIN,
+        request_id=None,
+        now=Q3_NOW,
+        session_state={},
         user_message="comparativa de costes en nóminas por departamento en agosto de 2026",
     )
     presentation = {"type": "table", "title": "Gasto salarial", "columns": ["Departamento"], "rows": [["Cocina"]]}
@@ -370,7 +396,13 @@ async def test_generar_informe_is_not_fooled_by_an_auxiliary_tool_called_afterwa
     remember_table(ctx.session_state, presentation, 5000, summary, source_tool="analisis_economico_nominas")
     # Herramienta auxiliar posterior SIN presentación propia (p. ej. type=None/"download"): remember_table
     # la ignora por diseño — LAST_TABLE no cambia, a diferencia de lo que haría LAST_CALL.
-    remember_table(ctx.session_state, {"type": "download", "url": "/api/reports/otro"}, 5000, None, source_tool="otra_herramienta_auxiliar")
+    remember_table(
+        ctx.session_state,
+        {"type": "download", "url": "/api/reports/otro"},
+        5000,
+        None,
+        source_tool="otra_herramienta_auxiliar",
+    )
     execution = await q3_registry.execute(TC("c", "generar_informe", _json.dumps({"formato": "pdf"})), ctx)
     assert execution.result.status is TS.OK
 
@@ -388,7 +420,7 @@ async def test_every_model_tier_still_goes_through_privacy_gateway_sanitization(
     captured: list[LLMRequest] = []
 
     class _Inner(FakeLLMProvider):
-        async def stream(self, request: LLMRequest):  # noqa: ANN201
+        async def stream(self, request: LLMRequest):
             captured.append(request)
             async for event in super().stream(request):
                 yield event
@@ -429,9 +461,7 @@ async def test_enforce_narrative_privacy_does_not_block_a_legitimate_individual_
         return []
 
     statements = [{"kind": "interpretation", "text": "El absentismo de Ana López ha bajado este mes."}]
-    out = enforce_narrative_privacy(
-        statements, pii_scan=fake_scan, authorized_subjects=frozenset({"ana lópez"})
-    )
+    out = enforce_narrative_privacy(statements, pii_scan=fake_scan, authorized_subjects=frozenset({"ana lópez"}))
     assert out[0]["text"] == statements[0]["text"]  # no se bloquea: el nombre ya era autorizado
     assert "privacy_blocked" not in (out[0].get("evidence") or {})
 
@@ -447,9 +477,7 @@ async def test_enforce_narrative_privacy_still_blocks_a_name_absent_from_the_bac
         return []
 
     statements = [{"kind": "interpretation", "text": "Destaca especialmente Pedro Ruiz este mes."}]
-    out = enforce_narrative_privacy(
-        statements, pii_scan=fake_scan, authorized_subjects=frozenset({"ana lópez"})
-    )
+    out = enforce_narrative_privacy(statements, pii_scan=fake_scan, authorized_subjects=frozenset({"ana lópez"}))
     assert "CONCLUSIÓN BLOQUEADA" in out[0]["text"]
     assert out[0]["evidence"]["privacy_blocked"] is True
 
@@ -527,8 +555,9 @@ async def test_generar_informe_authorizes_the_narrative_subject_of_an_individual
     import json as _json
     from types import SimpleNamespace
 
-    from mia.conversation import ToolContext, ToolStatus as TS
-    from mia.conversation.tools import LAST_TABLE, remember_table
+    from mia.conversation import ToolContext
+    from mia.conversation import ToolStatus as TS
+    from mia.conversation.tools import remember_table
     from mia.modules.rrhh.common import Deps
     from mia.modules.rrhh.informes.tools import InformeParams, generar
     from tests.dbutil import fresh_database
@@ -547,7 +576,9 @@ async def test_generar_informe_authorizes_the_narrative_subject_of_an_individual
             return []
 
     db = await fresh_database(tmp_path, "narrative_subject.db")
-    settings = SimpleNamespace(reports=SimpleNamespace(directory=str(tmp_path / "informes"), ttl_hours=24, logo_path=None))
+    settings = SimpleNamespace(
+        reports=SimpleNamespace(directory=str(tmp_path / "informes"), ttl_hours=24, logo_path=None)
+    )
     deps = Deps(db=db, llm=_NarrativeLLM(script), settings=settings)
 
     ctx = ToolContext(user=ADMIN, request_id=None, now=Q3_NOW, session_state={}, user_message="")
@@ -566,8 +597,9 @@ async def test_generar_informe_authorizes_the_narrative_subject_of_an_individual
     )
     assert result.status is TS.OK
     report_id = result.summary["enlace"].rsplit("/", 1)[-1]
-    from mia.data import Report
     from sqlalchemy import select
+
+    from mia.data import Report
 
     async with db.session() as session:
         report = (await session.scalars(select(Report).where(Report.id == report_id))).one()

@@ -40,6 +40,7 @@ def _stub_settings(reports_dir: Path) -> SimpleNamespace:
 def _script_returning(payload: dict) -> object:
     def script(request: LLMRequest) -> list[object]:
         return [TextDelta(json.dumps(payload)), LLMCompleted()]
+
     return script
 
 
@@ -62,7 +63,11 @@ async def _generate_pdf_text(tmp_path: Path, db_name: str, fake: FakeLLMProvider
 async def test_generar_informe_with_narrativa_attaches_a_verified_block(tmp_path: Path) -> None:
     fake = FakeLLMProvider(
         script=_script_returning(
-            {"statements": [{"kind": "fact", "text": "La plantilla es de 8 personas.", "metric": "total_staff", "value": 8.0}]}
+            {
+                "statements": [
+                    {"kind": "fact", "text": "La plantilla es de 8 personas.", "metric": "total_staff", "value": 8.0}
+                ]
+            }
         )
     )
     text = await _generate_pdf_text(tmp_path, "reports_narrativa.db", fake)
@@ -73,7 +78,16 @@ async def test_generar_informe_with_narrativa_attaches_a_verified_block(tmp_path
 async def test_generar_informe_narrativa_blocks_a_wrong_llm_figure(tmp_path: Path) -> None:
     fake = FakeLLMProvider(
         script=_script_returning(
-            {"statements": [{"kind": "fact", "text": "La plantilla es de 500 personas.", "metric": "total_staff", "value": 500.0}]}
+            {
+                "statements": [
+                    {
+                        "kind": "fact",
+                        "text": "La plantilla es de 500 personas.",
+                        "metric": "total_staff",
+                        "value": 500.0,
+                    }
+                ]
+            }
         )
     )
     text = await _generate_pdf_text(tmp_path, "reports_narrativa_wrong.db", fake)

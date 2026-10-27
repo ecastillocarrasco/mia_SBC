@@ -129,7 +129,9 @@ async def _index_sensitive_documents(settings: Settings, db: Database, client: S
                 batch=settings.curriculums.index_batch,
                 max_bytes=settings.curriculums.max_file_mb * 1024 * 1024,
             )
-            r = await indexer.run(progress=lambda done, total, d=domain: print(f"  indexando {d}… {done}/{total}", flush=True))
+            r = await indexer.run(
+                progress=lambda done, total, d=domain: print(f"  indexando {d}… {done}/{total}", flush=True)
+            )
             print(
                 f"{'indexación de ' + domain:28} procesados {r.processed:>5}  indexados {r.indexed:>5}  "
                 f"errores {r.failed:>4}  pendientes {r.pending:>5}  {r.statuses}"

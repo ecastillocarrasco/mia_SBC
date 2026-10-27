@@ -29,7 +29,9 @@ def test_kpis_and_annex_blocks_are_never_included() -> None:
         "Informe",
         blocks=[
             Block("kpis", "Indicadores", {"Total": "10"}),
-            Block("annex", "Detalle completo", {"columns": ["A"], "rows": [["x"]], "total_rows": 1, "truncated": False}),
+            Block(
+                "annex", "Detalle completo", {"columns": ["A"], "rows": [["x"]], "total_rows": 1, "truncated": False}
+            ),
         ],
     )
     assert _build_preview(doc) is None
@@ -60,7 +62,10 @@ def test_empty_table_block_is_skipped() -> None:
 
 def test_number_of_tables_and_charts_is_capped() -> None:
     blocks = [_table(f"Tabla {i}", 2) for i in range(_PREVIEW_MAX_TABLES + 3)]
-    blocks += [Block("chart", f"Gráfico {i}", {"type": "bar", "labels": ["a"], "series": [{"name": "s", "values": [1]}]}) for i in range(_PREVIEW_MAX_CHARTS + 3)]
+    blocks += [
+        Block("chart", f"Gráfico {i}", {"type": "bar", "labels": ["a"], "series": [{"name": "s", "values": [1]}]})
+        for i in range(_PREVIEW_MAX_CHARTS + 3)
+    ]
     preview = _build_preview(Document("Informe", blocks=blocks))
     assert len(preview["tables"]) == _PREVIEW_MAX_TABLES
     assert len(preview["charts"]) == _PREVIEW_MAX_CHARTS

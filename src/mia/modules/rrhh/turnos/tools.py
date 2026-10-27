@@ -14,8 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
-from mia.diagnostics import EventStage, EventStatus, current_call_id, current_trace
 from mia.data import Employee, ShiftDay
+from mia.diagnostics import EventStage, EventStatus, current_call_id, current_trace
 from mia.ingestion.mappers.hr import ShiftKind
 from mia.modules.rrhh.common import (
     MAX_ROWS_FOR_MODEL,
@@ -46,11 +46,31 @@ from mia.modules.rrhh.turnos.returns import collect_returns
 from mia.text import normalize_key
 
 KEYWORDS = (
-    "turno", "turnos", "horario", "horarios", "trabajando", "disponibilidad", "disponible",
-    "descanso", "descansos", "ausencia", "ausencias", "baja", "bajas", "reincorporacion",
-    "reincorporaciones", "reincorporación", "publicacion de turnos", "compañero de turno",
-    "companeros de turno", "horas trabajadas", "cobertura semanal", "quien trabaja",
-    "quién trabaja", "franja", "mañana tarde noche",
+    "turno",
+    "turnos",
+    "horario",
+    "horarios",
+    "trabajando",
+    "disponibilidad",
+    "disponible",
+    "descanso",
+    "descansos",
+    "ausencia",
+    "ausencias",
+    "baja",
+    "bajas",
+    "reincorporacion",
+    "reincorporaciones",
+    "reincorporación",
+    "publicacion de turnos",
+    "compañero de turno",
+    "companeros de turno",
+    "horas trabajadas",
+    "cobertura semanal",
+    "quien trabaja",
+    "quién trabaja",
+    "franja",
+    "mañana tarde noche",
 )
 """Ver `empleados.tools.KEYWORDS` para el criterio (generoso: falso negativo nunca rompe nada)."""
 
@@ -129,17 +149,19 @@ async def _shifts_of_day(
             duration_ms=_elapsed,
             data={**sql_info, "row_count": len(rows)},
         )
-        trace.add_call_graph_node({
-            "id": f"sql:hr_shift_days:{_t0}",
-            "kind": "sql",
-            "label": f"SELECT hr_shift_days WHERE day={day}" + (f", dept={dept_key}" if dept_key else ""),
-            "table": "hr_shift_days",
-            "filters": sql_info,
-            "row_count": len(rows),
-            "duration_ms": _elapsed,
-            "status": "ok",
-            "parent_id": f"tool:turnos_dia:{cid}" if cid else None,
-        })
+        trace.add_call_graph_node(
+            {
+                "id": f"sql:hr_shift_days:{_t0}",
+                "kind": "sql",
+                "label": f"SELECT hr_shift_days WHERE day={day}" + (f", dept={dept_key}" if dept_key else ""),
+                "table": "hr_shift_days",
+                "filters": sql_info,
+                "row_count": len(rows),
+                "duration_ms": _elapsed,
+                "status": "ok",
+                "parent_id": f"tool:turnos_dia:{cid}" if cid else None,
+            }
+        )
     return rows
 
 
@@ -764,7 +786,9 @@ async def _employee_by_key(deps: Deps, person_key: str) -> Employee | None:
 
 # ------------------------------------------------------------------ horas trabajadas
 class HorasParams(PersonaParams, Periodo):
-    departamento: str | None = Field(default=None, description="Departamento (sin nombre de persona: agrega por departamento)")
+    departamento: str | None = Field(
+        default=None, description="Departamento (sin nombre de persona: agrega por departamento)"
+    )
 
 
 def horas_trabajadas(deps: Deps) -> Tool:
@@ -794,7 +818,6 @@ def horas_trabajadas(deps: Deps) -> Tool:
             days_worked = len(days)
             avg_h = round(total_h / days_worked, 1) if days_worked else 0
 
-            from collections import Counter as _C  # noqa: PLC0415
             by_month: dict[str, float] = {}
             by_franja: dict[str, float] = {}
             for d in days:

@@ -22,6 +22,7 @@ BACKEND_SUMMARY = {
 def _script_returning(payload: dict) -> object:
     def script(request: LLMRequest) -> list[object]:
         return [TextDelta(json.dumps(payload)), LLMCompleted()]
+
     return script
 
 
@@ -30,7 +31,12 @@ async def test_generates_a_verified_block_when_the_llm_cites_real_figures() -> N
         script=_script_returning(
             {
                 "statements": [
-                    {"kind": "fact", "text": "La plantilla es de 120 personas.", "metric": "total_staff", "value": 120.0},
+                    {
+                        "kind": "fact",
+                        "text": "La plantilla es de 120 personas.",
+                        "metric": "total_staff",
+                        "value": 120.0,
+                    },
                     {"kind": "recommendation", "text": "Revisar la cobertura de Cocina en temporada alta."},
                 ]
             }
@@ -47,7 +53,16 @@ async def test_generates_a_verified_block_when_the_llm_cites_real_figures() -> N
 async def test_blocks_a_fact_that_contradicts_the_backend() -> None:
     fake = FakeLLMProvider(
         script=_script_returning(
-            {"statements": [{"kind": "fact", "text": "La plantilla es de 300 personas.", "metric": "total_staff", "value": 300.0}]}
+            {
+                "statements": [
+                    {
+                        "kind": "fact",
+                        "text": "La plantilla es de 300 personas.",
+                        "metric": "total_staff",
+                        "value": 300.0,
+                    }
+                ]
+            }
         )
     )
     block = await generate_narrative_block(fake, title="Informe Q3", backend_summary=BACKEND_SUMMARY)
@@ -63,8 +78,10 @@ async def test_fact_citing_a_nested_metric_is_verified_against_the_flattened_val
             {
                 "statements": [
                     {
-                        "kind": "fact", "text": "Cocina gastó 60.000 €.",
-                        "metric": "por_departamento.Cocina.total", "value": 60000.0,
+                        "kind": "fact",
+                        "text": "Cocina gastó 60.000 €.",
+                        "metric": "por_departamento.Cocina.total",
+                        "value": 60000.0,
                     }
                 ]
             }

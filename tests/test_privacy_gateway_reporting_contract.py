@@ -62,14 +62,24 @@ def _stub_settings(reports_dir: Path) -> SimpleNamespace:
 
 
 async def test_generated_xlsx_report_contains_real_data_while_llm_only_saw_pseudo_tokens(tmp_path: Path) -> None:
-    names_and_nets = [("Marta Ruiz", "pk-401", 1700.0), ("Carlos López", "pk-402", 1600.0), ("Sofía Pérez", "pk-403", 1500.0)]
+    names_and_nets = [
+        ("Marta Ruiz", "pk-401", 1700.0),
+        ("Carlos López", "pk-402", 1600.0),
+        ("Sofía Pérez", "pk-403", 1500.0),
+    ]
     db = await fresh_database(tmp_path, "privacy_informes_contract.db")
     async with db.session() as s:
         for n, (name, pk, _net) in enumerate(names_and_nets, start=401):
             s.add(
                 Employee(
-                    sp_id=n, name=name, name_key=name.lower(), active=True, department="Cocina",
-                    department_key="cocina", position="Cocinero", person_key=pk,
+                    sp_id=n,
+                    name=name,
+                    name_key=name.lower(),
+                    active=True,
+                    department="Cocina",
+                    department_key="cocina",
+                    position="Cocinero",
+                    person_key=pk,
                 )
             )
             s.add(Payslip(sp_id=n, person_key=pk, year=2026, month=8, period="2026-08", special=False))
@@ -89,7 +99,9 @@ async def test_generated_xlsx_report_contains_real_data_while_llm_only_saw_pseud
         )
         return httpx.Response(200, content=_pdf(text))
 
-    sp = SharePointClient(site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=httpx.MockTransport(files))
+    sp = SharePointClient(
+        site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=httpx.MockTransport(files)
+    )
     settings = _stub_settings(tmp_path / "informes_generados")
     registry = build_registry(db, settings=settings, sharepoint=sp)
 
@@ -132,6 +144,8 @@ async def test_generated_xlsx_report_contains_real_data_while_llm_only_saw_pseud
         report = (await s.execute(select(Report))).scalars().one()
     content = Path(report.path).read_bytes()
     wb = load_workbook(io.BytesIO(content))
-    flat_cells = " ".join(str(c.value) for sheet in wb.worksheets for row in sheet.iter_rows() for c in row if c.value is not None)
+    flat_cells = " ".join(
+        str(c.value) for sheet in wb.worksheets for row in sheet.iter_rows() for c in row if c.value is not None
+    )
     assert "Marta Ruiz" in flat_cells
     assert "1700" in flat_cells or "1.700" in flat_cells.replace("\xa0", " ")

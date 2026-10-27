@@ -76,9 +76,7 @@ class Tokenizer:
         digest = hashlib.blake2b(text.encode("utf-8"), digest_size=16).digest()
         return (operation_id, policy.value, digest)
 
-    def tokenize(
-        self, text: str, *, policy: Policy, user_id: str, operation_id: str
-    ) -> tuple[str, Counter[str]]:
+    def tokenize(self, text: str, *, policy: Policy, user_id: str, operation_id: str) -> tuple[str, Counter[str]]:
         """Devuelve (texto_con_pseudo_tokens, recuento de entidades por tipo).
 
         Cacheado por (operación, política, texto): el system prompt es exactamente el mismo texto en

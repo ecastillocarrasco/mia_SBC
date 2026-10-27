@@ -95,9 +95,7 @@ async def test_empleados_real_tool_result_pii_never_reaches_the_simulated_provid
     db = await _seeded_db(tmp_path, "privacy_empleados.db")
     registry = build_registry(db)
 
-    result, fake = await _run_turn(
-        db, registry, _script, message="¿En qué departamento trabaja Eva Sol?", enabled=True
-    )
+    result, fake = await _run_turn(db, registry, _script, message="¿En qué departamento trabaja Eva Sol?", enabled=True)
 
     assert result.status == "ok"
     assert len(fake.requests) == 2  # ronda de herramienta + ronda de respuesta final
@@ -161,14 +159,24 @@ async def test_nominas_domain_individual_names_and_amounts_are_protected(tmp_pat
     el tipo de contenido que el Privacy Gateway debe tokenizar antes de que salga hacia el proveedor."""
     # Nombres reales, no "Cocinero Pérez" (mezclar el puesto dentro del campo nombre confunde al NER:
     # verificado que con nombres propios normales los tres se detectan sin problema).
-    names_and_nets = [("Marta Ruiz", "pk-201", 1700.0), ("Carlos López", "pk-202", 1600.0), ("Sofía Pérez", "pk-203", 1500.0)]
+    names_and_nets = [
+        ("Marta Ruiz", "pk-201", 1700.0),
+        ("Carlos López", "pk-202", 1600.0),
+        ("Sofía Pérez", "pk-203", 1500.0),
+    ]
     db = await fresh_database(tmp_path, "privacy_nominas.db")
     async with db.session() as s:
         for n, (name, pk, _net) in enumerate(names_and_nets, start=201):
             s.add(
                 Employee(
-                    sp_id=n, name=name, name_key=name.lower(), active=True, department="Cocina",
-                    department_key="cocina", position="Cocinero", person_key=pk,
+                    sp_id=n,
+                    name=name,
+                    name_key=name.lower(),
+                    active=True,
+                    department="Cocina",
+                    department_key="cocina",
+                    position="Cocinero",
+                    person_key=pk,
                 )
             )
             s.add(Payslip(sp_id=n, person_key=pk, year=2026, month=8, period="2026-08", special=False))
@@ -188,13 +196,13 @@ async def test_nominas_domain_individual_names_and_amounts_are_protected(tmp_pat
         )
         return httpx.Response(200, content=_pdf(text))
 
-    sp = SharePointClient(site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=httpx.MockTransport(files))
+    sp = SharePointClient(
+        site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=httpx.MockTransport(files)
+    )
     registry = build_registry(db, sharepoint=sp)
     script = _echo_tool_result_script("ranking_salarial", {"departamento": "Cocina", "cuantos": 3})
 
-    result, fake = await _run_turn(
-        db, registry, script, message="¿Quién cobra más en Cocina?", enabled=True
-    )
+    result, fake = await _run_turn(db, registry, script, message="¿Quién cobra más en Cocina?", enabled=True)
     await sp.aclose()
 
     assert result.status == "ok"
@@ -220,14 +228,24 @@ async def test_nominas_domain_individual_amounts_redacted_under_strict_policy(tm
     exactamente la misma siembra que la prueba anterior (política por defecto) para demostrar que es
     la MISMA funcionalidad, solo con el importe también protegido bajo una política más estricta — no
     una anonimización indiscriminada nueva y distinta."""
-    names_and_nets = [("Marta Ruiz", "pk-301", 1700.0), ("Carlos López", "pk-302", 1600.0), ("Sofía Pérez", "pk-303", 1500.0)]
+    names_and_nets = [
+        ("Marta Ruiz", "pk-301", 1700.0),
+        ("Carlos López", "pk-302", 1600.0),
+        ("Sofía Pérez", "pk-303", 1500.0),
+    ]
     db = await fresh_database(tmp_path, "privacy_nominas_strict.db")
     async with db.session() as s:
         for n, (name, pk, _net) in enumerate(names_and_nets, start=301):
             s.add(
                 Employee(
-                    sp_id=n, name=name, name_key=name.lower(), active=True, department="Cocina",
-                    department_key="cocina", position="Cocinero", person_key=pk,
+                    sp_id=n,
+                    name=name,
+                    name_key=name.lower(),
+                    active=True,
+                    department="Cocina",
+                    department_key="cocina",
+                    position="Cocinero",
+                    person_key=pk,
                 )
             )
             s.add(Payslip(sp_id=n, person_key=pk, year=2026, month=8, period="2026-08", special=False))
@@ -247,7 +265,9 @@ async def test_nominas_domain_individual_amounts_redacted_under_strict_policy(tm
         )
         return httpx.Response(200, content=_pdf(text))
 
-    sp = SharePointClient(site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=httpx.MockTransport(files))
+    sp = SharePointClient(
+        site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=httpx.MockTransport(files)
+    )
     registry = build_registry(db, sharepoint=sp)
     script = _echo_tool_result_script("ranking_salarial", {"departamento": "Cocina", "cuantos": 3})
 

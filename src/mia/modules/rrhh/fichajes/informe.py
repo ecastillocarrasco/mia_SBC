@@ -24,24 +24,35 @@ from mia.modules.rrhh.fichajes.hours import DayHours, compute_day_hours
 from mia.modules.rrhh.fichajes.importer import import_from_attachment
 from mia.modules.rrhh.fichajes.shift_match import match_shift_type
 from mia.modules.rrhh.fichajes.tools import MADRID, _localize_marks
-from mia.reporting.document import Block, Document
 from mia.modules.rrhh.informes.persist import ReportFormats, persist_document_report
+from mia.reporting.document import Block, Document
 
 KEYWORDS = (
-    "informe de turnos y fichajes", "informe comparativo de turnos", "comparativa de fichajes",
-    "informe de presencia", "cuadrante vs fichaje", "balance de horas", "horas extra nocturnas",
-    "informe de horas nocturnas", "resumen de fichajes por departamento",
+    "informe de turnos y fichajes",
+    "informe comparativo de turnos",
+    "comparativa de fichajes",
+    "informe de presencia",
+    "cuadrante vs fichaje",
+    "balance de horas",
+    "horas extra nocturnas",
+    "informe de horas nocturnas",
+    "resumen de fichajes por departamento",
 )
 """Ver `empleados.tools.KEYWORDS` para el criterio."""
 
 DEFAULT_TOLERANCE_MIN = 15
+
+
 class InformeComparativoTurnosFichajesParams(BaseModel):
     departamento: str = Field(description="Departamento a analizar — el informe siempre es por departamento")
     anio_iso: int | None = Field(
-        default=None, description="Año ISO de la semana (por defecto, el año en curso); solo se usa junto con semana_iso"
+        default=None,
+        description="Año ISO de la semana (por defecto, el año en curso); solo se usa junto con semana_iso",
     )
     semana_iso: int | None = Field(
-        default=None, ge=1, le=53,
+        default=None,
+        ge=1,
+        le=53,
         description="Número de semana ISO (1-53): si se indica, el periodo es esa semana completa (lunes a domingo)",
     )
     desde: date | None = Field(default=None, description="Inicio del periodo, alternativa a semana_iso")
@@ -56,7 +67,8 @@ class InformeComparativoTurnosFichajesParams(BaseModel):
         description="Margen en minutos para considerar un fichaje 'correcto' frente al turno programado",
     )
     formato: ReportFormats = Field(
-        default=["pdf"], min_length=1,
+        default=["pdf"],
+        min_length=1,
         description="Uno o varios formatos del documento (pdf, xlsx, pptx, html, docx); si el usuario "
         "pide varios a la vez, inclúyelos todos en esta misma lista para generarlos en una sola petición",
     )
@@ -64,7 +76,7 @@ class InformeComparativoTurnosFichajesParams(BaseModel):
 
 
 class _PersonHours:
-    __slots__ = ("employee", "results", "day_hours", "incomplete", "shift_by_day")
+    __slots__ = ("day_hours", "employee", "incomplete", "results", "shift_by_day")
 
     def __init__(
         self,
@@ -142,17 +154,25 @@ def _shift_label(shift: ShiftExpectation | None) -> str:
 def _import_warnings(report: Any) -> list[dict[str, Any]]:
     warnings: list[dict[str, Any]] = []
     for raw_name, count in report.unmatched.items():
-        warnings.append({
-            "severity": "data_quality", "code": "FICHAJE_SIN_CRUZAR",
-            "message": f"«{raw_name}»: {count} fila(s) del Excel sin ninguna persona que coincida.",
-            "source": "fichajes_import", "context": {"nombre": raw_name, "filas": count},
-        })
+        warnings.append(
+            {
+                "severity": "data_quality",
+                "code": "FICHAJE_SIN_CRUZAR",
+                "message": f"«{raw_name}»: {count} fila(s) del Excel sin ninguna persona que coincida.",
+                "source": "fichajes_import",
+                "context": {"nombre": raw_name, "filas": count},
+            }
+        )
     for raw_name, count in report.ambiguous.items():
-        warnings.append({
-            "severity": "data_quality", "code": "FICHAJE_AMBIGUO",
-            "message": f"«{raw_name}»: {count} fila(s) con más de una persona que coincide.",
-            "source": "fichajes_import", "context": {"nombre": raw_name, "filas": count},
-        })
+        warnings.append(
+            {
+                "severity": "data_quality",
+                "code": "FICHAJE_AMBIGUO",
+                "message": f"«{raw_name}»: {count} fila(s) con más de una persona que coincide.",
+                "source": "fichajes_import",
+                "context": {"nombre": raw_name, "filas": count},
+            }
+        )
     return warnings
 
 
@@ -170,8 +190,15 @@ def _build_document(
 
     dept_totals = {
         key: round(sum(p.totals[key] for p in people), 2)
-        for key in ("horas_programadas", "horas_nocturnas_normales", "horas_trabajadas",
-                    "horas_extra", "horas_extra_nocturnas", "horas_extra_diurnas", "balance")
+        for key in (
+            "horas_programadas",
+            "horas_nocturnas_normales",
+            "horas_trabajadas",
+            "horas_extra",
+            "horas_extra_nocturnas",
+            "horas_extra_diurnas",
+            "balance",
+        )
     }
     dept_counts = {"correcto": 0, "desviado": 0, "falta_marcaje": 0, "sin_turno": 0}
     for p in people:
@@ -180,11 +207,13 @@ def _build_document(
     incompletas_total = sum(len(p.incomplete) for p in people)
     balance_pct_turno = (
         round(dept_totals["balance"] / dept_totals["horas_programadas"] * 100, 1)
-        if dept_totals["horas_programadas"] else None
+        if dept_totals["horas_programadas"]
+        else None
     )
     balance_pct_fichaje = (
         round(dept_totals["balance"] / dept_totals["horas_trabajadas"] * 100, 1)
-        if dept_totals["horas_trabajadas"] else None
+        if dept_totals["horas_trabajadas"]
+        else None
     )
 
     kpis: dict[str, Any] = {
@@ -215,16 +244,28 @@ def _build_document(
     for p in sorted_people:
         t = p.totals
         c = p.status_counts
-        pct_turno = (round(t["balance"] / t["horas_programadas"] * 100, 1) if t["horas_programadas"] else None)
-        pct_fichaje = (round(t["balance"] / t["horas_trabajadas"] * 100, 1) if t["horas_trabajadas"] else None)
+        pct_turno = round(t["balance"] / t["horas_programadas"] * 100, 1) if t["horas_programadas"] else None
+        pct_fichaje = round(t["balance"] / t["horas_trabajadas"] * 100, 1) if t["horas_trabajadas"] else None
         pct_turno_label = f"{pct_turno:+.1f}%" if pct_turno is not None else "—"
         pct_fichaje_label = f"{pct_fichaje:+.1f}%" if pct_fichaje is not None else "—"
-        summary_rows.append([
-            p.employee.name, t["horas_programadas"], t["horas_trabajadas"],
-            f"{t['balance']:+.2f}", pct_turno_label, pct_fichaje_label,
-            t["horas_nocturnas_normales"], t["horas_extra_diurnas"], t["horas_extra_nocturnas"],
-            c["correcto"], c["desviado"], c["falta_marcaje"], c["sin_turno"], len(p.incomplete),
-        ])
+        summary_rows.append(
+            [
+                p.employee.name,
+                t["horas_programadas"],
+                t["horas_trabajadas"],
+                f"{t['balance']:+.2f}",
+                pct_turno_label,
+                pct_fichaje_label,
+                t["horas_nocturnas_normales"],
+                t["horas_extra_diurnas"],
+                t["horas_extra_nocturnas"],
+                c["correcto"],
+                c["desviado"],
+                c["falta_marcaje"],
+                c["sin_turno"],
+                len(p.incomplete),
+            ]
+        )
 
         # Una única pestaña/página por empleado, con resumen (tarjetas KPI) y detalle diario
         # JUNTOS bajo el mismo título — antes se generaban dos bloques (una "section" solo con
@@ -252,38 +293,69 @@ def _build_document(
         detail_rows = []
         for r, h in zip(p.results, p.day_hours, strict=True):
             session = r.session
-            detail_rows.append([
-                fmt_date(r.day), r.status, _shift_label(p.shift_by_day.get(r.day)),
-                session.entrada.strftime("%H:%M") if session else "—",
-                session.salida.strftime("%H:%M") if session else "—",
-                h.horas_programadas, h.horas_trabajadas, f"{h.balance:+.2f}",
-                h.horas_nocturnas_normales, h.horas_extra_diurnas, h.horas_extra_nocturnas,
-            ])
-        person_blocks.append(Block(
+            detail_rows.append(
+                [
+                    fmt_date(r.day),
+                    r.status,
+                    _shift_label(p.shift_by_day.get(r.day)),
+                    session.entrada.strftime("%H:%M") if session else "—",
+                    session.salida.strftime("%H:%M") if session else "—",
+                    h.horas_programadas,
+                    h.horas_trabajadas,
+                    f"{h.balance:+.2f}",
+                    h.horas_nocturnas_normales,
+                    h.horas_extra_diurnas,
+                    h.horas_extra_nocturnas,
+                ]
+            )
+        person_blocks.append(
+            Block(
+                "table",
+                p.employee.name,
+                {
+                    "columns": [
+                        "Fecha",
+                        "Estado",
+                        "Turno",
+                        "Entrada real",
+                        "Salida real",
+                        "Programadas",
+                        "Trabajadas",
+                        "Balance",
+                        "Nocturnas (horario)",
+                        "Extra diurnas",
+                        "Extra nocturnas",
+                    ],
+                    "rows": detail_rows,
+                    "kpis": person_kpis,
+                },
+            )
+        )
+    blocks.append(
+        Block(
             "table",
-            p.employee.name,
+            f"Resumen por persona · {periodo_label}",
             {
                 "columns": [
-                    "Fecha", "Estado", "Turno", "Entrada real", "Salida real",
-                    "Programadas", "Trabajadas", "Balance",
-                    "Nocturnas (horario)", "Extra diurnas", "Extra nocturnas",
+                    "Persona",
+                    "Programadas",
+                    "Trabajadas",
+                    "Balance",
+                    "Balance % turno",
+                    "Balance % fichaje",
+                    "Nocturnas (horario)",
+                    "Extra diurnas",
+                    "Extra nocturnas",
+                    "Correctos",
+                    "Desviados",
+                    "Faltas",
+                    "Sin turno",
+                    "Incompletas",
                 ],
-                "rows": detail_rows,
-                "kpis": person_kpis,
+                "rows": summary_rows,
             },
-        ))
-    blocks.append(Block(
-        "table",
-        f"Resumen por persona · {periodo_label}",
-        {
-            "columns": [
-                "Persona", "Programadas", "Trabajadas", "Balance", "Balance % turno", "Balance % fichaje",
-                "Nocturnas (horario)", "Extra diurnas", "Extra nocturnas",
-                "Correctos", "Desviados", "Faltas", "Sin turno", "Incompletas",
-            ],
-            "rows": summary_rows,
-        },
-    ))
+        )
+    )
     blocks.extend(person_blocks)
 
     if warnings:
@@ -341,34 +413,50 @@ def informe_comparativo_turnos_fichajes(deps: Deps) -> Tool:
             )
 
         async with deps.db.session() as db:
-            employees = list((await db.scalars(
-                select(Employee)
-                .where(Employee.active.is_(True), Employee.person_key.is_not(None), Employee.department_key == dept.key)
-                .order_by(Employee.name)
-            )).all())
+            employees = list(
+                (
+                    await db.scalars(
+                        select(Employee)
+                        .where(
+                            Employee.active.is_(True),
+                            Employee.person_key.is_not(None),
+                            Employee.department_key == dept.key,
+                        )
+                        .order_by(Employee.name)
+                    )
+                ).all()
+            )
             if not employees:
                 return ToolResult(ToolStatus.NOT_FOUND, f"No hay empleados activos en «{dept.name}».")
 
-            catalog = list((await db.scalars(
-                select(ShiftTypeCatalog).where(ShiftTypeCatalog.department_key == dept.key)
-            )).all())
+            catalog = list(
+                (await db.scalars(select(ShiftTypeCatalog).where(ShiftTypeCatalog.department_key == dept.key))).all()
+            )
 
             people: list[_PersonHours] = []
             for e in employees:
-                shift_rows = list((await db.scalars(
-                    select(ShiftDay).where(
-                        ShiftDay.person_key == e.person_key,
-                        ShiftDay.day.between(lo, hi),
-                        ShiftDay.kind == ShiftKind.TRABAJO,
-                    )
-                )).all())
-                marks_raw = list((await db.scalars(
-                    select(ClockMark.at).where(
-                        ClockMark.person_key == e.person_key,
-                        ClockMark.at >= datetime.combine(lo, time.min, tzinfo=MADRID),
-                        ClockMark.at < datetime.combine(hi + timedelta(days=1), time.min, tzinfo=MADRID),
-                    )
-                )).all())
+                shift_rows = list(
+                    (
+                        await db.scalars(
+                            select(ShiftDay).where(
+                                ShiftDay.person_key == e.person_key,
+                                ShiftDay.day.between(lo, hi),
+                                ShiftDay.kind == ShiftKind.TRABAJO,
+                            )
+                        )
+                    ).all()
+                )
+                marks_raw = list(
+                    (
+                        await db.scalars(
+                            select(ClockMark.at).where(
+                                ClockMark.person_key == e.person_key,
+                                ClockMark.at >= datetime.combine(lo, time.min, tzinfo=MADRID),
+                                ClockMark.at < datetime.combine(hi + timedelta(days=1), time.min, tzinfo=MADRID),
+                            )
+                        )
+                    ).all()
+                )
                 marks = _localize_marks(marks_raw)
                 if not shift_rows and not marks:
                     continue
@@ -380,14 +468,18 @@ def informe_comparativo_turnos_fichajes(deps: Deps) -> Tool:
                         code = "TURNO_NOCTURNIDAD_AMBIGUA" if match.ambiguous else "TURNO_SIN_DEFINICION"
                         detail = (
                             "más de una definición de turno con ese horario en el departamento"
-                            if match.ambiguous else
-                            "no hay una definición de turno (TipoTurnos) con ese horario exacto"
+                            if match.ambiguous
+                            else "no hay una definición de turno (TipoTurnos) con ese horario exacto"
                         )
-                        warnings.append({
-                            "severity": "data_quality", "code": code,
-                            "message": f"{e.name}, {fmt_date(sd.day)}: {detail} — sus horas nocturnas no se calculan.",
-                            "source": "turnos", "context": {"persona": e.name, "fecha": sd.day.isoformat()},
-                        })
+                        warnings.append(
+                            {
+                                "severity": "data_quality",
+                                "code": code,
+                                "message": f"{e.name}, {fmt_date(sd.day)}: {detail} — sus horas nocturnas no se calculan.",
+                                "source": "turnos",
+                                "context": {"persona": e.name, "fecha": sd.day.isoformat()},
+                            }
+                        )
                     declared_night = match.definition.hours_night if match.definition else None
                     expectations.append(
                         ShiftExpectation(sd.day, sd.start_time, sd.end_time, sd.hours, declared_night, sd.area)
@@ -401,11 +493,15 @@ def informe_comparativo_turnos_fichajes(deps: Deps) -> Tool:
                 ]
                 people.append(_PersonHours(e, results, day_hours, incomplete, by_day))
                 for m in sorted(incomplete):
-                    warnings.append({
-                        "severity": "data_quality", "code": "FICHAJE_INCOMPLETO",
-                        "message": f"{e.name}: marca sin pareja el {m.strftime('%d/%m/%Y %H:%M')}.",
-                        "source": "fichajes", "context": {"persona": e.name, "fecha": m.isoformat()},
-                    })
+                    warnings.append(
+                        {
+                            "severity": "data_quality",
+                            "code": "FICHAJE_INCOMPLETO",
+                            "message": f"{e.name}: marca sin pareja el {m.strftime('%d/%m/%Y %H:%M')}.",
+                            "source": "fichajes",
+                            "context": {"persona": e.name, "fecha": m.isoformat()},
+                        }
+                    )
 
         if not people:
             return ToolResult(ToolStatus.NOT_FOUND, "No hay turnos ni fichajes en ese periodo para comparar.")
@@ -415,7 +511,9 @@ def informe_comparativo_turnos_fichajes(deps: Deps) -> Tool:
             document.title = p.titulo
 
         return await persist_document_report(
-            deps, ctx, document,
+            deps,
+            ctx,
+            document,
             formato=p.formato,
             tool_name="informe_comparativo_turnos_fichajes",
             default_file_stem="informe_turnos_fichajes",

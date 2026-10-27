@@ -2,17 +2,15 @@
 
 Cobertura de TUR-002 (works_at medianoche) y TUR-003 (auto-hora para 'ahora').
 """
+
 from __future__ import annotations
 
-from datetime import date
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from mia.modules.rrhh.turnos.tools import _NOW_RE, _minutes, works_at
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _shift(start: str, end: str, segments: str = "") -> MagicMock:
     """Crea un ShiftDay mock con start_time, end_time y segments."""
@@ -24,6 +22,7 @@ def _shift(start: str, end: str, segments: str = "") -> MagicMock:
 
 
 # ── works_at: turno estándar ──────────────────────────────────────────────────
+
 
 def test_works_at_dentro_del_turno():
     shift = _shift("08:00", "16:00")
@@ -46,6 +45,7 @@ def test_works_at_justo_al_final_excluido():
 
 
 # ── works_at: turno nocturno (cruza medianoche) ───────────────────────────────
+
 
 def test_works_at_nocturno_despues_de_medianoche():
     # Turno 22:00 - 06:00: debe cubrir las 02:00
@@ -77,6 +77,7 @@ def test_works_at_nocturno_justo_al_fin_excluido():
 
 # ── works_at: turno partido (segments) ───────────────────────────────────────
 
+
 def test_works_at_turno_partido_primer_tramo():
     shift = _shift("10:00", "22:00", segments="10:00-14:00,18:00-22:00")
     assert works_at(shift, _minutes("11:00")) is True
@@ -94,6 +95,7 @@ def test_works_at_turno_partido_entre_tramos():
 
 # ── works_at: sin horario definido ────────────────────────────────────────────
 
+
 def test_works_at_sin_horario_no_cubre():
     shift = _shift(None, None)
     assert works_at(shift, _minutes("10:00")) is False
@@ -105,6 +107,7 @@ def test_works_at_sin_segments_usa_start_end():
 
 
 # ── _NOW_RE: patrones de "ahora" ─────────────────────────────────────────────
+
 
 def test_now_re_ahora():
     assert _NOW_RE.search("quien esta trabajando ahora") is not None
@@ -136,6 +139,7 @@ def test_now_re_no_false_positive_esta_semana():
 
 # ── TUR-003: hora_efectiva se aplica automáticamente ─────────────────────────
 
+
 def test_tur003_hora_efectiva_en_handler():
     """Verifica que el handler de turnos_dia usa hora_efectiva cuando p.hora es None y 'ahora' está en la consulta."""
     # Este test valida la lógica sin construir el handler completo (dependencias de BD).
@@ -148,6 +152,7 @@ def test_tur003_hora_efectiva_en_handler():
     # Simula la lógica de hora_efectiva
     from datetime import datetime
     from zoneinfo import ZoneInfo
+
     now = datetime(2026, 10, 7, 14, 30, tzinfo=ZoneInfo("Europe/Madrid"))
     hora_efectiva = now.strftime("%H:%M")
     assert hora_efectiva == "14:30"

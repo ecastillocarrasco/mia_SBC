@@ -36,11 +36,29 @@ from mia.modules.rrhh.fichajes.comparison import DayComparison, ShiftExpectation
 from mia.modules.rrhh.fichajes.pairing import pair_marks
 
 KEYWORDS = (
-    "fichaje", "fichajes", "fichar", "fichado", "fichada", "fichó", "ficho", "fichan",
-    "marcaje", "marcajes", "marcar entrada", "marcar salida", "sin turno asignado",
-    "control de presencia", "control horario", "conectia", "reloj de fichar",
-    "compara los turnos con los fichajes", "horas fichadas", "marcajes incorrectos",
-    "faltas de marcaje", "desviacion de fichaje", "desviación de fichaje",
+    "fichaje",
+    "fichajes",
+    "fichar",
+    "fichado",
+    "fichada",
+    "fichó",
+    "ficho",
+    "fichan",
+    "marcaje",
+    "marcajes",
+    "marcar entrada",
+    "marcar salida",
+    "sin turno asignado",
+    "control de presencia",
+    "control horario",
+    "conectia",
+    "reloj de fichar",
+    "compara los turnos con los fichajes",
+    "horas fichadas",
+    "marcajes incorrectos",
+    "faltas de marcaje",
+    "desviacion de fichaje",
+    "desviación de fichaje",
 )
 """Ver `empleados.tools.KEYWORDS` para el criterio."""
 
@@ -60,7 +78,9 @@ class PersonaPeriodoParams(PersonaParams):
 
 
 class ComparacionParams(BaseModel):
-    empleado_id: int | None = Field(default=None, description="Limitar a una persona (ID del foco o de una búsqueda previa)")
+    empleado_id: int | None = Field(
+        default=None, description="Limitar a una persona (ID del foco o de una búsqueda previa)"
+    )
     nombre: str | None = Field(default=None, description="Limitar a una persona por nombre, si no hay empleado_id")
     departamento: str | None = Field(
         default=None,
@@ -79,7 +99,9 @@ def _week_start(today: date) -> date:
 
 
 def _day_bounds(lo: date, hi: date) -> tuple[datetime, datetime]:
-    return datetime.combine(lo, time.min, tzinfo=MADRID), datetime.combine(hi + timedelta(days=1), time.min, tzinfo=MADRID)
+    return datetime.combine(lo, time.min, tzinfo=MADRID), datetime.combine(
+        hi + timedelta(days=1), time.min, tzinfo=MADRID
+    )
 
 
 def _localize_marks(marks: list[datetime]) -> list[datetime]:
@@ -115,8 +137,13 @@ def _comparison_row(
     for r in results:
         counts[r.status] += 1
     return [
-        name, department or "—", counts["correcto"], counts["desviado"],
-        counts["falta_marcaje"], counts["sin_turno"], len(incomplete),
+        name,
+        department or "—",
+        counts["correcto"],
+        counts["desviado"],
+        counts["falta_marcaje"],
+        counts["sin_turno"],
+        len(incomplete),
     ]
 
 
@@ -260,8 +287,13 @@ def comparar_turnos_fichajes(deps: Deps) -> Tool:
                 "title": "Comparación turnos vs. fichajes",
                 "kpis": kpis,
                 "columns": [
-                    "Persona", "Departamento", "Correctos", "Desviados",
-                    "Faltas de marcaje", "Sin turno", "Marcas incompletas",
+                    "Persona",
+                    "Departamento",
+                    "Correctos",
+                    "Desviados",
+                    "Faltas de marcaje",
+                    "Sin turno",
+                    "Marcas incompletas",
                 ],
                 "rows": rows,
             },

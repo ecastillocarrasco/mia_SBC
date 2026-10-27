@@ -10,8 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-import mia.diagnostics as diagnostics
-from mia import __version__
+from mia import __version__, diagnostics
 from mia.api.errors import install_error_handlers
 from mia.api.middleware import RequestContextMiddleware
 from mia.api.routes import (
@@ -49,9 +48,7 @@ log = get_logger(__name__)
 def _start_retention_tasks(
     services: Services, settings: Settings
 ) -> tuple[asyncio.Task, asyncio.Task, asyncio.Task | None]:
-    conversations = asyncio.create_task(
-        run_retention_cleanup(services.db, settings.conversation_retention_days)
-    )
+    conversations = asyncio.create_task(run_retention_cleanup(services.db, settings.conversation_retention_days))
     audit = asyncio.create_task(run_audit_retention_cleanup(services.db, settings.audit_retention_days))
     reports = (
         asyncio.create_task(run_report_cleanup(services.db, services.report_storage, settings.reports.directory))

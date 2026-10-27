@@ -59,13 +59,18 @@ def test_several_formats_requested_at_once_become_one_button_each() -> None:
     """Pedir PDF + Excel en una sola llamada a generar_informe (``type == "downloads"``) debe dar
     exactamente el mismo resultado en el 2D que pedirlos uno a uno: una acción "download" por
     formato, mismo contrato de siempre (``mia-2d.js`` ya sabe pintar varias)."""
-    _, actions = legacy_view([{
-        "type": "downloads", "title": "Costes por departamento",
-        "items": [
-            {"url": "/api/reports/abc", "format": "pdf", "file_name": "Costes.pdf"},
-            {"url": "/api/reports/def", "format": "xlsx", "file_name": "Costes.xlsx"},
-        ],
-    }])
+    _, actions = legacy_view(
+        [
+            {
+                "type": "downloads",
+                "title": "Costes por departamento",
+                "items": [
+                    {"url": "/api/reports/abc", "format": "pdf", "file_name": "Costes.pdf"},
+                    {"url": "/api/reports/def", "format": "xlsx", "file_name": "Costes.xlsx"},
+                ],
+            }
+        ]
+    )
     assert actions == [
         {"type": "download", "url": "/api/reports/abc", "label": "Descargar pdf"},
         {"type": "download", "url": "/api/reports/def", "label": "Descargar xlsx"},
@@ -76,13 +81,29 @@ def test_download_with_a_preview_also_fills_the_2d_table_and_charts() -> None:
     """La vista previa de un informe (``persist_document_report`` -> ``preview``) reutiliza el
     mecanismo ya existente de tabla/gráficos del turno en el 2D -- nunca una clave nueva que
     mia-2d.js tendría que aprender a leer."""
-    data, actions = legacy_view([{
-        "type": "download", "url": "/api/reports/abc", "format": "pdf", "title": "Comparativo Pisos",
-        "preview": {
-            "tables": [{"title": "Detalle", "columns": ["Nombre", "Horas"], "rows": [["Ana", 40], ["Luis", 38]]}],
-            "charts": [{"type": "bar", "title": "Horas", "labels": ["Ana", "Luis"], "series": [{"name": "s", "values": [40, 38]}]}],
-        },
-    }])
+    data, actions = legacy_view(
+        [
+            {
+                "type": "download",
+                "url": "/api/reports/abc",
+                "format": "pdf",
+                "title": "Comparativo Pisos",
+                "preview": {
+                    "tables": [
+                        {"title": "Detalle", "columns": ["Nombre", "Horas"], "rows": [["Ana", 40], ["Luis", 38]]}
+                    ],
+                    "charts": [
+                        {
+                            "type": "bar",
+                            "title": "Horas",
+                            "labels": ["Ana", "Luis"],
+                            "series": [{"name": "s", "values": [40, 38]}],
+                        }
+                    ],
+                },
+            }
+        ]
+    )
     assert actions == [{"type": "download", "url": "/api/reports/abc", "label": "Descargar pdf"}]
     assert data["table"]["title"] == "Detalle"
     assert [c["label"] for c in data["table"]["columns"]] == ["Nombre", "Horas"]

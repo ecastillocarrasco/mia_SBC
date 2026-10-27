@@ -29,8 +29,13 @@ async def test_dev_mode_does_not_require_login(client: httpx.AsyncClient) -> Non
 async def entra_client(tmp_path: Path) -> httpx.AsyncClient:
     settings = make_settings(
         tmp_path,
-        auth={"mode": AuthMode.ENTRA, "entra_tenant_id": "tenant-123", "entra_client_id": "client-456",
-              "entra_web_client_id": "web-123", "entra_desktop_client_id": "desktop-456"},
+        auth={
+            "mode": AuthMode.ENTRA,
+            "entra_tenant_id": "tenant-123",
+            "entra_client_id": "client-456",
+            "entra_web_client_id": "web-123",
+            "entra_desktop_client_id": "desktop-456",
+        },
     )
     db = await fresh_database(tmp_path)
     llm = FakeLLMProvider(lambda req: final_answer("ok", "ok"))
@@ -49,8 +54,13 @@ async def test_entra_mode_exposes_tenant_and_client_id(entra_client: httpx.Async
     assert response.json() == {
         "mode": "entra",
         "requires_login": True,
-        "entra": {"tenant_id": "tenant-123", "client_id": "client-456", "web_client_id": "web-123",
-                  "desktop_client_id": "desktop-456", "scope": "api://client-456/access_as_user"},
+        "entra": {
+            "tenant_id": "tenant-123",
+            "client_id": "client-456",
+            "web_client_id": "web-123",
+            "desktop_client_id": "desktop-456",
+            "scope": "api://client-456/access_as_user",
+        },
     }
 
 

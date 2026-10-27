@@ -3,6 +3,7 @@
 Separa la intención del usuario (qué quiere) de los datos disponibles (qué hay).
 Determinista, sin LLM, coste cero en tiempo de ejecución.
 """
+
 from __future__ import annotations
 
 import re
@@ -156,11 +157,13 @@ def classify_query(query: str) -> QueryAnalysis:
 
 # ── LLM hint ─────────────────────────────────────────────────────────────────
 
-_DIRECT_INTENTS = frozenset({
-    PresentationIntent.OPERATIONAL_LOOKUP,
-    PresentationIntent.DIRECT_LOOKUP,
-    PresentationIntent.LIST,
-})
+_DIRECT_INTENTS = frozenset(
+    {
+        PresentationIntent.OPERATIONAL_LOOKUP,
+        PresentationIntent.DIRECT_LOOKUP,
+        PresentationIntent.LIST,
+    }
+)
 
 
 def build_presentation_hint(qa: QueryAnalysis) -> str:
@@ -188,9 +191,7 @@ def build_presentation_hint(qa: QueryAnalysis) -> str:
         )
 
     if qa.presentation_intent in _DIRECT_INTENTS and not qa.summary_requested:
-        lines.append(
-            "Responde directamente y de forma breve: no añadas análisis, comparativas ni distribuciones."
-        )
+        lines.append("Responde directamente y de forma breve: no añadas análisis, comparativas ni distribuciones.")
 
     if qa.summary_requested:
         lines.append(

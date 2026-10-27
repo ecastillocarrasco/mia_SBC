@@ -58,7 +58,8 @@ class SalarialesParams(CohortParams, ActivosParams):
     departamento: str | None = None
     periodo: str | None = Field(default=None, description="AAAA-MM; por defecto la última nómina ordinaria de cada uno")
     agrupar_por: Literal["puesto", "departamento", "ninguno"] = Field(
-        default="ninguno", description=f"Desglosar por puesto o por departamento (cada grupo debe tener {MIN_GROUP}+ personas)"
+        default="ninguno",
+        description=f"Desglosar por puesto o por departamento (cada grupo debe tener {MIN_GROUP}+ personas)",
     )
 
 

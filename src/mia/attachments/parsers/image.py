@@ -19,7 +19,7 @@ def parse_image(content: bytes) -> AttachmentContent:
         metadata["height"] = img.height
         metadata["format"] = (img.format or "").upper()
         metadata["mode"] = img.mode
-    except Exception:  # noqa: BLE001
+    except Exception:
         metadata["format"] = "unknown"
 
     return AttachmentContent(

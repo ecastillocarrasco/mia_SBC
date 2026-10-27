@@ -36,9 +36,9 @@ from mia.conversation.events import ResultEvent
 from mia.conversation.tools import ToolContext, ToolStatus
 from mia.llm.base import LLMRequest
 from mia.llm.fake import FakeLLMProvider, final_answer, tool_call
+from mia.modules.correo.tools import _send_blocker
 from mia.modules.registry import build_registry
 from mia.modules.rrhh.common import Deps
-from mia.modules.correo.tools import _send_blocker
 from mia.privacy_gateway.gateway import PrivacyGateway
 from mia.privacy_gateway.prompt_injection_guard import scan as scan_injection
 from mia.settings import MailSettings, PrivacyGatewaySettings

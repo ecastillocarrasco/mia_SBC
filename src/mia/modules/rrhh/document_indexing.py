@@ -16,10 +16,10 @@ import io
 import logging
 import re
 import shutil
-from functools import lru_cache
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -115,6 +115,7 @@ def _local_tesseract():
     command = shutil.which("tesseract")
     if command is None:
         from pathlib import Path
+
         for path in (
             Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
             Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
@@ -160,6 +161,7 @@ def extract_document_text_local(content: bytes, file_name: str) -> tuple[str, st
     """
     if content.startswith(_IMAGE_MAGIC):
         from PIL import Image
+
         with Image.open(io.BytesIO(content)) as image:
             text = _ocr_pil_image(image)
         return ("ok" if len(text) >= 40 else "empty"), text, "ocr_local:imagen"
@@ -169,6 +171,7 @@ def extract_document_text_local(content: bytes, file_name: str) -> tuple[str, st
         return status, text, None if status != "unsupported" else "formato no soportado"
 
     from pypdf import PdfReader
+
     reader = PdfReader(io.BytesIO(content))
     page_texts: list[str] = []
     pages_without_text: list[int] = []
@@ -194,6 +197,7 @@ def extract_document_text_local(content: bytes, file_name: str) -> tuple[str, st
     if pages_without_text:
         import pymupdf
         from PIL import Image
+
         with pymupdf.open(stream=content, filetype="pdf") as pdf:
             if pdf.page_count != len(page_texts):
                 raise LocalOCRError("Desajuste en numero de paginas PDF")
@@ -209,8 +213,7 @@ def extract_document_text_local(content: bytes, file_name: str) -> tuple[str, st
                     del pix
 
     text = clean_text("\n".join(page_texts))
-    detail = (f"ocr_local:pdf {len(pages_without_text)}/{len(page_texts)} paginas"
-              if pages_without_text else None)
+    detail = f"ocr_local:pdf {len(pages_without_text)}/{len(page_texts)} paginas" if pages_without_text else None
     return ("ok" if len(text) >= 40 else "empty"), text, detail
 
 
@@ -370,8 +373,9 @@ class DocumentIndexer:
             )
         except LocalOCRError as exc:
             # Fallo seguro: no borrar vectores existentes ni intentar OCR multimodal.
-            log.warning("document_index.local_ocr_failed", domain=self._domain,
-                        document=document.sp_id, reason=str(exc))
+            log.warning(
+                "document_index.local_ocr_failed", domain=self._domain, document=document.sp_id, reason=str(exc)
+            )
             return "error"
         except SharePointError as exc:
             status, detail = ("too_large" if "demasiado grande" in str(exc) else "error"), str(exc)[:300]
@@ -384,8 +388,7 @@ class DocumentIndexer:
             # cerrado sin cifras ni datos personales. Texto y chunks ORIGINALES
             # siguen guardandose localmente para busquedas e informes autorizados.
             embedding_texts = (
-                [project_payroll_embedding(chunk) for chunk in chunks]
-                if self._domain == "nominas" else chunks
+                [project_payroll_embedding(chunk) for chunk in chunks] if self._domain == "nominas" else chunks
             )
             for start in range(0, len(embedding_texts), EMBED_BATCH):
                 vectors.extend(await self._llm.embed(embedding_texts[start : start + EMBED_BATCH], self._model_name))
@@ -397,7 +400,8 @@ class DocumentIndexer:
         if status == "ok" and self._domain == "nominas":
             detail = (
                 f"{detail}; embeddings={PAYROLL_EMBEDDING_POLICY_VERSION}"
-                if detail else f"embeddings={PAYROLL_EMBEDDING_POLICY_VERSION}"
+                if detail
+                else f"embeddings={PAYROLL_EMBEDDING_POLICY_VERSION}"
             )
         try:
             await self._persist(document, status=status, text=text, detail=detail, chunks=chunks, vectors=vectors)

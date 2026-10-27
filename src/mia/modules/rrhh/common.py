@@ -53,7 +53,7 @@ class PersonaParams(BaseModel):
             "Nombre o parte del nombre que ha escrito la persona en ESTE turno. OBLIGATORIO "
             "cuando el turno nombra a alguien, aunque también se mande empleado_id del foco — "
             "es la única forma de detectar un foco obsoleto (otra persona). Déjalo vacío solo en "
-            "preguntas de seguimiento que no nombran a nadie (\"muéstrame sus turnos\")."
+            'preguntas de seguimiento que no nombran a nadie ("muéstrame sus turnos").'
         ),
     )
 
@@ -133,20 +133,62 @@ def _name_matches(query: str, name_key: str) -> bool:
     return bool(tokens) and all(token in name_key for token in tokens)
 
 
-_FICHA_FILLER_WORDS = frozenset({
-    "ficha", "completa", "completo", "muestrame", "muestrales", "enseñame", "ensename",
-    "quiero", "ver", "dame", "pasame", "la", "el", "de", "del", "sus", "su", "por", "favor",
-    "resumen", "detalle", "detallada", "detallado", "informacion", "datos", "perfil",
-})
+_FICHA_FILLER_WORDS = frozenset(
+    {
+        "ficha",
+        "completa",
+        "completo",
+        "muestrame",
+        "muestrales",
+        "enseñame",
+        "ensename",
+        "quiero",
+        "ver",
+        "dame",
+        "pasame",
+        "la",
+        "el",
+        "de",
+        "del",
+        "sus",
+        "su",
+        "por",
+        "favor",
+        "resumen",
+        "detalle",
+        "detallada",
+        "detallado",
+        "informacion",
+        "datos",
+        "perfil",
+    }
+)
 
 # Subconjunto de arriba SIN "la"/"el"/"de"/"del"/"sus"/"su"/"por"/"favor": esas sí pueden ser
 # parte real de un apellido español ("de la Cruz", "del Pozo") y nunca deben quitarse de un
 # `nombre` explícito, solo de la extracción heurística del mensaje completo de abajo.
-_FICHA_LEADING_COMMAND_WORDS = frozenset({
-    "ficha", "completa", "completo", "muestrame", "muestrales", "enseñame", "ensename",
-    "quiero", "ver", "dame", "pasame", "resumen", "detalle", "detallada", "detallado",
-    "informacion", "datos", "perfil",
-})
+_FICHA_LEADING_COMMAND_WORDS = frozenset(
+    {
+        "ficha",
+        "completa",
+        "completo",
+        "muestrame",
+        "muestrales",
+        "enseñame",
+        "ensename",
+        "quiero",
+        "ver",
+        "dame",
+        "pasame",
+        "resumen",
+        "detalle",
+        "detallada",
+        "detallado",
+        "informacion",
+        "datos",
+        "perfil",
+    }
+)
 
 
 def _strip_leading_command_words(nombre: str) -> str:

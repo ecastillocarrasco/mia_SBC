@@ -19,7 +19,8 @@ from sqlalchemy import select
 from mia.auth import Permission
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.data import DocumentTypeConfig, Employee, SignedDocument
-from mia.diagnostics import EventStage, current_call_id, emit as diag_emit
+from mia.diagnostics import EventStage, current_call_id
+from mia.diagnostics import emit as diag_emit
 from mia.modules.rrhh.common import (
     MAX_ROWS_FOR_MODEL,
     CohortParams,
@@ -52,10 +53,24 @@ TYPES = (
 )
 
 KEYWORDS = (
-    "documento", "documentos", "contrato", "contratos", "firma", "firmado", "firmados",
-    "lopd", "rgpd", "reconocimiento medico", "reconocimiento médico", "proteccion de datos",
-    "protección de datos", "normativa", "documentos firmados", "documentacion",
-    "documentación", "documentos faltantes",
+    "documento",
+    "documentos",
+    "contrato",
+    "contratos",
+    "firma",
+    "firmado",
+    "firmados",
+    "lopd",
+    "rgpd",
+    "reconocimiento medico",
+    "reconocimiento médico",
+    "proteccion de datos",
+    "protección de datos",
+    "normativa",
+    "documentos firmados",
+    "documentacion",
+    "documentación",
+    "documentos faltantes",
 )
 """Ver `empleados.tools.KEYWORDS` para el criterio."""
 
@@ -313,10 +328,7 @@ def cobertura_documental(deps: Deps) -> Tool:
                 "plantilla_activa": total,
                 "ambito": dept.name or "toda la empresa",
                 "anio": p.anio,
-                "cobertura": [
-                    {"tipo": r[0], "firmado_por": r[1], "faltante": r[2], "porcentaje": r[3]}
-                    for r in rows
-                ],
+                "cobertura": [{"tipo": r[0], "firmado_por": r[1], "faltante": r[2], "porcentaje": r[3]} for r in rows],
             },
             table(
                 "Cobertura de documentos firmados",
@@ -386,7 +398,9 @@ def buscar_en_documentos(deps: Deps) -> Tool:
                     call_id=call_id,
                 )
                 if not allowed:
-                    return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": "No hay documentos que encajen con ese filtro."})
+                    return ToolResult(
+                        ToolStatus.NOT_FOUND, {"mensaje": "No hay documentos que encajen con ese filtro."}
+                    )
             model = deps.settings.curriculums.embedding_model if deps.settings else "text-embedding-3-small"
             diag_emit(
                 EventStage.RAG_SEARCH_START,
@@ -424,7 +438,9 @@ def buscar_en_documentos(deps: Deps) -> Tool:
             docs = {
                 d.sp_id: d
                 for d in (
-                    await db.scalars(select(SignedDocument).where(SignedDocument.sp_id.in_([h.document_id for h in hits])))
+                    await db.scalars(
+                        select(SignedDocument).where(SignedDocument.sp_id.in_([h.document_id for h in hits]))
+                    )
                 ).all()
             }
             diag_emit(

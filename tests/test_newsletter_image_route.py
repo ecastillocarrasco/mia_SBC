@@ -33,9 +33,17 @@ async def _seed(db: Database, *, image_url: str | None) -> None:
     async with db.session() as s:
         s.add(
             NewsletterItem(
-                sp_id=1, title="Jubilación Blas", summary="Resumen", body="Cuerpo",
-                category="Corporativa", featured=False, active=True, order=1,
-                image_url=image_url, link_url=None, button_text=None,
+                sp_id=1,
+                title="Jubilación Blas",
+                summary="Resumen",
+                body="Cuerpo",
+                category="Corporativa",
+                featured=False,
+                active=True,
+                order=1,
+                image_url=image_url,
+                link_url=None,
+                button_text=None,
             )
         )
 

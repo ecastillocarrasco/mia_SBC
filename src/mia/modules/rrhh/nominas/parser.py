@@ -103,12 +103,14 @@ def parse_employer_ss(text: str) -> dict[str, Any]:
             tipo = float(m.group(3).replace(",", "."))
         except ValueError:
             tipo = None
-        lines.append({
-            "concepto": m.group(1).strip(),
-            "base": amount_es(m.group(2)),
-            "tipo_pct": tipo,
-            "aportacion_empresa": amount_es(m.group(4)),
-        })
+        lines.append(
+            {
+                "concepto": m.group(1).strip(),
+                "base": amount_es(m.group(2)),
+                "tipo_pct": tipo,
+                "aportacion_empresa": amount_es(m.group(4)),
+            }
+        )
     if not lines:
         return {}
     total = round(sum(ln["aportacion_empresa"] for ln in lines if ln["aportacion_empresa"]), 2)

@@ -29,10 +29,31 @@ MANIFEST = ModuleManifest(
 )
 
 KEYWORDS = (
-    "it", "informatica", "informática", "sistemas", "soporte tecnico", "soporte técnico",
-    "incidencia", "incidencia tecnica", "incidencia técnica", "ticket", "tickets",
-    "mesa de ayuda", "helpdesk", "hardware", "software", "ordenador", "portatil", "portátil",
-    "impresora", "red wifi", "wifi", "contraseña", "password", "usuario de red", "vpn",
+    "it",
+    "informatica",
+    "informática",
+    "sistemas",
+    "soporte tecnico",
+    "soporte técnico",
+    "incidencia",
+    "incidencia tecnica",
+    "incidencia técnica",
+    "ticket",
+    "tickets",
+    "mesa de ayuda",
+    "helpdesk",
+    "hardware",
+    "software",
+    "ordenador",
+    "portatil",
+    "portátil",
+    "impresora",
+    "red wifi",
+    "wifi",
+    "contraseña",
+    "password",
+    "usuario de red",
+    "vpn",
 )
 """Vocabulario para que el orquestador reconozca una pregunta de este módulo (CLAUDE.md pide
 enrutado determinista; no es una lista exhaustiva, es la que decide si avisar de que el módulo

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any, Literal
 
+from mia.sources.mappers.hr import ShiftKind
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -27,7 +28,6 @@ from mia.modules.rrhh.common import (
 )
 from mia.modules.rrhh.turnos import ABSENCE_KINDS
 from mia.modules.rrhh.turnos.tools import DAY_NAMES
-from mia.sources.mappers.hr import ShiftKind
 from mia.text import normalize_key
 
 ESTADOS = {"aceptadas": "aceptada", "pendientes": "pendiente", "rechazadas": "rechazada"}
@@ -223,9 +223,7 @@ def reincorporacion(deps: Deps) -> Tool:
                 return person_problem(match, p.nombre)
             e = match.employee
             if not e.person_key:
-                return ToolResult(
-                    ToolStatus.NOT_FOUND, {"mensaje": f"No puedo cruzar los turnos de {e.name}."}
-                )
+                return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": f"No puedo cruzar los turnos de {e.name}."})
             shifts = list(
                 (
                     await db.scalars(

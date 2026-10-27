@@ -35,7 +35,7 @@ def parse_docx(content: bytes) -> AttachmentContent:
                 para_style = element.find(qn("w:pPr"), element.nsmap) or ""
                 style_elem = element.find(f".//{qn('w:pStyle')}")
                 para_style = style_elem.get(qn("w:val"), "") if style_elem is not None else ""
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
             # Extract text from runs

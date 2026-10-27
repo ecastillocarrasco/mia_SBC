@@ -11,19 +11,44 @@ from mia.modules.rrhh.fichajes.shift_match import match_shift_type
 
 def _shift_day(start: str, end: str, dept_key: str = "pisos", area: str | None = None) -> ShiftDay:
     return ShiftDay(
-        sp_item_id=1, day=date(2026, 10, 12), person_key="p",
-        department_key=dept_key, iso_year=2026, iso_week=42, weekday="L",
-        kind="Trabajo", start_time=start, end_time=end, segments=f"{start}-{end}", area=area,
+        sp_item_id=1,
+        day=date(2026, 10, 12),
+        person_key="p",
+        department_key=dept_key,
+        iso_year=2026,
+        iso_week=42,
+        weekday="L",
+        kind="Trabajo",
+        start_time=start,
+        end_time=end,
+        segments=f"{start}-{end}",
+        area=area,
     )
 
 
 def _catalog(
-    code: str, dept_key: str, start1: str, end1: str, hours_night: float, *,
-    split=False, start2=None, end2=None, description: str | None = None,
+    code: str,
+    dept_key: str,
+    start1: str,
+    end1: str,
+    hours_night: float,
+    *,
+    split=False,
+    start2=None,
+    end2=None,
+    description: str | None = None,
 ) -> ShiftTypeCatalog:
     return ShiftTypeCatalog(
-        sp_id=1, code=code, department_key=dept_key, start1=start1, end1=end1,
-        start2=start2, end2=end2, hours_total=0.0, hours_night=hours_night, split_shift=split,
+        sp_id=1,
+        code=code,
+        department_key=dept_key,
+        start1=start1,
+        end1=end1,
+        start2=start2,
+        end2=end2,
+        hours_total=0.0,
+        hours_night=hours_night,
+        split_shift=split,
         description=description,
     )
 
@@ -130,9 +155,17 @@ def test_same_schedule_in_a_different_department_never_matches() -> None:
 
 def test_split_shift_matches_both_segments_in_order() -> None:
     shift = ShiftDay(
-        sp_item_id=1, day=date(2026, 10, 12), person_key="p",
-        department_key="pisos", iso_year=2026, iso_week=42, weekday="L",
-        kind="Trabajo", start_time="10:00", end_time="22:00", segments="10:00-14:00,18:00-22:00",
+        sp_item_id=1,
+        day=date(2026, 10, 12),
+        person_key="p",
+        department_key="pisos",
+        iso_year=2026,
+        iso_week=42,
+        weekday="L",
+        kind="Trabajo",
+        start_time="10:00",
+        end_time="22:00",
+        segments="10:00-14:00,18:00-22:00",
     )
     catalog = [_catalog("T1", "pisos", "10:00", "14:00", 1.0, split=True, start2="18:00", end2="22:00")]
     match = match_shift_type(shift, catalog)

@@ -16,9 +16,9 @@ from pydantic import BaseModel
 from mia.auth import UserContext
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
 from mia.diagnostics import EventStage
-from mia.diagnostics.trace import begin_trace
 from mia.diagnostics.store import DiagnosticsStore
 from mia.diagnostics.streaming import LiveBroadcaster
+from mia.diagnostics.trace import begin_trace
 from mia.llm import ToolCall
 from mia.settings import DiagnosticsSettings
 
@@ -61,7 +61,10 @@ async def test_tool_exception_is_diagnosable_without_leaking_its_message() -> No
 
     assert event.data["exception_type"] == "ValueError"
     assert event.data["exception_location"] is not None
-    assert "test_tool_error_diagnostics.py" in event.data["exception_location"] or "tools.py" in event.data["exception_location"]
+    assert (
+        "test_tool_error_diagnostics.py" in event.data["exception_location"]
+        or "tools.py" in event.data["exception_location"]
+    )
 
     # Nunca el mensaje real, en ningún campo del evento.
     serialized = str(event.data)

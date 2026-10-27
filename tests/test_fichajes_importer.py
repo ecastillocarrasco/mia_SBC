@@ -19,8 +19,16 @@ from tests.dbutil import fresh_database
 from tests.hr_seed import _emp
 
 _HEADER = (
-    "Fecha", "Área", "Código del empleado", "Nombre completo", "Hora marcaje",
-    "Origen del marcaje", "Motivo", "Nombre Terminal", "Tipo marcaje", "Link localización",
+    "Fecha",
+    "Área",
+    "Código del empleado",
+    "Nombre completo",
+    "Hora marcaje",
+    "Origen del marcaje",
+    "Motivo",
+    "Nombre Terminal",
+    "Tipo marcaje",
+    "Link localización",
 )
 
 
@@ -86,7 +94,7 @@ async def test_matches_by_name_without_accents_or_enie(tmp_path: Path) -> None:
 
 
 async def test_ambiguous_surname_fragment_does_not_cause_a_wrong_match(tmp_path: Path) -> None:
-    """"de la rosa" aparece en dos empleados reales (Conectia, semana 41) — el cruce por nombre
+    """ "de la rosa" aparece en dos empleados reales (Conectia, semana 41) — el cruce por nombre
     COMPLETO (conjunto de palabras) debe distinguirlos sin ambigüedad."""
     db = await fresh_database(tmp_path, "fichajes_import_3.db")
     async with db.session() as s:
@@ -94,9 +102,12 @@ async def test_ambiguous_surname_fragment_does_not_cause_a_wrong_match(tmp_path:
         s.add(_emp(2, "Patricia de la Rosa Sanchez", "Restaurante", person_key="pk-patricia"))
     excel_dir = tmp_path / "excels"
     excel_dir.mkdir()
-    _write_xlsx(excel_dir / "semana.xlsx", [
-        _row(datetime(2026, 10, 6, 15, 56), "1-001105", "DE LA ROSA SANCHEZ, PATRICIA"),
-    ])
+    _write_xlsx(
+        excel_dir / "semana.xlsx",
+        [
+            _row(datetime(2026, 10, 6, 15, 56), "1-001105", "DE LA ROSA SANCHEZ, PATRICIA"),
+        ],
+    )
     report = await import_directory(db, excel_dir, now=datetime.now(UTC))
     assert report.imported == 1
     assert report.unmatched == {}
@@ -116,9 +127,12 @@ async def test_matches_when_conectia_has_an_extra_middle_name_mia_does_not(tmp_p
         s.add(_emp(1, "Melania Rosello Diaz", "Restaurante", person_key="pk-melania"))
     excel_dir = tmp_path / "excels"
     excel_dir.mkdir()
-    _write_xlsx(excel_dir / "semana.xlsx", [
-        _row(datetime(2026, 10, 5, 9, 19), "1-001080", "ROSELLO DIAZ, MELANIA JACINTA"),
-    ])
+    _write_xlsx(
+        excel_dir / "semana.xlsx",
+        [
+            _row(datetime(2026, 10, 5, 9, 19), "1-001080", "ROSELLO DIAZ, MELANIA JACINTA"),
+        ],
+    )
     report = await import_directory(db, excel_dir, now=datetime.now(UTC))
     assert report.imported == 1
     assert report.unmatched == {}
@@ -137,9 +151,12 @@ async def test_subset_match_ambiguous_between_two_employees_is_reported_not_gues
         s.add(_emp(2, "Jose Garcia Lopez", "Restaurante", person_key="pk-jose"))
     excel_dir = tmp_path / "excels"
     excel_dir.mkdir()
-    _write_xlsx(excel_dir / "semana.xlsx", [
-        _row(datetime(2026, 10, 5, 9, 0), "1-000002", "GARCIA LOPEZ, MARIA JOSE"),
-    ])
+    _write_xlsx(
+        excel_dir / "semana.xlsx",
+        [
+            _row(datetime(2026, 10, 5, 9, 0), "1-000002", "GARCIA LOPEZ, MARIA JOSE"),
+        ],
+    )
     report = await import_directory(db, excel_dir, now=datetime.now(UTC))
     assert report.imported == 0
     assert report.ambiguous == {"GARCIA LOPEZ, MARIA JOSE": 1}
@@ -156,11 +173,14 @@ async def test_known_spelling_variants_are_corrected(tmp_path: Path) -> None:
         s.add(_emp(3, "Cristiane da Conceicao de Lima", "Pisos", person_key="pk-cristiane"))
     excel_dir = tmp_path / "excels"
     excel_dir.mkdir()
-    _write_xlsx(excel_dir / "semana.xlsx", [
-        _row(datetime(2026, 10, 5, 9, 0), "1-1", "JIMENEZ JIMENEZ, JENIFER"),
-        _row(datetime(2026, 10, 5, 9, 0), "1-2", "SANCHEZ VALLE, VANESA"),
-        _row(datetime(2026, 10, 5, 9, 0), "1-3", "DE CONCEICAO DE LIMA, CRISTIANE"),
-    ])
+    _write_xlsx(
+        excel_dir / "semana.xlsx",
+        [
+            _row(datetime(2026, 10, 5, 9, 0), "1-1", "JIMENEZ JIMENEZ, JENIFER"),
+            _row(datetime(2026, 10, 5, 9, 0), "1-2", "SANCHEZ VALLE, VANESA"),
+            _row(datetime(2026, 10, 5, 9, 0), "1-3", "DE CONCEICAO DE LIMA, CRISTIANE"),
+        ],
+    )
     report = await import_directory(db, excel_dir, now=datetime.now(UTC))
     assert report.imported == 3
     assert report.unmatched == {}
@@ -180,10 +200,13 @@ async def test_spelling_correction_is_scoped_to_the_exact_full_name_not_the_word
         s.add(_emp(2, "Yesica Vanesa Jofre", "Pisos", person_key="pk-yesica"))
     excel_dir = tmp_path / "excels"
     excel_dir.mkdir()
-    _write_xlsx(excel_dir / "semana.xlsx", [
-        _row(datetime(2026, 10, 5, 9, 0), "1-2", "SANCHEZ VALLE, VANESA"),  # necesita corrección
-        _row(datetime(2026, 10, 7, 8, 0), "1-9", "JOFRE AGULLO, YESICA VANESA"),  # NO debe corregirse
-    ])
+    _write_xlsx(
+        excel_dir / "semana.xlsx",
+        [
+            _row(datetime(2026, 10, 5, 9, 0), "1-2", "SANCHEZ VALLE, VANESA"),  # necesita corrección
+            _row(datetime(2026, 10, 7, 8, 0), "1-9", "JOFRE AGULLO, YESICA VANESA"),  # NO debe corregirse
+        ],
+    )
     report = await import_directory(db, excel_dir, now=datetime.now(UTC))
     assert report.imported == 2
     assert report.unmatched == {}
@@ -201,9 +224,12 @@ async def test_de_da_correction_does_not_affect_unrelated_de_la_rosa_names(tmp_p
         s.add(_emp(1, "Patricia de la Rosa Sanchez", "Restaurante", person_key="pk-patricia"))
     excel_dir = tmp_path / "excels"
     excel_dir.mkdir()
-    _write_xlsx(excel_dir / "semana.xlsx", [
-        _row(datetime(2026, 10, 6, 15, 56), "1-001105", "DE LA ROSA SANCHEZ, PATRICIA"),
-    ])
+    _write_xlsx(
+        excel_dir / "semana.xlsx",
+        [
+            _row(datetime(2026, 10, 6, 15, 56), "1-001105", "DE LA ROSA SANCHEZ, PATRICIA"),
+        ],
+    )
     report = await import_directory(db, excel_dir, now=datetime.now(UTC))
     assert report.imported == 1
     assert report.unmatched == {}
@@ -216,9 +242,12 @@ async def test_unmatched_name_is_reported_not_silently_dropped(tmp_path: Path) -
         s.add(_emp(1, "Melania Rosello Diaz", "Restaurante", person_key="pk-melania"))
     excel_dir = tmp_path / "excels"
     excel_dir.mkdir()
-    _write_xlsx(excel_dir / "semana.xlsx", [
-        _row(datetime(2026, 10, 5, 9, 0), "1-999999", "PERSONA INEXISTENTE, NADIE"),
-    ])
+    _write_xlsx(
+        excel_dir / "semana.xlsx",
+        [
+            _row(datetime(2026, 10, 5, 9, 0), "1-999999", "PERSONA INEXISTENTE, NADIE"),
+        ],
+    )
     report = await import_directory(db, excel_dir, now=datetime.now(UTC))
     assert report.imported == 0
     assert report.unmatched == {"PERSONA INEXISTENTE, NADIE": 1}

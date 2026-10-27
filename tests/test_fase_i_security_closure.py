@@ -39,6 +39,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from sqlalchemy import select
 
 from mia.api.services import Services
 from mia.auth import Permission, UserContext
@@ -51,7 +52,6 @@ from mia.modules.rrhh.informes.jobs import JOB_KIND_INFORME_ECONOMICO, run_infor
 from mia.reporting import job_manager
 from mia.reporting.worker import ReportJobWorker
 from mia.settings import AuthSettings
-from sqlalchemy import select
 from tests.conftest import make_settings
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp
@@ -107,14 +107,21 @@ async def _seeded_services(tmp_path, *, jobs_overrides: dict | None = None):
 
 async def _submit_and_run(services, *, user_id: str, roles: list[str]) -> job_manager.JobSnapshot:
     params = {
-        "periodo": "agosto de 2026", "departamento": None, "concepto": "coste_empresa",
-        "incluir_grupos_pequenos": False, "incluir_inactivos": False, "formato": "pdf", "titulo": None,
+        "periodo": "agosto de 2026",
+        "departamento": None,
+        "concepto": "coste_empresa",
+        "incluir_grupos_pequenos": False,
+        "incluir_inactivos": False,
+        "formato": "pdf",
+        "titulo": None,
         "_auth": {"user_id": user_id, "display_name": "Enrique", "roles": roles},
     }
     async with services.db.session() as db:
         job_id = await job_manager.submit(db, user_id=user_id, kind=JOB_KIND_INFORME_ECONOMICO, params=params)
-    worker = ReportJobWorker(services, {JOB_KIND_INFORME_ECONOMICO: run_informe_economico_nominas}, worker_id="sec-closure")
-    await worker._run_once()  # noqa: SLF001
+    worker = ReportJobWorker(
+        services, {JOB_KIND_INFORME_ECONOMICO: run_informe_economico_nominas}, worker_id="sec-closure"
+    )
+    await worker._run_once()
     async with services.db.session() as db:
         snapshot = await job_manager.get(db, job_id)
     assert snapshot is not None
@@ -159,7 +166,7 @@ async def test_sensitive_async_submission_is_rejected_at_both_entry_points(tmp_p
     try:
         # Herramienta conversacional: ni siquiera debe estar registrada (ver test dedicado en
         # test_job_manager_economic_integration.py); aquí se confirma que no aparece en ESTE registry.
-        assert "informe_economico_en_segundo_plano" not in services.registry._tools  # noqa: SLF001
+        assert "informe_economico_en_segundo_plano" not in services.registry._tools
 
         # Endpoint REST: sigue existiendo (no depende del registro de herramientas), pero debe denegar.
         settings = services.settings
@@ -199,8 +206,13 @@ async def test_authorized_user_submits_then_permission_is_revoked_before_executi
         original = _with_temp_role(frozenset({Permission.NOMINAS_IMPORTES, Permission.INFORMES_GENERAR}))
         try:
             params = {
-                "periodo": "agosto de 2026", "departamento": None, "concepto": "coste_empresa",
-                "incluir_grupos_pequenos": False, "incluir_inactivos": False, "formato": "pdf", "titulo": None,
+                "periodo": "agosto de 2026",
+                "departamento": None,
+                "concepto": "coste_empresa",
+                "incluir_grupos_pequenos": False,
+                "incluir_inactivos": False,
+                "formato": "pdf",
+                "titulo": None,
                 "_auth": {"user_id": "u", "display_name": "Enrique", "roles": [_TEMP_ROLE]},
             }
             async with services.db.session() as db_submit:
@@ -214,7 +226,7 @@ async def test_authorized_user_submits_then_permission_is_revoked_before_executi
             worker = ReportJobWorker(
                 services, {JOB_KIND_INFORME_ECONOMICO: run_informe_economico_nominas}, worker_id="sec-revoke"
             )
-            claimed = await worker._run_once()  # noqa: SLF001
+            claimed = await worker._run_once()
             assert claimed is True
 
             # 4. Se deniega — nunca completado con datos económicos para un permiso ya revocado.
@@ -242,8 +254,13 @@ async def test_permission_change_concurrent_with_the_jobs_own_state_transition_i
         original = _with_temp_role(frozenset({Permission.NOMINAS_IMPORTES, Permission.INFORMES_GENERAR}))
         try:
             params = {
-                "periodo": "agosto de 2026", "departamento": None, "concepto": "coste_empresa",
-                "incluir_grupos_pequenos": False, "incluir_inactivos": False, "formato": "pdf", "titulo": None,
+                "periodo": "agosto de 2026",
+                "departamento": None,
+                "concepto": "coste_empresa",
+                "incluir_grupos_pequenos": False,
+                "incluir_inactivos": False,
+                "formato": "pdf",
+                "titulo": None,
                 "_auth": {"user_id": "u", "display_name": "Enrique", "roles": [_TEMP_ROLE]},
             }
             async with services.db.session() as db_submit:
@@ -386,7 +403,9 @@ async def test_an_unverifiable_required_permission_denies_safely_rather_than_all
         (tmp_path / "x.pdf").write_bytes(b"%PDF-1.4 contenido de prueba")
 
         app_services = Services.build(services.settings, db=services.db)
-        app_services.identity = DevIdentityProvider(AuthSettings(dev_user_id="u"))  # mia.admin: todos los permisos reales
+        app_services.identity = DevIdentityProvider(
+            AuthSettings(dev_user_id="u")
+        )  # mia.admin: todos los permisos reales
         app = create_app(services.settings, services=app_services)
         async with app.router.lifespan_context(app):
             transport = httpx.ASGITransport(app=app)

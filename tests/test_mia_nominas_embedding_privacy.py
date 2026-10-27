@@ -3,17 +3,18 @@
 Los proveedores y la persistencia son simulados. No hace falta acceso a DB,
 SharePoint o OpenAI. No usa ni imprime datos reales de empleados.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
 
 import pytest
 
+from mia.modules.rrhh.document_indexing import DocumentIndexer
 from mia.modules.rrhh.payroll_embedding_privacy import (
     PAYROLL_EMBEDDING_POLICY_VERSION,
     project_payroll_embedding,
 )
-from mia.modules.rrhh.document_indexing import DocumentIndexer
 
 SYNTHETIC = (
     "NOMINA FICTICIA - Nombre: Maria Garcia Lopez. DNI: 12345678Z. "
@@ -46,8 +47,14 @@ class _FakeClient:
 
 def _indexer(domain, llm):
     return DocumentIndexer(
-        domain=domain, list_title="PRUEBA", model=object, db=None,
-        client=_FakeClient(), llm=llm, embedding_model="fake", batch=1,
+        domain=domain,
+        list_title="PRUEBA",
+        model=object,
+        db=None,
+        client=_FakeClient(),
+        llm=llm,
+        embedding_model="fake",
+        batch=1,
     )
 
 
@@ -56,10 +63,24 @@ def test_projection_has_only_allowlisted_concepts():
     assert "salario base" in result and "retenciones fiscales" in result
     assert "cotizaciones sociales" in result and "salario neto" in result
     for secret in (
-        "Maria", "Garcia", "Lopez", "12345678Z", "prueba@example.com",
-        "ES9121000418450200051332", "Cocina", "15/10/2026", "2500",
-        "2.940", "2940", "555", "198", "2186", "Embargo", "Diagnostico",
-        "IGNORA", "EUR",
+        "Maria",
+        "Garcia",
+        "Lopez",
+        "12345678Z",
+        "prueba@example.com",
+        "ES9121000418450200051332",
+        "Cocina",
+        "15/10/2026",
+        "2500",
+        "2.940",
+        "2940",
+        "555",
+        "198",
+        "2186",
+        "Embargo",
+        "Diagnostico",
+        "IGNORA",
+        "EUR",
     ):
         assert secret.casefold() not in result.casefold(), secret
     assert not any(char.isdigit() for char in result)
@@ -85,7 +106,10 @@ def test_projection_deterministic_and_fixed_vocabulary():
 @pytest.mark.asyncio
 async def test_nominas_embed_minimized_but_stored_local_full(monkeypatch):
     import mia.modules.rrhh.document_indexing as indexing
-    monkeypatch.setattr(indexing, "extract_document_text_local", lambda *_: ("ok", SYNTHETIC, "ocr_local:pdf 1/1 paginas"))
+
+    monkeypatch.setattr(
+        indexing, "extract_document_text_local", lambda *_: ("ok", SYNTHETIC, "ocr_local:pdf 1/1 paginas")
+    )
     provider = _CapturedProvider()
     indexer = _indexer("nominas", provider)
     saved = []
@@ -108,6 +132,7 @@ async def test_nominas_embed_minimized_but_stored_local_full(monkeypatch):
 @pytest.mark.asyncio
 async def test_other_domain_unchanged(monkeypatch):
     import mia.modules.rrhh.document_indexing as indexing
+
     monkeypatch.setattr(indexing, "extract_document_text_local", lambda *_: ("ok", SYNTHETIC, None))
     provider = _CapturedProvider()
     indexer = _indexer("documentos_firmados", provider)
@@ -123,6 +148,7 @@ async def test_other_domain_unchanged(monkeypatch):
 @pytest.mark.asyncio
 async def test_projection_failure_fails_closed_and_keeps_previous_index(monkeypatch):
     import mia.modules.rrhh.document_indexing as indexing
+
     monkeypatch.setattr(indexing, "extract_document_text_local", lambda *_: ("ok", SYNTHETIC, None))
 
     def raise_projection(_text):

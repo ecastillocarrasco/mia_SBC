@@ -13,16 +13,33 @@ from typing import Any
 
 from mia.privacy_gateway.custom_recognizers import build_spanish_recognizers
 from mia.privacy_gateway.exceptions import UnsafeContentBlockedError
-
 from mia.text import normalize_key
 
 _LANGUAGE = "es"
 
 _ASSISTANT_NAME = "mia"
-_ADDRESS_FILLER_WORDS = frozenset({
-    "mia", "hola", "holaa", "holaaa", "ey", "hey", "buenas", "buenos", "dias", "tardes", "noches",
-    "saludos", "que", "tal", "estas", "vas", "como", "andas",
-})
+_ADDRESS_FILLER_WORDS = frozenset(
+    {
+        "mia",
+        "hola",
+        "holaa",
+        "holaaa",
+        "ey",
+        "hey",
+        "buenas",
+        "buenos",
+        "dias",
+        "tardes",
+        "noches",
+        "saludos",
+        "que",
+        "tal",
+        "estas",
+        "vas",
+        "como",
+        "andas",
+    }
+)
 """Muletillas de saludo/dirección + el propio nombre del asistente. El modelo spaCy en español, al
 analizar frases cortas como "hola mia", fusiona el saludo y el nombre en UN SOLO tramo PERSON (lo
 mismo le pasa con "hola juan" o "hola maria" — no es un sesgo específico de "mia", es cómo trata
@@ -115,13 +132,8 @@ class PresidioEngine:
             results = self._analyzer.analyze(text=text, language=_LANGUAGE, entities=entities)
         except Exception as exc:  # pragma: no cover
             raise UnsafeContentBlockedError(f"Fallo del analizador Presidio: {type(exc).__name__}") from exc
-        detected = [
-            DetectedEntity(r.entity_type, r.start, r.end, r.score, text[r.start : r.end]) for r in results
-        ]
-        return [
-            e for e in detected
-            if not (e.entity_type == "PERSON" and _is_assistant_address_only(e.text))
-        ]
+        detected = [DetectedEntity(r.entity_type, r.start, r.end, r.score, text[r.start : r.end]) for r in results]
+        return [e for e in detected if not (e.entity_type == "PERSON" and _is_assistant_address_only(e.text))]
 
 
 _engine: PresidioEngine | None = None

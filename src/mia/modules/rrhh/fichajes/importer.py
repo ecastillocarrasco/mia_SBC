@@ -104,7 +104,7 @@ cruce real."""
 
 
 def _name_tokens(raw: str) -> frozenset[str]:
-    """"Apellido1 [Apellido2], Nombre" -> conjunto de palabras normalizado, sin importar el orden
+    """ "Apellido1 [Apellido2], Nombre" -> conjunto de palabras normalizado, sin importar el orden
     ("Rosello Diaz, Melania" y "Melania Rosello Diaz" producen el mismo conjunto), con las
     variantes ortográficas conocidas ya corregidas (siempre por nombre completo, ver arriba)."""
     surnames, _, first_name = raw.partition(",")
@@ -175,7 +175,13 @@ def rows_from_bytes(content: bytes, label: str) -> list[dict[str, Any]]:
 
 
 async def _import_rows(
-    session: AsyncSession, index: _EmployeeIndex, rows: list[dict[str, Any]], *, tz: ZoneInfo, now: datetime, report: ImportReport
+    session: AsyncSession,
+    index: _EmployeeIndex,
+    rows: list[dict[str, Any]],
+    *,
+    tz: ZoneInfo,
+    now: datetime,
+    report: ImportReport,
 ) -> None:
     """Cruce por nombre + upsert idempotente de ``ClockMark`` — compartido por la importación desde
     directorio (pruebas) y desde un adjunto subido en la conversación."""

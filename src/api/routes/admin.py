@@ -6,12 +6,12 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
+from mia.sources import all_sources
 from sqlalchemy import select
 
 from mia.api.deps import ServicesDep, require
 from mia.auth import Permission, UserContext
 from mia.data import SourceSyncState
-from mia.sources import all_sources
 
 router = APIRouter(prefix="/api/admin", tags=["operación"])
 
@@ -30,11 +30,7 @@ async def sources(services: ServicesDep, _: AdminDep) -> list[dict[str, Any]]:
         state = states.get(source.key)
         age = None
         if state and state.last_success_at:
-            last = (
-                state.last_success_at
-                if state.last_success_at.tzinfo
-                else state.last_success_at.replace(tzinfo=UTC)
-            )
+            last = state.last_success_at if state.last_success_at.tzinfo else state.last_success_at.replace(tzinfo=UTC)
             age = int((now - last).total_seconds() // 60)
         result.append(
             {

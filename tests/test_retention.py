@@ -21,12 +21,20 @@ async def test_audit_purge_expired_deletes_only_old_events(services: Services) -
     now = datetime.now(UTC)
     async with services.db.session() as db:
         old = AuditEvent(
-            user_id="u1", action="tool:nominas_persona", resource="nominas", outcome="ok",
-            request_id="r1", detail={"arguments": {"nombre": "Ana"}},
+            user_id="u1",
+            action="tool:nominas_persona",
+            resource="nominas",
+            outcome="ok",
+            request_id="r1",
+            detail={"arguments": {"nombre": "Ana"}},
         )
         recent = AuditEvent(
-            user_id="u1", action="tool:nominas_persona", resource="nominas", outcome="ok",
-            request_id="r2", detail={"arguments": {"nombre": "Ana"}},
+            user_id="u1",
+            action="tool:nominas_persona",
+            resource="nominas",
+            outcome="ok",
+            request_id="r2",
+            detail={"arguments": {"nombre": "Ana"}},
         )
         db.add_all([old, recent])
         await db.flush()

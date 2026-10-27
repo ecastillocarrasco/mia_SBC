@@ -33,9 +33,9 @@ from mia.conversation import TurnResult
 from mia.conversation.events import ProgressEvent, ResultEvent, ToolEvent
 from mia.conversation.tools import ToolContext, ToolStatus
 from mia.llm import ToolCall
+from mia.observability import current_request_id
 from mia.reporting.document import to_document
 from mia.reporting.render import RENDERERS
-from mia.observability import current_request_id
 from mia.text import normalize_key
 
 router = APIRouter(tags=["compatibilidad"], include_in_schema=False)

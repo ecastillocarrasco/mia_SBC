@@ -22,8 +22,21 @@ from typing import Any, Literal
 
 from mia.query.dataset import NormalizedDataset, Row, Schema
 
-Comparator = Literal["eq", "neq", "gt", "gte", "lt", "lte", "contains", "not_contains",
-                     "starts_with", "in", "not_in", "is_null", "is_not_null"]
+Comparator = Literal[
+    "eq",
+    "neq",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "contains",
+    "not_contains",
+    "starts_with",
+    "in",
+    "not_in",
+    "is_null",
+    "is_not_null",
+]
 
 AggFunc = Literal["count", "sum", "mean", "median", "min", "max", "distinct_count", "std"]
 
@@ -98,7 +111,7 @@ def _agg(values: list[float], func: AggFunc) -> float | None:
             return 0.0
         mean = sum(values) / len(values)
         variance = sum((x - mean) ** 2 for x in values) / (len(values) - 1)
-        return variance ** 0.5
+        return variance**0.5
     return None
 
 
@@ -165,7 +178,7 @@ class UniversalQueryEngine:
 
     # -- limit ----------------------------------------------------------------
     def limit(self, ds: NormalizedDataset, n: int, offset: int = 0) -> NormalizedDataset:
-        sliced = ds.rows[offset: offset + n]
+        sliced = ds.rows[offset : offset + n]
         result = ds.clone_with(rows=sliced)
         result.is_truncated = len(ds.rows) > offset + n
         result.total_count = len(ds.rows)
@@ -187,8 +200,11 @@ class UniversalQueryEngine:
         for key_vals, group_rows in groups.items():
             out_row: Row = dict(zip(by, key_vals, strict=True))
             for agg in aggs:
-                values = [float(r[agg.field]) for r in group_rows
-                          if r.get(agg.field) is not None and isinstance(r.get(agg.field), (int, float))]
+                values = [
+                    float(r[agg.field])
+                    for r in group_rows
+                    if r.get(agg.field) is not None and isinstance(r.get(agg.field), (int, float))
+                ]
                 result = _agg(values, agg.func)
                 out_row[agg.output_name] = round(result, 4) if result is not None else None
                 out_row[f"_count_{agg.field}"] = len(values)
@@ -240,9 +256,7 @@ class UniversalQueryEngine:
                 r[ck] = _agg(col_data.get(ck, []), agg)
             out_rows.append(r)
 
-        schema = [Schema(row_field, row_field, "string", aggregable=False)] + [
-            Schema(c, c, "float") for c in col_vals
-        ]
+        schema = [Schema(row_field, row_field, "string", aggregable=False)] + [Schema(c, c, "float") for c in col_vals]
         return NormalizedDataset(
             title=f"Pivot {row_field} × {col_field}",
             schema=schema,
@@ -297,9 +311,7 @@ class UniversalQueryEngine:
         )
 
     # -- percentage_change ---------------------------------------------------
-    def percentage_change(
-        self, ds: NormalizedDataset, field: str, group_field: str
-    ) -> NormalizedDataset:
+    def percentage_change(self, ds: NormalizedDataset, field: str, group_field: str) -> NormalizedDataset:
         """Añade columna {field}_pct_change con la variación porcentual respecto al primer grupo."""
         rows = list(ds.rows)
         if len(rows) < 2:
@@ -318,9 +330,7 @@ class UniversalQueryEngine:
         return result
 
     # -- rank -----------------------------------------------------------------
-    def rank(
-        self, ds: NormalizedDataset, by: str, ascending: bool = False, alias: str = "rank"
-    ) -> NormalizedDataset:
+    def rank(self, ds: NormalizedDataset, by: str, ascending: bool = False, alias: str = "rank") -> NormalizedDataset:
         sorted_rows = sorted(
             enumerate(ds.rows),
             key=lambda x: (x[1].get(by) is None, x[1].get(by)),
@@ -337,9 +347,7 @@ class UniversalQueryEngine:
         return result
 
     # -- add_percentage -------------------------------------------------------
-    def add_percentage(
-        self, ds: NormalizedDataset, field: str, alias: str | None = None
-    ) -> NormalizedDataset:
+    def add_percentage(self, ds: NormalizedDataset, field: str, alias: str | None = None) -> NormalizedDataset:
         """Añade columna {alias} con el % que cada fila representa del total."""
         values = [float(r[field]) for r in ds.rows if r.get(field) is not None]
         total = sum(values)

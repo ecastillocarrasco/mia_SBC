@@ -32,8 +32,16 @@ _TIME_LABEL = re.compile(
 _ES_NUMBER = re.compile(r"-?[\d.]+,\d+|-?\d+")
 
 ChartType = Literal[
-    "bar", "horizontal_bar", "grouped_bar", "stacked_bar",
-    "donut", "line", "area", "scatter", "histogram", "comparison",
+    "bar",
+    "horizontal_bar",
+    "grouped_bar",
+    "stacked_bar",
+    "donut",
+    "line",
+    "area",
+    "scatter",
+    "histogram",
+    "comparison",
 ]
 
 
@@ -198,7 +206,9 @@ def histogram_chart(
     mn, mx = min(values), max(values)
     if mn == mx:
         return {
-            "type": "histogram", "title": title, "labels": [str(mn)],
+            "type": "histogram",
+            "title": title,
+            "labels": [str(mn)],
             "series": [{"name": "Frecuencia", "values": [float(len(values))]}],
         }
     width = (mx - mn) / bins
@@ -212,7 +222,9 @@ def histogram_chart(
     # Last bucket is inclusive
     buckets[-1] += sum(1 for v in values if v == mx)
     return {
-        "type": "histogram", "title": title, "labels": bucket_labels,
+        "type": "histogram",
+        "title": title,
+        "labels": bucket_labels,
         "series": [{"name": "Frecuencia", "values": buckets}],
     }
 

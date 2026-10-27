@@ -33,7 +33,12 @@ FORMATS = ["pdf", "xlsx", "pptx", "html"]
 # (etiqueta de dominio, herramienta, argumentos, valor que debe aparecer igual en pantalla y documento)
 DOMAIN_CASES = [
     ("ausencias", "ausencias", {"nombre": "Eva Sol", "desde": "2026-08-03", "hasta": "2026-08-06"}, "Eva Sol"),
-    ("turnos", "turnos_persona", {"nombre": "Ana Ruiz Sanz", "desde": "2026-08-03", "hasta": "2026-08-10"}, "Vacaciones"),
+    (
+        "turnos",
+        "turnos_persona",
+        {"nombre": "Ana Ruiz Sanz", "desde": "2026-08-03", "hasta": "2026-08-10"},
+        "Vacaciones",
+    ),
     ("vacaciones", "vacaciones", {"desde": "2026-08-01", "hasta": "2026-08-31"}, "Ana Ruiz Sanz"),
     ("plantilla", "plantilla", {}, "Ana Ruiz Sanz"),
 ]
@@ -51,7 +56,9 @@ def _extract_text(formato: str, content: bytes) -> str:
         return "".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(content)).pages)
     if formato == "xlsx":
         wb = load_workbook(io.BytesIO(content))
-        return " ".join(str(c.value) for ws in wb.worksheets for row in ws.iter_rows() for c in row if c.value is not None)
+        return " ".join(
+            str(c.value) for ws in wb.worksheets for row in ws.iter_rows() for c in row if c.value is not None
+        )
     if formato == "pptx":
         parts: list[str] = []
         for slide in Presentation(io.BytesIO(content)).slides:
@@ -65,10 +72,18 @@ def _extract_text(formato: str, content: bytes) -> str:
 
 
 @pytest.mark.parametrize("formato", FORMATS)
-@pytest.mark.parametrize("domain_label,tool_name,tool_args,expected_value", DOMAIN_CASES, ids=[c[0] for c in DOMAIN_CASES])
+@pytest.mark.parametrize(
+    "domain_label,tool_name,tool_args,expected_value", DOMAIN_CASES, ids=[c[0] for c in DOMAIN_CASES]
+)
 async def test_domain_table_matches_the_downloaded_document(
-    client: Any, services: Any, script: list,
-    domain_label: str, tool_name: str, tool_args: dict, expected_value: str, formato: str,
+    client: Any,
+    services: Any,
+    script: list,
+    domain_label: str,
+    tool_name: str,
+    tool_args: dict,
+    expected_value: str,
+    formato: str,
 ) -> None:
     await seed(services.db)
 

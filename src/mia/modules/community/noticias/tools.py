@@ -24,10 +24,21 @@ GROUP_LABELS: dict[str, str] = {
 }
 
 KEYWORDS = (
-    "noticia", "noticias", "prensa", "actualidad", "hemeroteca",
-    "noticias de la empresa", "noticias corporativas", "noticias del grupo",
-    "grupo fbd", "fbd hotels", "fbd hoteles", "farmer business developments",
-    "sunset beach club noticias", "que se dice de", "qué se dice de",
+    "noticia",
+    "noticias",
+    "prensa",
+    "actualidad",
+    "hemeroteca",
+    "noticias de la empresa",
+    "noticias corporativas",
+    "noticias del grupo",
+    "grupo fbd",
+    "fbd hotels",
+    "fbd hoteles",
+    "farmer business developments",
+    "sunset beach club noticias",
+    "que se dice de",
+    "qué se dice de",
 )
 """Vocabulario para el orquestador (`select_modules`, CLAUDE.md pide enrutado determinista).
 No es exhaustivo: si no coincide nada, el catálogo completo se ofrece igual (ver
@@ -57,8 +68,13 @@ def _news_table(title: str, items: list[NewsItem]) -> dict[str, Any]:
         "title": title,
         "columns": ["Título", "Empresa", "Categoría", "Fuente", "Fecha"],
         "rows": [
-            [i.titulo, GROUP_LABELS.get(i.grupo, i.grupo), CATEGORY_LABELS.get(i.categoria, i.categoria),
-             i.fuente, i.publicado.strftime("%d/%m/%Y") if i.publicado else "—"]
+            [
+                i.titulo,
+                GROUP_LABELS.get(i.grupo, i.grupo),
+                CATEGORY_LABELS.get(i.categoria, i.categoria),
+                i.fuente,
+                i.publicado.strftime("%d/%m/%Y") if i.publicado else "—",
+            ]
             for i in items
         ],
         "news_rows": _news_rows(items),

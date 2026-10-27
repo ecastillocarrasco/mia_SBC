@@ -68,9 +68,7 @@ def match_shift_type(shift_day: ShiftDay, catalog: Sequence[ShiftTypeCatalog]) -
     if not segments:
         return ShiftMatch(None, False)
     candidates = [
-        c
-        for c in catalog
-        if c.department_key == shift_day.department_key and _catalog_segments(c) == segments
+        c for c in catalog if c.department_key == shift_day.department_key and _catalog_segments(c) == segments
     ]
     if shift_day.area:
         wanted_area = normalize_key(shift_day.area)

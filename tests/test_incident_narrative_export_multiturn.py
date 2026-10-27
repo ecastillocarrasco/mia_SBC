@@ -68,7 +68,11 @@ def _extract_text(formato: str, content: bytes) -> str:
                     if c.value is None:
                         continue
                     parts.append(str(c.value))
-                    if isinstance(c.value, int | float) and not isinstance(c.value, bool) and "€" in (c.number_format or ""):
+                    if (
+                        isinstance(c.value, int | float)
+                        and not isinstance(c.value, bool)
+                        and "€" in (c.number_format or "")
+                    ):
                         parts.append(f"{c.value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " €")
         return " ".join(parts)
     if formato == "pptx":
@@ -147,7 +151,9 @@ async def acceptance_app(tmp_path):
             if turn["n"] == 1:
                 return [
                     ToolCallRequested(
-                        ToolCall("call_1", "generar_informe_ejecutivo", '{"periodo": "agosto de 2026", "formato": "pdf"}')
+                        ToolCall(
+                            "call_1", "generar_informe_ejecutivo", '{"periodo": "agosto de 2026", "formato": "pdf"}'
+                        )
                     ),
                 ]
             formato = FORMATS_BY_TURN[turn["n"]]
@@ -163,14 +169,25 @@ async def acceptance_app(tmp_path):
 
     services = Services.build(settings, llm=llm, db=db)
     registry = build_registry(
-        db, settings.data.stale_after_minutes, settings=settings, llm=llm, sharepoint=sp, enabled=settings.domains.enabled
+        db,
+        settings.data.stale_after_minutes,
+        settings=settings,
+        llm=llm,
+        sharepoint=sp,
+        enabled=settings.domains.enabled,
     )
     services.registry = registry
     services.sharepoint = sp
     services.engine = ConversationEngine(
-        llm=llm, tools=registry, db=db, persona=Persona(), timezone=settings.timezone,
-        history_turns=settings.history_turns, max_tool_rounds=settings.llm.max_tool_rounds,
-        turn_budget_seconds=settings.llm.turn_budget_seconds, max_output_tokens=settings.llm.max_output_tokens,
+        llm=llm,
+        tools=registry,
+        db=db,
+        persona=Persona(),
+        timezone=settings.timezone,
+        history_turns=settings.history_turns,
+        max_tool_rounds=settings.llm.max_tool_rounds,
+        turn_budget_seconds=settings.llm.turn_budget_seconds,
+        max_output_tokens=settings.llm.max_output_tokens,
     )
     app = create_app(settings, services=services)
     yield app
@@ -210,7 +227,9 @@ async def test_acceptance_conversation_all_five_turns_export_the_same_authorized
                     # pedidos explícitamente empiezan en el turno 2.
 
                 action = _download_action(body)
-                assert body["presentations"], f"turno {i} ({message!r}): sin presentaciones — el síntoma exacto de la incidencia"
+                assert body["presentations"], (
+                    f"turno {i} ({message!r}): sin presentaciones — el síntoma exacto de la incidencia"
+                )
                 download = await client.get(action["url"])
                 assert download.status_code == 200
                 formato = {2: "pdf", 3: "pptx", 4: "xlsx", 5: "html"}[i]
@@ -237,5 +256,9 @@ async def test_acceptance_conversation_all_five_turns_export_the_same_authorized
     pdf_amounts = sorted(set(_re.findall(r"\d{1,3}(?:\.\d{3})*,\d{2}\s?€", texts_by_format["pdf"])))
     assert pdf_amounts, "no se encontró ninguna cifra en euros en el PDF para comparar"
     for formato in ("pptx", "xlsx", "html"):
-        missing = [amt for amt in pdf_amounts if amt.replace(" ", "").rstrip("€").rstrip() not in texts_by_format[formato].replace(" ", "")]
+        missing = [
+            amt
+            for amt in pdf_amounts
+            if amt.replace(" ", "").rstrip("€").rstrip() not in texts_by_format[formato].replace(" ", "")
+        ]
         assert not missing, f"{formato}: cifras presentes en el PDF pero no en este formato: {missing}"

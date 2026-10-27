@@ -63,9 +63,7 @@ class _StreamBuffer:
 
 
 class PrivacyGateway(LLMProvider):
-    def __init__(
-        self, inner: LLMProvider, settings: PrivacyGatewaySettings, *, provider_name: str, model: str
-    ) -> None:
+    def __init__(self, inner: LLMProvider, settings: PrivacyGatewaySettings, *, provider_name: str, model: str) -> None:
         self._inner = inner
         self._settings = settings
         self._provider_name = provider_name
@@ -83,9 +81,7 @@ class PrivacyGateway(LLMProvider):
             return "unknown", "unscoped"
         return op.user_id, op.operation_id
 
-    def _sanitize_request(
-        self, request: LLMRequest, *, policy: Policy, user_id: str, operation_id: str
-    ) -> LLMRequest:
+    def _sanitize_request(self, request: LLMRequest, *, policy: Policy, user_id: str, operation_id: str) -> LLMRequest:
         detected: Counter[str] = Counter()
         secrets_redacted = 0
         injection_hits = 0
@@ -127,8 +123,7 @@ class PrivacyGateway(LLMProvider):
                 m,
                 content=_process(m.content, untrusted=m.role == "tool"),
                 tool_calls=tuple(
-                    replace(call, arguments=_protect_call_arguments(call.arguments))
-                    for call in m.tool_calls
+                    replace(call, arguments=_protect_call_arguments(call.arguments)) for call in m.tool_calls
                 ),
             )
             for m in request.messages
@@ -144,7 +139,6 @@ class PrivacyGateway(LLMProvider):
             secrets_redacted=secrets_redacted,
         )
         return replace(request, system=new_system, messages=new_messages)
-
 
     @staticmethod
     def _map_json_strings(value, transform):
@@ -234,9 +228,7 @@ class PrivacyGateway(LLMProvider):
                 continue
             if isinstance(event, ToolCallRequested):
                 try:
-                    call, restored = self._restore_tool_call(
-                        event.call, user_id=user_id, operation_id=operation_id
-                    )
+                    call, restored = self._restore_tool_call(event.call, user_id=user_id, operation_id=operation_id)
                 except Exception as exc:
                     audit.record_blocked(operation_id=operation_id, reason=type(exc).__name__)
                     raise UnsafeContentBlockedError(

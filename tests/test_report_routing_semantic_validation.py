@@ -72,9 +72,7 @@ from tests.test_phase4b import _pdf
 
 ADMIN = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
 
-INCIDENT_REQUEST = (
-    "Genera un informe completo de comparativa de costes en nóminas por departamento en agosto de 2026"
-)
+INCIDENT_REQUEST = "Genera un informe completo de comparativa de costes en nóminas por departamento en agosto de 2026"
 
 
 def _document_from(result: object) -> object:
@@ -284,11 +282,7 @@ async def incident_engine(tmp_path: Path):
             for pk in people:
                 sp_id += 1
                 s.add(_emp(sp_id, f"Empleado {pk}", dept, position=position, person_key=pk))
-                s.add(
-                    Payslip(
-                        sp_id=sp_id, person_key=pk, year=2026, month=8, period="2026-08", special=False
-                    )
-                )
+                s.add(Payslip(sp_id=sp_id, person_key=pk, year=2026, month=8, period="2026-08", special=False))
 
     net_by_sp_id = {}
     sp_id = 5000
@@ -341,12 +335,7 @@ async def test_incident_request_through_the_real_chat_entry_point_delivers_the_r
     store = DiagnosticsStore(DiagnosticsSettings(enabled=True))
     diagnostics_module.setup(store, LiveBroadcaster())
     try:
-        events = [
-            e
-            async for e in incident_engine.run(
-                message=INCIDENT_REQUEST, user=ADMIN, session_id=None
-            )
-        ]
+        events = [e async for e in incident_engine.run(message=INCIDENT_REQUEST, user=ADMIN, session_id=None)]
     finally:
         diagnostics_module._store, diagnostics_module._broadcaster = original_store, original_broadcaster
 
@@ -386,7 +375,7 @@ async def test_incident_request_through_the_real_chat_entry_point_delivers_the_r
     #      infiere 'coste_empresa' (la más completa: devengado + cotizaciones), nunca 'devengado' ni
     #      'líquido' a la vez — la llamada interna solo pasó concepto='coste_empresa' (ver
     #      `_redirect_to_economic_analysis`/`_infer_concepto`), nunca varios conceptos en una misma tabla.
-    async with incident_engine._db.session() as db:  # noqa: SLF001 — lectura de solo verificación en test
+    async with incident_engine._db.session() as db:
         row = (await db.scalars(select(Report).where(Report.user_id == "u"))).first()
     assert row is not None
     pdf_bytes = Path(row.path).read_bytes()

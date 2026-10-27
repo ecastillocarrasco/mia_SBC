@@ -16,15 +16,15 @@ import argparse
 import asyncio
 import sys
 
+from mia.sources import all_sources
+from mia.sources.sharepoint import SharePointClient
+from mia.sync.factory import build_runner, build_sharepoint_client
+from mia.sync.runner import SyncMode
 from sqlalchemy import select
 
 from mia.data import Database, SourceSyncState
 from mia.observability import configure_logging
 from mia.settings import get_settings
-from mia.sources import all_sources
-from mia.sources.sharepoint import SharePointClient
-from mia.sync.factory import build_runner, build_sharepoint_client
-from mia.sync.runner import SyncMode
 
 
 async def _list(db: Database) -> None:
@@ -46,12 +46,8 @@ async def _check(client: SharePointClient) -> int:
     for source in all_sources():
         try:
             await client.current_change_token(source.list_title)
-            first: list[dict[str, object]] = await anext(
-                client.iter_items(source.list_title, select="ID"), []
-            )
-            print(
-                f"OK    {source.key:28} '{source.list_title}' accesible ({len(first)} en la primera página)"
-            )
+            first: list[dict[str, object]] = await anext(client.iter_items(source.list_title, select="ID"), [])
+            print(f"OK    {source.key:28} '{source.list_title}' accesible ({len(first)} en la primera página)")
         except Exception as exc:
             failures += 1
             print(f"FALLA {source.key:28} lista '{source.list_title}': {str(exc)[:200]}")

@@ -52,7 +52,7 @@ async def _generate(registry: ToolRegistry, now: object) -> tuple[object, object
     store = DiagnosticsStore(DiagnosticsSettings(enabled=True))
     broadcaster = LiveBroadcaster()
     async with begin_trace(query="genera un informe", store=store, broadcaster=broadcaster) as trace:
-        execution = await registry.execute(ToolCall("c", "generar_informe", "{\"formato\": \"xlsx\"}"), ctx)
+        execution = await registry.execute(ToolCall("c", "generar_informe", '{"formato": "xlsx"}'), ctx)
         trace.finish(status="completed")
     return execution, trace
 

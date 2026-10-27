@@ -89,6 +89,7 @@ class Services:
         attachment_svc: AttachmentService | None = None
         if settings.attachments.enabled:
             from mia.attachments.tools import register as register_attachment_tools  # noqa: PLC0415
+
             attachment_svc = AttachmentService.build(settings, provider)
             register_attachment_tools(registry, attachment_svc)
 

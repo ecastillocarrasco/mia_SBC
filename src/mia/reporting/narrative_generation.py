@@ -100,8 +100,6 @@ def _flatten_numeric(data: Any, *, prefix: str = "", depth: int = 0, max_depth: 
     return out
 
 
-
-
 def _parse_statements(raw_text: str) -> list[dict[str, Any]] | None:
     try:
         payload = json.loads(raw_text)

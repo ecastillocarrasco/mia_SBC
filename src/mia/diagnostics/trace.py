@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -94,9 +93,7 @@ class TraceContext:
             self._store.put(self._record)
 
             # Retransmite al panel en tiempo real
-            self._broadcaster.publish(
-                {"type": "event", "trace_id": self._record.trace_id, **event.to_dict()}
-            )
+            self._broadcaster.publish({"type": "event", "trace_id": self._record.trace_id, **event.to_dict()})
         except Exception:  # pragma: no cover — diagnósticos nunca rompen el pipeline
             pass
 
@@ -156,7 +153,9 @@ class TraceContext:
                 self._record.final_answer = "[respuesta omitida]" if self._mask_pii else answer[:1000]
             if llm_model:
                 self._record.llm_model = llm_model
-            self.emit(EventStage.TRACE_COMPLETE, status=EventStatus.SUCCESS, data={"elapsed_ms": self._record.elapsed_ms})
+            self.emit(
+                EventStage.TRACE_COMPLETE, status=EventStatus.SUCCESS, data={"elapsed_ms": self._record.elapsed_ms}
+            )
             self._store.put(self._record)
             self._broadcaster.publish(
                 {"type": "trace_complete", "trace_id": self._record.trace_id, **self._record.to_summary()}
@@ -215,6 +214,7 @@ async def begin_trace(
 
 
 # ── Noop context manager para cuando diagnostics está desactivado ─────────────
+
 
 @asynccontextmanager
 async def noop_trace() -> AsyncIterator[None]:

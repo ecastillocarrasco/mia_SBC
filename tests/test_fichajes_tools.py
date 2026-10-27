@@ -63,9 +63,7 @@ async def _call(registry: ToolRegistry, name: str, **args) -> ToolStatus:
 
 
 async def test_fichajes_persona_lists_sessions_and_flags_incomplete_mark(registry: ToolRegistry) -> None:
-    execution = await _call(
-        registry, "fichajes_persona", nombre="Melania", desde="2026-10-12", hasta="2026-10-16"
-    )
+    execution = await _call(registry, "fichajes_persona", nombre="Melania", desde="2026-10-12", hasta="2026-10-16")
     result = execution.result
     assert result.status is ToolStatus.OK, result.summary
     assert result.summary["sesiones_completas"] == 2  # lunes correcto + miércoles sin turno

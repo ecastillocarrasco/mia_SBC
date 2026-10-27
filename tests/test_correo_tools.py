@@ -18,9 +18,9 @@ from mia.auth import Permission, UserContext
 from mia.connectors.graph import GraphClient
 from mia.connectors.sharepoint import StaticTokenProvider
 from mia.conversation.tools import ToolContext, ToolStatus
+from mia.modules.correo.tools import enviados, hilo, leer, recientes
 from mia.modules.registry import build_registry
 from mia.modules.rrhh.common import Deps
-from mia.modules.correo.tools import enviados, hilo, leer, recientes
 from mia.settings import Environment, MailSettings, Settings
 from tests.dbutil import fresh_database
 
@@ -276,7 +276,7 @@ def _ctx_entra(user: UserContext = MC_SALAS) -> ToolContext:
     return ToolContext(user=user, request_id="req-1", now=datetime(2026, 10, 20, 9, 0), session_state={})
 
 
-async def _fake_delegated_token(user: UserContext, *, force_refresh: bool = False) -> str:  # noqa: ARG001
+async def _fake_delegated_token(user: UserContext, *, force_refresh: bool = False) -> str:
     """Sustituye el intercambio OBO real (MSAL + certificado) por un token de prueba: estos tests
     verifican el enrutado del buzón y la gestión del 200/403 de Graph, no el propio protocolo OBO
     (eso lo cubre graph.py / MSAL, no mIA)."""
@@ -308,8 +308,10 @@ async def test_recientes_cross_mailbox_denied_by_exchange_shows_a_clear_message_
     """Sin delegación concedida, Exchange responde 403 y GraphError lo traduce a un mensaje claro
     para la persona -- sin volcar el cuerpo/JSON interno de la respuesta de Graph."""
 
-    def handler(request: httpx.Request) -> httpx.Response:  # noqa: ARG001
-        return httpx.Response(403, json={"error": {"code": "ErrorAccessDenied", "innerError": {"request-id": "abc-123"}}})
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            403, json={"error": {"code": "ErrorAccessDenied", "innerError": {"request-id": "abc-123"}}}
+        )
 
     graph = _graph(handler)
     graph._delegated_token = _fake_delegated_token  # type: ignore[method-assign]

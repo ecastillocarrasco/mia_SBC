@@ -78,7 +78,10 @@ async def _save_state(services: Any, session_id: str, state: dict[str, Any]) -> 
 
 async def _propose(services: Any, user: UserContext, state: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     opened = await _run_tool(
-        services, user, state, "leer_correo",
+        services,
+        user,
+        state,
+        "leer_correo",
         {"ref": _text(payload.get("ref")), "buzon": _text(payload.get("buzon")) or None},
     )
     if opened.status.value != "ok":
@@ -128,7 +131,11 @@ async def execute_mail_action(services: Any, user: UserContext, action: str, pay
         )
     else:
         tool, args, spoken = {
-            "draft": ("preparar_respuesta", {"ref": ref, "texto": text, "buzon": _text(payload.get("buzon")) or None}, ""),
+            "draft": (
+                "preparar_respuesta",
+                {"ref": ref, "texto": text, "buzon": _text(payload.get("buzon")) or None},
+                "",
+            ),
             "update": ("modificar_borrador", {"borrador": draft, "texto": text}, ""),
             "send": ("enviar_borrador", {"borrador": draft}, CONFIRMATION),
             "discard": ("descartar_borrador", {"borrador": draft}, ""),
@@ -144,7 +151,14 @@ async def execute_mail_action(services: Any, user: UserContext, action: str, pay
                 "detail": done.summary if isinstance(done.summary, str) else "",
                 "draft": {
                     k: presentation.get(k)
-                    for k in ("borrador", "texto", "responde_a", "envio_habilitado", "firma_preview", "buzon_envio_nombre")
+                    for k in (
+                        "borrador",
+                        "texto",
+                        "responde_a",
+                        "envio_habilitado",
+                        "firma_preview",
+                        "buzon_envio_nombre",
+                    )
                 }
                 if presentation.get("type") == "mail_draft"
                 else None,

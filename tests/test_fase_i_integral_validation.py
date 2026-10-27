@@ -43,9 +43,7 @@ from tests.hr_seed import _emp, seed
 from tests.test_phase4b import _pdf
 from tests.test_report_routing_semantic_validation import _AUG_DEPARTMENTS, _payslip_text_with_ss
 
-INCIDENT_REQUEST = (
-    "Genera un informe completo de comparativa de costes en nóminas por departamento en agosto de 2026"
-)
+INCIDENT_REQUEST = "Genera un informe completo de comparativa de costes en nóminas por departamento en agosto de 2026"
 
 
 async def _build_payroll_chat_app(tmp_path, *, formato: str, db_name: str):
@@ -99,14 +97,25 @@ async def _build_payroll_chat_app(tmp_path, *, formato: str, db_name: str):
 
     services = Services.build(settings, llm=llm, db=db)
     registry = build_registry(
-        db, settings.data.stale_after_minutes, settings=settings, llm=llm, sharepoint=sp, enabled=settings.domains.enabled
+        db,
+        settings.data.stale_after_minutes,
+        settings=settings,
+        llm=llm,
+        sharepoint=sp,
+        enabled=settings.domains.enabled,
     )
     services.registry = registry
     services.sharepoint = sp
     services.engine = ConversationEngine(
-        llm=llm, tools=registry, db=db, persona=Persona(), timezone=settings.timezone,
-        history_turns=settings.history_turns, max_tool_rounds=settings.llm.max_tool_rounds,
-        turn_budget_seconds=settings.llm.turn_budget_seconds, max_output_tokens=settings.llm.max_output_tokens,
+        llm=llm,
+        tools=registry,
+        db=db,
+        persona=Persona(),
+        timezone=settings.timezone,
+        history_turns=settings.history_turns,
+        max_tool_rounds=settings.llm.max_tool_rounds,
+        turn_budget_seconds=settings.llm.turn_budget_seconds,
+        max_output_tokens=settings.llm.max_output_tokens,
     )
     app = create_app(settings, services=services)
     return app, sp, db
@@ -156,7 +165,9 @@ async def test_screen_kpi_figure_matches_the_downloaded_document_exactly(tmp_pat
             # exige deshacer el mismo formato (coma decimal, separador de miles, símbolo €), no buscarla
             # como subcadena — eso nunca podría encontrarla aunque el dato fuera correcto.
             wb = load_workbook(io.BytesIO(content))
-            text = " ".join(str(c.value) for ws in wb.worksheets for row in ws.iter_rows() for c in row if c.value is not None)
+            text = " ".join(
+                str(c.value) for ws in wb.worksheets for row in ws.iter_rows() for c in row if c.value is not None
+            )
         elif formato == "pptx":
             slides = Presentation(io.BytesIO(content)).slides
             parts = []
@@ -178,7 +189,10 @@ async def test_screen_kpi_figure_matches_the_downloaded_document_exactly(tmp_pat
             integer, decimals = euro.group(2).replace(".", ""), (euro.group(3) or "0").ljust(2, "0")
             expected = float(f"{euro.group(1)}{integer}.{decimals}")
             cell_numbers = {
-                c.value for ws in wb.worksheets for row in ws.iter_rows() for c in row
+                c.value
+                for ws in wb.worksheets
+                for row in ws.iter_rows()
+                for c in row
                 if isinstance(c.value, int | float) and not isinstance(c.value, bool)
             }
             assert any(abs(n - expected) < 0.005 for n in cell_numbers), (

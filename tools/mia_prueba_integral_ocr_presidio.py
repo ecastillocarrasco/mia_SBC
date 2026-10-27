@@ -3,6 +3,7 @@
 Solo memoria; no accede a PostgreSQL, SharePoint ni OpenAI. Los datos son ficticios.
 Ejecutar desde raiz mIA con el entorno virtual y PYTHONPATH=src.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,7 +17,6 @@ from mia.llm.fake import FakeLLMProvider
 from mia.modules.rrhh.document_indexing import DocumentIndexer
 from mia.privacy_gateway.gateway import PrivacyGateway
 from mia.settings import get_settings
-
 
 DATOS = {
     "nombre": "María García López",
@@ -86,13 +86,20 @@ async def main() -> None:
 
     proveedor_fake = Capturador()
     gateway = PrivacyGateway(
-        proveedor_fake, settings.privacy_gateway,
-        provider_name="fake", model="prueba-local",
+        proveedor_fake,
+        settings.privacy_gateway,
+        provider_name="fake",
+        model="prueba-local",
     )
     indexador = DocumentIndexer(
-        domain="nominas", list_title="Prueba Ficticia", model=object,
-        db=None, client=ClienteSoloMemoria(pdf_bytes), llm=gateway,
-        embedding_model="text-embedding-3-small", batch=1,
+        domain="nominas",
+        list_title="Prueba Ficticia",
+        model=object,
+        db=None,
+        client=ClienteSoloMemoria(pdf_bytes),
+        llm=gateway,
+        embedding_model="text-embedding-3-small",
+        batch=1,
     )
     capturas_persistencia = []
 

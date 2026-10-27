@@ -111,7 +111,12 @@ async def test_payslip_pdf_is_extracted_chunked_and_searchable(db: Database) -> 
         transport=_files_transport({("Nominas", 501): _pdf("Camarera de pisos. Plus de nocturnidad incluido.")}),
     )
     indexer = DocumentIndexer(
-        domain="nominas", list_title="Nominas", model=Payslip, db=db, client=client, llm=FakeLLMProvider(),
+        domain="nominas",
+        list_title="Nominas",
+        model=Payslip,
+        db=db,
+        client=client,
+        llm=FakeLLMProvider(),
         embedding_model="x",
     )
     report = await indexer.run()
@@ -140,7 +145,12 @@ async def test_scanned_payslip_pdf_is_read_visually(db: Database) -> None:
         transport=_files_transport({("Nominas", 502): _scanned_pdf()}),
     )
     indexer = DocumentIndexer(
-        domain="nominas", list_title="Nominas", model=Payslip, db=db, client=client, llm=FakeLLMProvider(),
+        domain="nominas",
+        list_title="Nominas",
+        model=Payslip,
+        db=db,
+        client=client,
+        llm=FakeLLMProvider(),
         embedding_model="x",
     )
     report = await indexer.run()
@@ -171,8 +181,13 @@ async def test_signed_document_docx_is_indexed(db: Database) -> None:
         ),
     )
     indexer = DocumentIndexer(
-        domain="documentos_firmados", list_title="DocumentosFirmadosV2", model=SignedDocument, db=db, client=client,
-        llm=FakeLLMProvider(), embedding_model="x",
+        domain="documentos_firmados",
+        list_title="DocumentosFirmadosV2",
+        model=SignedDocument,
+        db=db,
+        client=client,
+        llm=FakeLLMProvider(),
+        embedding_model="x",
     )
     report = await indexer.run()
     await client.aclose()
@@ -184,15 +199,24 @@ async def test_signed_document_docx_is_indexed(db: Database) -> None:
 
 async def test_unsupported_file_type_is_recorded_without_chunks(db: Database) -> None:
     async with db.session() as s:
-        s.add(SignedDocument(sp_id=602, person_key="pk-ana", doc_type="Otros", modified_at=datetime(2026, 1, 1, tzinfo=UTC)))
+        s.add(
+            SignedDocument(
+                sp_id=602, person_key="pk-ana", doc_type="Otros", modified_at=datetime(2026, 1, 1, tzinfo=UTC)
+            )
+        )
     client = SharePointClient(
         site_url="https://x/sites/rrhh",
         tokens=StaticTokenProvider(),
         transport=_files_transport({("DocumentosFirmadosV2", 602): b"not a real document, just garbage bytes"}),
     )
     indexer = DocumentIndexer(
-        domain="documentos_firmados", list_title="DocumentosFirmadosV2", model=SignedDocument, db=db, client=client,
-        llm=FakeLLMProvider(), embedding_model="x",
+        domain="documentos_firmados",
+        list_title="DocumentosFirmadosV2",
+        model=SignedDocument,
+        db=db,
+        client=client,
+        llm=FakeLLMProvider(),
+        embedding_model="x",
     )
     report = await indexer.run()
     await client.aclose()
@@ -213,7 +237,12 @@ async def test_changed_modified_at_triggers_reindexing(db: Database) -> None:
 
     def make_indexer() -> DocumentIndexer:
         return DocumentIndexer(
-            domain="nominas", list_title="Nominas", model=Payslip, db=db, client=client, llm=FakeLLMProvider(),
+            domain="nominas",
+            list_title="Nominas",
+            model=Payslip,
+            db=db,
+            client=client,
+            llm=FakeLLMProvider(),
             embedding_model="x",
         )
 
@@ -256,8 +285,14 @@ async def test_buscar_en_nominas_emits_rag_and_document_diagnostic_events(db: Da
         s.add_all(
             [
                 Employee(
-                    sp_id=801, name="Ana", name_key="ana", active=True, department="Pisos",
-                    department_key="pisos", position="Camarera", person_key="pk-ana",
+                    sp_id=801,
+                    name="Ana",
+                    name_key="ana",
+                    active=True,
+                    department="Pisos",
+                    department_key="pisos",
+                    position="Camarera",
+                    person_key="pk-ana",
                 ),
                 Payslip(
                     sp_id=801,
@@ -276,7 +311,12 @@ async def test_buscar_en_nominas_emits_rag_and_document_diagnostic_events(db: Da
         ),
     )
     await DocumentIndexer(
-        domain="nominas", list_title="Nominas", model=Payslip, db=db, client=client, llm=FakeLLMProvider(),
+        domain="nominas",
+        list_title="Nominas",
+        model=Payslip,
+        db=db,
+        client=client,
+        llm=FakeLLMProvider(),
         embedding_model="x",
     ).run()
 
@@ -320,7 +360,9 @@ async def test_domains_are_isolated_when_sp_id_collides(db: Database) -> None:
         s.add_all(
             [
                 Payslip(sp_id=700, person_key="pk-ana", modified_at=datetime(2026, 7, 1, tzinfo=UTC)),
-                SignedDocument(sp_id=700, person_key="pk-luis", doc_type="Contrato", modified_at=datetime(2026, 7, 1, tzinfo=UTC)),
+                SignedDocument(
+                    sp_id=700, person_key="pk-luis", doc_type="Contrato", modified_at=datetime(2026, 7, 1, tzinfo=UTC)
+                ),
             ]
         )
     client = SharePointClient(
@@ -338,7 +380,12 @@ async def test_domains_are_isolated_when_sp_id_collides(db: Database) -> None:
         ("documentos_firmados", "DocumentosFirmadosV2", SignedDocument),
     ):
         await DocumentIndexer(
-            domain=domain, list_title=list_title, model=model, db=db, client=client, llm=FakeLLMProvider(),
+            domain=domain,
+            list_title=list_title,
+            model=model,
+            db=db,
+            client=client,
+            llm=FakeLLMProvider(),
             embedding_model="x",
         ).run()
     await client.aclose()

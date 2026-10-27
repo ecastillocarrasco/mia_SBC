@@ -79,12 +79,14 @@ async def mail_notification_poll(
             continue
         message_id = refs.get(row.get("ref"))
         opaque_key = hashlib.sha256(f"{user.user_id}:{message_id}".encode()).hexdigest()[:24] if message_id else None
-        items.append({
-            "de": row.get("de"),
-            "asunto": row.get("asunto"),
-            "recibido": row.get("recibido"),
-            "huella": opaque_key,
-        })
+        items.append(
+            {
+                "de": row.get("de"),
+                "asunto": row.get("asunto"),
+                "recibido": row.get("recibido"),
+                "huella": opaque_key,
+            }
+        )
     # Diagnóstico sin remitentes, asuntos, identificadores ni contenido: confirma si Graph
     # realmente devuelve mensajes al sondeo cuando el cliente no muestra el aviso.
     log.info(

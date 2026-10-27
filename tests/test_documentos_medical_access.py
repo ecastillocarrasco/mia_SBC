@@ -83,9 +83,7 @@ async def _seed_documents(db: Database) -> None:
 NOW = datetime(2026, 9, 15, 10, 0, tzinfo=ZoneInfo("Europe/Madrid"))
 
 
-async def _call(
-    registry: ToolRegistry, name: str, user: UserContext, **args: Any
-) -> Any:
+async def _call(registry: ToolRegistry, name: str, user: UserContext, **args: Any) -> Any:
     ctx = ToolContext(user=user, request_id="r1", now=NOW, session_state={})
     execution = await registry.execute(ToolCall("c", name, json.dumps(args)), ctx)
     return execution.result
@@ -139,9 +137,7 @@ async def test_rrhh_document_viewer_includes_the_medical_entry(registry_env: Too
 
 
 # ------------------------------------------------------------------ descarga directa /api/documents
-async def test_legal_download_of_medical_document_is_forbidden(
-    client: httpx.AsyncClient, services: Services
-) -> None:
+async def test_legal_download_of_medical_document_is_forbidden(client: httpx.AsyncClient, services: Services) -> None:
     await _seed_documents(services.db)
     services.sharepoint = _mock_sharepoint()
     services.identity = DevIdentityProvider(AuthSettings(dev_user_id="legal-1", dev_roles=["Legal"]))

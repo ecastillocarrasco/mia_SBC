@@ -17,13 +17,9 @@ from mia.attachments.dataset import dataset_info, dataset_query, extract_column
 from mia.attachments.model import (
     AttachmentContent,
     AttachmentContentType,
-    AttachmentRecord,
     AttachmentRef,
-    AttachmentScope,
     AttachmentStatus,
-    DataClassification,
     DatasetSheet,
-    TextBlock,
     get_active_refs,
     merge_refs,
     set_active_refs,
@@ -32,7 +28,6 @@ from mia.attachments.storage import LocalStorage
 from mia.attachments.validation import sanitize_filename, sha256_hex, validate
 from tests.conftest import make_settings
 from tests.dbutil import fresh_database
-
 
 # ─────────────────────────────────────────────────────────────────
 # Helpers de bytes para tests
@@ -127,14 +122,24 @@ def test_validation_pdf_ok() -> None:
 
 def test_validation_docx_ok() -> None:
     raw = _docx_bytes()
-    result = validate(raw, "carta.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", max_bytes=10 * 1024 * 1024)
+    result = validate(
+        raw,
+        "carta.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        max_bytes=10 * 1024 * 1024,
+    )
     assert result.ok
     assert "wordprocessingml" in result.detected_mime
 
 
 def test_validation_xlsx_ok() -> None:
     raw = _xlsx_bytes()
-    result = validate(raw, "datos.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", max_bytes=10 * 1024 * 1024)
+    result = validate(
+        raw,
+        "datos.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        max_bytes=10 * 1024 * 1024,
+    )
     assert result.ok
     assert "spreadsheetml" in result.detected_mime
 
@@ -462,11 +467,13 @@ def test_image_routed_to_vision_type() -> None:
 # ─────────────────────────────────────────────────────────────────
 
 
-def _make_service(tmp_path: Path) -> "AttachmentService":  # type: ignore[name-defined]
+def _make_service(tmp_path: Path) -> AttachmentService:  # type: ignore[name-defined]
     from mia.attachments.service import AttachmentService  # noqa: PLC0415
 
     storage = LocalStorage(tmp_path / "attachments")
-    return AttachmentService(storage=storage, llm=None, max_files=5, max_file_mb=5, retention_hours=1, vision_enabled=False)
+    return AttachmentService(
+        storage=storage, llm=None, max_files=5, max_file_mb=5, retention_hours=1, vision_enabled=False
+    )
 
 
 async def test_service_upload_text_plain(tmp_path: Path) -> None:
@@ -507,7 +514,9 @@ async def test_build_attachment_context_exposes_the_real_attachment_id(tmp_path:
     from mia.attachments.intelligence import build_attachment_context  # noqa: PLC0415
 
     svc = _make_service(tmp_path)
-    record = await svc.upload(content=_csv_bytes(), filename="datos.csv", declared_mime="text/csv", user_id="user-1", session_id=None)
+    record = await svc.upload(
+        content=_csv_bytes(), filename="datos.csv", declared_mime="text/csv", user_id="user-1", session_id=None
+    )
     context = build_attachment_context(record)
     assert record.attachment_id in context
     await svc.aclose()
@@ -523,7 +532,9 @@ async def test_build_attachment_context_attachment_id_line_has_nothing_else_atta
     from mia.attachments.intelligence import build_attachment_context  # noqa: PLC0415
 
     svc = _make_service(tmp_path)
-    record = await svc.upload(content=_csv_bytes(), filename="datos.csv", declared_mime="text/csv", user_id="user-1", session_id=None)
+    record = await svc.upload(
+        content=_csv_bytes(), filename="datos.csv", declared_mime="text/csv", user_id="user-1", session_id=None
+    )
     context = build_attachment_context(record)
     id_lines = [line for line in context.splitlines() if record.attachment_id in line]
     assert id_lines, "el attachment_id no aparece en ninguna línea del contexto"
@@ -537,7 +548,9 @@ async def test_service_get_bytes_returns_the_raw_upload_unmodified(tmp_path: Pat
     parser genérico de datasets)."""
     svc = _make_service(tmp_path)
     content = _csv_bytes()
-    record = await svc.upload(content=content, filename="datos.csv", declared_mime="text/csv", user_id="user-1", session_id=None)
+    record = await svc.upload(
+        content=content, filename="datos.csv", declared_mime="text/csv", user_id="user-1", session_id=None
+    )
     raw = await svc.get_bytes(record.attachment_id, "user-1")
     assert raw == content
     await svc.aclose()
@@ -545,7 +558,9 @@ async def test_service_get_bytes_returns_the_raw_upload_unmodified(tmp_path: Pat
 
 async def test_service_get_bytes_denies_a_different_user(tmp_path: Path) -> None:
     svc = _make_service(tmp_path)
-    record = await svc.upload(content=_csv_bytes(), filename="datos.csv", declared_mime="text/csv", user_id="user-1", session_id=None)
+    record = await svc.upload(
+        content=_csv_bytes(), filename="datos.csv", declared_mime="text/csv", user_id="user-1", session_id=None
+    )
     raw = await svc.get_bytes(record.attachment_id, "user-2")
     assert raw is None
     await svc.aclose()
@@ -570,8 +585,12 @@ async def test_service_deduplication(tmp_path: Path) -> None:
     svc = _make_service(tmp_path)
     content = _plaintext_bytes("Texto idéntico")
 
-    r1 = await svc.upload(content=content, filename="a.txt", declared_mime="text/plain", user_id="user-1", session_id=None)
-    r2 = await svc.upload(content=content, filename="b.txt", declared_mime="text/plain", user_id="user-1", session_id=None)
+    r1 = await svc.upload(
+        content=content, filename="a.txt", declared_mime="text/plain", user_id="user-1", session_id=None
+    )
+    r2 = await svc.upload(
+        content=content, filename="b.txt", declared_mime="text/plain", user_id="user-1", session_id=None
+    )
 
     assert r1.attachment_id == r2.attachment_id  # deduplicado
     await svc.aclose()
@@ -582,8 +601,12 @@ async def test_service_dedup_different_users_no_share(tmp_path: Path) -> None:
     svc = _make_service(tmp_path)
     content = _plaintext_bytes("Texto compartido")
 
-    r1 = await svc.upload(content=content, filename="a.txt", declared_mime="text/plain", user_id="user-1", session_id=None)
-    r2 = await svc.upload(content=content, filename="a.txt", declared_mime="text/plain", user_id="user-2", session_id=None)
+    r1 = await svc.upload(
+        content=content, filename="a.txt", declared_mime="text/plain", user_id="user-1", session_id=None
+    )
+    r2 = await svc.upload(
+        content=content, filename="a.txt", declared_mime="text/plain", user_id="user-2", session_id=None
+    )
 
     assert r1.attachment_id != r2.attachment_id
     await svc.aclose()
@@ -592,7 +615,13 @@ async def test_service_dedup_different_users_no_share(tmp_path: Path) -> None:
 async def test_service_user_isolation(tmp_path: Path) -> None:
     """Un usuario no puede acceder al adjunto de otro."""
     svc = _make_service(tmp_path)
-    r = await svc.upload(content=_plaintext_bytes("privado"), filename="p.txt", declared_mime="text/plain", user_id="user-1", session_id=None)
+    r = await svc.upload(
+        content=_plaintext_bytes("privado"),
+        filename="p.txt",
+        declared_mime="text/plain",
+        user_id="user-1",
+        session_id=None,
+    )
     assert r.status == AttachmentStatus.READY
 
     visible = svc.get_for_user(r.attachment_id, "user-1")
@@ -608,9 +637,13 @@ async def test_service_get_returns_none_after_expire(tmp_path: Path) -> None:
     from mia.attachments.service import AttachmentService  # noqa: PLC0415
 
     storage = LocalStorage(tmp_path / "attachments")
-    svc = AttachmentService(storage=storage, llm=None, max_files=5, max_file_mb=5, retention_hours=0, vision_enabled=False)
+    svc = AttachmentService(
+        storage=storage, llm=None, max_files=5, max_file_mb=5, retention_hours=0, vision_enabled=False
+    )
 
-    r = await svc.upload(content=_plaintext_bytes("x"), filename="x.txt", declared_mime="text/plain", user_id="u", session_id=None)
+    r = await svc.upload(
+        content=_plaintext_bytes("x"), filename="x.txt", declared_mime="text/plain", user_id="u", session_id=None
+    )
 
     # Forzar expiración manual
     r.expires_at = datetime.now(UTC) - timedelta(seconds=1)
@@ -623,7 +656,9 @@ async def test_service_get_returns_none_after_expire(tmp_path: Path) -> None:
 
 async def test_service_delete(tmp_path: Path) -> None:
     svc = _make_service(tmp_path)
-    r = await svc.upload(content=_plaintext_bytes("borrar"), filename="b.txt", declared_mime="text/plain", user_id="u", session_id=None)
+    r = await svc.upload(
+        content=_plaintext_bytes("borrar"), filename="b.txt", declared_mime="text/plain", user_id="u", session_id=None
+    )
     assert r.status == AttachmentStatus.READY
 
     deleted = await svc.delete(r.attachment_id, "u")
@@ -634,7 +669,9 @@ async def test_service_delete(tmp_path: Path) -> None:
 
 async def test_service_delete_wrong_user_denied(tmp_path: Path) -> None:
     svc = _make_service(tmp_path)
-    r = await svc.upload(content=_plaintext_bytes("x"), filename="x.txt", declared_mime="text/plain", user_id="owner", session_id=None)
+    r = await svc.upload(
+        content=_plaintext_bytes("x"), filename="x.txt", declared_mime="text/plain", user_id="owner", session_id=None
+    )
 
     deleted = await svc.delete(r.attachment_id, "intruder")
     assert deleted is False

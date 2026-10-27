@@ -100,9 +100,9 @@ def compute_day_hours(shift: ShiftExpectation, session: ClockSession | None) -> 
 
         if shift.declared_night_hours:
             night_start_prog = salida_prog - timedelta(hours=shift.declared_night_hours)
-            horas_nocturnas_normales = _overlap(
-                session.entrada, session.salida, night_start_prog, salida_prog
-            ).total_seconds() / 3600
+            horas_nocturnas_normales = (
+                _overlap(session.entrada, session.salida, night_start_prog, salida_prog).total_seconds() / 3600
+            )
 
         pre_extra = max(timedelta(), entrada_prog - session.entrada)
         post_extra = max(timedelta(), session.salida - salida_prog)

@@ -86,11 +86,7 @@ class CertificateTokenProvider:
 
     async def token(self, *, force_refresh: bool = False) -> str:
         async with self._lock:
-            if (
-                not force_refresh
-                and self._token
-                and time.time() < self._expires_at - self.REFRESH_MARGIN_SECONDS
-            ):
+            if not force_refresh and self._token and time.time() < self._expires_at - self.REFRESH_MARGIN_SECONDS:
                 return self._token
             result = await asyncio.to_thread(self._acquire)
             token = result.get("access_token")

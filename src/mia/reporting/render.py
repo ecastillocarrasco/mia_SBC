@@ -14,8 +14,8 @@ from typing import Any
 from mia.assets import resolve_logo
 from mia.reporting.charts import chart_spec
 from mia.reporting.document import Block, Document
-from mia.reporting.render_html import to_html
 from mia.reporting.render_docx import to_docx
+from mia.reporting.render_html import to_html
 
 NAVY = "1B2559"
 GOLD = "D8A565"
@@ -29,8 +29,10 @@ PALETTE = ["1B2559", "D8A565", "3A8F8A", "D9776B", "5B8DEF", "8A6BB0", "7FA37A",
 SEVERITY_COLOR = {"blocker": "B3261E", "data_quality": "A66A1E", "info": "3A8F8A"}
 SEVERITY_LABEL = {"blocker": "BLOQUEANTE", "data_quality": "CALIDAD DE DATOS", "info": "INFO"}
 NARRATIVE_LABEL = {
-    "fact": "HECHO VERIFICADO", "interpretation": "INTERPRETACIÓN",
-    "hypothesis": "HIPÓTESIS", "recommendation": "RECOMENDACIÓN",
+    "fact": "HECHO VERIFICADO",
+    "interpretation": "INTERPRETACIÓN",
+    "hypothesis": "HIPÓTESIS",
+    "recommendation": "RECOMENDACIÓN",
 }
 
 
@@ -49,15 +51,17 @@ def _rows(block: Block) -> tuple[list[str], list[list[Any]]]:
         series = spec.get("series", [])
         labels = spec.get("labels", [])
         columns = ["Categoría", *(str(s.get("name", "Valor")) for s in series)]
-        rows = [
-            [label, *(s.get("values", [None] * len(labels))[i] for s in series)]
-            for i, label in enumerate(labels)
-        ]
+        rows = [[label, *(s.get("values", [None] * len(labels))[i] for s in series)] for i, label in enumerate(labels)]
         return columns, rows
     if block.kind == "warnings":
         columns = ["Severidad", "Código", "Mensaje", "Fuente"]
         rows = [
-            [SEVERITY_LABEL.get(i.get("severity"), i.get("severity")), i.get("code"), i.get("message"), i.get("source", "")]
+            [
+                SEVERITY_LABEL.get(i.get("severity"), i.get("severity")),
+                i.get("code"),
+                i.get("message"),
+                i.get("source", ""),
+            ]
             for i in block.data.get("items", [])
         ]
         return columns, rows
@@ -86,16 +90,17 @@ def _chart_segments(spec: dict[str, Any], max_labels: int = 15) -> list[dict[str
     chart_type = "horizontal_bar" if spec.get("type") == "donut" else spec.get("type")
     for start in range(0, len(labels), max_labels):
         end = min(start + max_labels, len(labels))
-        result.append({
-            **spec,
-            "type": chart_type,
-            "title": f"{spec.get('title', 'Gráfico')} · {start + 1}-{end} / {len(labels)}",
-            "labels": labels[start:end],
-            "series": [
-                {**entry, "values": list(entry.get("values", []))[start:end]}
-                for entry in spec.get("series", [])
-            ],
-        })
+        result.append(
+            {
+                **spec,
+                "type": chart_type,
+                "title": f"{spec.get('title', 'Gráfico')} · {start + 1}-{end} / {len(labels)}",
+                "labels": labels[start:end],
+                "series": [
+                    {**entry, "values": list(entry.get("values", []))[start:end]} for entry in spec.get("series", [])
+                ],
+            }
+        )
     return result
 
 
@@ -103,7 +108,9 @@ def _annex_notice(block: Block) -> str | None:
     if block.kind != "annex" or not block.data.get("truncated"):
         return None
     shown, total = len(block.data.get("rows", [])), block.data.get("total_rows")
-    return f"Mostrando {shown} de {total} filas — el resto no se ha omitido en silencio, solo no entra en este documento."
+    return (
+        f"Mostrando {shown} de {total} filas — el resto no se ha omitido en silencio, solo no entra en este documento."
+    )
 
 
 def _chart_of(block: Block) -> dict[str, Any] | None:
@@ -120,12 +127,13 @@ def _chart_of(block: Block) -> dict[str, Any] | None:
 # ------------------------------------------------------------------ Excel
 def to_xlsx(doc: Document, generated: datetime, logo: Path | None = None) -> bytes:  # noqa: PLR0915
     logo = resolve_logo(logo)  # Marca SBC obligatoria incluso en llamadas directas al exportador.
+    import re  # noqa: PLC0415
+
     from openpyxl import Workbook  # noqa: PLC0415
     from openpyxl.chart import BarChart, LineChart, PieChart, Reference  # noqa: PLC0415
     from openpyxl.drawing.image import Image  # noqa: PLC0415
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side  # noqa: PLC0415
     from openpyxl.utils import get_column_letter  # noqa: PLC0415
-    import re  # noqa: PLC0415
 
     def typed_value(value: Any) -> tuple[Any, str | None]:
         if not isinstance(value, str):
@@ -158,7 +166,7 @@ def to_xlsx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
         suffix = 2
         while name in wb.sheetnames:
             tag = f" ({suffix})"
-            name = f"{base_name[:31 - len(tag)]}{tag}"
+            name = f"{base_name[: 31 - len(tag)]}{tag}"
             suffix += 1
         ws = wb.create_sheet(name)
         ws.sheet_view.showGridLines = False
@@ -257,8 +265,13 @@ def to_xlsx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
             visual_lines = 1
             for col_idx, raw in enumerate(original, 1):
                 available = max(12, min(56, ws.column_dimensions[get_column_letter(col_idx)].width or 25))
-                visual_lines = max(visual_lines, sum(max(1, (len(part) + int(available) - 1) // int(available))
-                                                    for part in str(raw if raw is not None else '').split('\n')))
+                visual_lines = max(
+                    visual_lines,
+                    sum(
+                        max(1, (len(part) + int(available) - 1) // int(available))
+                        for part in str(raw if raw is not None else "").split("\n")
+                    ),
+                )
             ws.row_dimensions[row_index].height = min(390, max(24, 16 * visual_lines + 6))
         ws.column_dimensions["A"].width = 18
         for c, name in enumerate(columns, 1):
@@ -273,8 +286,9 @@ def to_xlsx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
         if spec and rows and len(columns) >= 2:
             multi = len(spec.get("series", [])) > 1
             kind = spec.get("type")
-            chart: Any = {"donut": PieChart if not multi else BarChart,
-                          "line": LineChart, "area": LineChart}.get(kind, BarChart)()
+            chart: Any = {"donut": PieChart if not multi else BarChart, "line": LineChart, "area": LineChart}.get(
+                kind, BarChart
+            )()
             chart.title = spec["title"]
             # Respetar el subconjunto exacto de columnas numéricas que seleccionó
             # chart_spec(); no incluir accidentalmente identificadores o columnas de texto.
@@ -304,6 +318,7 @@ def to_xlsx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
         # No se agregan nuevas metricas: cada tarjeta referencia su celda original.
         if block.kind == "kpis" and rows:
             from openpyxl.utils import get_column_letter as _colname  # noqa: PLC0415
+
             start_col = 5
             ws.column_dimensions["D"].width = 4
             for idx, row in enumerate(rows):
@@ -321,8 +336,12 @@ def to_xlsx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
                     metric.number_format = source_format
                 ws.cell(panel_row + 2, panel_col, str(row[0])).font = Font(name="Aptos", size=9, color=MUTED)
                 ws.row_dimensions[panel_row + 1].height = 35
-                ws.column_dimensions[_colname(panel_col)].width = max(ws.column_dimensions[_colname(panel_col)].width or 0, 22)
-                ws.column_dimensions[_colname(panel_col + 1)].width = max(ws.column_dimensions[_colname(panel_col + 1)].width or 0, 12)
+                ws.column_dimensions[_colname(panel_col)].width = max(
+                    ws.column_dimensions[_colname(panel_col)].width or 0, 22
+                )
+                ws.column_dimensions[_colname(panel_col + 1)].width = max(
+                    ws.column_dimensions[_colname(panel_col + 1)].width or 0, 12
+                )
         ws.oddFooter.center.text = f"Sunset Beach Club | {doc.title[:45]}"
         ws.oddFooter.right.text = "Pagina &P / &N"
         ws.print_title_rows = f"1:{header_row}"
@@ -336,7 +355,7 @@ def to_xlsx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
     # Linked KPI cards recalculate when the workbook opens in Excel.
     wb.calculation.fullCalcOnLoad = True
     wb.calculation.forceFullCalc = True
-    wb.calculation.calcMode = 'auto'
+    wb.calculation.calcMode = "auto"
     buffer = io.BytesIO()
     wb.save(buffer)
     return buffer.getvalue()
@@ -352,8 +371,7 @@ def _smart_col_widths(columns: list[str], rows: list[list[Any]], total: float) -
         return [total]
     sample = rows[:80]
     max_lens = [
-        max(len(str(columns[c])), max((len(str(r[c])) for r in sample if len(r) > c), default=0))
-        for c in range(n)
+        max(len(str(columns[c])), max((len(str(r[c])) for r in sample if len(r) > c), default=0)) for c in range(n)
     ]
     # Numeric-looking columns cap at a shorter max
     for c in range(1, n):
@@ -404,10 +422,16 @@ def _pdf_chart(spec: dict[str, Any], width: float) -> Any:
         drawing.add(pie)
         total = sum(values) or 1
         for i, (label, value) in enumerate(zip(labels, values, strict=True)):
-            drawing.add(String(170, drawing.height - 25 - i * 19,
-                               f"{str(label)[:30]} : {value:g} ({value / total:.0%})",
-                               fontName="Helvetica", fontSize=8.5,
-                               fillColor=colors.HexColor(f"#{NAVY}")))
+            drawing.add(
+                String(
+                    170,
+                    drawing.height - 25 - i * 19,
+                    f"{str(label)[:30]} : {value:g} ({value / total:.0%})",
+                    fontName="Helvetica",
+                    fontSize=8.5,
+                    fillColor=colors.HexColor(f"#{NAVY}"),
+                )
+            )
         return drawing
     if kind in ("line", "area"):
         drawing = Drawing(width, 200 if len(series) > 1 else 170)
@@ -421,9 +445,16 @@ def _pdf_chart(spec: dict[str, Any], width: float) -> Any:
             line.lines[i].strokeColor = hexes[i % len(hexes)]
             line.lines[i].strokeWidth = 2
             if len(series) > 1:
-                drawing.add(String(35 + i * min(150, width / max(1, len(series))),
-                                   174, str(data_series.get("name", f"Serie {i + 1}"))[:24],
-                                   fontName="Helvetica", fontSize=9, fillColor=hexes[i % len(hexes)]))
+                drawing.add(
+                    String(
+                        35 + i * min(150, width / max(1, len(series))),
+                        174,
+                        str(data_series.get("name", f"Serie {i + 1}"))[:24],
+                        fontName="Helvetica",
+                        fontSize=9,
+                        fillColor=hexes[i % len(hexes)],
+                    )
+                )
         drawing.add(line)
         return drawing
     horizontal = len(labels) > 6
@@ -443,9 +474,16 @@ def _pdf_chart(spec: dict[str, Any], width: float) -> Any:
     # Etiquetas de series en lugar de etiquetar cada barra, para no solaparlas.
     if len(series) > 1:
         for i, data_series in enumerate(series):
-            drawing.add(String(45 + i * min(150, width / max(1, len(series))), height - 14,
-                               str(data_series.get("name", f"Serie {i + 1}"))[:24],
-                               fontName="Helvetica", fontSize=9, fillColor=hexes[i % len(hexes)]))
+            drawing.add(
+                String(
+                    45 + i * min(150, width / max(1, len(series))),
+                    height - 14,
+                    str(data_series.get("name", f"Serie {i + 1}"))[:24],
+                    fontName="Helvetica",
+                    fontSize=9,
+                    fillColor=hexes[i % len(hexes)],
+                )
+            )
     else:
         bars.barLabelFormat = "%g"
         bars.barLabels.fontSize = 8
@@ -456,6 +494,7 @@ def _pdf_chart(spec: dict[str, Any], width: float) -> Any:
 
 def to_pdf(doc: Document, generated: datetime, logo: Path | None = None) -> bytes:  # noqa: PLR0915
     from reportlab.lib import colors  # noqa: PLC0415
+
     logo = resolve_logo(logo)  # Marca SBC obligatoria incluso en llamadas directas al exportador.
     from reportlab.lib.pagesizes import A4, landscape  # noqa: PLC0415
     from reportlab.lib.styles import ParagraphStyle  # noqa: PLC0415
@@ -463,11 +502,15 @@ def to_pdf(doc: Document, generated: datetime, logo: Path | None = None) -> byte
     from reportlab.lib.utils import ImageReader  # noqa: PLC0415
     from reportlab.pdfbase import pdfmetrics  # noqa: PLC0415
     from reportlab.pdfbase.ttfonts import TTFont  # noqa: PLC0415
+
     font_regular, font_bold, font_italic = "Helvetica", "Helvetica-Bold", "Helvetica-Oblique"
     font_dir = Path("/usr/share/fonts/truetype/lato")
     if all((font_dir / f).exists() for f in ("Lato-Regular.ttf", "Lato-Bold.ttf", "Lato-Italic.ttf")):
-        for key, filename in (("SBC-Lato", "Lato-Regular.ttf"), ("SBC-Lato-Bold", "Lato-Bold.ttf"),
-                              ("SBC-Lato-Italic", "Lato-Italic.ttf")):
+        for key, filename in (
+            ("SBC-Lato", "Lato-Regular.ttf"),
+            ("SBC-Lato-Bold", "Lato-Bold.ttf"),
+            ("SBC-Lato-Italic", "Lato-Italic.ttf"),
+        ):
             if key not in pdfmetrics.getRegisteredFontNames():
                 pdfmetrics.registerFont(TTFont(key, str(font_dir / filename)))
         font_regular, font_bold, font_italic = "SBC-Lato", "SBC-Lato-Bold", "SBC-Lato-Italic"
@@ -529,18 +572,14 @@ def to_pdf(doc: Document, generated: datetime, logo: Path | None = None) -> byte
         title=doc.title,
         author="Sunset Beach Club",
     )
-    title_style = ParagraphStyle(
-        "t", fontName=font_bold, fontSize=24, leading=29, textColor=hexc(NAVY), spaceAfter=7
-    )
+    title_style = ParagraphStyle("t", fontName=font_bold, fontSize=24, leading=29, textColor=hexc(NAVY), spaceAfter=7)
     sub_style = ParagraphStyle("s", fontName=font_regular, fontSize=11, leading=15, textColor=hexc(MUTED))
     h2 = ParagraphStyle("h2", fontName=font_bold, fontSize=13, leading=17, textColor=hexc(NAVY))
     cell = ParagraphStyle("c", fontName=font_regular, fontSize=8.7, leading=12, textColor=hexc("222222"))
     head = ParagraphStyle("h", parent=cell, fontName=font_bold, textColor=colors.white)
     label_style = ParagraphStyle("l", parent=cell, fontName=font_bold, textColor=hexc(MUTED), fontSize=8)
     value_style = ParagraphStyle("v", parent=cell, fontSize=10, leading=14)
-    kpi_value = ParagraphStyle(
-        "kv", fontName=font_bold, fontSize=18, leading=23, textColor=hexc(NAVY), alignment=1
-    )
+    kpi_value = ParagraphStyle("kv", fontName=font_bold, fontSize=18, leading=23, textColor=hexc(NAVY), alignment=1)
     kpi_label = ParagraphStyle("kl", fontName=font_regular, fontSize=8, leading=11, textColor=hexc(MUTED), alignment=1)
     evidence_style = ParagraphStyle("ev", parent=cell, fontSize=7.5, fontName=font_italic, textColor=hexc(MUTED))
     annex_notice_style = ParagraphStyle("an", parent=cell, fontSize=8.5, fontName=font_italic, textColor=hexc(GOLD))
@@ -575,10 +614,7 @@ def to_pdf(doc: Document, generated: datetime, logo: Path | None = None) -> byte
         per_row = 4 if len(items) > 8 else min(3, max(1, len(items)))
         kpi_w = (width - 0.48 * cm * per_row) / per_row
         cards = [
-            [
-                Table([[para(v, kpi_value)], [para(k, kpi_label)]], colWidths=[kpi_w])
-                for k, v in items[i : i + per_row]
-            ]
+            [Table([[para(v, kpi_value)], [para(k, kpi_label)]], colWidths=[kpi_w]) for k, v in items[i : i + per_row]]
             for i in range(0, len(items), per_row)
         ]
         cards = [[*card_row, *([""] * (per_row - len(card_row)))] for card_row in cards]
@@ -608,8 +644,9 @@ def to_pdf(doc: Document, generated: datetime, logo: Path | None = None) -> byte
                     )
         return grid
 
-    eyebrow = ParagraphStyle("brand_eyebrow", fontName=font_bold, fontSize=8, leading=11,
-                             textColor=hexc(GOLD), spaceAfter=6)
+    eyebrow = ParagraphStyle(
+        "brand_eyebrow", fontName=font_bold, fontSize=8, leading=11, textColor=hexc(GOLD), spaceAfter=6
+    )
     story: list[Any] = [para("ANÁLISIS CORPORATIVO   /   INFORME", eyebrow), para(doc.title, title_style)]
     meta = "  ·  ".join(x for x in [doc.subtitle, *doc.badges] if x)
     if meta:
@@ -734,7 +771,7 @@ def to_pptx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
     logo = resolve_logo(logo)
     from pptx import Presentation  # noqa: PLC0415
     from pptx.dml.color import RGBColor  # noqa: PLC0415
-    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR  # noqa: PLC0415
+    from pptx.enum.text import PP_ALIGN  # noqa: PLC0415
     from pptx.util import Inches, Pt  # noqa: PLC0415
 
     navy, gold, muted = (RGBColor.from_string(c) for c in (NAVY, GOLD, MUTED))
@@ -743,8 +780,18 @@ def to_pptx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
     blank = prs.slide_layouts[6]
     counter = {"n": 0}
 
-    def text(slide: Any, value: Any, x: float, y: float, w: float, h: float, size: int,
-             color: Any, bold: bool = False, align: Any = PP_ALIGN.LEFT) -> Any:
+    def text(
+        slide: Any,
+        value: Any,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        size: int,
+        color: Any,
+        bold: bool = False,
+        align: Any = PP_ALIGN.LEFT,
+    ) -> Any:
         shape = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
         frame = shape.text_frame
         frame.clear()
@@ -773,8 +820,9 @@ def to_pptx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
         band.fill.fore_color.rgb = gold
         band.line.fill.background()
         title_len = len(str(value))
-        text(slide, value, 0.53, 1.10, 12.10, 0.49 if title_len < 80 else 0.68,
-             23 if title_len < 74 else 17, navy, True)
+        text(
+            slide, value, 0.53, 1.10, 12.10, 0.49 if title_len < 80 else 0.68, 23 if title_len < 74 else 17, navy, True
+        )
         bottom = slide.shapes.add_shape(1, Inches(0.5), Inches(7.09), Inches(12.3), Inches(0.008))
         bottom.fill.solid()
         bottom.fill.fore_color.rgb = RGBColor.from_string(LINE)
@@ -798,17 +846,24 @@ def to_pptx(doc: Document, generated: datetime, logo: Path | None = None) -> byt
     accent.fill.fore_color.rgb = gold
     accent.line.fill.background()
     title_size = 37 if len(doc.title) < 68 else (31 if len(doc.title) < 120 else 24)
-    text(cover, doc.title, 1.18, 2.05, 10.85, 2.4, title_size,
-         RGBColor(255, 255, 255), True)
+    text(cover, doc.title, 1.18, 2.05, 10.85, 2.4, title_size, RGBColor(255, 255, 255), True)
     if doc.subtitle:
-        text(cover, doc.subtitle, 1.20, 4.91, 10.8, 0.88, 18,
-             RGBColor.from_string("DDE3F3"))
+        text(cover, doc.subtitle, 1.20, 4.91, 10.8, 0.88, 18, RGBColor.from_string("DDE3F3"))
     separator = cover.shapes.add_shape(1, Inches(1.2), Inches(6.69), Inches(10.9), Inches(0.02))
     separator.fill.solid()
     separator.fill.fore_color.rgb = gold
     separator.line.fill.background()
-    text(cover, f"DOCUMENTO CORPORATIVO   ·   {generated:%d/%m/%Y}",
-         1.20, 6.83, 10.8, 0.3, 10, RGBColor.from_string("DDE3F3"), True)
+    text(
+        cover,
+        f"DOCUMENTO CORPORATIVO   ·   {generated:%d/%m/%Y}",
+        1.20,
+        6.83,
+        10.8,
+        0.3,
+        10,
+        RGBColor.from_string("DDE3F3"),
+        True,
+    )
 
     has_explicit_chart = any(b.kind == "chart" for b in doc.blocks)
     has_detail = any(b.kind in ("table", "annex") for b in doc.blocks)
@@ -853,9 +908,11 @@ def _chart_slide(prs: Any, layout: Any, header: Any, title: str, spec: dict[str,
     for index, entry in enumerate(spec["series"]):
         data.add_series(str(entry.get("name") or f"Serie {index + 1}"), entry["values"])
     multi = len(spec["series"]) > 1
-    kind = {"donut": XL_CHART_TYPE.DOUGHNUT if not multi else XL_CHART_TYPE.COLUMN_CLUSTERED,
-            "line": XL_CHART_TYPE.LINE_MARKERS,
-            "area": XL_CHART_TYPE.LINE_MARKERS}.get(spec["type"], XL_CHART_TYPE.BAR_CLUSTERED)
+    kind = {
+        "donut": XL_CHART_TYPE.DOUGHNUT if not multi else XL_CHART_TYPE.COLUMN_CLUSTERED,
+        "line": XL_CHART_TYPE.LINE_MARKERS,
+        "area": XL_CHART_TYPE.LINE_MARKERS,
+    }.get(spec["type"], XL_CHART_TYPE.BAR_CLUSTERED)
     chart = slide.shapes.add_chart(kind, Inches(0.71), Inches(1.89), Inches(11.86), Inches(4.93), data).chart
     chart.chart_style = 10
     chart.has_legend = multi or spec["type"] == "donut"
@@ -877,7 +934,6 @@ def _chart_slide(prs: Any, layout: Any, header: Any, title: str, spec: dict[str,
 
 def _kpi_slide(prs: Any, layout: Any, header: Any, block: Block) -> None:
     from pptx.dml.color import RGBColor  # noqa: PLC0415
-    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR  # noqa: PLC0415
     from pptx.util import Inches, Pt  # noqa: PLC0415
 
     navy = RGBColor.from_string(NAVY)
@@ -885,7 +941,7 @@ def _kpi_slide(prs: Any, layout: Any, header: Any, block: Block) -> None:
     if not items:
         return
     for start in range(0, len(items), 12):
-        page_items = items[start:start + 12]
+        page_items = items[start : start + 12]
         slide = prs.slides.add_slide(layout)
         header(slide, block.title if start == 0 else f"{block.title} (cont.)")
         count = len(page_items)
@@ -907,8 +963,9 @@ def _kpi_slide(prs: Any, layout: Any, header: Any, block: Block) -> None:
             stripe.fill.solid()
             stripe.fill.fore_color.rgb = RGBColor.from_string(GOLD)
             stripe.line.fill.background()
-            frame = slide.shapes.add_textbox(Inches(x + 0.20), Inches(y + 0.43),
-                                             Inches(cw - 0.38), Inches(ch - 0.56)).text_frame
+            frame = slide.shapes.add_textbox(
+                Inches(x + 0.20), Inches(y + 0.43), Inches(cw - 0.38), Inches(ch - 0.56)
+            ).text_frame
             frame.word_wrap = True
             frame.margin_left = 0
             frame.margin_top = 0
@@ -938,17 +995,18 @@ def _warnings_slide(prs: Any, layout: Any, header: Any, block: Block) -> None:
         slide = prs.slides.add_slide(layout)
         header(slide, block.title if start == 0 else f"{block.title} (cont.)")
         count = max(1, len(chunk))
-        row_h = min(1.20 if count > 1 else 2.38, (4.70 - (count - 1) * .20) / count)
-        top = 1.85 + (4.70 - (row_h * count + (count - 1) * .20)) / 2
+        row_h = min(1.20 if count > 1 else 2.38, (4.70 - (count - 1) * 0.20) / count)
+        top = 1.85 + (4.70 - (row_h * count + (count - 1) * 0.20)) / 2
         for i, item in enumerate(chunk):
             sev = item.get("severity", "info")
-            y = Inches(top + i * (row_h + .20))
+            y = Inches(top + i * (row_h + 0.20))
             panel = slide.shapes.add_shape(5, Inches(0.60), y, Inches(12.10), Inches(row_h))
             panel.fill.solid()
             panel.fill.fore_color.rgb = RGBColor.from_string(LIGHT)
             panel.line.color.rgb = RGBColor.from_string(LINE)
-            box = slide.shapes.add_textbox(Inches(0.91), y + Inches(0.20),
-                                           Inches(11.5), Inches(row_h - .28)).text_frame
+            box = slide.shapes.add_textbox(
+                Inches(0.91), y + Inches(0.20), Inches(11.5), Inches(row_h - 0.28)
+            ).text_frame
             box.word_wrap = True
             box.text = f"{SEVERITY_LABEL.get(sev, sev.upper())} · {item.get('code', '')}"
             box.paragraphs[0].runs[0].font.size = Pt(15)
@@ -971,6 +1029,7 @@ def _table_slides(prs: Any, layout: Any, header: Any, block: Block) -> None:
     # No se elimina texto: una celda larga se divide en fragmentos de continuación.
     # El contenido concatenado de esos fragmentos coincide con el valor original.
     import math  # noqa: PLC0415
+
     ncols = len(columns)
     per_cell = max(30, min(100, 290 // ncols))
     expanded = []
@@ -990,11 +1049,11 @@ def _table_slides(prs: Any, layout: Any, header: Any, block: Block) -> None:
         total_height = row_height * (len(chunk) + 1)
         table_y = 1.95 + max(0.0, (4.75 - total_height) / 2)
         shape = slide.shapes.add_table(
-            len(chunk) + 1, len(columns), Inches(0.50), Inches(table_y),
-            Inches(12.3), Inches(total_height)
+            len(chunk) + 1, len(columns), Inches(0.50), Inches(table_y), Inches(12.3), Inches(total_height)
         )
         grid = shape.table
         from pptx.enum.text import MSO_ANCHOR  # noqa: PLC0415
+
         # The first, descriptive field has additional width; numeric columns remain compact.
         if ncols > 1:
             header_lens = [len(str(v)) for v in columns]
@@ -1007,7 +1066,7 @@ def _table_slides(prs: Any, layout: Any, header: Any, block: Block) -> None:
         for c, name in enumerate(columns):
             grid.cell(0, c).text = str(name)
             grid.cell(0, c).vertical_anchor = MSO_ANCHOR.MIDDLE
-            grid.cell(0, c).margin_left = Inches(.14)
+            grid.cell(0, c).margin_left = Inches(0.14)
             grid.cell(0, c).fill.solid()
             grid.cell(0, c).fill.fore_color.rgb = RGBColor.from_string(NAVY)
         for r, row in enumerate(chunk, 1):
@@ -1016,8 +1075,8 @@ def _table_slides(prs: Any, layout: Any, header: Any, block: Block) -> None:
                 cell.text = value
                 cell.text_frame.word_wrap = True
                 cell.vertical_anchor = MSO_ANCHOR.MIDDLE
-                cell.margin_left = Inches(.14)
-                cell.margin_right = Inches(.12)
+                cell.margin_left = Inches(0.14)
+                cell.margin_right = Inches(0.12)
                 cell.fill.solid()
                 cell.fill.fore_color.rgb = RGBColor.from_string(LIGHT if r % 2 == 0 else "FFFFFF")
         for r in range(len(chunk) + 1):
@@ -1028,7 +1087,6 @@ def _table_slides(prs: Any, layout: Any, header: Any, block: Block) -> None:
                         run.font.size = Pt(12 if r == 0 else (10 if ncols > 5 else 13))
                         run.font.color.rgb = RGBColor(255, 255, 255) if r == 0 else RGBColor(0x22, 0x22, 0x22)
                         run.font.bold = r == 0
-
 
 
 RENDERERS = {"pdf": to_pdf, "xlsx": to_xlsx, "pptx": to_pptx, "html": to_html, "docx": to_docx}

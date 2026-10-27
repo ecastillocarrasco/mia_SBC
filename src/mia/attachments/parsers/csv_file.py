@@ -8,7 +8,6 @@ from typing import Any
 
 from mia.attachments.model import AttachmentContent, AttachmentContentType, DatasetSheet
 
-
 _MAX_ROWS = 5000
 _CANDIDATE_DELIMITERS = [",", ";", "\t", "|"]
 
@@ -62,7 +61,7 @@ def parse_csv(content: bytes) -> AttachmentContent:
             metadata={"row_count": 0},
         )
 
-    headers = [h.strip() or f"Col{i+1}" for i, h in enumerate(rows_raw[0])]
+    headers = [h.strip() or f"Col{i + 1}" for i, h in enumerate(rows_raw[0])]
     data_rows: list[list[Any]] = []
     for row in rows_raw[1:]:
         # Normalizar longitud a la de headers

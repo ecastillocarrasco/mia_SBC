@@ -234,6 +234,7 @@ async def fetch_fbd_investor_news(client: httpx.AsyncClient) -> list[NewsItem]:
 async def fetch_all(client: httpx.AsyncClient) -> tuple[list[NewsItem], list[str]]:
     """Todas las fuentes en paralelo. Devuelve los elementos obtenidos y la etiqueta de las fuentes
     que han fallado (nunca lanza: una fuente caída no debe impedir ver las demás)."""
+
     async def _safe(label: str, coro: Awaitable[list[NewsItem]]) -> tuple[str, list[NewsItem] | None]:
         try:
             return label, await coro

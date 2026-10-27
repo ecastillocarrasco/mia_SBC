@@ -113,9 +113,7 @@ async def test_gateway_restores_token_in_the_response_for_the_same_operation() -
 async def test_token_from_another_operation_is_never_restored() -> None:
     """Un token que «se filtrara» en la respuesta pero perteneciera a OTRA operación/usuario no debe
     restaurarse nunca — ni aunque tenga el formato exacto [TIPO_NNN]."""
-    fake = FakeLLMProvider(
-        script=lambda req: [TextDelta("Hola [ES_DNI_NIE_001], no debería saber tu dni")]
-    )
+    fake = FakeLLMProvider(script=lambda req: [TextDelta("Hola [ES_DNI_NIE_001], no debería saber tu dni")])
     gateway = PrivacyGateway(fake, _settings(), provider_name="test", model="test-model")
     set_operation_context(user_id="atacante", operation_id="op-ajena")
 

@@ -36,9 +36,7 @@ class DatasetQueryParams(BaseModel):
     filter_col: str | None = Field(default=None, description="Columna por la que filtrar")
     filter_value: str | None = Field(default=None, description="Valor a buscar en filter_col")
     group_by: str | None = Field(default=None, description="Columna por la que agrupar")
-    aggregate: str | None = Field(
-        default=None, description="Función de agregación: count, sum, avg"
-    )
+    aggregate: str | None = Field(default=None, description="Función de agregación: count, sum, avg")
     agg_col: str | None = Field(default=None, description="Columna numérica para sum/avg")
     limit: int = Field(default=50, ge=1, le=500, description="Máximo de filas/grupos a devolver")
 
@@ -67,11 +65,13 @@ async def handle_list_attachments(
         if record:
             summaries.append(get_attachment_summary(record))
         else:
-            summaries.append({
-                "attachment_id": ref.attachment_id,
-                "filename": ref.filename,
-                "status": "no_disponible",
-            })
+            summaries.append(
+                {
+                    "attachment_id": ref.attachment_id,
+                    "filename": ref.filename,
+                    "status": "no_disponible",
+                }
+            )
 
     return ToolResult.ok({"adjuntos": summaries, "total": len(summaries)})
 
@@ -88,11 +88,16 @@ async def handle_read_attachment(
     if record is None:
         return ToolResult(ToolStatus.NOT_FOUND, f"Adjunto {params.attachment_id} no encontrado o expirado.")
 
-    from mia.diagnostics import EventStage, emit as diag_emit  # noqa: PLC0415
-    diag_emit(EventStage.ATTACHMENT_RETRIEVAL, data={
-        "attachment_id": params.attachment_id,
-        "section": params.section,
-    })
+    from mia.diagnostics import EventStage  # noqa: PLC0415
+    from mia.diagnostics import emit as diag_emit
+
+    diag_emit(
+        EventStage.ATTACHMENT_RETRIEVAL,
+        data={
+            "attachment_id": params.attachment_id,
+            "section": params.section,
+        },
+    )
 
     content = record.content
     if content is None:
@@ -100,7 +105,9 @@ async def handle_read_attachment(
 
     if content.content_type == AttachmentContentType.IMAGE:
         desc = content.vision_description or "Imagen recibida, pendiente de análisis visual."
-        return ToolResult.ok({"tipo": "imagen", "descripcion": desc[:params.max_chars], "filename": record.original_filename})
+        return ToolResult.ok(
+            {"tipo": "imagen", "descripcion": desc[: params.max_chars], "filename": record.original_filename}
+        )
 
     if content.content_type == AttachmentContentType.DATASET:
         info = dataset_info(content)
@@ -122,20 +129,24 @@ async def handle_read_attachment(
 
     tables_summary: list[dict[str, Any]] = []
     for t in content.tables[:5]:
-        tables_summary.append({
-            "headers": t.headers,
-            "rows_preview": t.rows[:3],
-            "total_rows": len(t.rows),
-            "source_ref": t.source_ref,
-        })
+        tables_summary.append(
+            {
+                "headers": t.headers,
+                "rows_preview": t.rows[:3],
+                "total_rows": len(t.rows),
+                "source_ref": t.source_ref,
+            }
+        )
 
-    return ToolResult.ok({
-        "tipo": "documento",
-        "filename": record.original_filename,
-        "page_count": content.page_count,
-        "text": text,
-        "tables": tables_summary,
-    })
+    return ToolResult.ok(
+        {
+            "tipo": "documento",
+            "filename": record.original_filename,
+            "page_count": content.page_count,
+            "text": text,
+            "tables": tables_summary,
+        }
+    )
 
 
 async def handle_dataset_info(
@@ -154,7 +165,9 @@ async def handle_dataset_info(
     if content is None or content.content_type != AttachmentContentType.DATASET:
         return ToolResult(ToolStatus.ERROR, "El adjunto no contiene datos estructurados (Excel/CSV).")
 
-    from mia.diagnostics import EventStage, emit as diag_emit  # noqa: PLC0415
+    from mia.diagnostics import EventStage  # noqa: PLC0415
+    from mia.diagnostics import emit as diag_emit
+
     diag_emit(EventStage.ATTACHMENT_DATASET_QUERY, data={"op": "info", "attachment_id": params.attachment_id})
 
     info = dataset_info(content)
@@ -178,14 +191,19 @@ async def handle_dataset_query(
     if content is None or content.content_type != AttachmentContentType.DATASET:
         return ToolResult(ToolStatus.ERROR, "El adjunto no contiene datos estructurados.")
 
-    from mia.diagnostics import EventStage, emit as diag_emit  # noqa: PLC0415
-    diag_emit(EventStage.ATTACHMENT_DATASET_QUERY, data={
-        "op": "query",
-        "attachment_id": params.attachment_id,
-        "sheet": params.sheet_name,
-        "filter_col": params.filter_col,
-        "group_by": params.group_by,
-    })
+    from mia.diagnostics import EventStage  # noqa: PLC0415
+    from mia.diagnostics import emit as diag_emit
+
+    diag_emit(
+        EventStage.ATTACHMENT_DATASET_QUERY,
+        data={
+            "op": "query",
+            "attachment_id": params.attachment_id,
+            "sheet": params.sheet_name,
+            "filter_col": params.filter_col,
+            "group_by": params.group_by,
+        },
+    )
 
     result = dataset_query(
         content,
@@ -217,70 +235,82 @@ async def handle_extract_column(
         return ToolResult(ToolStatus.ERROR, "El adjunto no contiene datos estructurados.")
 
     values = extract_column(content, params.column_name, params.sheet_name)
-    return ToolResult.ok({
-        "column": params.column_name,
-        "values": values[:200],
-        "total": len(values),
-    })
+    return ToolResult.ok(
+        {
+            "column": params.column_name,
+            "values": values[:200],
+            "total": len(values),
+        }
+    )
 
 
 def register(registry: Any, attachment_service: Any) -> None:
     """Registra las herramientas de adjuntos en el ToolRegistry cuando están habilitadas."""
     from mia.conversation.tools import Tool  # noqa: PLC0415
 
-    registry.register(Tool(
-        name="listar_adjuntos",
-        description=(
-            "Lista los archivos adjuntos disponibles en la conversación actual. "
-            "Úsalo cuando el usuario mencione 'el archivo', 'el Excel', 'el documento' que subió."
-        ),
-        params=ListAttachmentsParams,
-        handler=handle_list_attachments,
-        timeout_seconds=5.0,
-    ))
+    registry.register(
+        Tool(
+            name="listar_adjuntos",
+            description=(
+                "Lista los archivos adjuntos disponibles en la conversación actual. "
+                "Úsalo cuando el usuario mencione 'el archivo', 'el Excel', 'el documento' que subió."
+            ),
+            params=ListAttachmentsParams,
+            handler=handle_list_attachments,
+            timeout_seconds=5.0,
+        )
+    )
 
-    registry.register(Tool(
-        name="leer_adjunto",
-        description=(
-            "Lee el contenido de un adjunto: texto de un documento PDF/DOCX, "
-            "descripción de una imagen, o estructura de un Excel/CSV. "
-            "Usa section para solicitar una parte específica (ej: 'page=3', 'heading=Resumen')."
-        ),
-        params=ReadAttachmentParams,
-        handler=handle_read_attachment,
-        timeout_seconds=10.0,
-    ))
+    registry.register(
+        Tool(
+            name="leer_adjunto",
+            description=(
+                "Lee el contenido de un adjunto: texto de un documento PDF/DOCX, "
+                "descripción de una imagen, o estructura de un Excel/CSV. "
+                "Usa section para solicitar una parte específica (ej: 'page=3', 'heading=Resumen')."
+            ),
+            params=ReadAttachmentParams,
+            handler=handle_read_attachment,
+            timeout_seconds=10.0,
+        )
+    )
 
-    registry.register(Tool(
-        name="info_dataset_adjunto",
-        description=(
-            "Describe la estructura de un Excel o CSV adjunto: hojas, columnas, tipos y recuento de filas. "
-            "Úsalo antes de hacer consultas para saber qué hay disponible."
-        ),
-        params=DatasetInfoParams,
-        handler=handle_dataset_info,
-        timeout_seconds=5.0,
-    ))
+    registry.register(
+        Tool(
+            name="info_dataset_adjunto",
+            description=(
+                "Describe la estructura de un Excel o CSV adjunto: hojas, columnas, tipos y recuento de filas. "
+                "Úsalo antes de hacer consultas para saber qué hay disponible."
+            ),
+            params=DatasetInfoParams,
+            handler=handle_dataset_info,
+            timeout_seconds=5.0,
+        )
+    )
 
-    registry.register(Tool(
-        name="consultar_dataset_adjunto",
-        description=(
-            "Realiza operaciones deterministas sobre un Excel o CSV adjunto: "
-            "filtrar filas, agrupar por columna, calcular totales/medias. "
-            "No envía todas las filas al LLM: ejecuta el cálculo de forma estructurada."
-        ),
-        params=DatasetQueryParams,
-        handler=handle_dataset_query,
-        timeout_seconds=10.0,
-    ))
+    registry.register(
+        Tool(
+            name="consultar_dataset_adjunto",
+            description=(
+                "Realiza operaciones deterministas sobre un Excel o CSV adjunto: "
+                "filtrar filas, agrupar por columna, calcular totales/medias. "
+                "No envía todas las filas al LLM: ejecuta el cálculo de forma estructurada."
+            ),
+            params=DatasetQueryParams,
+            handler=handle_dataset_query,
+            timeout_seconds=10.0,
+        )
+    )
 
-    registry.register(Tool(
-        name="extraer_columna_adjunto",
-        description=(
-            "Extrae los valores únicos de una columna de un Excel o CSV adjunto. "
-            "Útil para obtener una lista de personas, departamentos, fechas, etc."
-        ),
-        params=ExtractColumnParams,
-        handler=handle_extract_column,
-        timeout_seconds=5.0,
-    ))
+    registry.register(
+        Tool(
+            name="extraer_columna_adjunto",
+            description=(
+                "Extrae los valores únicos de una columna de un Excel o CSV adjunto. "
+                "Útil para obtener una lista de personas, departamentos, fechas, etc."
+            ),
+            params=ExtractColumnParams,
+            handler=handle_extract_column,
+            timeout_seconds=5.0,
+        )
+    )

@@ -78,13 +78,23 @@ def format_number(value: float) -> str:
 # legible", asi que vive aqui, no en uno de los dos.
 _HTML_SKIP = {"style", "script", "head", "title", "noscript", "template", "svg"}
 _HTML_BLOCK = {
-    "p", "div", "br", "tr", "table", "section", "article", "header", "footer", "blockquote", "ul", "ol", "hr",
+    "p",
+    "div",
+    "br",
+    "tr",
+    "table",
+    "section",
+    "article",
+    "header",
+    "footer",
+    "blockquote",
+    "ul",
+    "ol",
+    "hr",
 }
 _HTML_HEADING = {"h1", "h2", "h3", "h4", "h5", "h6"}
 _INVISIBLE = re.compile("[\u200b\u200c\u200d\u200e\u200f\u034f\u00ad\ufeff\u2060\u2007\u2800]")
-_HIDDEN_STYLE = re.compile(
-    r"display\s*:\s*none|visibility\s*:\s*hidden|max-height\s*:\s*0|font-size\s*:\s*0", re.I
-)
+_HIDDEN_STYLE = re.compile(r"display\s*:\s*none|visibility\s*:\s*hidden|max-height\s*:\s*0|font-size\s*:\s*0", re.I)
 _HTML_URL = re.compile(r"^https?://", re.I)
 
 

@@ -16,9 +16,9 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from mia.sources.sharepoint.auth import TokenProvider
 
 from mia.observability import get_logger
-from mia.sources.sharepoint.auth import TokenProvider
 
 log = get_logger(__name__)
 
@@ -64,9 +64,7 @@ class SharePointClient:
         self._max_retries = max_retries
         self._backoff_base = backoff_base
         self._semaphore = asyncio.Semaphore(concurrency)
-        self._http = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout_seconds, connect=10.0), transport=transport
-        )
+        self._http = httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=10.0), transport=transport)
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -160,9 +158,7 @@ class SharePointClient:
             raise SharePointError(f"La lista {title} no devuelve CurrentChangeToken")
         return str(token)
 
-    async def changes_since(
-        self, title: str, token: str, *, fetch_limit: int = 1000
-    ) -> tuple[list[Change], str]:
+    async def changes_since(self, title: str, token: str, *, fetch_limit: int = 1000) -> tuple[list[Change], str]:
         """Cambios de elementos desde ``token`` (paginando el registro). Devuelve cambios y nuevo token."""
         latest: dict[int, Change] = {}
         current = token

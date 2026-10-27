@@ -23,8 +23,8 @@ from __future__ import annotations
 import json
 
 import httpx
-import mia.diagnostics as diag
 
+import mia.diagnostics as diag
 from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.data import Payslip
 from mia.diagnostics import EventStage
@@ -69,7 +69,8 @@ async def _build_repro_app(tmp_path, scripted):
     )
     llm = FakeLLMProvider(scripted)
     settings = make_settings(
-        tmp_path, database_url=f"sqlite+aiosqlite:///{tmp_path / 'incident_repro.db'}",
+        tmp_path,
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'incident_repro.db'}",
         diagnostics={"enabled": True, "admin_users": ["admin@test.local"], "admin_password": "test-password"},
     )
 
@@ -79,14 +80,25 @@ async def _build_repro_app(tmp_path, scripted):
 
     services = Services.build(settings, llm=llm, db=db)
     registry = build_registry(
-        db, settings.data.stale_after_minutes, settings=settings, llm=llm, sharepoint=sp, enabled=settings.domains.enabled
+        db,
+        settings.data.stale_after_minutes,
+        settings=settings,
+        llm=llm,
+        sharepoint=sp,
+        enabled=settings.domains.enabled,
     )
     services.registry = registry
     services.sharepoint = sp
     services.engine = ConversationEngine(
-        llm=llm, tools=registry, db=db, persona=Persona(), timezone=settings.timezone,
-        history_turns=settings.history_turns, max_tool_rounds=settings.llm.max_tool_rounds,
-        turn_budget_seconds=settings.llm.turn_budget_seconds, max_output_tokens=settings.llm.max_output_tokens,
+        llm=llm,
+        tools=registry,
+        db=db,
+        persona=Persona(),
+        timezone=settings.timezone,
+        history_turns=settings.history_turns,
+        max_tool_rounds=settings.llm.max_tool_rounds,
+        turn_budget_seconds=settings.llm.turn_budget_seconds,
+        max_output_tokens=settings.llm.max_output_tokens,
     )
     app = create_app(settings, services=services)
     return app, sp, db
@@ -107,7 +119,11 @@ async def test_turn1_via_executive_redirect_then_turn2_export_delivers_the_real_
             if turn_counter["n"] == 1:
                 return [
                     ToolCallRequested(
-                        ToolCall("call_1", "generar_informe_ejecutivo", json.dumps({"periodo": "agosto de 2026", "formato": "pdf"}))
+                        ToolCall(
+                            "call_1",
+                            "generar_informe_ejecutivo",
+                            json.dumps({"periodo": "agosto de 2026", "formato": "pdf"}),
+                        )
                     ),
                     LLMCompleted(),
                 ]
@@ -121,7 +137,9 @@ async def test_turn1_via_executive_redirect_then_turn2_export_delivers_the_real_
             async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 first = await client.post(
                     "/api/mia/chat",
-                    json={"message": "Genera un informe completo de comparativa de costes en nóminas por departamento en agosto de 2026"},
+                    json={
+                        "message": "Genera un informe completo de comparativa de costes en nóminas por departamento en agosto de 2026"
+                    },
                 )
                 assert first.status_code == 200
                 first_body = first.json()
@@ -143,12 +161,13 @@ async def test_turn1_via_executive_redirect_then_turn2_export_delivers_the_real_
                 # nunca el informe ejecutivo genérico ni un documento vacío.
                 assert "Gasto salarial por departamento" in second_body["presentations"][0]["title"]
 
-            traces = diag._store.list()  # noqa: SLF001 — confirma que ningún TOOL_CALL devolvió not_found/error
+            traces = diag._store.list()
             statuses = [
                 ev.data.get("status")
                 for rec in traces
                 for ev in rec.events
-                if ev.stage in (EventStage.TOOL_CALL_COMPLETE, EventStage.TOOL_CALL_ERROR) and ev.data.get("tool") == "generar_informe"
+                if ev.stage in (EventStage.TOOL_CALL_COMPLETE, EventStage.TOOL_CALL_ERROR)
+                and ev.data.get("tool") == "generar_informe"
             ]
             assert statuses and all(s == "ok" for s in statuses), f"generar_informe no completó con 'ok': {statuses}"
     finally:

@@ -84,13 +84,15 @@ def _build_preview(document: Document) -> dict[str, Any] | None:
             columns = data.get("columns") or []
             rows = data.get("rows") or []
             if columns and rows:
-                tables.append({
-                    "title": block.title,
-                    "columns": columns,
-                    "rows": rows[:_PREVIEW_MAX_TABLE_ROWS],
-                    "total_rows": len(rows),
-                    "truncated": len(rows) > _PREVIEW_MAX_TABLE_ROWS,
-                })
+                tables.append(
+                    {
+                        "title": block.title,
+                        "columns": columns,
+                        "rows": rows[:_PREVIEW_MAX_TABLE_ROWS],
+                        "total_rows": len(rows),
+                        "truncated": len(rows) > _PREVIEW_MAX_TABLE_ROWS,
+                    }
+                )
         elif block.kind == "chart" and block.data and len(charts) < _PREVIEW_MAX_CHARTS:
             charts.append(dict(block.data))
     if not tables and not charts:
@@ -168,8 +170,11 @@ async def persist_document_report(
     if len(items) == 1:
         only = items[0]
         presentation: dict[str, Any] = {
-            "type": "download", "title": document.title, "format": only["formato"],
-            "url": only["enlace"], "file_name": only["archivo"],
+            "type": "download",
+            "title": document.title,
+            "format": only["formato"],
+            "url": only["enlace"],
+            "file_name": only["archivo"],
         }
         if preview is not None:
             presentation["preview"] = preview

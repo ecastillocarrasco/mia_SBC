@@ -88,18 +88,33 @@ def test_all_eight_block_kinds_render_with_real_content() -> None:
             Block("section", "Ficha", {"Departamento": "Cocina"}),
             Block("table", "Detalle", {"columns": ["Depto", "Personas"], "rows": [["Cocina", 4], ["Sala", 2]]}),
             Block("chart", "Distribución", donut_chart("Distribución", ["Cocina", "Sala"], [60.0, 40.0])),
-            warnings_block("Advertencias", [{"severity": "blocker", "code": "X1", "message": "mensaje de prueba", "source": "s"}]),
-            narrative_block("Hallazgos", [narrative_statement("fact", "Dato verificado", evidence={"metric": "m", "value": 1})]),
+            warnings_block(
+                "Advertencias", [{"severity": "blocker", "code": "X1", "message": "mensaje de prueba", "source": "s"}]
+            ),
+            narrative_block(
+                "Hallazgos", [narrative_statement("fact", "Dato verificado", evidence={"metric": "m", "value": 1})]
+            ),
             methodology_block("Metodología", ["Nota de metodología A"]),
             annex_block("Anexo", ["ID"], [[i] for i in range(10)], max_rows=3),
         ],
     )
     out = _html(doc)
     for expected in (
-        "Plantilla", "120", "Ficha", "Cocina", "Detalle", "Sala",
-        "Distribución", "BLOQUEANTE", "mensaje de prueba",
-        "HECHO VERIFICADO", "Dato verificado", "Metodología", "Nota de metodología A",
-        "Anexo", "Mostrando 3 de 10",
+        "Plantilla",
+        "120",
+        "Ficha",
+        "Cocina",
+        "Detalle",
+        "Sala",
+        "Distribución",
+        "BLOQUEANTE",
+        "mensaje de prueba",
+        "HECHO VERIFICADO",
+        "Dato verificado",
+        "Metodología",
+        "Nota de metodología A",
+        "Anexo",
+        "Mostrando 3 de 10",
     ):
         assert expected in out, f"falta {expected!r} en el HTML"
     # Un gráfico explícito en el documento suprime la auto-derivación heurística para CUALQUIER otra
@@ -114,7 +129,11 @@ def test_bar_and_line_charts_render_as_svg() -> None:
         title="Gráficos",
         blocks=[
             Block("chart", "Barras", bar_chart("Barras", ["A", "B", "C"], [1.0, 2.0, 3.0])),
-            Block("chart", "Línea", time_series_chart("Línea", ["ene", "feb", "mar"], [{"name": "v", "values": [1.0, 2.0, 1.5]}])),
+            Block(
+                "chart",
+                "Línea",
+                time_series_chart("Línea", ["ene", "feb", "mar"], [{"name": "v", "values": [1.0, 2.0, 1.5]}]),
+            ),
         ],
     )
     out = _html(doc)

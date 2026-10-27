@@ -35,9 +35,7 @@ def compute_metrics(traces: list[Any]) -> dict[str, Any]:
 
     # Tasa de warnings
     warning_traces = sum(1 for t in traces if t.warning_count > 0)
-    capability_gaps = sum(
-        1 for t in traces for issue in (t.issues or []) if issue.type == "CAPABILITY_MISSING"
-    )
+    capability_gaps = sum(1 for t in traces for issue in (t.issues or []) if issue.type == "CAPABILITY_MISSING")
 
     return {
         "total_requests": len(traces),

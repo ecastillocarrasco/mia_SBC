@@ -39,14 +39,48 @@ def _stub_settings(reports_dir: Path) -> SimpleNamespace:
 
 def _conectia_bytes() -> bytes:
     header = (
-        "Fecha", "Área", "Código del empleado", "Nombre completo", "Hora marcaje",
-        "Origen del marcaje", "Motivo", "Nombre Terminal", "Tipo marcaje", "Link localización",
+        "Fecha",
+        "Área",
+        "Código del empleado",
+        "Nombre completo",
+        "Hora marcaje",
+        "Origen del marcaje",
+        "Motivo",
+        "Nombre Terminal",
+        "Tipo marcaje",
+        "Link localización",
     )
     wb = Workbook()
     ws = wb.active
     ws.append(header)
-    ws.append((datetime(2026, 10, 12, 7, 0), "1-1", "1-001080", "ROSELLO DIAZ, MELANIA", "07:00", "Normal", "", "T1", "App", ""))
-    ws.append((datetime(2026, 10, 12, 15, 0), "1-1", "1-001080", "ROSELLO DIAZ, MELANIA", "15:00", "Normal", "", "T1", "App", ""))
+    ws.append(
+        (
+            datetime(2026, 10, 12, 7, 0),
+            "1-1",
+            "1-001080",
+            "ROSELLO DIAZ, MELANIA",
+            "07:00",
+            "Normal",
+            "",
+            "T1",
+            "App",
+            "",
+        )
+    )
+    ws.append(
+        (
+            datetime(2026, 10, 12, 15, 0),
+            "1-1",
+            "1-001080",
+            "ROSELLO DIAZ, MELANIA",
+            "15:00",
+            "Normal",
+            "",
+            "T1",
+            "App",
+            "",
+        )
+    )
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -55,9 +89,11 @@ def _conectia_bytes() -> bytes:
 async def _attach(tmp_path: Path) -> tuple[AttachmentService, str]:
     svc = AttachmentService(storage=LocalStorage(tmp_path / "attachments"), llm=None, vision_enabled=False)
     record = await svc.upload(
-        content=_conectia_bytes(), filename="MARCAJES SEMANA 41 PISOS.xlsx",
+        content=_conectia_bytes(),
+        filename="MARCAJES SEMANA 41 PISOS.xlsx",
         declared_mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        user_id=ADMIN.user_id, session_id=None,
+        user_id=ADMIN.user_id,
+        session_id=None,
     )
     assert record.status == AttachmentStatus.READY
     assert record.content_type == AttachmentContentType.DATASET
@@ -66,16 +102,25 @@ async def _attach(tmp_path: Path) -> tuple[AttachmentService, str]:
 
 def _session_with_attachment(attachment_id: str) -> dict:
     ref = AttachmentRef(
-        attachment_id=attachment_id, filename="MARCAJES SEMANA 41 PISOS.xlsx",
-        content_type=AttachmentContentType.DATASET, size_bytes=1, status=AttachmentStatus.READY,
+        attachment_id=attachment_id,
+        filename="MARCAJES SEMANA 41 PISOS.xlsx",
+        content_type=AttachmentContentType.DATASET,
+        size_bytes=1,
+        status=AttachmentStatus.READY,
     )
     return {"adjuntos_activos": [ref.to_dict()]}
 
 
-async def _call_generar_informe(registry: ToolRegistry, svc: AttachmentService, session_state: dict, message: str) -> object:
+async def _call_generar_informe(
+    registry: ToolRegistry, svc: AttachmentService, session_state: dict, message: str
+) -> object:
     ctx = ToolContext(
-        user=ADMIN, request_id=None, now=NOW, session_state=session_state,
-        attachment_service=svc, user_message=message,
+        user=ADMIN,
+        request_id=None,
+        now=NOW,
+        session_state=session_state,
+        attachment_service=svc,
+        user_message=message,
     )
     execution = await registry.execute(ToolCall("c", "generar_informe", json.dumps({"formato": "html"})), ctx)
     return execution.result
@@ -93,7 +138,9 @@ async def test_generar_informe_redirects_to_the_real_shift_vs_clock_report(tmp_p
     reg = build_registry(db, settings=_stub_settings(tmp_path / "informes"))
 
     result = await _call_generar_informe(
-        reg, svc, _session_with_attachment(attachment_id),
+        reg,
+        svc,
+        _session_with_attachment(attachment_id),
         "genera el informe comparativo de fichajes de la semana 41 que te he adjuntado con los "
         "turnos de la semana 41 del departamento Pisos, resumen del departamento y detalle de cada "
         "uno de los empleados",
@@ -122,17 +169,25 @@ async def test_redirect_picks_the_most_recent_still_valid_attachment_among_sever
     reg = build_registry(db, settings=_stub_settings(tmp_path / "informes"))
 
     stale_ref = AttachmentRef(
-        attachment_id="stale-from-a-previous-restart", filename="viejo.xlsx",
-        content_type=AttachmentContentType.DATASET, size_bytes=1, status=AttachmentStatus.READY,
+        attachment_id="stale-from-a-previous-restart",
+        filename="viejo.xlsx",
+        content_type=AttachmentContentType.DATASET,
+        size_bytes=1,
+        status=AttachmentStatus.READY,
     )
     live_ref = AttachmentRef(
-        attachment_id=attachment_id, filename="MARCAJES SEMANA 41 PISOS.xlsx",
-        content_type=AttachmentContentType.DATASET, size_bytes=1, status=AttachmentStatus.READY,
+        attachment_id=attachment_id,
+        filename="MARCAJES SEMANA 41 PISOS.xlsx",
+        content_type=AttachmentContentType.DATASET,
+        size_bytes=1,
+        status=AttachmentStatus.READY,
     )
     session_state = {"adjuntos_activos": [stale_ref.to_dict(), live_ref.to_dict()]}
 
     result = await _call_generar_informe(
-        reg, svc, session_state,
+        reg,
+        svc,
+        session_state,
         "genera el informe comparativo de fichajes con los turnos del departamento Pisos",
     )
     assert result.status is ToolStatus.OK, result.summary
@@ -146,7 +201,10 @@ async def test_no_redirect_without_an_attached_file(tmp_path: Path) -> None:
         s.add(_emp(1, "Melania Rosello Diaz", "Pisos", person_key=MELANIA))
     reg = build_registry(db, settings=_stub_settings(tmp_path / "informes"))
     result = await _call_generar_informe(
-        reg, None, {}, "genera el informe comparativo de fichajes de la semana 41 con los turnos del departamento Pisos",
+        reg,
+        None,
+        {},
+        "genera el informe comparativo de fichajes de la semana 41 con los turnos del departamento Pisos",
     )
     assert result.status is ToolStatus.NOT_FOUND
     assert "resultado reciente" in str(result.summary)
@@ -161,7 +219,9 @@ async def test_no_redirect_when_the_department_is_ambiguous(tmp_path: Path) -> N
     svc, attachment_id = await _attach(tmp_path)
     reg = build_registry(db, settings=_stub_settings(tmp_path / "informes"))
     result = await _call_generar_informe(
-        reg, svc, _session_with_attachment(attachment_id),
+        reg,
+        svc,
+        _session_with_attachment(attachment_id),
         "genera el informe comparativo de fichajes y turnos de la semana 41 de Pisos y Cocina",
     )
     assert result.status is ToolStatus.NOT_FOUND
@@ -183,7 +243,9 @@ async def test_redirect_does_not_need_a_week_number_period_comes_from_the_file(t
     svc, attachment_id = await _attach(tmp_path)
     reg = build_registry(db, settings=_stub_settings(tmp_path / "informes"))
     result = await _call_generar_informe(
-        reg, svc, _session_with_attachment(attachment_id),
+        reg,
+        svc,
+        _session_with_attachment(attachment_id),
         "genera el informe comparativo de fichajes con los turnos del departamento Pisos",
     )
     assert result.status is ToolStatus.OK, result.summary
@@ -198,9 +260,17 @@ async def test_normal_last_table_export_is_unaffected_by_the_redirect_guard(tmp_
 
     db = await fresh_database(tmp_path, "redirect_5.db")
     reg = build_registry(db, settings=_stub_settings(tmp_path / "informes"))
-    presentation = {"type": "table", "title": "Plantilla", "columns": ["Departamento", "Personas"], "rows": [["Pisos", 10]]}
+    presentation = {
+        "type": "table",
+        "title": "Plantilla",
+        "columns": ["Departamento", "Personas"],
+        "rows": [["Pisos", 10]],
+    }
     ctx = ToolContext(
-        user=ADMIN, request_id=None, now=NOW, session_state={LAST_TABLE: presentation},
+        user=ADMIN,
+        request_id=None,
+        now=NOW,
+        session_state={LAST_TABLE: presentation},
         user_message="genera el informe comparativo de fichajes con los turnos de la semana 41 de Pisos",
     )
     execution = await reg.execute(ToolCall("c", "generar_informe", json.dumps({"formato": "html"})), ctx)

@@ -42,7 +42,8 @@ def test_narrative_fact_requires_evidence() -> None:
 
 def test_narrative_fact_with_evidence_is_accepted() -> None:
     stmt = narrative_statement(
-        "fact", "La plantilla creció un 12%",
+        "fact",
+        "La plantilla creció un 12%",
         evidence={"source": "mia.analytics.stats", "metric": "total_staff", "period": "2026", "value": 12.0},
     )
     assert stmt["kind"] == "fact"

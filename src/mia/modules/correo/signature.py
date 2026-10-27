@@ -84,14 +84,20 @@ def build_mail_signature(display_name: str, position: str | None, phone: str | N
         role_en = parts[1] or None if len(parts) == 2 else None
     contact_phone = phone.strip() if phone and phone.strip() else None
 
-    identity = [f"<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#00a0b5\">{html.escape(name)}</div>"]
+    identity = [
+        f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#00a0b5">{html.escape(name)}</div>'
+    ]
     if role_es:
         title = html.escape(role_es)
         if role_en:
             title += f" / {html.escape(role_en)}"
-        identity.append(f"<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#0b2f55\">{title}</div>")
+        identity.append(
+            f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#0b2f55">{title}</div>'
+        )
     if contact_phone:
-        identity.append(f"<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#0b2f55\">{html.escape(contact_phone)}</div>")
+        identity.append(
+            f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#0b2f55">{html.escape(contact_phone)}</div>'
+        )
     identity.append(
         '<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#0b2f55">'
         '<a href="tel:+34952579400" style="color:#0b2f55;text-decoration:none">+34 952 579400 Ext.7702</a>'
@@ -110,7 +116,7 @@ def build_mail_signature(display_name: str, position: str | None, phone: str | N
     )
     legal_html = "".join(
         '<p style="margin:8px 0 3px;font-weight:700">'
-        f"{html.escape(heading)}</p><p style=\"margin:0 0 9px\">{_line_breaks(body)}</p>"
+        f'{html.escape(heading)}</p><p style="margin:0 0 9px">{_line_breaks(body)}</p>'
         for heading, body in legal
     )
     signature_html = (

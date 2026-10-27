@@ -58,9 +58,7 @@ def _span_days(period: ResolvedPeriod) -> int:
     return (period.end - period.start).days + 1
 
 
-def check_period_pair(
-    a: ResolvedPeriod, b: ResolvedPeriod, *, today: date | None = None
-) -> list[HomogeneityIssue]:
+def check_period_pair(a: ResolvedPeriod, b: ResolvedPeriod, *, today: date | None = None) -> list[HomogeneityIssue]:
     """¿Son estos dos periodos aptos para compararse entre sí?"""
     ref = today or date.today()
     issues: list[HomogeneityIssue] = []
@@ -97,9 +95,7 @@ def check_period_pair(
     return issues
 
 
-def check_populations(
-    count_a: int, count_b: int, *, label_a: str, label_b: str
-) -> list[HomogeneityIssue]:
+def check_populations(count_a: int, count_b: int, *, label_a: str, label_b: str) -> list[HomogeneityIssue]:
     """¿Hay datos suficientes en ambos lados para que la comparación signifique algo?"""
     issues: list[HomogeneityIssue] = []
     if count_a == 0 or count_b == 0:
@@ -128,9 +124,7 @@ def check_denominator(value: float | None, *, context: str) -> HomogeneityIssue 
     return None
 
 
-def check_units(
-    unit_a: str, unit_b: str, *, label_a: str, label_b: str
-) -> list[HomogeneityIssue]:
+def check_units(unit_a: str, unit_b: str, *, label_a: str, label_b: str) -> list[HomogeneityIssue]:
     """¿Tienen las dos métricas la misma unidad? Comparar € contra días, o % contra horas, no tiene
     sentido aunque los números en sí se puedan restar."""
     if unit_a and unit_b and unit_a != unit_b:
@@ -145,9 +139,7 @@ def check_units(
     return []
 
 
-def check_granularity(
-    granularity_a: str, granularity_b: str, *, label_a: str, label_b: str
-) -> list[HomogeneityIssue]:
+def check_granularity(granularity_a: str, granularity_b: str, *, label_a: str, label_b: str) -> list[HomogeneityIssue]:
     """¿Tienen las dos métricas el mismo nivel de agregación (``FieldDef.granularity``)? A diferencia de
     la unidad, una diferencia de granularidad no siempre invalida la comparación (p. ej. un total
     `per_payslip` sigue siendo comparable con otro total `per_payslip` de otro periodo) — se avisa, no

@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.auth import Permission
@@ -41,9 +41,25 @@ ACCEPTED = "aceptada"
 PENDING = "pendiente"
 
 KEYWORDS = (
-    "ficha", "empleado", "empleados", "trabajador", "trabajadores", "plantilla", "persona",
-    "personas", "organigrama", "estructura del departamento", "cumpleanos", "cumpleaños",
-    "responsable", "responsables", "contacto", "contactos", "edad", "antiguedad", "antigüedad",
+    "ficha",
+    "empleado",
+    "empleados",
+    "trabajador",
+    "trabajadores",
+    "plantilla",
+    "persona",
+    "personas",
+    "organigrama",
+    "estructura del departamento",
+    "cumpleanos",
+    "cumpleaños",
+    "responsable",
+    "responsables",
+    "contacto",
+    "contactos",
+    "edad",
+    "antiguedad",
+    "antigüedad",
 )
 """Vocabulario del módulo para el enrutado determinista (ver `conversation/orchestrator.py`).
 Deliberadamente generoso: un falso positivo solo añade herramientas de más (coste, no ruptura);
@@ -505,9 +521,18 @@ def perfil_edad(deps: Deps) -> Tool:
         with_age = [(a, name, dpt) for a, name, dpt in ages if a is not None]
 
         if not with_age:
-            return ToolResult(ToolStatus.NOT_FOUND, {"nota": "Ningún empleado activo tiene fecha de nacimiento registrada."})
+            return ToolResult(
+                ToolStatus.NOT_FOUND, {"nota": "Ningún empleado activo tiene fecha de nacimiento registrada."}
+            )
 
-        RANGES = [("<25", 0, 25), ("25–34", 25, 35), ("35–44", 35, 45), ("45–54", 45, 55), ("55–64", 55, 65), ("65+", 65, 200)]
+        RANGES = [
+            ("<25", 0, 25),
+            ("25–34", 25, 35),
+            ("35–44", 35, 45),
+            ("45–54", 45, 55),
+            ("55–64", 55, 65),
+            ("65+", 65, 200),
+        ]
         dist = {label: sum(1 for a, _, _ in with_age if lo <= a < hi) for label, lo, hi in RANGES}
         sorted_by_age = sorted(with_age, key=lambda x: x[0])
         avg = round(sum(a for a, _, _ in with_age) / len(with_age), 1)
@@ -523,9 +548,7 @@ def perfil_edad(deps: Deps) -> Tool:
             "edad_mas_veterano": sorted_by_age[-1][0],
         }
         rows = [
-            [label, dist[label], f"{dist[label] / len(with_age):.0%}"]
-            for label, lo, hi in RANGES
-            if dist[label] > 0
+            [label, dist[label], f"{dist[label] / len(with_age):.0%}"] for label, lo, hi in RANGES if dist[label] > 0
         ]
         return ToolResult(
             ToolStatus.OK,
@@ -582,8 +605,7 @@ def cumpleanos(deps: Deps) -> Tool:
                 "periodo": f"{fmt_date(today)} – {fmt_date(hi)}",
                 "total": len(upcoming),
                 "cumpleanos": [
-                    {"fecha": str(d), "nombre": name, "departamento": dpt, "edad": a}
-                    for d, name, dpt, a in upcoming
+                    {"fecha": str(d), "nombre": name, "departamento": dpt, "edad": a} for d, name, dpt, a in upcoming
                 ],
             },
             table(
@@ -636,10 +658,7 @@ def responsables(deps: Deps) -> Tool:
                         )
                     ).all()
                 )
-                rows = [
-                    [t.name, t.department or "—", t.position or "—"]
-                    for t in sorted(team, key=lambda x: x.name)
-                ]
+                rows = [[t.name, t.department or "—", t.position or "—"] for t in sorted(team, key=lambda x: x.name)]
                 return ToolResult(
                     ToolStatus.OK,
                     {
@@ -667,10 +686,7 @@ def responsables(deps: Deps) -> Tool:
                 if not team:
                     return ToolResult(ToolStatus.NOT_FOUND, {"manager": p.manager, "nota": "Sin personas a cargo."})
                 mgr = team[0].manager_name
-                rows = [
-                    [t.name, t.department or "—", t.position or "—"]
-                    for t in sorted(team, key=lambda x: x.name)
-                ]
+                rows = [[t.name, t.department or "—", t.position or "—"] for t in sorted(team, key=lambda x: x.name)]
                 return ToolResult(
                     ToolStatus.OK,
                     {"responsable": mgr, "personas_a_cargo": len(team)},
@@ -739,12 +755,14 @@ def contactos_organizacion(deps: Deps) -> Tool:
                     mgr_names = [m.get("Title") or m.get("name") or str(m) for m in mgr_list if m]
                 except Exception:
                     pass
-            rows.append([
-                u.department or "—",
-                u.section or "—",
-                u.section_mail or "—",
-                ", ".join(mgr_names) if mgr_names else "—",
-            ])
+            rows.append(
+                [
+                    u.department or "—",
+                    u.section or "—",
+                    u.section_mail or "—",
+                    ", ".join(mgr_names) if mgr_names else "—",
+                ]
+            )
 
         return ToolResult(
             ToolStatus.OK,
@@ -759,7 +777,11 @@ def contactos_organizacion(deps: Deps) -> Tool:
                     for u in units
                 ]
             },
-            table("Contactos por departamento y sección", ["Departamento", "Sección", "Email sección", "Responsables"], rows),
+            table(
+                "Contactos por departamento y sección",
+                ["Departamento", "Sección", "Email sección", "Responsables"],
+                rows,
+            ),
         )
 
     return Tool(
@@ -773,5 +795,14 @@ def contactos_organizacion(deps: Deps) -> Tool:
 
 
 def register(registry: ToolRegistry, deps: Deps) -> None:
-    for factory in (buscar, ficha, plantilla, estructura, perfil_edad, cumpleanos, responsables, contactos_organizacion):
+    for factory in (
+        buscar,
+        ficha,
+        plantilla,
+        estructura,
+        perfil_edad,
+        cumpleanos,
+        responsables,
+        contactos_organizacion,
+    ):
         registry.register(factory(deps))

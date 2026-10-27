@@ -4,6 +4,7 @@ páginas, tarjetas KPI, severidad en color y gráficos incrustados como imagen.
 
 All values are synthetic. No corporate data, network access, or live LLM calls.
 """
+
 from __future__ import annotations
 
 import io
@@ -27,17 +28,29 @@ def make_document(categories: int = 3) -> Document:
         subtitle="Prueba con cifras sintéticas",
         blocks=[
             Block("kpis", "Indicadores", {"Coste total": "2.000,00 €", "Variación": "5,0 %"}),
-            Block("chart", "Comparativa", {
-                "title": "Comparativa", "type": "grouped_bar", "labels": labels,
-                "series": [{"name": "2025", "values": values_a}, {"name": "2026", "values": values_b}],
-            }),
-            Block("table", "Datos detallados", {
-                "columns": ["Area", "2025", "2026"],
-                "rows": [[name, a, b] for name, a, b in zip(labels, values_a, values_b, strict=True)],
-            }),
-            Block("warnings", "Avisos", {"items": [
-                {"severity": "blocker", "code": "DEMO", "message": "Cifras sintéticas", "source": "QA"}
-            ]}),
+            Block(
+                "chart",
+                "Comparativa",
+                {
+                    "title": "Comparativa",
+                    "type": "grouped_bar",
+                    "labels": labels,
+                    "series": [{"name": "2025", "values": values_a}, {"name": "2026", "values": values_b}],
+                },
+            ),
+            Block(
+                "table",
+                "Datos detallados",
+                {
+                    "columns": ["Area", "2025", "2026"],
+                    "rows": [[name, a, b] for name, a, b in zip(labels, values_a, values_b, strict=True)],
+                },
+            ),
+            Block(
+                "warnings",
+                "Avisos",
+                {"items": [{"severity": "blocker", "code": "DEMO", "message": "Cifras sintéticas", "source": "QA"}]},
+            ),
         ],
     )
 
@@ -88,10 +101,16 @@ def test_warning_severity_has_a_distinct_color_not_only_the_raw_word():
 
 
 def test_annex_truncation_is_never_silent():
-    doc = Document("Listado", blocks=[
-        Block("annex", "Detalle", {"columns": ["Col"], "rows": [[i] for i in range(10)],
-                                    "total_rows": 5000, "truncated": True}),
-    ])
+    doc = Document(
+        "Listado",
+        blocks=[
+            Block(
+                "annex",
+                "Detalle",
+                {"columns": ["Col"], "rows": [[i] for i in range(10)], "total_rows": 5000, "truncated": True},
+            ),
+        ],
+    )
     word = WordDocument(io.BytesIO(to_docx(doc, NOW)))
     text = "\n".join(p.text for p in word.paragraphs)
     assert "Mostrando 10 de 5000 filas" in text

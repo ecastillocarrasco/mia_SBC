@@ -205,19 +205,22 @@ class ToolRegistry:
                 # Normalizar a ruta relativa desde src/
                 raw_path = raw_path.replace("\\", "/")
                 idx = raw_path.find("/src/")
-                source_file = raw_path[idx + 1:] if idx >= 0 else os.path.basename(raw_path)
+                source_file = raw_path[idx + 1 :] if idx >= 0 else os.path.basename(raw_path)
             except (TypeError, OSError):
                 pass
 
         if trace is not None:
-            trace.emit(EventStage.TOOL_CALL_START, data={
-                "tool": call.name,
-                "args": args,
-                "call_id": call.call_id,
-                "source_file": source_file,
-                "source_module": source_module,
-                "source_function": source_function,
-            })
+            trace.emit(
+                EventStage.TOOL_CALL_START,
+                data={
+                    "tool": call.name,
+                    "args": args,
+                    "call_id": call.call_id,
+                    "source_file": source_file,
+                    "source_module": source_module,
+                    "source_function": source_function,
+                },
+            )
 
         # Fijar el call_id en el ContextVar para que el código de dominio pueda linkear nodos SQL
         _call_id_token = _diag_call_id.set(call.call_id) if trace is not None else None
@@ -244,22 +247,22 @@ class ToolRegistry:
                 data=event_data,
             )
             # Añadir nodo al grafo de ejecución
-            args_preview = ", ".join(
-                f"{k}={v}" for k, v in args.items() if v is not None and v is not False
-            )[:100]
-            trace.add_call_graph_node({
-                "id": f"tool:{call.name}:{call.call_id}",
-                "kind": "tool_call",
-                "label": f"{call.name}({args_preview})" if args_preview else call.name,
-                "file": source_file,
-                "module": source_module,
-                "function": source_function,
-                "args": args,
-                "call_id": call.call_id,
-                "duration_ms": elapsed,
-                "status": "error" if is_error else "ok",
-                "parent_id": "engine:root",
-            })
+            args_preview = ", ".join(f"{k}={v}" for k, v in args.items() if v is not None and v is not False)[:100]
+            trace.add_call_graph_node(
+                {
+                    "id": f"tool:{call.name}:{call.call_id}",
+                    "kind": "tool_call",
+                    "label": f"{call.name}({args_preview})" if args_preview else call.name,
+                    "file": source_file,
+                    "module": source_module,
+                    "function": source_function,
+                    "args": args,
+                    "call_id": call.call_id,
+                    "duration_ms": elapsed,
+                    "status": "error" if is_error else "ok",
+                    "parent_id": "engine:root",
+                }
+            )
 
         log.info("tool.executed", tool=call.name, status=result.status.value, elapsed_ms=elapsed)
         return ToolExecution(call, result, elapsed, tool.audit_resource if tool else None)
@@ -324,14 +327,18 @@ def remember_table(
     if stored.get("type") == "table":
         source_rows = list(stored.get("rows") or [])
         if len(source_rows) > limit:
-            truncated.append({"table": str(stored.get("title", "principal")), "total": len(source_rows), "stored": limit})
+            truncated.append(
+                {"table": str(stored.get("title", "principal")), "total": len(source_rows), "stored": limit}
+            )
         stored["rows"] = source_rows[:limit]
     copied_tables = []
     for sub_table in stored.get("tables") or []:
         copied = dict(sub_table)
         source_rows = list(copied.get("rows") or [])
         if len(source_rows) > limit:
-            truncated.append({"table": str(copied.get("title", "secundaria")), "total": len(source_rows), "stored": limit})
+            truncated.append(
+                {"table": str(copied.get("title", "secundaria")), "total": len(source_rows), "stored": limit}
+            )
         copied["rows"] = source_rows[:limit]
         copied_tables.append(copied)
     if "tables" in stored:

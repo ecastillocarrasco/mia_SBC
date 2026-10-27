@@ -32,9 +32,7 @@ ADMIN = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
 NOW = datetime(TODAY.year, TODAY.month, TODAY.day, 10, 0, tzinfo=ZoneInfo("Europe/Madrid"))
 
 
-async def call(
-    registry: ToolRegistry, name: str, state: dict[str, Any], mensaje: str = "", **args: Any
-) -> Any:
+async def call(registry: ToolRegistry, name: str, state: dict[str, Any], mensaje: str = "", **args: Any) -> Any:
     """Un turno: ejecuta la herramienta y aplica sus state_updates al estado de sesión (como el motor real)."""
     ctx = ToolContext(user=ADMIN, request_id=None, now=NOW, session_state=state, user_message=mensaje)
     execution = await registry.execute(ToolCall("c", name, json.dumps(args)), ctx)

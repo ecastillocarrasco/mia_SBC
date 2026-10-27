@@ -35,9 +35,7 @@ class NarrativeDiscrepancy:
     backend_value: float
 
 
-def verify_statement(
-    statement: dict[str, Any], *, backend_values: dict[str, float]
-) -> NarrativeDiscrepancy | None:
+def verify_statement(statement: dict[str, Any], *, backend_values: dict[str, float]) -> NarrativeDiscrepancy | None:
     """Comprueba una única afirmación narrativa (ver ``narrative_statement()`` en ``document.py``)
     contra el valor real que su propia evidencia declara (``evidence.metric``/``evidence.value``)."""
     if statement.get("kind") != "fact":
@@ -56,7 +54,10 @@ def verify_statement(
     if not mismatch:
         return None
     return NarrativeDiscrepancy(
-        statement_text=str(statement.get("text", "")), metric=metric, claimed_value=float(claimed), backend_value=float(real)
+        statement_text=str(statement.get("text", "")),
+        metric=metric,
+        claimed_value=float(claimed),
+        backend_value=float(real),
     )
 
 
@@ -105,7 +106,9 @@ class NarrativePeriodDiscrepancy:
     expected_period: str
 
 
-def verify_statement_period(statement: dict[str, Any], *, expected_period: str | None) -> NarrativePeriodDiscrepancy | None:
+def verify_statement_period(
+    statement: dict[str, Any], *, expected_period: str | None
+) -> NarrativePeriodDiscrepancy | None:
     """Fase F, "coherencia temporal": comprueba el periodo que una afirmación ``fact`` declara en su
     propia evidencia ESTRUCTURADA (``evidence.period`` — nunca analizando con expresiones regulares el
     periodo que la PROSA libre describe) frente al periodo real del informe (``expected_period``, p. ej.

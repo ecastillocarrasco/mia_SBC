@@ -59,9 +59,7 @@ def test_warnings_render_with_severity_visible_in_every_format() -> None:
 
     slides = Presentation(io.BytesIO(RENDERERS["pptx"](doc, NOW, None))).slides
     assert len(slides) >= 2  # portada + al menos una diapositiva de advertencias
-    all_text = " ".join(
-        shape.text_frame.text for slide in slides for shape in slide.shapes if shape.has_text_frame
-    )
+    all_text = " ".join(shape.text_frame.text for slide in slides for shape in slide.shapes if shape.has_text_frame)
     assert "POPULATION_EMPTY" in all_text
 
 
@@ -69,7 +67,8 @@ def test_warnings_render_with_severity_visible_in_every_format() -> None:
 def _narrative_doc() -> Document:
     statements = [
         narrative_statement(
-            "fact", "La plantilla activa creció un 12% en el periodo.",
+            "fact",
+            "La plantilla activa creció un 12% en el periodo.",
             evidence={"source": "mia.analytics.stats", "metric": "total_staff", "value": 12.0},
         ),
         narrative_statement("hypothesis", "Podría estar relacionado con la temporada alta."),
@@ -99,7 +98,9 @@ def test_narrative_statements_are_labeled_by_kind_in_every_format() -> None:
 def test_methodology_notes_appear_in_every_format() -> None:
     doc = Document(
         title="Informe con metodología",
-        blocks=[methodology_block("Metodología", ["Los datos proceden de ShiftDay.", "El absentismo excluye descansos."])],
+        blocks=[
+            methodology_block("Metodología", ["Los datos proceden de ShiftDay.", "El absentismo excluye descansos."])
+        ],
     )
     pdf_text = _pdf_text(RENDERERS["pdf"](doc, NOW, None))
     assert "ShiftDay" in pdf_text
@@ -130,9 +131,7 @@ def test_annex_shows_an_explicit_truncation_notice_never_silent() -> None:
     assert "Mostrando 4 de 10" in flat
 
     slides = Presentation(io.BytesIO(RENDERERS["pptx"](doc, NOW, None))).slides
-    all_text = " ".join(
-        shape.text_frame.text for slide in slides for shape in slide.shapes if shape.has_text_frame
-    )
+    all_text = " ".join(shape.text_frame.text for slide in slides for shape in slide.shapes if shape.has_text_frame)
     assert "Mostrando 4 de 10" in all_text
 
 

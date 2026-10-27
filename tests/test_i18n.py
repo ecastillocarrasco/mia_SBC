@@ -24,13 +24,16 @@ def test_user_context_defaults_to_spanish() -> None:
 
 # ------------------------------------------------------------------ t(): textos de la aplicación
 
+
 def test_app_text_in_spanish_matches_the_existing_message_exactly() -> None:
     """El mismo texto que ya devuelve hoy common.no_population(): cablearlo no cambiaría nada."""
     assert t("errors.no_previous_population") == "No hay un resultado anterior con personas sobre el que cruzar."
 
 
 def test_app_text_in_english() -> None:
-    assert t("errors.no_previous_population", lang="en") == "There is no previous result with people to cross-reference."
+    assert (
+        t("errors.no_previous_population", lang="en") == "There is no previous result with people to cross-reference."
+    )
 
 
 def test_app_text_with_params() -> None:
@@ -61,7 +64,10 @@ def test_no_previous_table_message() -> None:
 def test_freshness_messages() -> None:
     assert t("freshness.stale", minutes=45) == "Última sincronización hace 45 minutos: pueden faltar cambios recientes."
     assert t("freshness.stale", lang="en", minutes=45) == "Last synced 45 minutes ago: recent changes may be missing."
-    assert t("freshness.never_synced", sources="Turnos, Vacaciones") == "Estas fuentes no se han sincronizado nunca: Turnos, Vacaciones"
+    assert (
+        t("freshness.never_synced", sources="Turnos, Vacaciones")
+        == "Estas fuentes no se han sincronizado nunca: Turnos, Vacaciones"
+    )
 
 
 def test_table_labels_spanish() -> None:
@@ -86,6 +92,7 @@ def test_table_labels_english() -> None:
 
 # ------------------------------------------------------------------ translate_value(): valores de vacaciones
 
+
 def test_vacation_status_value_in_spanish_is_the_literal_source_value() -> None:
     """En español, traducir no cambia ni un carácter de lo que ya manda SharePoint."""
     assert translate_value("estado_vacaciones", "Pendiente Firma") == "Pendiente Firma"
@@ -102,12 +109,19 @@ def test_vacation_status_value_in_english() -> None:
 
 # ------------------------------------------------------------------ translate_value(): tipo_turno (ShiftKind)
 
+
 def test_all_shift_kinds_are_in_catalog() -> None:
     """Todos los ShiftKind definidos en hr.py tienen entrada en el catálogo."""
     all_kinds = [
-        ShiftKind.TRABAJO, ShiftKind.DESCANSO, ShiftKind.VACACIONES, ShiftKind.BAJA,
-        ShiftKind.ASUNTOS_PROPIOS, ShiftKind.PERMISO, ShiftKind.FESTIVO,
-        ShiftKind.SIN_PUBLICAR, ShiftKind.OTRO,
+        ShiftKind.TRABAJO,
+        ShiftKind.DESCANSO,
+        ShiftKind.VACACIONES,
+        ShiftKind.BAJA,
+        ShiftKind.ASUNTOS_PROPIOS,
+        ShiftKind.PERMISO,
+        ShiftKind.FESTIVO,
+        ShiftKind.SIN_PUBLICAR,
+        ShiftKind.OTRO,
     ]
     for kind in all_kinds:
         result = translate_value("tipo_turno", kind)
@@ -128,6 +142,7 @@ def test_shift_kind_value_in_english() -> None:
 
 # ------------------------------------------------------------------ translate_value(): tipo_solicitud
 
+
 def test_request_type_in_spanish_is_unchanged() -> None:
     assert translate_value("tipo_solicitud", "Vacaciones") == "Vacaciones"
     assert translate_value("tipo_solicitud", "Asuntos propios") == "Asuntos propios"
@@ -141,6 +156,7 @@ def test_request_type_in_english() -> None:
 
 
 # ------------------------------------------------------------------ translate_value(): dia_semana
+
 
 def test_weekday_codes_in_spanish() -> None:
     assert translate_value("dia_semana", "L") == "Lunes"
@@ -160,6 +176,7 @@ def test_weekday_codes_in_english() -> None:
 
 # ------------------------------------------------------------------ translate_value(): estado_empleado
 
+
 def test_employee_status_labels() -> None:
     assert translate_value("estado_empleado", "Activo") == "Activo"
     assert translate_value("estado_empleado", "Inactivo") == "Inactivo"
@@ -168,6 +185,7 @@ def test_employee_status_labels() -> None:
 
 
 # ------------------------------------------------------------------ casos límite
+
 
 def test_unknown_or_missing_value_passes_through_unchanged() -> None:
     """Un dato real nunca desaparece por no tener traducción todavía (DAT-001)."""

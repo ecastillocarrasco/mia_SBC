@@ -27,32 +27,54 @@ class ResolvedPeriod:
 
 
 _MONTH_ES: dict[str, int] = {
-    "enero": 1, "ene": 1,
-    "febrero": 2, "feb": 2,
-    "marzo": 3, "mar": 3,
-    "abril": 4, "abr": 4,
-    "mayo": 5, "may": 5,
-    "junio": 6, "jun": 6,
-    "julio": 7, "jul": 7,
-    "agosto": 8, "ago": 8,
-    "septiembre": 9, "sep": 9, "sept": 9,
-    "octubre": 10, "oct": 10,
-    "noviembre": 11, "nov": 11,
-    "diciembre": 12, "dic": 12,
+    "enero": 1,
+    "ene": 1,
+    "febrero": 2,
+    "feb": 2,
+    "marzo": 3,
+    "mar": 3,
+    "abril": 4,
+    "abr": 4,
+    "mayo": 5,
+    "may": 5,
+    "junio": 6,
+    "jun": 6,
+    "julio": 7,
+    "jul": 7,
+    "agosto": 8,
+    "ago": 8,
+    "septiembre": 9,
+    "sep": 9,
+    "sept": 9,
+    "octubre": 10,
+    "oct": 10,
+    "noviembre": 11,
+    "nov": 11,
+    "diciembre": 12,
+    "dic": 12,
 }
 
-_QUARTER_MONTHS: dict[int, tuple[int, int]] = {
-    1: (1, 3), 2: (4, 6), 3: (7, 9), 4: (10, 12)
-}
+_QUARTER_MONTHS: dict[int, tuple[int, int]] = {1: (1, 3), 2: (4, 6), 3: (7, 9), 4: (10, 12)}
 
 _MONTH_NAMES_ES = [
-    "", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+    "",
+    "Enero",
+    "Febrero",
+    "Marzo",
+    "Abril",
+    "Mayo",
+    "Junio",
+    "Julio",
+    "Agosto",
+    "Septiembre",
+    "Octubre",
+    "Noviembre",
+    "Diciembre",
 ]
 
 
 def _month_label(d: date) -> str:
-    """"agosto 2026" — SIEMPRE en español, nunca ``strftime('%B')``: su resultado depende del locale
+    """ "agosto 2026" — SIEMPRE en español, nunca ``strftime('%B')``: su resultado depende del locale
     del proceso (en un servidor sin locale español configurado, devuelve el nombre en inglés). Dos
     periodos que representan el MISMO mes deben producir SIEMPRE la MISMA etiqueta sin importar qué
     rama de ``resolve()`` los construyó — si no, una comparación de etiquetas entre dos resoluciones
@@ -63,17 +85,28 @@ def _month_label(d: date) -> str:
     de 2026" ya daba "Agosto 2026" — nunca coincidían)."""
     return f"{_MONTH_NAMES_ES[d.month]} {d.year}"
 
+
 _WORD_NUM_ES: dict[str, int] = {
-    "un": 1, "una": 1, "uno": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5, "seis": 6,
-    "siete": 7, "ocho": 8, "nueve": 9, "diez": 10, "once": 11, "doce": 12,
+    "un": 1,
+    "una": 1,
+    "uno": 1,
+    "dos": 2,
+    "tres": 3,
+    "cuatro": 4,
+    "cinco": 5,
+    "seis": 6,
+    "siete": 7,
+    "ocho": 8,
+    "nueve": 9,
+    "diez": 10,
+    "once": 11,
+    "doce": 12,
 }
 """«los últimos tres meses» es al menos tan habitual como «los últimos 3 meses» — sin esto, el motor de
 periodos solo entendía la forma numérica. Solo cardinales pequeños (1-12): cubre los casos reales de
 «últimos N días/meses/años»; no pretende ser un parser numérico general."""
 
-_WORD_NUM_RE = re.compile(
-    r"\b(" + "|".join(sorted(_WORD_NUM_ES, key=len, reverse=True)) + r")\b"
-)
+_WORD_NUM_RE = re.compile(r"\b(" + "|".join(sorted(_WORD_NUM_ES, key=len, reverse=True)) + r")\b")
 
 
 def _spell_digits(text: str) -> str:
@@ -112,8 +145,12 @@ def _normalize(text: str) -> str:
     return (
         text.lower()
         .strip()
-        .replace("á", "a").replace("é", "e").replace("í", "i")
-        .replace("ó", "o").replace("ú", "u").replace("ñ", "n")
+        .replace("á", "a")
+        .replace("é", "e")
+        .replace("í", "i")
+        .replace("ó", "o")
+        .replace("ú", "u")
+        .replace("ñ", "n")
     )
 
 
@@ -175,8 +212,13 @@ class PeriodEngine:
             start = ref.replace(month=1, day=1)
             return ResolvedPeriod(start, ref, str(ref.year))
         if n in (
-            "ano pasado", "año pasado", "el ano pasado", "el año pasado", "año anterior",
-            "ultimo ano", "el ultimo ano",
+            "ano pasado",
+            "año pasado",
+            "el ano pasado",
+            "el año pasado",
+            "año anterior",
+            "ultimo ano",
+            "el ultimo ano",
         ):
             year = ref.year - 1
             return ResolvedPeriod(date(year, 1, 1), date(year, 12, 31), str(year))
@@ -224,8 +266,17 @@ class PeriodEngine:
         return None
 
     def _ytd(self, n: str, ref: date) -> ResolvedPeriod | None:
-        if n in ("ytd", "year to date", "acumulado del ano", "acumulado del año", "desde inicio de ano",
-                 "desde inicio de año", "desde enero", "lo que llevamos de ano", "lo que llevamos de año"):
+        if n in (
+            "ytd",
+            "year to date",
+            "acumulado del ano",
+            "acumulado del año",
+            "desde inicio de ano",
+            "desde inicio de año",
+            "desde enero",
+            "lo que llevamos de ano",
+            "lo que llevamos de año",
+        ):
             start = ref.replace(month=1, day=1)
             return ResolvedPeriod(start, ref, f"YTD {ref.year}")
         return None
@@ -307,7 +358,7 @@ class PeriodEngine:
         # "desde enero hasta marzo", "de enero a junio", "entre enero y junio"
         sep = re.search(r"\s+(?:hasta|a|y)\s+", n)
         if sep:
-            prefix, suffix = n[: sep.start()], n[sep.end():]
+            prefix, suffix = n[: sep.start()], n[sep.end() :]
         else:
             # "julio-septiembre 2026" — rango unido por un guion entre dos nombres de mes (no
             # entre dígitos: "2026-07" ya lo resuelve _numeric_month antes de llegar aquí).

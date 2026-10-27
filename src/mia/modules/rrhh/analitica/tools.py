@@ -30,12 +30,30 @@ from mia.modules.rrhh.turnos.tools import franja_of
 from mia.text import normalize_key
 
 KEYWORDS = (
-    "panel", "panel de rrhh", "analitica", "analítica", "comparar departamentos",
-    "comparativa", "tendencia", "absentismo", "cruce de datos", "cruzar datos",
-    "consulta cruzada", "ranking de absentismo", "jubilacion", "jubilación",
-    "distribucion de plantilla", "distribución de plantilla", "calidad de los datos",
-    "ficha del departamento", "analizar departamento", "altas de empleados",
-    "rotacion", "rotación", "indicadores de rrhh", "kpis de rrhh",
+    "panel",
+    "panel de rrhh",
+    "analitica",
+    "analítica",
+    "comparar departamentos",
+    "comparativa",
+    "tendencia",
+    "absentismo",
+    "cruce de datos",
+    "cruzar datos",
+    "consulta cruzada",
+    "ranking de absentismo",
+    "jubilacion",
+    "jubilación",
+    "distribucion de plantilla",
+    "distribución de plantilla",
+    "calidad de los datos",
+    "ficha del departamento",
+    "analizar departamento",
+    "altas de empleados",
+    "rotacion",
+    "rotación",
+    "indicadores de rrhh",
+    "kpis de rrhh",
 )
 """Ver `empleados.tools.KEYWORDS` para el criterio."""
 
@@ -388,11 +406,19 @@ def cobertura(deps: Deps) -> Tool:
             for offset in range(7):
                 day = start + timedelta(days=offset)
                 c = grouped[key][day]
-                rows.append([
-                    labels[key], day.isoformat(), c[ShiftKind.TRABAJO],
-                    c["franja mañana"], c["franja tarde"], c["franja noche"],
-                    c["Descanso"], c["Vacaciones"], c["Baja/IT"],
-                ])
+                rows.append(
+                    [
+                        labels[key],
+                        day.isoformat(),
+                        c[ShiftKind.TRABAJO],
+                        c["franja mañana"],
+                        c["franja tarde"],
+                        c["franja noche"],
+                        c["Descanso"],
+                        c["Vacaciones"],
+                        c["Baja/IT"],
+                    ]
+                )
         if not rows:
             # Un departamento sin turnos NO equivale a siete días de
             # cobertura cero confirmada. Informar de la ausencia de registros.
@@ -667,7 +693,9 @@ def ranking_absentismo(deps: Deps) -> Tool:
                 stmt = stmt.where(ShiftDay.kind == p.tipo)
             days_data = list((await db.scalars(stmt)).all())
 
-        by_person: dict[str, dict[str, Any]] = defaultdict(lambda: {"nombre": None, "departamento": None, "dias": 0, "periodos": set(), "tipos": Counter()})
+        by_person: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {"nombre": None, "departamento": None, "dias": 0, "periodos": set(), "tipos": Counter()}
+        )
         for d in days_data:
             key = d.person_key or d.employee_name or "desconocido"
             rec = by_person[key]
@@ -693,7 +721,10 @@ def ranking_absentismo(deps: Deps) -> Tool:
                 "tipo_filtrado": p.tipo or "todos",
                 "ambito": dept.name or "toda la plantilla",
                 "total_personas_con_ausencia": len(by_person),
-                "ranking": [{"nombre": r["nombre"], "departamento": r["departamento"], "dias_ausencia": r["dias"]} for r in ranking],
+                "ranking": [
+                    {"nombre": r["nombre"], "departamento": r["departamento"], "dias_ausencia": r["dias"]}
+                    for r in ranking
+                ],
             },
             table(
                 f"Ranking absentismo {year}",
@@ -777,8 +808,14 @@ def proximos_jubilacion(deps: Deps) -> Tool:
                 f"Próximos a jubilación (horizonte {p.horizonte_anios} años)",
                 ["Nombre", "Departamento", "Puesto", "Edad actual", "Años para jubilación", "Año aprox."],
                 [
-                    [p["nombre"], p["departamento"], p["puesto"], p["edad_actual"],
-                     p["anos_para_jubilacion"], p["anio_jubilacion_aproximado"]]
+                    [
+                        p["nombre"],
+                        p["departamento"],
+                        p["puesto"],
+                        p["edad_actual"],
+                        p["anos_para_jubilacion"],
+                        p["anio_jubilacion_aproximado"],
+                    ]
                     for p in proximos
                 ],
             ),
@@ -804,6 +841,16 @@ def register(registry: ToolRegistry, deps: Deps) -> None:
     registry.register(datos_de_personas(deps))
     registry.register(consulta_cruzada(deps))
     registry.register(ficha_departamento(deps))
-    for factory in (panel, comparar, cobertura, analitica_vacaciones, tendencia_ausencias, ranking_absentismo, altas, calidad, proximos_jubilacion):
+    for factory in (
+        panel,
+        comparar,
+        cobertura,
+        analitica_vacaciones,
+        tendencia_ausencias,
+        ranking_absentismo,
+        altas,
+        calidad,
+        proximos_jubilacion,
+    ):
         registry.register(factory(deps))
     _reg_universal(registry, deps)

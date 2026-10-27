@@ -168,7 +168,7 @@ def test_candidate_keeps_every_custom_column_as_metadata() -> None:
 
 
 def test_candidate_name_uses_only_title_when_it_already_has_the_full_name() -> None:
-    """"Title" (Apellidos en la UI de SharePoint) puede traer ya nombre+apellidos; no se concatena
+    """ "Title" (Apellidos en la UI de SharePoint) puede traer ya nombre+apellidos; no se concatena
     con FirstName para evitar nombres duplicados ("Paloma Paloma Sierra Cuña")."""
     from mia.ingestion.mappers.docs import candidate  # noqa: PLC0415
 

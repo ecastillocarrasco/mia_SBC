@@ -103,9 +103,13 @@ def compare_person(
         # bug real encontrado contra datos reales, nunca reproducido por la suite hasta añadir un test
         # con datetimes con zona horaria explícita (ver test_fichajes_comparison.py).
         tz = session.entrada.tzinfo
-        entrada_dev = round((session.entrada - datetime.combine(shift.day, sched_start, tzinfo=tz)).total_seconds() / 60)
+        entrada_dev = round(
+            (session.entrada - datetime.combine(shift.day, sched_start, tzinfo=tz)).total_seconds() / 60
+        )
         salida_dev = round((session.salida - datetime.combine(shift.day, sched_end, tzinfo=tz)).total_seconds() / 60)
-        status = "correcto" if abs(entrada_dev) <= tolerance_minutes and abs(salida_dev) <= tolerance_minutes else "desviado"
+        status = (
+            "correcto" if abs(entrada_dev) <= tolerance_minutes and abs(salida_dev) <= tolerance_minutes else "desviado"
+        )
         results.append(DayComparison(shift.day, status, session, entrada_dev, salida_dev))
 
     for day, day_sessions in sorted(sessions_by_day.items()):

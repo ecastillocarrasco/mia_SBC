@@ -22,9 +22,7 @@ async def _serve() -> None:
     if settings.compat_port:
         servers.append(
             uvicorn.Server(
-                uvicorn.Config(
-                    app, host=settings.host, port=settings.compat_port, lifespan="off", log_config=None
-                )
+                uvicorn.Config(app, host=settings.host, port=settings.compat_port, lifespan="off", log_config=None)
             )
         )
     await asyncio.gather(*(server.serve() for server in servers))

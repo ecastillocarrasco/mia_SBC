@@ -23,8 +23,12 @@ def _ctx() -> ToolContext:
 
 def _item(titulo: str, grupo: str, categoria: str, dia: int, url: str | None = None) -> NewsItem:
     return NewsItem(
-        titulo=titulo, url=url or f"https://example.test/{titulo}", fuente="Fuente",
-        grupo=grupo, categoria=categoria, publicado=datetime(2026, 10, dia),
+        titulo=titulo,
+        url=url or f"https://example.test/{titulo}",
+        fuente="Fuente",
+        grupo=grupo,
+        categoria=categoria,
+        publicado=datetime(2026, 10, dia),
     )
 
 

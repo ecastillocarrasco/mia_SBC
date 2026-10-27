@@ -39,9 +39,20 @@ def _extract_period(text: str, periods: PeriodEngine, today: date | None) -> Res
                 return resolved
     return None
 
+
 _COMPARE_HINTS = (
-    "compara", "comparacion", "comparativa", "evolucion", "evolución", "tendencia",
-    "variacion", "variación", "interanual", "respecto a", "frente a", "vs",
+    "compara",
+    "comparacion",
+    "comparativa",
+    "evolucion",
+    "evolución",
+    "tendencia",
+    "variacion",
+    "variación",
+    "interanual",
+    "respecto a",
+    "frente a",
+    "vs",
 )
 _DIMENSION_ONLY_OPS = frozenset({"count", "distribution"})
 _FORMAT_HINTS: dict[str, tuple[str, ...]] = {
@@ -148,9 +159,7 @@ class ReportPlanner:
                     f"El usuario no tiene permiso para «{fd.name}»: se excluye del plan, no se "
                     "sustituye por un valor ni se omite en silencio."
                 )
-            metrics.append(
-                PlannedMetric(field=fd, granted=granted, requires_protected_route=fd.min_group is not None)
-            )
+            metrics.append(PlannedMetric(field=fd, granted=granted, requires_protected_route=fd.min_group is not None))
 
         if not metrics and not dimensions:
             warnings.append(

@@ -26,7 +26,10 @@ _CONCEPTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("cotizaciones sociales", ("cotizacion", "cotizaciones", "seguridad social", "contingencias comunes")),
     ("retenciones fiscales", ("irpf", "i r p f", "retencion fiscal", "retenciones fiscales")),
     ("deducciones", ("deduccion", "deducciones", "total a deducir")),
-    ("pagas extraordinarias", ("paga extra", "pagas extras", "paga extraordinaria", "pagas extraordinarias", "prorrata de pagas")),
+    (
+        "pagas extraordinarias",
+        ("paga extra", "pagas extras", "paga extraordinaria", "pagas extraordinarias", "prorrata de pagas"),
+    ),
     ("complementos salariales", ("complemento salarial", "complementos salariales", "plus salarial")),
     ("horas extraordinarias", ("horas extras", "horas extraordinarias")),
 )
@@ -37,8 +40,7 @@ _FOOTER = "Se excluyen importes, identificadores, fechas, departamentos y detall
 
 def _normalized_words(text: str) -> str:
     ascii_text = "".join(
-        char for char in unicodedata.normalize("NFKD", text.casefold())
-        if not unicodedata.combining(char)
+        char for char in unicodedata.normalize("NFKD", text.casefold()) if not unicodedata.combining(char)
     )
     return " " + re.sub(r"[^a-z0-9]+", " ", ascii_text).strip() + " "
 
@@ -52,10 +54,6 @@ def project_payroll_embedding(text: str) -> str:
     una descripcion generica para que el documento siga pudiendo indexarse.
     """
     words = _normalized_words(text)
-    found = [
-        concept
-        for concept, variants in _CONCEPTS
-        if any(f" {variant} " in words for variant in variants)
-    ]
+    found = [concept for concept, variants in _CONCEPTS if any(f" {variant} " in words for variant in variants)]
     concepts = "; ".join(found) if found else "conceptos generales de nomina"
     return f"{_BASE} Conceptos: {concepts}. {_FOOTER}"

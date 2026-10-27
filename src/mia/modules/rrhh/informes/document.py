@@ -14,6 +14,14 @@ from mia.reporting.document import (
 from mia.reporting.render_docx import to_docx
 
 __all__ = [
-    "Block", "Document", "annex_block", "format_number", "methodology_block", "narrative_block",
-    "narrative_statement", "to_document", "to_docx", "warnings_block",
+    "Block",
+    "Document",
+    "annex_block",
+    "format_number",
+    "methodology_block",
+    "narrative_block",
+    "narrative_statement",
+    "to_document",
+    "to_docx",
+    "warnings_block",
 ]

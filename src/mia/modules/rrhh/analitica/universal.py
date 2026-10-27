@@ -85,19 +85,20 @@ def analizar_departamento(deps: Deps) -> Tool:
             periods = await absence_periods(db, lo=lo, hi=hi, department_like=dept.key, only_active=True)
 
             # Plantilla activa
-            staff_stmt = select(Employee).where(
-                Employee.active.is_(True), Employee.department_key == dept.key
-            )
+            staff_stmt = select(Employee).where(Employee.active.is_(True), Employee.department_key == dept.key)
             staff = list((await db.scalars(staff_stmt)).all())
             headcount = len(staff)
 
             # ETT (opcional)
             ett_data: dict[str, Any] = {}
             if p.incluir_ett:
-                ett = (await db.execute(
-                    select(func.count(), func.sum(TtTimesheet.hours_total), func.sum(TtTimesheet.amount))
-                    .where(TtTimesheet.department_key == dept.key, TtTimesheet.day.between(lo, hi))
-                )).one()
+                ett = (
+                    await db.execute(
+                        select(func.count(), func.sum(TtTimesheet.hours_total), func.sum(TtTimesheet.amount)).where(
+                            TtTimesheet.department_key == dept.key, TtTimesheet.day.between(lo, hi)
+                        )
+                    )
+                ).one()
                 ett_data = {
                     "boletines": int(ett[0] or 0),
                     "horas_total": round(float(ett[1] or 0), 1),
@@ -108,12 +109,16 @@ def analizar_departamento(deps: Deps) -> Tool:
             vac_data: dict[str, Any] = {}
             if p.incluir_vacaciones:
                 emails = {e.email for e in staff if e.email}
-                balances = list((await db.scalars(
-                    select(VacationBalance).where(
-                        VacationBalance.year == today.year,
-                        func.lower(VacationBalance.employee_email).in_({m.lower() for m in emails}),
-                    )
-                )).all())
+                balances = list(
+                    (
+                        await db.scalars(
+                            select(VacationBalance).where(
+                                VacationBalance.year == today.year,
+                                func.lower(VacationBalance.employee_email).in_({m.lower() for m in emails}),
+                            )
+                        )
+                    ).all()
+                )
                 valid_balances = [b.current_balance for b in balances if b.current_balance is not None]
                 vac_data = {
                     "saldo_medio": round(sum(valid_balances) / len(valid_balances), 1) if valid_balances else None,
@@ -173,9 +178,7 @@ def analizar_departamento(deps: Deps) -> Tool:
         if ett_data:
             summary["ett_en_periodo"] = ett_data
         if top_absent and p.profundidad == "completo":
-            summary["personas_con_mas_ausencias"] = [
-                {"nombre": n, "dias": d} for n, d in top_absent
-            ]
+            summary["personas_con_mas_ausencias"] = [{"nombre": n, "dias": d} for n, d in top_absent]
         if insights and p.profundidad == "completo":
             summary["insights"] = _insight_engine.top_insights(insights, n=4)
         if ts_stats.get("trend") and p.profundidad == "completo":
@@ -200,11 +203,13 @@ def analizar_departamento(deps: Deps) -> Tool:
         tables = [table(f"Análisis · {dept.name}", ["Indicador", "Valor"], kpi_rows)]
 
         if top_absent and p.profundidad == "completo":
-            tables.append(table(
-                "Personas con más ausencias",
-                ["Nombre", "Días"],
-                [[n, d] for n, d in top_absent],
-            ))
+            tables.append(
+                table(
+                    "Personas con más ausencias",
+                    ["Nombre", "Días"],
+                    [[n, d] for n, d in top_absent],
+                )
+            )
 
         # Serie temporal de ausencias
         chart = None
@@ -324,12 +329,16 @@ def tendencia_metrica(deps: Deps) -> Tool:
         if prev_data:
             chart_series.append({"name": "Año anterior", "values": [v for _, v in prev_data]})
 
-        chart = {
-            "type": "line",
-            "title": f"Tendencia · {METRICA_LABELS.get(p.metrica, p.metrica)} · {dept.name or 'Empresa'}",
-            "labels": labels,
-            "series": chart_series,
-        } if labels else None
+        chart = (
+            {
+                "type": "line",
+                "title": f"Tendencia · {METRICA_LABELS.get(p.metrica, p.metrica)} · {dept.name or 'Empresa'}",
+                "labels": labels,
+                "series": chart_series,
+            }
+            if labels
+            else None
+        )
 
         summary: dict[str, Any] = {
             "metrica": METRICA_LABELS.get(p.metrica, p.metrica),
@@ -528,7 +537,7 @@ def distribucion_plantilla(deps: Deps) -> Tool:
 
         total = sum(groups.values())
         items = sorted(groups.items(), key=lambda x: -x[1])
-        rows = [[k, v, f"{round(v/total*100, 1)}%"] for k, v in items]
+        rows = [[k, v, f"{round(v / total * 100, 1)}%"] for k, v in items]
         insights_raw = _insight_engine.from_distribution(
             {k: float(v) for k, v in items}, label=p.por.replace("_", " "), metric="personas"
         )

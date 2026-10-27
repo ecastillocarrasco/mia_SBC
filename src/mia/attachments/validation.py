@@ -8,45 +8,72 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 # Tipos MIME permitidos por grupo
-ALLOWED_MIME = frozenset({
-    # Imágenes
-    "image/png",
-    "image/jpeg",
-    "image/webp",
-    # Documentos
-    "application/pdf",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # docx
-    "text/plain",
-    "text/markdown",
-    "text/x-markdown",
-    # Datos
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # xlsx
-    "application/vnd.ms-excel",  # xls
-    "text/csv",
-    "application/csv",
-    "text/x-csv",
-})
+ALLOWED_MIME = frozenset(
+    {
+        # Imágenes
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        # Documentos
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # docx
+        "text/plain",
+        "text/markdown",
+        "text/x-markdown",
+        # Datos
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # xlsx
+        "application/vnd.ms-excel",  # xls
+        "text/csv",
+        "application/csv",
+        "text/x-csv",
+    }
+)
 
-ALLOWED_EXTENSIONS = frozenset({
-    ".png", ".jpg", ".jpeg", ".webp",
-    ".pdf", ".docx", ".txt", ".md",
-    ".xlsx", ".xls", ".csv",
-})
+ALLOWED_EXTENSIONS = frozenset(
+    {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".webp",
+        ".pdf",
+        ".docx",
+        ".txt",
+        ".md",
+        ".xlsx",
+        ".xls",
+        ".csv",
+    }
+)
 
 # Magic bytes → MIME real
 _MAGIC: list[tuple[bytes, str]] = [
     (b"\xff\xd8\xff", "image/jpeg"),
     (b"\x89PNG\r\n\x1a\n", "image/png"),
-    (b"RIFF", "image/webp"),        # heurística; la comprobación completa está abajo
+    (b"RIFF", "image/webp"),  # heurística; la comprobación completa está abajo
     (b"%PDF", "application/pdf"),
-    (b"PK\x03\x04", "_zip"),        # zip; docx/xlsx se confirman por extensión
+    (b"PK\x03\x04", "_zip"),  # zip; docx/xlsx se confirman por extensión
 ]
 
 # Extensiones absolutamente peligrosas
-_DANGEROUS_EXTENSIONS = frozenset({
-    ".exe", ".bat", ".cmd", ".sh", ".ps1", ".vbs", ".js", ".jar",
-    ".com", ".scr", ".msi", ".dll", ".py", ".rb", ".php",
-})
+_DANGEROUS_EXTENSIONS = frozenset(
+    {
+        ".exe",
+        ".bat",
+        ".cmd",
+        ".sh",
+        ".ps1",
+        ".vbs",
+        ".js",
+        ".jar",
+        ".com",
+        ".scr",
+        ".msi",
+        ".dll",
+        ".py",
+        ".rb",
+        ".php",
+    }
+)
 
 _SAFE_FILENAME = re.compile(r"[^\w\s\-.()\[\]#@!+]", re.UNICODE)
 _MAX_FILENAME_LEN = 200
@@ -116,9 +143,7 @@ def validate(
         return ValidationResult(ok=False, detected_mime="", error="Este tipo de archivo no está permitido.")
 
     if ext and ext not in ALLOWED_EXTENSIONS:
-        return ValidationResult(
-            ok=False, detected_mime="", error=f"Extensión «{ext}» no soportada todavía."
-        )
+        return ValidationResult(ok=False, detected_mime="", error=f"Extensión «{ext}» no soportada todavía.")
 
     detected = _detect_mime(content)
     detected = _zip_to_office(detected, ext)
@@ -127,9 +152,7 @@ def validate(
         return ValidationResult(ok=False, detected_mime=detected, error="Tipo de archivo no permitido.")
 
     if detected == "application/octet-stream" and (not ext or ext not in ALLOWED_EXTENSIONS):
-        return ValidationResult(
-            ok=False, detected_mime=detected, error="No se puede determinar el tipo de archivo."
-        )
+        return ValidationResult(ok=False, detected_mime=detected, error="No se puede determinar el tipo de archivo.")
 
     # CSV/TXT/MD sin magic bytes son aceptados si el MIME declarado o la extensión coincide
     if detected == "application/octet-stream":

@@ -75,10 +75,13 @@ DiagAdminDep = Annotated[str, Depends(_require_diagnostics_admin)]
 
 def _require_enabled() -> None:
     if not is_enabled():
-        raise HTTPException(status_code=404, detail="El módulo de diagnóstico no está habilitado (MIA_DIAGNOSTICS__ENABLED=false)")
+        raise HTTPException(
+            status_code=404, detail="El módulo de diagnóstico no está habilitado (MIA_DIAGNOSTICS__ENABLED=false)"
+        )
 
 
 # ── Panel HTML ────────────────────────────────────────────────────────────────
+
 
 @router.get("/", include_in_schema=False)
 async def panel(_: DiagAdminDep) -> FileResponse:
@@ -88,10 +91,11 @@ async def panel(_: DiagAdminDep) -> FileResponse:
 
 # ── Status ────────────────────────────────────────────────────────────────────
 
+
 @router.get("/status")
 async def status(services: ServicesDep, _: DiagAdminDep) -> dict[str, Any]:
     _require_enabled()
-    from mia.diagnostics import _store, _broadcaster  # type: ignore[attr-defined]
+    from mia.diagnostics import _broadcaster, _store  # type: ignore[attr-defined]
 
     store_status = _store.to_status() if _store else {}
     return {
@@ -105,6 +109,7 @@ async def status(services: ServicesDep, _: DiagAdminDep) -> dict[str, Any]:
 
 
 # ── Listado de trazas ─────────────────────────────────────────────────────────
+
 
 @router.get("/traces")
 async def list_traces(
@@ -125,6 +130,7 @@ async def list_traces(
 
 # ── Detalle de una traza ──────────────────────────────────────────────────────
 
+
 @router.get("/traces/{trace_id}")
 async def get_trace(_: DiagAdminDep, trace_id: str) -> dict[str, Any]:
     _require_enabled()
@@ -141,6 +147,7 @@ async def get_trace(_: DiagAdminDep, trace_id: str) -> dict[str, Any]:
 
 # ── Eventos de una traza ──────────────────────────────────────────────────────
 
+
 @router.get("/traces/{trace_id}/events")
 async def get_trace_events(_: DiagAdminDep, trace_id: str) -> list[dict[str, Any]]:
     _require_enabled()
@@ -153,6 +160,7 @@ async def get_trace_events(_: DiagAdminDep, trace_id: str) -> list[dict[str, Any
 
 
 # ── Métricas globales ─────────────────────────────────────────────────────────
+
 
 @router.get("/metrics")
 async def metrics(_: DiagAdminDep, minutes: int = 60) -> dict[str, Any]:
@@ -167,6 +175,7 @@ async def metrics(_: DiagAdminDep, minutes: int = 60) -> dict[str, Any]:
 
 
 # ── Streaming en tiempo real (SSE) ────────────────────────────────────────────
+
 
 @router.get("/live")
 async def live_stream(_: DiagAdminDep) -> StreamingResponse:
@@ -185,6 +194,7 @@ async def live_stream(_: DiagAdminDep) -> StreamingResponse:
 
 
 # ── Etiquetado manual (Golden Dataset) ───────────────────────────────────────
+
 
 class LabelRequest(BaseModel):
     label: str  # "correct" | "incorrect" | "needs_review" | "regression"

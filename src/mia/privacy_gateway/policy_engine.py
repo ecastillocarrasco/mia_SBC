@@ -30,21 +30,23 @@ class Action(StrEnum):
     """Pasa sin modificar: no es un identificador por sí mismo (cifras analíticas, porcentajes…)."""
 
 
-PERSONAL_ENTITIES = frozenset({
-    "PERSON",
-    "EMAIL_ADDRESS",
-    "PHONE_NUMBER",
-    "LOCATION",
-    "IBAN_CODE",
-    "CREDIT_CARD",
-    "US_SSN",
-    "MEDICAL_LICENSE",
-    "ES_DNI_NIE",
-    "ES_IBAN",
-    "ES_SOCIAL_SECURITY",
-    "ES_NIF",
-    "ES_NIE",
-})
+PERSONAL_ENTITIES = frozenset(
+    {
+        "PERSON",
+        "EMAIL_ADDRESS",
+        "PHONE_NUMBER",
+        "LOCATION",
+        "IBAN_CODE",
+        "CREDIT_CARD",
+        "US_SSN",
+        "MEDICAL_LICENSE",
+        "ES_DNI_NIE",
+        "ES_IBAN",
+        "ES_SOCIAL_SECURITY",
+        "ES_NIF",
+        "ES_NIE",
+    }
+)
 """Entidades que SIEMPRE se tokenizan, en las cuatro políticas: es la red de seguridad base.
 ES_NIF/ES_NIE son los reconocedores NATIVOS de Presidio para España (coexisten con los propios
 ES_DNI_NIE/ES_IBAN/ES_SOCIAL_SECURITY, con verificación de dígito de control): doble cobertura

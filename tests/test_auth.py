@@ -45,7 +45,7 @@ def test_global_app_role_has_every_permission() -> None:
 
 
 def test_rrhh_app_role_matches_the_dev_equivalent() -> None:
-    """"RRHH" (App Role real) y "mia.rrhh" (rol de desarrollo) deben dar exactamente el mismo
+    """ "RRHH" (App Role real) y "mia.rrhh" (rol de desarrollo) deben dar exactamente el mismo
     acceso: son el mismo conjunto de permisos bajo dos nombres, nunca dos definiciones que puedan
     divergir en silencio."""
     rrhh = UserContext("u", "U", roles=frozenset({"RRHH"}))

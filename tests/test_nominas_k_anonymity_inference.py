@@ -75,12 +75,8 @@ async def test_hidden_department_set_is_the_same_regardless_of_economic_concept(
     devengado = await _call(q3_registry, periodo="julio a septiembre de 2026", concepto="devengado")
     assert liquido.status is ToolStatus.OK
     assert devengado.status is ToolStatus.OK
-    hidden_in_liquido = {
-        dk for dk, d in liquido.summary["por_departamento"].items() if "total" not in d
-    }
-    hidden_in_devengado = {
-        dk for dk, d in devengado.summary["por_departamento"].items() if "total" not in d
-    }
+    hidden_in_liquido = {dk for dk, d in liquido.summary["por_departamento"].items() if "total" not in d}
+    hidden_in_devengado = {dk for dk, d in devengado.summary["por_departamento"].items() if "total" not in d}
     assert hidden_in_liquido == hidden_in_devengado == {"Sala"}
 
 
@@ -97,13 +93,21 @@ async def two_small_groups_registry(tmp_path: Path) -> AsyncIterator[ToolRegistr
     totales, ninguna de las dos debe quedar aislable combinando lo que SÍ se expone)."""
     db = await fresh_database(tmp_path, "nom_eco_two_hidden.db")
     net_by_person = {
-        "pk-tc1": 1800.0, "pk-tc2": 1800.0, "pk-tc3": 1800.0, "pk-tc4": 1800.0,  # Cocina: 7200 total
-        "pk-ts1": 900.0, "pk-ts2": 900.0,  # Sala: 1800 total (oculto)
+        "pk-tc1": 1800.0,
+        "pk-tc2": 1800.0,
+        "pk-tc3": 1800.0,
+        "pk-tc4": 1800.0,  # Cocina: 7200 total
+        "pk-ts1": 900.0,
+        "pk-ts2": 900.0,  # Sala: 1800 total (oculto)
         "pk-tt1": 500.0,  # Terraza: 500 total (oculto)
     }
     dept_by_person = {
-        "pk-tc1": "Cocina", "pk-tc2": "Cocina", "pk-tc3": "Cocina", "pk-tc4": "Cocina",
-        "pk-ts1": "Sala", "pk-ts2": "Sala",
+        "pk-tc1": "Cocina",
+        "pk-tc2": "Cocina",
+        "pk-tc3": "Cocina",
+        "pk-tc4": "Cocina",
+        "pk-ts1": "Sala",
+        "pk-ts2": "Sala",
         "pk-tt1": "Terraza",
     }
     sp_id_by_person = {pk: 500 + i for i, pk in enumerate(net_by_person)}
@@ -129,7 +133,9 @@ async def two_small_groups_registry(tmp_path: Path) -> AsyncIterator[ToolRegistr
         )
         return httpx.Response(200, content=_pdf(text))
 
-    sp = SharePointClient(site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=httpx.MockTransport(files))
+    sp = SharePointClient(
+        site_url="https://x/sites/rrhh", tokens=StaticTokenProvider(), transport=httpx.MockTransport(files)
+    )
     yield build_registry(db, sharepoint=sp)
     await sp.aclose()
     await db.dispose()

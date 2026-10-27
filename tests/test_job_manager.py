@@ -17,7 +17,7 @@ from tests.dbutil import fresh_database
 
 
 async def test_submitted_job_is_persisted_and_survives_a_new_session(tmp_path: Path) -> None:
-    """"Reinicio" = abrir una sesión nueva sobre la misma base de datos: el trabajo debe seguir ahí."""
+    """ "Reinicio" = abrir una sesión nueva sobre la misma base de datos: el trabajo debe seguir ahí."""
     db = await fresh_database(tmp_path, "jobs_persist.db")
     async with db.session() as s:
         job_id = await jm.submit(s, user_id="u1", kind="informe_economico", params={"periodo": "T3 2026"})
@@ -31,9 +31,13 @@ async def test_submitted_job_is_persisted_and_survives_a_new_session(tmp_path: P
 async def test_resubmitting_the_same_idempotency_key_returns_the_existing_job(tmp_path: Path) -> None:
     db = await fresh_database(tmp_path, "jobs_idempotent.db")
     async with db.session() as s:
-        first = await jm.submit(s, user_id="u1", kind="informe_economico", params={"periodo": "T3"}, idempotency_key="k1")
+        first = await jm.submit(
+            s, user_id="u1", kind="informe_economico", params={"periodo": "T3"}, idempotency_key="k1"
+        )
     async with db.session() as s:
-        second = await jm.submit(s, user_id="u1", kind="informe_economico", params={"periodo": "T3"}, idempotency_key="k1")
+        second = await jm.submit(
+            s, user_id="u1", kind="informe_economico", params={"periodo": "T3"}, idempotency_key="k1"
+        )
     assert first == second
     async with db.session() as s:
         count = len((await s.execute(ReportJob.__table__.select())).all())

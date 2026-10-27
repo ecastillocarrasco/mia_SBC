@@ -17,6 +17,7 @@ def _att_kwargs(body: ChatRequest, services: ServicesDep) -> dict:
         return {"attachment_ids": body.attachment_ids, "attachment_service": services.attachment_service}
     return {}
 
+
 router = APIRouter(prefix="/api", tags=["conversación"])
 
 

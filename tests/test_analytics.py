@@ -204,7 +204,8 @@ def test_metric_comparison_missing_value_yields_none_diffs() -> None:
 
 def test_comparison_result_to_table_and_key_insights() -> None:
     result = ComparisonResult(
-        "IT", "Ventas",
+        "IT",
+        "Ventas",
         metrics=[MetricComparison("Salario medio", "IT", 40000.0, "Ventas", 30000.0, unit="€", higher_is_better=True)],
     )
     table = result.to_table()

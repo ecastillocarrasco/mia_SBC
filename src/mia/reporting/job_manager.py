@@ -65,17 +65,29 @@ class JobSnapshot:
     @classmethod
     def from_row(cls, row: ReportJob) -> JobSnapshot:
         return cls(
-            id=row.id, user_id=row.user_id, kind=row.kind, params=json.loads(row.params_json),
-            status=row.status, progress=row.progress, progress_message=row.progress_message,
-            report_id=row.report_id, error_message=row.error_message,
-            attempt_count=row.attempt_count, max_attempts=row.max_attempts,
+            id=row.id,
+            user_id=row.user_id,
+            kind=row.kind,
+            params=json.loads(row.params_json),
+            status=row.status,
+            progress=row.progress,
+            progress_message=row.progress_message,
+            report_id=row.report_id,
+            error_message=row.error_message,
+            attempt_count=row.attempt_count,
+            max_attempts=row.max_attempts,
             cancel_requested=row.cancel_requested,
         )
 
 
 async def submit(
-    db: AsyncSession, *, user_id: str, kind: str, params: dict[str, Any],
-    idempotency_key: str | None = None, max_attempts: int = 3,
+    db: AsyncSession,
+    *,
+    user_id: str,
+    kind: str,
+    params: dict[str, Any],
+    idempotency_key: str | None = None,
+    max_attempts: int = 3,
 ) -> str:
     """Encola un trabajo nuevo. Si ``idempotency_key`` ya existe y su trabajo no ha fallado
     definitivamente, devuelve el ``job_id`` YA existente en vez de duplicar el envío (sección 4:
@@ -106,8 +118,13 @@ async def submit(
             await db.flush()
             return existing.id
     job = ReportJob(
-        id=_uuid(), user_id=user_id, kind=kind, params_json=json.dumps(params, ensure_ascii=False),
-        idempotency_key=idempotency_key, status=JOB_QUEUED, max_attempts=max_attempts,
+        id=_uuid(),
+        user_id=user_id,
+        kind=kind,
+        params_json=json.dumps(params, ensure_ascii=False),
+        idempotency_key=idempotency_key,
+        status=JOB_QUEUED,
+        max_attempts=max_attempts,
     )
     db.add(job)
     await db.flush()
@@ -132,7 +149,11 @@ async def list_for_user(db: AsyncSession, *, user_id: str, limit: int = 20) -> l
 
 
 async def claim_next(
-    db: AsyncSession, *, worker_id: str, kinds: tuple[str, ...] | None = None, lease_seconds: int = DEFAULT_LEASE_SECONDS
+    db: AsyncSession,
+    *,
+    worker_id: str,
+    kinds: tuple[str, ...] | None = None,
+    lease_seconds: int = DEFAULT_LEASE_SECONDS,
 ) -> JobSnapshot | None:
     """Reclama el siguiente trabajo en cola (el más antiguo primero), o ``None`` si no hay ninguno
     disponible para este worker en este momento. Reintenta con el siguiente candidato si pierde la
@@ -147,8 +168,11 @@ async def claim_next(
             update(ReportJob)
             .where(ReportJob.id == candidate_id, ReportJob.status == JOB_QUEUED)
             .values(
-                status=JOB_RUNNING, lease_owner=worker_id, lease_until=now + timedelta(seconds=lease_seconds),
-                started_at=now, attempt_count=ReportJob.attempt_count + 1,
+                status=JOB_RUNNING,
+                lease_owner=worker_id,
+                lease_until=now + timedelta(seconds=lease_seconds),
+                started_at=now,
+                attempt_count=ReportJob.attempt_count + 1,
             )
         )
         if result.rowcount == 1:
@@ -157,7 +181,9 @@ async def claim_next(
     return None
 
 
-async def heartbeat(db: AsyncSession, job_id: str, *, worker_id: str, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> bool:
+async def heartbeat(
+    db: AsyncSession, job_id: str, *, worker_id: str, lease_seconds: int = DEFAULT_LEASE_SECONDS
+) -> bool:
     """Prolonga el lease de un trabajo largo que sigue vivo. Devuelve False si el lease ya se perdió
     (otro worker lo reclamó entre medias) — señal de que el ejecutor actual debe abandonar."""
     result = await db.execute(

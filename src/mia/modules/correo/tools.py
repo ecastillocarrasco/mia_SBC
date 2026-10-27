@@ -35,11 +35,32 @@ MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
 SIGNATURE_BANNER_PATH = Path(__file__).with_name("assets") / "signature-banner.png"
 
 KEYWORDS = (
-    "correo", "correos", "email", "emails", "e-mail", "buzon", "buzón", "bandeja de entrada",
-    "mensaje", "mensajes", "borrador", "borradores", "responder correo", "enviar correo",
-    "correo sin leer", "correos enviados", "elementos enviados", "hilo de correo",
-    "hilo de correos", "conversacion de correo", "conversación de correo", "ultimos correos",
-    "últimos correos", "adjunto del correo", "adjuntos del correo", "descargar adjunto",
+    "correo",
+    "correos",
+    "email",
+    "emails",
+    "e-mail",
+    "buzon",
+    "buzón",
+    "bandeja de entrada",
+    "mensaje",
+    "mensajes",
+    "borrador",
+    "borradores",
+    "responder correo",
+    "enviar correo",
+    "correo sin leer",
+    "correos enviados",
+    "elementos enviados",
+    "hilo de correo",
+    "hilo de correos",
+    "conversacion de correo",
+    "conversación de correo",
+    "ultimos correos",
+    "últimos correos",
+    "adjunto del correo",
+    "adjuntos del correo",
+    "descargar adjunto",
 )
 """Ver `empleados.tools.KEYWORDS` para el criterio."""
 
@@ -56,9 +77,7 @@ def _plain(body: dict[str, Any] | None) -> str:
     return plain_text(str((body or {}).get("content") or ""), str((body or {}).get("contentType") or "text"))
 
 
-def _reply_body_html(
-    text: str, quoted_body: dict[str, Any] | None = None, signature_html: str = ""
-) -> str:
+def _reply_body_html(text: str, quoted_body: dict[str, Any] | None = None, signature_html: str = "") -> str:
     """Representa el texto redactado como HTML para que Outlook conserve párrafos y saltos."""
     normalized = text.replace("\r\n", "\n").replace("\r", "\n")
     reply = html.escape(normalized).replace("\n", "<br>\n")
@@ -115,9 +134,7 @@ def _sender(message: dict[str, Any]) -> str:
 
 
 def _recipients(message: dict[str, Any]) -> str:
-    return ", ".join(
-        a for r in message.get("toRecipients", []) if (a := r.get("emailAddress", {}).get("address"))
-    )
+    return ", ".join(a for r in message.get("toRecipients", []) if (a := r.get("emailAddress", {}).get("address")))
 
 
 def _attachment_type_label(name: str | None, content_type: str | None) -> str:
@@ -125,9 +142,20 @@ def _attachment_type_label(name: str | None, content_type: str | None) -> str:
     extensión del nombre (más fiable que el content-type de Graph, que a veces llega genérico)."""
     ext = Path(str(name or "")).suffix.lower().lstrip(".")
     labels = {
-        "pdf": "PDF", "doc": "Word", "docx": "Word", "xls": "Excel", "xlsx": "Excel",
-        "ppt": "PowerPoint", "pptx": "PowerPoint", "csv": "CSV", "txt": "texto",
-        "png": "imagen", "jpg": "imagen", "jpeg": "imagen", "gif": "imagen", "zip": "comprimido",
+        "pdf": "PDF",
+        "doc": "Word",
+        "docx": "Word",
+        "xls": "Excel",
+        "xlsx": "Excel",
+        "ppt": "PowerPoint",
+        "pptx": "PowerPoint",
+        "csv": "CSV",
+        "txt": "texto",
+        "png": "imagen",
+        "jpg": "imagen",
+        "jpeg": "imagen",
+        "gif": "imagen",
+        "zip": "comprimido",
     }
     if ext in labels:
         return labels[ext]
@@ -142,9 +170,10 @@ def _remember(ctx: ToolContext, messages: list[dict[str, Any]], mailbox: str) ->
     mailboxes: dict[str, str] = ctx.session_state.setdefault("correo_mailboxes", {})
     out = []
     for message in messages:
-        ref = next(
-            (k for k, v in refs.items() if v == message["id"] and mailboxes.get(k) == mailbox), None
-        ) or f"c{len(refs) + 1}"
+        ref = (
+            next((k for k, v in refs.items() if v == message["id"] and mailboxes.get(k) == mailbox), None)
+            or f"c{len(refs) + 1}"
+        )
         refs[ref] = message["id"]
         mailboxes[ref] = mailbox
         row = {
@@ -220,9 +249,7 @@ def _unavailable(deps: MailDeps, ctx: ToolContext) -> ToolResult | None:
     return None
 
 
-def _mailbox_address(
-    deps: MailDeps, ctx: ToolContext, requested: str | None = None, *, ref: str | None = None
-) -> str:
+def _mailbox_address(deps: MailDeps, ctx: ToolContext, requested: str | None = None, *, ref: str | None = None) -> str:
     """Resuelve buzón personal o compartido; Exchange valida el permiso delegado al consultar Graph."""
     stored = ctx.session_state.get("correo_mailboxes", {}).get(ref) if ref else None
     if requested and requested.strip():
@@ -233,9 +260,11 @@ def _mailbox_address(
         if ctx.user.auth_method != "entra":
             raise GraphError("La selección de buzones compartidos requiere una sesión delegada de Entra")
     else:
-        mailbox = stored or (
-            ctx.user.user_id if ctx.user.auth_method == "entra" else resolve_mailbox(deps.settings.mail, ctx.user)
-        ) or ""
+        mailbox = (
+            stored
+            or (ctx.user.user_id if ctx.user.auth_method == "entra" else resolve_mailbox(deps.settings.mail, ctx.user))
+            or ""
+        )
     if not mailbox:
         raise GraphError("No se pudo resolver el buzón para esta sesión")
     return mailbox
@@ -251,7 +280,10 @@ async def _graph_request(deps: MailDeps, ctx: ToolContext, method: str, path: st
 
 # ------------------------------------------------------------------ lectura
 class PendientesParams(BaseModel):
-    buzon: str | None = Field(default=None, description="UPN o dirección del buzón compartido; vacío = mi buzón. Graph valida el acceso del usuario.")
+    buzon: str | None = Field(
+        default=None,
+        description="UPN o dirección del buzón compartido; vacío = mi buzón. Graph valida el acceso del usuario.",
+    )
     limite: int = Field(default=15, ge=1, le=50)
     incluir_texto: bool = Field(default=False, description="true para un triaje a fondo (lee el cuerpo de cada correo)")
 
@@ -261,7 +293,9 @@ def pendientes(deps: MailDeps) -> Tool:
         if problem := _unavailable(deps, ctx):
             return problem
         try:
-            payload = await _graph_request(deps, ctx, 
+            payload = await _graph_request(
+                deps,
+                ctx,
                 "GET",
                 f"{_mailbox(deps, ctx, p.buzon)}/mailFolders/inbox/messages",
                 params={
@@ -298,7 +332,10 @@ def pendientes(deps: MailDeps) -> Tool:
 
 
 class RecientesParams(BaseModel):
-    buzon: str | None = Field(default=None, description="UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph.")
+    buzon: str | None = Field(
+        default=None,
+        description="UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph.",
+    )
     limite: int = Field(default=15, ge=1, le=50)
     incluir_texto: bool = Field(default=False, description="true para un triaje a fondo (lee el cuerpo de cada correo)")
 
@@ -308,7 +345,9 @@ def recientes(deps: MailDeps) -> Tool:
         if problem := _unavailable(deps, ctx):
             return problem
         try:
-            payload = await _graph_request(deps, ctx,
+            payload = await _graph_request(
+                deps,
+                ctx,
                 "GET",
                 f"{_mailbox(deps, ctx, p.buzon)}/mailFolders/inbox/messages",
                 params={
@@ -347,7 +386,10 @@ def recientes(deps: MailDeps) -> Tool:
 
 
 class EnviadosParams(BaseModel):
-    buzon: str | None = Field(default=None, description="UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph.")
+    buzon: str | None = Field(
+        default=None,
+        description="UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph.",
+    )
     limite: int = Field(default=15, ge=1, le=50)
 
 
@@ -356,7 +398,9 @@ def enviados(deps: MailDeps) -> Tool:
         if problem := _unavailable(deps, ctx):
             return problem
         try:
-            payload = await _graph_request(deps, ctx, 
+            payload = await _graph_request(
+                deps,
+                ctx,
                 "GET",
                 f"{_mailbox(deps, ctx, p.buzon)}/mailFolders/sentitems/messages",
                 params={
@@ -386,7 +430,10 @@ def enviados(deps: MailDeps) -> Tool:
 
 
 class BuscarParams(BaseModel):
-    buzon: str | None = Field(default=None, description="UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph.")
+    buzon: str | None = Field(
+        default=None,
+        description="UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph.",
+    )
     consulta: str = Field(description="Texto a buscar: remitente, asunto o contenido")
     limite: int = Field(default=15, ge=1, le=50)
 
@@ -397,7 +444,9 @@ def buscar(deps: MailDeps) -> Tool:
             return problem
         query = p.consulta.replace('"', " ")
         try:
-            payload = await _graph_request(deps, ctx, 
+            payload = await _graph_request(
+                deps,
+                ctx,
                 "GET",
                 f"{_mailbox(deps, ctx, p.buzon)}/messages",
                 params={"$search": f'"{query}"', "$top": p.limite, "$select": SELECT},
@@ -423,7 +472,10 @@ def buscar(deps: MailDeps) -> Tool:
 
 
 class HiloParams(BaseModel):
-    buzon: str | None = Field(default=None, description="UPN o dirección del buzón compartido solicitado; omítelo para conservar el buzón de la referencia. Graph valida el acceso.")
+    buzon: str | None = Field(
+        default=None,
+        description="UPN o dirección del buzón compartido solicitado; omítelo para conservar el buzón de la referencia. Graph valida el acceso.",
+    )
     ref: str = Field(description="Referencia (c1, c2…) de cualquier correo de esa conversación")
 
 
@@ -436,13 +488,19 @@ def hilo(deps: MailDeps) -> Tool:
             return ToolResult(ToolStatus.NOT_FOUND, "No conozco esa referencia: lista o busca los correos antes.")
         try:
             # El conversationId puede no estar ya en memoria si el ref viene de una lista antigua.
-            message = await _graph_request(deps, ctx, 
-                "GET", f"{_mailbox(deps, ctx, p.buzon, ref=p.ref)}/messages/{message_id}", params={"$select": "conversationId"}
+            message = await _graph_request(
+                deps,
+                ctx,
+                "GET",
+                f"{_mailbox(deps, ctx, p.buzon, ref=p.ref)}/messages/{message_id}",
+                params={"$select": "conversationId"},
             )
             conversation_id = message.get("conversationId")
             if not conversation_id:
                 return ToolResult(ToolStatus.NOT_FOUND, "Ese correo no tiene conversación asociada.")
-            payload = await _graph_request(deps, ctx, 
+            payload = await _graph_request(
+                deps,
+                ctx,
                 "GET",
                 f"{_mailbox(deps, ctx, p.buzon, ref=p.ref)}/messages",
                 params={
@@ -504,7 +562,10 @@ def _attachment_text(attachment: dict[str, Any]) -> str | None:
 
 
 class LeerParams(BaseModel):
-    buzon: str | None = Field(default=None, description="UPN o dirección del buzón compartido solicitado; omítelo para conservar el buzón de la referencia. Graph valida el acceso.")
+    buzon: str | None = Field(
+        default=None,
+        description="UPN o dirección del buzón compartido solicitado; omítelo para conservar el buzón de la referencia. Graph valida el acceso.",
+    )
     ref: str = Field(description="Referencia del correo (c1, c2…) de una lista anterior")
 
 
@@ -535,7 +596,9 @@ def leer(deps: MailDeps) -> Tool:
             return ToolResult(ToolStatus.NOT_FOUND, "No conozco esa referencia: lista o busca los correos antes.")
         mailbox = _mailbox(deps, ctx, p.buzon, ref=p.ref)
         try:
-            message = await _graph_request(deps, ctx, 
+            message = await _graph_request(
+                deps,
+                ctx,
                 "GET",
                 f"{mailbox}/messages/{message_id}",
                 params={"$select": "subject,from,toRecipients,ccRecipients,receivedDateTime,body,hasAttachments"},
@@ -545,7 +608,9 @@ def leer(deps: MailDeps) -> Tool:
                 # "id,name,size,contentType" son propiedades del tipo BASE (attachment): a diferencia
                 # de contentBytes, sí admiten $select aquí. Ver _attachment_content().
                 attachments = (
-                    await _graph_request(deps, ctx, 
+                    await _graph_request(
+                        deps,
+                        ctx,
                         "GET",
                         f"{mailbox}/messages/{message_id}/attachments",
                         params={"$select": "id,name,size,contentType"},
@@ -565,19 +630,22 @@ def leer(deps: MailDeps) -> Tool:
             elif is_file:
                 full = await _attachment_content(deps, ctx, mailbox, message_id, str(a.get("id")))
                 contenido = _attachment_text(full) if full is not None else "(no se ha podido leer este adjunto)"
-            adjuntos.append({
-                "nombre": a.get("name"),
-                "contenido": contenido,
-                "url": (
-                    f"{attachment_url}{a.get('id')}"
-                    + (
-                        f"?buzon={quote(selected_mailbox, safe='@')}"
-                        if selected_mailbox not in {personal_mailbox, ctx.user.user_id}
-                        else ""
-                    )
-                    if is_file else None
-                ),
-            })
+            adjuntos.append(
+                {
+                    "nombre": a.get("name"),
+                    "contenido": contenido,
+                    "url": (
+                        f"{attachment_url}{a.get('id')}"
+                        + (
+                            f"?buzon={quote(selected_mailbox, safe='@')}"
+                            if selected_mailbox not in {personal_mailbox, ctx.user.user_id}
+                            else ""
+                        )
+                        if is_file
+                        else None
+                    ),
+                }
+            )
         view = {
             "ref": p.ref,
             "de": _sender(message),
@@ -605,7 +673,10 @@ def leer(deps: MailDeps) -> Tool:
 
 # ------------------------------------------------------------------ escritura (COR-001)
 class BorradorParams(BaseModel):
-    buzon: str | None = Field(default=None, description="UPN o dirección del buzón compartido solicitado; omítelo para conservar el buzón de la referencia. Graph valida el acceso.")
+    buzon: str | None = Field(
+        default=None,
+        description="UPN o dirección del buzón compartido solicitado; omítelo para conservar el buzón de la referencia. Graph valida el acceso.",
+    )
     ref: str = Field(description="Referencia del correo al que se responde")
     texto: str = Field(description="Texto de la respuesta", min_length=1, max_length=5000)
 
@@ -633,7 +704,10 @@ def borrador(deps: MailDeps) -> Tool:
                 )
                 quoted_body = current.get("body")
             await _graph_request(
-                deps, ctx, "PATCH", f"{mailbox}/messages/{draft['id']}",
+                deps,
+                ctx,
+                "PATCH",
+                f"{mailbox}/messages/{draft['id']}",
                 json={
                     "body": {
                         "contentType": "HTML",
@@ -697,9 +771,7 @@ class EnviarParams(BaseModel):
     borrador: str = Field(description="Referencia del borrador (b1, b2…)")
 
 
-def _send_blocker(
-    deps: MailDeps, draft: dict[str, Any] | None, ctx: ToolContext
-) -> ToolResult | None:  # noqa: PLR0911
+def _send_blocker(deps: MailDeps, draft: dict[str, Any] | None, ctx: ToolContext) -> ToolResult | None:
     """Motivo por el que NO se puede enviar, o None si todo está en regla (COR-001)."""
     denied = ToolStatus.PERMISSION_DENIED
     if not deps.settings.mail.send_enabled:
@@ -713,8 +785,9 @@ def _send_blocker(
     if draft.get("enviado"):
         return ToolResult(denied, "Ese borrador ya se envió.")
     if draft.get("mailbox") and draft["mailbox"] not in {
-        resolve_mailbox(deps.settings.mail, ctx.user), ctx.user.user_id,
-        *ctx.session_state.get("correo_mailboxes", {}).values()
+        resolve_mailbox(deps.settings.mail, ctx.user),
+        ctx.user.user_id,
+        *ctx.session_state.get("correo_mailboxes", {}).values(),
     }:
         return ToolResult(denied, "Ese borrador pertenece a otro buzón: no se puede enviar desde esta sesión.")
     return None
@@ -731,8 +804,8 @@ def enviar(deps: MailDeps) -> Tool:
         mailbox = draft.get("mailbox") or resolve_mailbox(deps.settings.mail, ctx.user) or ""
         mailbox_path = GraphClient.user_path(mailbox)
         try:
-            message = await _graph_request(deps, ctx, 
-                "GET", f"{mailbox_path}/messages/{draft['id']}", params={"$select": "toRecipients"}
+            message = await _graph_request(
+                deps, ctx, "GET", f"{mailbox_path}/messages/{draft['id']}", params={"$select": "toRecipients"}
             )
             to = [r.get("emailAddress", {}).get("address", "") for r in message.get("toRecipients", [])]
             if any(_NOREPLY.search(a) for a in to):
@@ -771,7 +844,9 @@ def modificar(deps: MailDeps) -> Tool:
         mailbox = draft.get("mailbox") or resolve_mailbox(deps.settings.mail, ctx.user) or ""
         signature = await _mail_signature(deps, ctx)
         try:
-            await _graph_request(deps, ctx, 
+            await _graph_request(
+                deps,
+                ctx,
                 "PATCH",
                 f"{GraphClient.user_path(mailbox)}/messages/{draft['id']}",
                 json={
@@ -782,7 +857,10 @@ def modificar(deps: MailDeps) -> Tool:
                 },
             )
             attachments = await _graph_request(
-                deps, ctx, "GET", f"{GraphClient.user_path(mailbox)}/messages/{draft['id']}/attachments",
+                deps,
+                ctx,
+                "GET",
+                f"{GraphClient.user_path(mailbox)}/messages/{draft['id']}/attachments",
                 params={"$select": "id,contentId"},
             )
             if not any(a.get("contentId") == SIGNATURE_BANNER_CID for a in attachments.get("value", [])):
@@ -803,8 +881,11 @@ def modificar(deps: MailDeps) -> Tool:
                 "texto": p.texto,
                 "envio_habilitado": bool(deps.settings.mail.send_enabled),
                 "firma_preview": signature.preview,
-                "buzon_envio_nombre": draft.get("mailbox_label") or (
-                    ctx.user.email if ctx.user.auth_method == "entra" and draft.get("mailbox") == ctx.user.user_id else draft.get("mailbox")
+                "buzon_envio_nombre": draft.get("mailbox_label")
+                or (
+                    ctx.user.email
+                    if ctx.user.auth_method == "entra" and draft.get("mailbox") == ctx.user.user_id
+                    else draft.get("mailbox")
                 ),
             },
         )
@@ -850,7 +931,10 @@ def descartar(deps: MailDeps) -> Tool:
 
 
 class GuardadosParams(BaseModel):
-    buzon: str | None = Field(default=None, description="UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph.")
+    buzon: str | None = Field(
+        default=None,
+        description="UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph.",
+    )
     limite: int = Field(default=10, ge=1, le=30)
 
 
@@ -859,7 +943,9 @@ def guardados(deps: MailDeps) -> Tool:
         if problem := _unavailable(deps, ctx):
             return problem
         try:
-            payload = await _graph_request(deps, ctx, 
+            payload = await _graph_request(
+                deps,
+                ctx,
                 "GET",
                 f"{_mailbox(deps, ctx, p.buzon)}/mailFolders/drafts/messages",
                 params={"$top": p.limite, "$orderby": "lastModifiedDateTime desc", "$select": SELECT},
@@ -881,7 +967,16 @@ def guardados(deps: MailDeps) -> Tool:
 
 def register(registry: ToolRegistry, deps: MailDeps) -> None:
     for factory in (
-        pendientes, recientes, enviados, buscar, hilo, leer,
-        borrador, enviar, modificar, descartar, guardados,
+        pendientes,
+        recientes,
+        enviados,
+        buscar,
+        hilo,
+        leer,
+        borrador,
+        enviar,
+        modificar,
+        descartar,
+        guardados,
     ):
         registry.register(factory(deps))

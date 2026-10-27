@@ -16,7 +16,16 @@ from mia.reporting.charts import (
 )
 
 __all__ = [
-    "MAX_CHART_ROWS", "NOT_CHARTABLE_HEADERS", "bar_chart", "chart_spec", "chart_spec_multi",
-    "donut_chart", "grouped_bar_chart", "histogram_chart", "scatter_chart", "select_chart_type",
-    "time_series_chart", "to_number",
+    "MAX_CHART_ROWS",
+    "NOT_CHARTABLE_HEADERS",
+    "bar_chart",
+    "chart_spec",
+    "chart_spec_multi",
+    "donut_chart",
+    "grouped_bar_chart",
+    "histogram_chart",
+    "scatter_chart",
+    "select_chart_type",
+    "time_series_chart",
+    "to_number",
 ]

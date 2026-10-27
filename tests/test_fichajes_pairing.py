@@ -51,7 +51,8 @@ def test_missing_mark_breaks_the_chain_instead_of_shifting_the_rest_of_the_week(
     del lunes no debe "robar" la entrada del martes como si fuera su salida."""
     marks = [
         _dt(5, 7, 0),  # lunes: entrada sin salida (olvido)
-        _dt(6, 7, 0), _dt(6, 15, 0),  # martes: normal
+        _dt(6, 7, 0),
+        _dt(6, 15, 0),  # martes: normal
     ]
     sessions, incomplete = pair_marks(marks)
     assert incomplete == [_dt(5, 7, 0)]
@@ -61,6 +62,7 @@ def test_missing_mark_breaks_the_chain_instead_of_shifting_the_rest_of_the_week(
 
 def test_gap_larger_than_max_session_breaks_pairing() -> None:
     from mia.modules.rrhh.fichajes.pairing import MAX_SESSION_GAP
+
     too_far = _dt(5, 7, 0) + MAX_SESSION_GAP + MAX_SESSION_GAP  # muy por encima del límite
     sessions, incomplete = pair_marks([_dt(5, 7, 0), too_far])
     assert sessions == []

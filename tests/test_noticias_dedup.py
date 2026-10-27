@@ -10,8 +10,12 @@ from mia.modules.community.noticias.sources import GROUP_FBD, GROUP_SUNSET, News
 
 def _item(titulo: str, url: str, fuente: str = "Fuente") -> NewsItem:
     return NewsItem(
-        titulo=titulo, url=url, fuente=fuente, grupo=GROUP_FBD,
-        categoria="corporativo_general", publicado=datetime(2026, 1, 1),
+        titulo=titulo,
+        url=url,
+        fuente=fuente,
+        grupo=GROUP_FBD,
+        categoria="corporativo_general",
+        publicado=datetime(2026, 1, 1),
     )
 
 
@@ -28,7 +32,11 @@ def test_normalize_url_strips_trailing_slash() -> None:
 def test_dedupe_keeps_first_seen_same_url() -> None:
     items = [
         _item("Artículo oficial", "https://farmerbusinessdevelopments.ie/cmsFiles/a.pdf", "Oficial"),
-        _item("Artículo oficial (recogido por Google)", "https://farmerbusinessdevelopments.ie/cmsFiles/a.pdf", "Google News"),
+        _item(
+            "Artículo oficial (recogido por Google)",
+            "https://farmerbusinessdevelopments.ie/cmsFiles/a.pdf",
+            "Google News",
+        ),
     ]
     out = dedupe(items)
     assert len(out) == 1
@@ -79,12 +87,20 @@ def test_dedupe_never_merges_across_different_groups() -> None:
     conservar su propia copia — fundirlas haría que, por ejemplo, pedir «noticias del grupo FBD»
     se quedara sin ese resultado solo porque dedupe() vio antes la versión de Sunset."""
     sunset = NewsItem(
-        titulo="Mismo artículo", url="https://a.test/x", fuente="A",
-        grupo=GROUP_SUNSET, categoria="corporativo_general", publicado=datetime(2026, 1, 1),
+        titulo="Mismo artículo",
+        url="https://a.test/x",
+        fuente="A",
+        grupo=GROUP_SUNSET,
+        categoria="corporativo_general",
+        publicado=datetime(2026, 1, 1),
     )
     fbd = NewsItem(
-        titulo="Mismo artículo", url="https://a.test/x", fuente="A",
-        grupo=GROUP_FBD, categoria="corporativo_general", publicado=datetime(2026, 1, 1),
+        titulo="Mismo artículo",
+        url="https://a.test/x",
+        fuente="A",
+        grupo=GROUP_FBD,
+        categoria="corporativo_general",
+        publicado=datetime(2026, 1, 1),
     )
     out = dedupe([sunset, fbd])
     assert len(out) == 2
@@ -96,13 +112,19 @@ def test_dedupe_does_not_merge_recurring_yearly_titles_from_different_years() ->
     Chairman's Statement for 2024" / "...for 2025"): son noticias DISTINTAS, no el mismo hecho
     recogido dos veces, aunque el título normalizado sea casi idéntico."""
     old = NewsItem(
-        titulo="Publication of Chairman's Statement for 2024", url="https://a.test/2024-statement",
-        fuente="Oficial", grupo=GROUP_FBD, categoria="inversion_financiera",
+        titulo="Publication of Chairman's Statement for 2024",
+        url="https://a.test/2024-statement",
+        fuente="Oficial",
+        grupo=GROUP_FBD,
+        categoria="inversion_financiera",
         publicado=datetime(2025, 5, 20),
     )
     new = NewsItem(
-        titulo="Publication of Chairman's Statement for 2025", url="https://a.test/2025-statement",
-        fuente="Oficial", grupo=GROUP_FBD, categoria="inversion_financiera",
+        titulo="Publication of Chairman's Statement for 2025",
+        url="https://a.test/2025-statement",
+        fuente="Oficial",
+        grupo=GROUP_FBD,
+        categoria="inversion_financiera",
         publicado=datetime(2026, 5, 19),
     )
     out = dedupe([old, new])

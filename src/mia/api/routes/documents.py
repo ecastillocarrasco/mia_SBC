@@ -56,7 +56,9 @@ async def download(kind: str, item_id: int, services: ServicesDep, user: UserDep
             and is_medical_document_type(record.doc_type)
             and not user.has(Permission.DOCUMENTOS_CONTENIDO_MEDICO)
         ):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "No tienes permiso para abrir documentos de reconocimiento médico")
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, "No tienes permiso para abrir documentos de reconocimiento médico"
+            )
         outcome = "ok" if record is not None else "not_found"
         await AuditRepository(db).record(
             user_id=user.user_id,

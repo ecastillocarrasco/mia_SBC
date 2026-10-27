@@ -121,8 +121,7 @@ class ComparisonResult:
             if m.winner and m.pct_diff is not None and abs(m.pct_diff) >= 5:
                 direction = "mayor" if m.absolute_diff and m.absolute_diff > 0 else "menor"
                 lines.append(
-                    f"{m.winner} tiene {direction} {m.metric} "
-                    f"({'+' if m.pct_diff > 0 else ''}{m.pct_diff:.1f}%)."
+                    f"{m.winner} tiene {direction} {m.metric} ({'+' if m.pct_diff > 0 else ''}{m.pct_diff:.1f}%)."
                 )
         return lines[:5]
 
@@ -180,7 +179,4 @@ class MultiGroupComparison:
         valid = [(g, v) for g, v in items if v is not None]
         sorted_items = sorted(valid, key=lambda x: x[1], reverse=descending)
         unit = self.metric_units.get(metric, "")
-        return [
-            {"rank": i + 1, "group": g, "value": v, "unit": unit}
-            for i, (g, v) in enumerate(sorted_items)
-        ]
+        return [{"rank": i + 1, "group": g, "value": v, "unit": unit} for i, (g, v) in enumerate(sorted_items)]

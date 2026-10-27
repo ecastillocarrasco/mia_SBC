@@ -25,7 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     services:
       db:
-        image: postgres:18
+        # pgvector/pgvector en vez de postgres:18 a pelo: la migracion 0011 hace
+        # "CREATE EXTENSION vector", que la imagen oficial de postgres no trae instalada.
+        image: pgvector/pgvector:pg18
         env:
           POSTGRES_USER: mia
           POSTGRES_PASSWORD: mia

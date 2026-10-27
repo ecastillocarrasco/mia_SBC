@@ -20,10 +20,21 @@ from mia.modules.community.common import Deps
 from mia.text import normalize_key
 
 KEYWORDS = (
-    "newsletter", "newsletter corporativo", "boletin", "boletín", "boletin corporativo",
-    "boletín corporativo", "comunicado interno", "comunicados internos", "circular interna",
-    "circulares internas", "tablon de anuncios", "tablón de anuncios", "anuncios internos",
-    "noticias internas", "noticia interna",
+    "newsletter",
+    "newsletter corporativo",
+    "boletin",
+    "boletín",
+    "boletin corporativo",
+    "boletín corporativo",
+    "comunicado interno",
+    "comunicados internos",
+    "circular interna",
+    "circulares internas",
+    "tablon de anuncios",
+    "tablón de anuncios",
+    "anuncios internos",
+    "noticias internas",
+    "noticia interna",
 )
 """Vocabulario para el orquestador (`select_modules`). Deliberadamente sin «noticia»/«noticias»
 sueltas (ver `community.noticias.KEYWORDS`): evita que cualquier «noticias» genérico arrastre
@@ -88,10 +99,11 @@ class NewsletterParams(BaseModel):
         default=False, description="true SOLO si el usuario pide expresamente lo destacado/lo más importante."
     )
     categoria: str | None = Field(
-        default=None, description="Filtra por categoría SOLO si el usuario la pide explícitamente, en sus "
+        default=None,
+        description="Filtra por categoría SOLO si el usuario la pide explícitamente, en sus "
         "propias palabras (p. ej. «corporativa»). Vacío si no la pide. Esta newsletter YA es la de "
         "Sunset Beach Club (no hay otra empresa posible): si el usuario dice «de Sunset Beach Club» o "
-        "«de SBC», eso no es una categoría, es solo nombrar de qué empresa es — deja este campo vacío."
+        "«de SBC», eso no es una categoría, es solo nombrar de qué empresa es — deja este campo vacío.",
     )
     limite: int = Field(default=15, ge=1, le=MAX_LIMIT)
 

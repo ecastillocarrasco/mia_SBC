@@ -52,7 +52,9 @@ async def upload_attachment(
     )
 
     if record.status == AttachmentStatus.ERROR:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, record.error_message or "Error al procesar el archivo.")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, record.error_message or "Error al procesar el archivo."
+        )
 
     return _attachment_response(record)
 

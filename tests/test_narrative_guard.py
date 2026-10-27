@@ -20,18 +20,24 @@ BACKEND = {"total_staff": 120.0, "absence_rate": 4.2, "total_cost": 0.0}
 
 
 def test_matching_fact_is_not_flagged() -> None:
-    stmt = narrative_statement("fact", "La plantilla es de 120 personas.", evidence={"metric": "total_staff", "value": 120.0})
+    stmt = narrative_statement(
+        "fact", "La plantilla es de 120 personas.", evidence={"metric": "total_staff", "value": 120.0}
+    )
     assert verify_statement(stmt, backend_values=BACKEND) is None
 
 
 def test_rounding_within_tolerance_is_not_flagged() -> None:
     """119,5 frente a 120,0 es un 0,42% de diferencia — redondeo de presentación, no un error real."""
-    stmt = narrative_statement("fact", "La plantilla es de unas 119,5 personas.", evidence={"metric": "total_staff", "value": 119.5})
+    stmt = narrative_statement(
+        "fact", "La plantilla es de unas 119,5 personas.", evidence={"metric": "total_staff", "value": 119.5}
+    )
     assert verify_statement(stmt, backend_values=BACKEND) is None
 
 
 def test_mismatched_fact_is_flagged_as_a_real_discrepancy() -> None:
-    stmt = narrative_statement("fact", "La plantilla creció a 200 personas.", evidence={"metric": "total_staff", "value": 200.0})
+    stmt = narrative_statement(
+        "fact", "La plantilla creció a 200 personas.", evidence={"metric": "total_staff", "value": 200.0}
+    )
     discrepancy = verify_statement(stmt, backend_values=BACKEND)
     assert discrepancy is not None
     assert discrepancy.metric == "total_staff"
@@ -40,7 +46,9 @@ def test_mismatched_fact_is_flagged_as_a_real_discrepancy() -> None:
 
 
 def test_zero_backend_value_with_nonzero_claim_is_flagged() -> None:
-    stmt = narrative_statement("fact", "El coste total fue de 500 €.", evidence={"metric": "total_cost", "value": 500.0})
+    stmt = narrative_statement(
+        "fact", "El coste total fue de 500 €.", evidence={"metric": "total_cost", "value": 500.0}
+    )
     assert verify_statement(stmt, backend_values=BACKEND) is not None
 
 
@@ -60,7 +68,9 @@ def test_fact_citing_an_unknown_metric_is_not_flagged() -> None:
 
 def test_verify_narrative_block_collects_only_the_real_discrepancies() -> None:
     statements = [
-        narrative_statement("fact", "La plantilla es de 120 personas.", evidence={"metric": "total_staff", "value": 120.0}),
+        narrative_statement(
+            "fact", "La plantilla es de 120 personas.", evidence={"metric": "total_staff", "value": 120.0}
+        ),
         narrative_statement("fact", "El absentismo fue del 9%.", evidence={"metric": "absence_rate", "value": 9.0}),
         narrative_statement("recommendation", "Conviene revisar la cobertura de Cocina."),
     ]
@@ -85,15 +95,15 @@ def test_enforce_narrative_integrity_blocks_the_discrepant_text_with_the_real_va
 
 
 def test_an_incorrect_amount_is_blocked() -> None:
-    stmt = narrative_statement("fact", "El coste total ascendió a 9.999 €.", evidence={"metric": "total_cost", "value": 9999.0})
+    stmt = narrative_statement(
+        "fact", "El coste total ascendió a 9.999 €.", evidence={"metric": "total_cost", "value": 9999.0}
+    )
     assert verify_statement(stmt, backend_values=BACKEND) is not None
 
 
 def test_an_incorrect_percentage_is_blocked() -> None:
     """Caso explícitamente pedido: "porcentajes equivocados" — una tasa de absentismo citada mal."""
-    stmt = narrative_statement(
-        "fact", "El absentismo fue del 15%.", evidence={"metric": "absence_rate", "value": 15.0}
-    )
+    stmt = narrative_statement("fact", "El absentismo fue del 15%.", evidence={"metric": "absence_rate", "value": 15.0})
     discrepancy = verify_statement(stmt, backend_values=BACKEND)
     assert discrepancy is not None
     assert discrepancy.backend_value == 4.2
@@ -167,7 +177,8 @@ def test_a_correct_period_declared_structurally_is_not_flagged() -> None:
 def test_enforce_narrative_period_coherence_blocks_with_both_periods_visible() -> None:
     statements = [
         narrative_statement(
-            "fact", "En julio el absentismo fue del 4,2%.",
+            "fact",
+            "En julio el absentismo fue del 4,2%.",
             evidence={"metric": "absence_rate", "value": 4.2, "period": "Julio 2026"},
         ),
         narrative_statement("recommendation", "Conviene revisar la cobertura de Cocina."),
@@ -184,7 +195,8 @@ def test_enforce_narrative_period_coherence_is_a_no_op_without_an_expected_perio
     bloquea nada — "no verificable" nunca se trata como "incorrecto"."""
     statements = [
         narrative_statement(
-            "fact", "En julio el absentismo fue del 4,2%.",
+            "fact",
+            "En julio el absentismo fue del 4,2%.",
             evidence={"metric": "absence_rate", "value": 4.2, "period": "Julio 2026"},
         ),
     ]
