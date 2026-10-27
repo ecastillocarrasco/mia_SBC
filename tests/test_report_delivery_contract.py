@@ -100,3 +100,48 @@ def test_avisos_de_sincronizacion_viajan_al_informe():
     }, summary={"al_dia": False, "aviso": "Última sincronización hace 17144 minutos"})
     result = merge_report_sources([original], title=PROMPT)
     assert result["__summary__"]["advertencias"] == ["Última sincronización hace 17144 minutos"]
+
+
+def test_tablas_por_departamento_sin_columna_fecha_tambien_se_fusionan():
+    """Incidencia real (2026-10-27): "informe comparativo de gastos en nominas... de los
+    departamentos de cocina y restaurante" exportaba el PDF solo con Restaurante. La tabla de
+    ``analisis_economico_nominas`` no lleva columna "Fecha" (el periodo va en la cabecera de
+    columna, p. ej. "Ago 26") y cada llamada filtrada a un departamento repite el MISMO título, así
+    que ni el camino de "departamento+fecha" ni el de "dashboard" (exige títulos distintos) se
+    activaban -- el merge devolvía None y se exportaba solo la última llamada. Cada llamada también
+    trae su propia fila "TOTAL" (el total de ESE departamento solo): debe descartarse, no fusionarse
+    como si fuera un dato real, o un conflicto trivial ("TOTAL" distinto en cada llamada) abortaría
+    el merge entero."""
+    cocina = execution("analisis_economico_nominas", "ok", {
+        "type": "table", "title": "Gasto salarial por departamento · Agosto 2026 (Coste empresa)",
+        "columns": ["Departamento", "Ago 26", "Total", "Peso %"],
+        "rows": [["Cocina", "68.985,59 €", "68.985,59 €", "100.0%"],
+                 ["TOTAL", "68.985,59 €", "68.985,59 €", "100%"]],
+    })
+    restaurante = execution("analisis_economico_nominas", "ok", {
+        "type": "table", "title": "Gasto salarial por departamento · Agosto 2026 (Coste empresa)",
+        "columns": ["Departamento", "Ago 26", "Total", "Peso %"],
+        "rows": [["Restaurante", "114.334,10 €", "114.334,10 €", "100.0%"],
+                 ["TOTAL", "114.334,10 €", "114.334,10 €", "100%"]],
+    })
+    merged = merge_report_sources([cocina, restaurante], title="comparativo cocina y restaurante")
+    assert merged["type"] == "table"
+    assert {r[0] for r in merged["rows"]} == {"Cocina", "Restaurante"}
+    assert not any(r[0].upper().startswith("TOTAL") for r in merged["rows"])
+
+
+def test_una_sola_candidatura_sin_fecha_y_sin_segundo_departamento_no_fuerza_fusion():
+    """Si tras descartar las filas "TOTAL" solo queda un departamento real (p. ej. dos llamadas al
+    mismo departamento, o una llamada sin datos), no hay nada que fusionar -- cae al camino de
+    "dashboard" existente en vez de devolver una tabla de una sola fila como si fuera comparativa."""
+    only_total = execution("analisis_economico_nominas", "ok", {
+        "type": "table", "title": "Gasto salarial por departamento · Agosto 2026 (Coste empresa)",
+        "columns": ["Departamento", "Ago 26", "Total", "Peso %"],
+        "rows": [["TOTAL", "0,00 €", "0,00 €", "0%"]],
+    })
+    cocina = execution("analisis_economico_nominas", "ok", {
+        "type": "table", "title": "Gasto salarial por departamento · Agosto 2026 (Coste empresa)",
+        "columns": ["Departamento", "Ago 26", "Total", "Peso %"],
+        "rows": [["Cocina", "68.985,59 €", "68.985,59 €", "100.0%"]],
+    })
+    assert merge_report_sources([only_total, cocina], title="x") is None

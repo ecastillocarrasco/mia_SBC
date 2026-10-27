@@ -145,6 +145,35 @@ def merge_report_sources(executions: list[Any], *, title: str) -> dict[str, Any]
         if notes := _quality_notes(sources):
             result["__summary__"] = notes
         return result
+    # Sin columna "fecha" (p. ej. analisis_economico_nominas: el periodo va en la cabecera de
+    # columna, no en una celda), pero con "departamento": cada llamada filtrada a un departamento
+    # concreto repite el MISMO título ("Gasto salarial por departamento · <periodo>"), así que el
+    # camino de "dashboard" de más abajo (que exige títulos distintos) también falla y el informe
+    # se exportaba con un solo departamento (incidencia real en preprod 2026-10-27: "comparativo
+    # de Cocina y Restaurante" exportaba solo Restaurante). Unimos por departamento, descartando
+    # la fila "TOTAL"/"TOTAL (autorizado)" de cada llamada (es el total de ESE departamento solo,
+    # no el conjunto -- combinarlas chocaría como "inconsistencia" o, peor, parecería un total
+    # real sin serlo): nunca se recalcula aquí, solo se descarta lo que ya no es correcto.
+    if "departamento" in column_names:
+        dept_idx = column_names.index("departamento")
+        dedup_by_dept: dict[str, list[Any]] = {}
+        for execution in sources:
+            for row in execution.result.presentation.get("rows") or []:
+                if not isinstance(row, (list, tuple)) or len(row) != len(columns):
+                    return None
+                dept_value = str(row[dept_idx])
+                if _normalized(dept_value).startswith("total"):
+                    continue
+                if dept_value in dedup_by_dept and list(row) != dedup_by_dept[dept_value]:
+                    return None  # Inconsistencia entre consultas; no exportar números ambiguos.
+                dedup_by_dept[dept_value] = list(row)
+        if len(dedup_by_dept) > 1:
+            ordered = [dedup_by_dept[key] for key in sorted(dedup_by_dept)]
+            result = {"type": "table", "title": title[:160],
+                      "columns": columns, "rows": ordered}
+            if notes := _quality_notes(sources):
+                result["__summary__"] = notes
+            return result
     tables = []
     for execution in sources:
         p = execution.result.presentation

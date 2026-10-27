@@ -793,6 +793,29 @@ class ConversationEngine:
                     status=execution.result.status.value,
                     elapsed_ms=execution.elapsed_ms,
                 )
+
+            # Varias llamadas a la MISMA herramienta de tabla en esta ronda (p. ej. un
+            # "comparativo" que consulta cada departamento por separado) se guardaban una pisando
+            # a la otra arriba -- generar_informe exportaba solo la última (incidencia real en
+            # preprod 2026-10-27: PDF de "Cocina y Restaurante" con datos solo de Restaurante,
+            # aunque la pantalla mostraba ambos). Si esta ronda trajo 2+ tablas/dashboards de la
+            # misma herramienta, fusionarlas (mismo merge_report_sources ya usado como red de
+            # seguridad de formatos que faltan en el bloque de exportación de arriba) y dejar eso
+            # como última presentación, no solo la última llamada ejecutada.
+            table_groups: dict[str, list[Any]] = {}
+            for execution in executions:
+                if (
+                    execution.result.status.value == "ok"
+                    and isinstance(execution.result.presentation, dict)
+                    and execution.result.presentation.get("type") in {"table", "dashboard"}
+                ):
+                    table_groups.setdefault(execution.call.name, []).append(execution)
+            for tool_name, group in table_groups.items():
+                if len(group) < 2:
+                    continue
+                merged = merge_report_sources(group, title=ctx.user_message or tool_name)
+                if merged is not None:
+                    remember_table(turn.state, merged, self._max_report_rows, source_tool=tool_name)
         raise LLMError("Se superó el número máximo de rondas de herramientas")  # pragma: no cover
 
     @property
