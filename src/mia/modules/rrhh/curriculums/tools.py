@@ -338,10 +338,10 @@ def buscar(deps: Deps) -> Tool:
             ]
             await _semantic_pass(deps, index, db, p.requisitos, matches)
             fresh = await deps.freshness(db, "curriculums", "cv_docs")
-            cv_documents = (
-                await _cv_documents(db, matches, p.mostrar) if ctx.user.has(Permission.CURRICULUMS_LEER) else []
-            )
-        result = _result(p, matches, candidates, cv_texts, fresh, cv_documents)
+            full, possible, deduped = _classify_and_dedupe(p, matches)
+            shown = deduped[: p.mostrar]
+            cv_documents = await _cv_documents(db, shown) if ctx.user.has(Permission.CURRICULUMS_LEER) else []
+        result = _result(p, matches, full, possible, shown, candidates, cv_texts, fresh, cv_documents)
         if p.excluir and isinstance(result.summary, dict):
             result.summary["excluidas_solo_por_el_texto_del_cv"] = excluded_by_cv
             result.summary["nota_exclusion"] = (
@@ -365,9 +365,34 @@ def buscar(deps: Deps) -> Tool:
     )
 
 
-async def _cv_documents(db: Any, matches: list[Match], limit: int) -> list[dict[str, Any]]:
+def _classify_and_dedupe(p: BuscarParams, matches: list[Match]) -> tuple[list[Match], list[Match], list[Match]]:
+    """(full, possible, deduped): clasifica por requisito y deduplica por persona (una persona con
+    varias candidaturas aparece una sola vez: la más reciente / con más metadatos, o la que SÍ
+    cumple todos si alguna de sus candidaturas lo hace). "deduped" no está topado a p.mostrar --
+    eso lo hace cada consumidor (tabla, lista de CVs, muestra) por separado, todos sobre esta MISMA
+    lista, para que el recuento y lo que se ve en pantalla sean siempre coherentes entre sí
+    (incidencia real en preprod 2026-10-26: "7 personas con indicios" en el texto, 7 CVs listados,
+    pero solo 4 filas en la tabla -- cada sitio deduplicaba, o no, por su cuenta)."""
+    full = [m for m in matches if m.meets_all]
+    possible = [m for m in matches if m.meets_with_possible and not m.meets_all]
+    full.sort(
+        key=lambda m: (
+            -sum(e.where == "metadatos" for e in m.evidence),
+            -(m.candidate.applied_on or date.min).toordinal(),
+        )
+    )
+    seen: set[str] = set()
+    deduped: list[Match] = []
+    for m in full + possible:
+        key = person_identity(m.candidate)
+        if key not in seen:
+            seen.add(key)
+            deduped.append(m)
+    return full, possible, deduped
+
+
+async def _cv_documents(db: Any, shown: list[Match]) -> list[dict[str, Any]]:
     """El CV de las candidaturas que se muestran (para abrirlo desde la pantalla)."""
-    shown = [m for m in matches if m.meets_all or m.meets_with_possible][:limit]
     ids = [m.candidate.sp_id for m in shown]
     if not ids:
         return []
@@ -425,36 +450,26 @@ async def _semantic_pass(
 def _result(  # noqa: PLR0917
     p: BuscarParams,
     matches: list[Match],
+    full: list[Match],
+    possible: list[Match],
+    shown: list[Match],
     candidates: list[Candidate],
     cv_texts: dict[int, str],
     fresh: dict[str, Any],
     cv_documents: list[dict[str, Any]] | None = None,
 ) -> ToolResult:
-    full = [m for m in matches if m.meets_all]
-    possible = [m for m in matches if m.meets_with_possible and not m.meets_all]
-    full.sort(
-        key=lambda m: (
-            -sum(e.where == "metadatos" for e in m.evidence),
-            -(m.candidate.applied_on or date.min).toordinal(),
-        )
-    )
-    # Una persona con varias candidaturas aparece una sola vez (la más reciente / con más metadatos).
-    _seen: set[str] = set()
-    _deduped: list[Match] = []
-    for _m in full + possible:
-        _k = person_identity(_m.candidate)
-        if _k not in _seen:
-            _seen.add(_k)
-            _deduped.append(_m)
-    shown = _deduped[: p.mostrar]
+    # Personas únicas (no candidaturas) en cada grupo -- quien ya cuenta en "cumplen todos" no
+    # vuelve a contar en "con indicios", aunque tenga una segunda candidatura solo con indicios.
+    full_identities = {person_identity(m.candidate) for m in full}
+    possible_identities = {person_identity(m.candidate) for m in possible} - full_identities
     per_requirement = {
         r.termino: dict(Counter(m.evidence[i].where for m in matches if m.evidence[i].where != "no"))
         for i, r in enumerate(p.requisitos)
     }
     summary: dict[str, Any] = {
         "cumplen_todos": len(full),
-        "personas_unicas": len({person_identity(m.candidate) for m in full}),
-        "con_indicios_en_el_cv": len(possible),
+        "personas_unicas": len(full_identities),
+        "con_indicios_en_el_cv": len(possible_identities),
         "donde_se_cumple_cada_requisito": per_requirement,
         "candidaturas_revisadas": len(candidates),
         "con_texto_de_cv_disponible": sum(1 for c in candidates if c.sp_id in cv_texts),
@@ -465,7 +480,11 @@ def _result(  # noqa: PLR0917
             }
             for m in shown
         ],
-        "regla": RULE + " «posible» = el CV trata de ello pero no lo dice literalmente: preséntalo como indicio.",
+        "regla": RULE + " «posible» = el CV trata de ello pero no lo dice literalmente: preséntalo como indicio. "
+        "«donde_se_cumple_cada_requisito» cuenta cada requisito por separado sobre TODAS las "
+        "candidaturas revisadas, no es un desglose de «personas_unicas»/«con_indicios_en_el_cv»: no "
+        "digas «de esas X personas, Y cumplen este requisito» ni sumes los requisitos esperando que "
+        "den el total de personas.",
         **fresh,
     }
     mark = {"metadatos": "✓ metadatos", "cv": "✓ CV", "posible": "≈ posible", "no": "—"}

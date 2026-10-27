@@ -20,6 +20,7 @@ from mia.conversation.tools import LAST_TABLE
 from mia.data import (
     Candidate,
     CvChunk,
+    CvDocument,
     CvText,
     Database,
     Employee,
@@ -524,6 +525,9 @@ async def test_candidates_table_rows_are_also_deduplicated_by_person(env: Any) -
                     status="Pendiente de Cita",
                     experience="Ayudante de cocina",
                 ),
+                CvDocument(sp_id=9399, candidate_id=9399, file_name="9399.pdf", file_ref="/x/9399.pdf"),
+                CvDocument(sp_id=9400, candidate_id=9400, file_name="9400.pdf", file_ref="/x/9400.pdf"),
+                CvDocument(sp_id=9401, candidate_id=9401, file_name="9401.pdf", file_ref="/x/9401.pdf"),
             ]
         )
     result = await call(
@@ -532,6 +536,11 @@ async def test_candidates_table_rows_are_also_deduplicated_by_person(env: Any) -
     rows = result.presentation["rows"]
     assert len(rows) == 1
     assert rows[0][0] == "Pedro Santiago"
+    # El recuento y la lista de CVs abribles deben contar la misma persona una sola vez, igual que
+    # la tabla -- antes "con_indicios_en_el_cv" y la lista "documents" usaban candidaturas crudas
+    # sin deduplicar, mostrando "7" en el texto y 7 botones de CV para solo 4 personas reales.
+    assert result.summary["con_indicios_en_el_cv"] == 1
+    assert len(result.presentation["documents"]) == 1
 
 
 @requires_postgres
