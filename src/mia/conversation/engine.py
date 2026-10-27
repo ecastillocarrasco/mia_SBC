@@ -794,16 +794,17 @@ class ConversationEngine:
                     elapsed_ms=execution.elapsed_ms,
                 )
 
-            # Varias llamadas a la MISMA herramienta de tabla en esta ronda (p. ej. un
-            # "comparativo" que consulta cada departamento por separado) se guardaban una pisando
-            # a la otra arriba -- generar_informe exportaba solo la última (incidencia real en
-            # preprod 2026-10-27: PDF de "Cocina y Restaurante" con datos solo de Restaurante,
-            # aunque la pantalla mostraba ambos). Si esta ronda trajo 2+ tablas/dashboards de la
-            # misma herramienta, fusionarlas (mismo merge_report_sources ya usado como red de
-            # seguridad de formatos que faltan en el bloque de exportación de arriba) y dejar eso
-            # como última presentación, no solo la última llamada ejecutada.
+            # Varias llamadas a la MISMA herramienta de tabla en el TURNO (p. ej. un "comparativo"
+            # que consulta cada departamento por separado, a menudo una llamada por ronda, no las
+            # dos en la misma) se guardaban una pisando a la otra arriba -- generar_informe
+            # exportaba solo la última (incidencia real en preprod 2026-10-27: PDF de "Cocina y
+            # Restaurante" con datos solo de Restaurante, aunque la pantalla mostraba ambos).
+            # Mirar turn.executions completo, no solo las de esta ronda -- el primer intento de
+            # este arreglo solo miraba la ronda actual y no disparaba cuando el modelo pedía cada
+            # departamento en una ronda separada (el caso real, confirmado en vivo). Mismo alcance
+            # que ya usa el bloque de exportación de arriba para su propia red de seguridad.
             table_groups: dict[str, list[Any]] = {}
-            for execution in executions:
+            for execution in turn.executions:
                 if (
                     execution.result.status.value == "ok"
                     and isinstance(execution.result.presentation, dict)
