@@ -621,13 +621,18 @@ scene.load((progress, detail) => {
 
 // V4.4: los estados del micro pertenecen al usuario y no se restauran solos.
 const micAnnounce = document.getElementById("miaMicModeAnnounce");
-function displayMicMode(mode, { paused = false } = {}) {
+function displayMicMode(mode, { paused = false, armed = false } = {}) {
+  // Mientras el motor de reconocimiento arranca (armed=false) NO se invita a hablar
+  // todavía: el usuario que hablaba justo al pulsar perdía las primeras palabras porque
+  // el navegador aún no había empezado a capturar audio de verdad.
   const info = {
     off: { text: "Micrófono desactivado", next: "Activar para una pregunta" },
-    once: { text: paused ? "Una consulta completada. Micrófono en pausa" : "Micrófono: una pregunta",
+    once: { text: paused ? "Una consulta completada. Micrófono en pausa"
+        : armed ? "Micrófono: una pregunta" : "Preparando micrófono…",
       next: "Dejar escuchando continuamente" },
     continuous: {
-      text: paused ? "Escucha continua: en pausa durante la respuesta" : "Micrófono en escucha continua",
+      text: paused ? "Escucha continua: en pausa durante la respuesta"
+        : armed ? "Micrófono en escucha continua" : "Preparando micrófono…",
       next: "Desactivar micrófono",
     },
   }[mode] || { text: "Micrófono desactivado", next: "Activar para una pregunta" };

@@ -82,3 +82,20 @@ async def test_voice_route_streams_audio(client: httpx.AsyncClient, services: Se
         assert response.status_code == 200
         assert response.headers["content-type"] == "audio/mpeg"
         assert response.content == b"abcd"
+
+
+async def test_welcome_route_greets_the_authenticated_user_by_name(client: httpx.AsyncClient) -> None:
+    # El usuario de test (modo "dev") se llama "Usuario de desarrollo": el saludo debe
+    # usar su nombre de pila, igual que 2D/3D/holograma (identity-v45.js) y mIA Desktop.
+    response = await client.get("/api/voice/welcome")
+    assert response.status_code == 200
+    assert "Usuario" in response.json()["text"]
+
+
+async def test_welcome_route_honours_an_explicit_name_override(client: httpx.AsyncClient) -> None:
+    # mIA Desktop permite escribir un nombre propio en Ajustes (config.greetingName): debe
+    # ganar al nombre del usuario autenticado, no solo complementarlo.
+    response = await client.get("/api/voice/welcome", params={"name": "Lucía"})
+    assert response.status_code == 200
+    assert "Lucía" in response.json()["text"]
+    assert "Usuario" not in response.json()["text"]

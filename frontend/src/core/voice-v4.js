@@ -126,6 +126,11 @@ export class MiaVoiceV4 {
     this.onListening?.(Boolean(this.listening || this.starting));
     this.onModeChange?.(this.mode, {
       listening: Boolean(this.listening || this.starting),
+      // true SOLO tras el onstart real del motor de reconocimiento, nunca durante el
+      // arranque en frío (starting): avisar "ya te escucho" antes de tiempo es lo que
+      // hacía que el usuario hablara mientras el motor aún no capturaba audio, perdiendo
+      // las primeras palabras de la frase.
+      armed: Boolean(this.listening),
       paused: this.suspended || document.hidden,
     });
   }

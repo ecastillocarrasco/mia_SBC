@@ -881,11 +881,15 @@ scene.load((value, detail) => {
 
 // V4.4: micrófono apagado -> una consulta -> continuo -> apagado.
 const hgMicAnnounce = document.getElementById("hgMicModeAnnounce");
-function displayHgMicMode(mode, { paused = false } = {}) {
+function displayHgMicMode(mode, { paused = false, armed = false } = {}) {
+  // armed=false mientras el motor de reconocimiento arranca: no se anuncia "ya te
+  // escucho" hasta el onstart real, para no perder las primeras palabras de la frase.
   const names = {
     off: ["Micrófono desactivado", "Una pregunta"],
-    once: [paused ? "Una consulta finalizada; micrófono en pausa" : "Escucha para una pregunta", "Escucha continua"],
-    continuous: [paused ? "Modo continuo pausado" : "Modo continuo activo", "Apagar micrófono"],
+    once: [paused ? "Una consulta finalizada; micrófono en pausa"
+      : armed ? "Escucha para una pregunta" : "Preparando micrófono…", "Escucha continua"],
+    continuous: [paused ? "Modo continuo pausado"
+      : armed ? "Modo continuo activo" : "Preparando micrófono…", "Apagar micrófono"],
   };
   const [state, next] = names[mode] || names.off;
   micButton.dataset.micMode = mode;

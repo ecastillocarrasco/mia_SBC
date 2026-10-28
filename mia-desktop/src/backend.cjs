@@ -97,4 +97,16 @@ async function speak(base, text) {
   if (!bytes.length || bytes.length > 6 * 1024 * 1024) return { error: 'Archivo de audio vacío o demasiado grande.' };
   return { ok: true, audioBase64: bytes.toString('base64'), mimeType: mime.includes('audio/') ? mime.split(';')[0] : 'audio/mpeg' };
 }
-module.exports = { sendPrompt, speak, endpoint };
+async function welcomeText(base, nameOverride) {
+  const bearer = await authHeaders();
+  const qs = nameOverride ? `?name=${encodeURIComponent(nameOverride)}` : '';
+  let res;
+  try { res = await requestWithTimeout(endpoint(base, '/api/voice/welcome' + qs), {
+    headers: { Accept: 'application/json', ...bearer }
+  }, 15000); }
+  catch { return { error: 'No se puede conectar con el backend mIA SBC para el saludo.' }; }
+  if (!res.ok) return { error: `No se ha podido obtener el saludo (HTTP ${res.status}).` };
+  try { const data = await res.json(); return { ok: true, text: String(data.text || '').slice(0, 400) }; }
+  catch { return { error: 'El backend ha devuelto un saludo no válido.' }; }
+}
+module.exports = { sendPrompt, speak, welcomeText, endpoint };

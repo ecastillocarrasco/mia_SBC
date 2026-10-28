@@ -11,3 +11,7 @@ class ChatRequest(BaseModel):
 
 class VoiceRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
+
+
+class WelcomeResponse(BaseModel):
+    text: str

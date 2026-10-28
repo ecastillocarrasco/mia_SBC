@@ -49,26 +49,14 @@ const activePlaybackSenders=new Set();
 const pendingMailVoice=[];
 let pendingMailPrompt=null;
 let greetingTriggered = false;
-let loggedInFirstName = '';
-// Mismas formulaciones que frontend/src/core/identity-v45.js (3D/holograma): varias alternativas
-// en tono y contenido, elegidas al azar, para que el saludo no suene siempre a la misma frase
-// grabada. El 2D en producción no las tiene (saludo fijo por hora del día); aquí sí, porque es
-// justo lo que se pidió igualar.
-const WELCOME_TEMPLATES_WITH_NAME = [
-  name => `¡Hola ${name}! Soy mIA, tu asistente virtual. Estoy aquí para ayudarte con cualquier consulta. ¿Qué te gustaría saber?`,
-  name => `¡Hola ${name}! Qué alegría verte por aquí. Soy mIA, ¿en qué puedo ayudarte hoy?`,
-  name => `Bienvenido de nuevo, ${name}. Soy mIA, tu asistente virtual. Dime qué necesitas y te ayudo.`,
-  name => `¡Hola, ${name}! Aquí estoy para lo que necesites. ¿Qué te gustaría consultar?`,
-  name => `${name}, un placer tenerte por aquí otra vez. Soy mIA. ¿Qué te gustaría saber?`
-];
-const WELCOME_TEMPLATES_NO_NAME = [
-  () => '¡Hola! Soy mIA, tu asistente virtual. Estoy aquí para ayudarte con cualquier consulta. ¿Qué te gustaría saber?',
-  () => '¡Hola! Soy mIA. ¿En qué puedo ayudarte hoy?',
-  () => 'Bienvenido. Soy mIA, tu asistente virtual. Dime qué necesitas y te ayudo.'
-];
-function greetingText(name) {
-  const templates = name ? WELCOME_TEMPLATES_WITH_NAME : WELCOME_TEMPLATES_NO_NAME;
-  return templates[Math.floor(Math.random() * templates.length)](name);
+// GET /api/voice/welcome (mia.voice.greeting) es la única fuente del saludo: la misma que usan
+// 2D/3D/holograma (frontend/src/core/identity-v45.js), con nombre real y formulación aleatoria.
+// Si el backend no responde (arranque sin red todavía, VPN cayendose...), mIA nunca debe quedarse
+// muda: se usa esta única frase fija como último recurso.
+const FALLBACK_GREETING = '¡Hola! Soy mIA, tu asistente virtual. ¿En qué puedo ayudarte hoy?';
+async function greetingText() {
+  const result = await backend.welcomeText(config.backendBase, config.greetingName || undefined);
+  return result.ok ? result.text : FALLBACK_GREETING;
 }
 let ceremonySequence=0, ceremonyBusy=false;
 const ceremonies=new Map();
@@ -576,8 +564,10 @@ function setupIPC() {
     if(!ownSender(event,[avatarWin]) || greetingTriggered || !visibility.canAutoShow()) return;
     greetingTriggered=true;
     if(config.startupGreeting) {
-      const welcome=greetingText(loggedInFirstName);
-      avatarWin.webContents.send('mia:startup-greeting',{text:welcome, voiceEnabled:config.voiceEnabled, fallbackEnabled:config.voiceFallbackEnabled});
+      greetingText().then(welcome => {
+        if(avatarWin && !avatarWin.isDestroyed())
+          avatarWin.webContents.send('mia:startup-greeting',{text:welcome, voiceEnabled:config.voiceEnabled, fallbackEnabled:config.voiceFallbackEnabled});
+      });
     }
   });
   ipcMain.handle('mia:export-table', async (event, request) => {
@@ -728,7 +718,6 @@ app.whenReady().then(async () => {
     app.quit();
     return;
   }
-  loggedInFirstName = auth.firstNameFromDisplayName(access.displayName) || config.greetingName || '';
   speech.configure(app.getPath('userData'));
   speech.setEnabled(config.voiceMode!=='off');
   protocol.handle('mia', async request => {

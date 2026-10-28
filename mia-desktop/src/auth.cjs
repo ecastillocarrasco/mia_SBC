@@ -152,20 +152,4 @@ async function ensureAuthorized(base) {
   }
 }
 
-/**
- * Primer nombre, limpio y capitalizado, a partir del `display_name` que devuelve
- * `GET /api/auth/me` (ya validado por el backend contra el token real) — equivalente de
- * `textName()`/`firstNameFromAccount()` en frontend/src/core/identity-v45.js, usado allí para
- * personalizar el saludo de 3D/holograma. Cadena vacía si no hay nombre o no tiene forma de
- * nombre de pila (nunca se interpola un correo o un valor raro en el saludo hablado).
- */
-function firstNameFromDisplayName(value) {
-  if (typeof value !== 'string') return '';
-  const clean = value.trim().replace(/\s+/g, ' ');
-  if (!clean) return '';
-  const candidate = clean.split(' ')[0];
-  if (!/^[\p{L}][\p{L}'’-]{0,39}$/u.test(candidate)) return '';
-  return candidate.charAt(0).toLocaleUpperCase('es-ES') + candidate.slice(1).toLocaleLowerCase('es-ES');
-}
-
-module.exports = { ensureAuthenticated, getAccessToken, ensureAuthorized, firstNameFromDisplayName };
+module.exports = { ensureAuthenticated, getAccessToken, ensureAuthorized };

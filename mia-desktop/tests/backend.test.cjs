@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { normalizeBackendUrl, normalizeConfig } = require('../src/config.cjs');
-const { endpoint, sendPrompt, speak } = require('../src/backend.cjs');
+const { endpoint, sendPrompt, speak, welcomeText } = require('../src/backend.cjs');
 test('solo HTTPS o loopback HTTP en backend, bloquea usuario y URL arbitraria', () => {
   assert.equal(normalizeBackendUrl('http://evil.example'), 'http://127.0.0.1:5001');
   assert.equal(normalizeBackendUrl('http://localhost:5002'), 'http://localhost:5002');
@@ -50,4 +50,29 @@ test('HTTP 503 de voz se informa como problema del servicio SBC', async () => {
  global.fetch=async()=>({ok:false,status:503});
  try { const res=await speak('http://127.0.0.1:5001','Hola');assert.equal(res.code,503);assert.match(res.error,/backend.*503/i); }
  finally { global.fetch=original; }
+});
+test('el saludo pide la frase al backend (misma fuente que 2D/3D/holograma)', async () => {
+  const original = global.fetch;
+  let invoked;
+  global.fetch = async (u) => { invoked = u; return { ok: true, status: 200, json: async () => ({ text: '¡Hola Enrique! Soy mIA.' }) }; };
+  try {
+    const res = await welcomeText('http://127.0.0.1:5001');
+    assert.equal(res.text, '¡Hola Enrique! Soy mIA.');
+    assert.equal(invoked, 'http://127.0.0.1:5001/api/voice/welcome');
+  } finally { global.fetch = original; }
+});
+test('el nombre configurado en Ajustes se envía como override explícito', async () => {
+  const original = global.fetch;
+  let invoked;
+  global.fetch = async (u) => { invoked = u; return { ok: true, status: 200, json: async () => ({ text: 'Hola Lucía' }) }; };
+  try {
+    await welcomeText('http://127.0.0.1:5001', 'Lucía');
+    assert.equal(invoked, 'http://127.0.0.1:5001/api/voice/welcome?name=Luc%C3%ADa');
+  } finally { global.fetch = original; }
+});
+test('si el backend de saludo falla, se informa el error sin lanzar excepción', async () => {
+  const original = global.fetch;
+  global.fetch = async () => ({ ok: false, status: 500 });
+  try { const res = await welcomeText('http://127.0.0.1:5001'); assert.match(res.error, /saludo/i); }
+  finally { global.fetch = original; }
 });
