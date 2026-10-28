@@ -318,6 +318,42 @@ async def test_generar_informe_rejects_bare_gastos_phrasing_exported_from_ficha_
     assert "analisis_economico_nominas" in execution.result.summary["mensaje"]
 
 
+async def test_generar_informe_does_not_misfire_the_payroll_guard_for_trabajo_temporal_requests(
+    q3_registry,
+) -> None:
+    """Incidencia real (2026-10-28): "gastos en boletines trabajo temporal... detalla totales y
+    porcentajes por departamento" rechazaba la exportación de 'boletines_tt' (la tabla correcta, ya en
+    pantalla) con el mismo mensaje de "no viene de analisis_economico_nominas" -- porque "gasto"/
+    "gastos" a secas (sinónimo amplio de coste_empresa, dominio "payroll") también aparece en una
+    petición de trabajo temporal que no tiene nada que ver con nóminas. La petición también menciona un
+    campo del dominio "timesheet" ("trabajo temporal"), más específico: no debe bloquearse."""
+    import json as _json
+
+    from mia.conversation import ToolContext
+    from mia.conversation import ToolStatus as TS
+    from mia.conversation.tools import remember_table
+    from mia.llm import ToolCall as TC
+
+    ctx = ToolContext(
+        user=ADMIN,
+        request_id=None,
+        now=Q3_NOW,
+        session_state={},
+        user_message=(
+            "gastos en boletines trabajo temporal durante este año y comparativo con el año pasado, "
+            "detalla totales y porcentajes por departamento"
+        ),
+    )
+    boletines_presentation = {
+        "type": "table", "title": "Boletines de trabajo temporal",
+        "columns": ["Fecha", "Trabajador", "Empresa", "Departamento", "Importe"],
+        "rows": [["02/01/2026", "Robles Saura, Jose", "Randstad", "Mantenimiento", 145.72]],
+    }
+    remember_table(ctx.session_state, boletines_presentation, 5000, {}, source_tool="boletines_tt")
+    execution = await q3_registry.execute(TC("c", "generar_informe", _json.dumps({"formato": "pdf"})), ctx)
+    assert execution.result.status is TS.OK
+
+
 async def test_generar_informe_still_exports_normally_when_the_source_tool_matches_the_request(
     q3_registry,
 ) -> None:

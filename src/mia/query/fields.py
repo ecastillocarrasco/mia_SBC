@@ -497,7 +497,15 @@ def _build_default() -> SemanticFieldRegistry:
             "tt_cost",
             "timesheet",
             "float",
-            ("coste ett", "coste trabajo temporal", "importe ett"),
+            (
+                "coste ett", "coste trabajo temporal", "importe ett",
+                # Bastas a propósito (sin "coste"/"importe" delante): "trabajo temporal"/"boletines" a
+                # secas también deben reconocerse como este dominio, no el de nómina -- incidencia real
+                # 2026-10-28, "gastos en boletines trabajo temporal... por departamento" solo coincidía
+                # con el sinónimo igual de basto "gasto"/"gastos" de coste_empresa (payroll), bloqueando
+                # la exportación de boletines_tt como si fuera un informe de nómina mal encaminado.
+                "trabajo temporal", "boletines", "temporalidad",
+            ),
             ("sum", "mean", "min", "max", "trend"),
             unit="€",
             source="mia.data.TtTimesheet.cost",

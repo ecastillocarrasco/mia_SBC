@@ -427,7 +427,15 @@ def generar(deps: Deps) -> Tool:
         if ctx.user_message:
             plan = planner.plan(ctx.user_message, user=ctx.user, today=ctx.now.date())
             payroll_names = {m.field.name for m in plan.metrics if m.field.domain == "payroll"}
-            if payroll_names:
+            # "gasto"/"gastos" a secas (coste_empresa, ver fields.py) también coincide con peticiones de
+            # trabajo temporal/ETT ("gastos en boletines de trabajo temporal... por departamento") sin
+            # relación con nóminas -- incidencia real 2026-10-28: "boletines_tt" (tabla correcta, ya en
+            # pantalla) se rechazaba igual que si fuera un informe de nómina mal encaminado. Si la propia
+            # petición TAMBIÉN menciona un campo del dominio "timesheet" (más específico: "trabajo
+            # temporal", "ett"), no forzar el bloqueo de nómina -- confiar en la herramienta que de verdad
+            # se ejecutó y produjo esta tabla.
+            timesheet_names = {m.field.name for m in plan.metrics if m.field.domain == "timesheet"}
+            if payroll_names and not timesheet_names:
                 # Atado a la tabla que se va a exportar (``__source_tool__``, puesto por
                 # ``remember_table()`` junto a ESTA presentación concreta) — nunca a "la última
                 # herramienta llamada en el turno" (``LAST_CALL``), que puede haber cambiado por una
@@ -725,6 +733,11 @@ def generar_ejecutivo(deps: Deps) -> Tool:
         # técnico ni una mera indicación de qué herramienta usar.
         if request_plan is not None:
             payroll_names = {m.field.name for m in request_plan.metrics if m.field.domain == "payroll"}
+            # Mismo solape que en generar_informe (ver más abajo): "gasto"/"gastos" a secas también
+            # coincide con peticiones de trabajo temporal/ETT. Si la petición TAMBIÉN menciona un campo
+            # del dominio "timesheet" (más específico), no redirigir a nóminas.
+            if payroll_names and any(m.field.domain == "timesheet" for m in request_plan.metrics):
+                payroll_names = set()
             previous_pair = None
             if not any(m.field.domain != "payroll" for m in request_plan.metrics):
                 previous_pair = remembered_comparison(ctx.session_state, ctx.user_message)
