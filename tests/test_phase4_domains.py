@@ -199,6 +199,49 @@ async def test_temporary_work_totals(env: Any) -> None:
     assert result.summary["desglose"]["empresa: ETT Uno"]["boletines"] == 2
 
 
+async def test_boletines_tt_includes_department_and_company_breakdown_with_charts(env: Any) -> None:
+    """Fallo real (2026-10-28): "gastos en boletines trabajo temporal... detalla totales y
+    porcentajes por departamento... las cantidades abonadas a cada empresa" exportaba un PDF sin
+    ningún total agregado ni gráfico -- solo el listado crudo fila a fila. boletines_tt ya calculaba
+    el desglose en el summary (para el LLM) pero nunca lo adjuntaba a la presentación (pantalla/PDF/
+    Excel) como tabla o gráfico."""
+    registry, db, _ = env
+    async with db.session() as s:
+        s.add(
+            TtTimesheet(
+                sp_id=3,
+                day=date(2026, 9, 5),
+                worker_name="Ana R",
+                company="Adecco",
+                department="Recepción",
+                department_key="recepcion",
+                hours_total=8,
+                hours_night=0,
+                amount=130.0,
+                status="Validado",
+            )
+        )
+    result = await call(registry, "boletines_tt", desde="2026-09-01", hasta="2026-09-30")
+    presentation = result.presentation
+    stats = presentation["stats"]
+    assert stats["title"] == "Gasto de trabajo temporal por departamento"
+    dept_rows = {row[0]: row for row in stats["rows"]}
+    assert dept_rows["Cocina"][3] == 230.5  # importe = 120.0 + 110.5
+    assert dept_rows["Recepción"][3] == 130.0
+    # Cocina pesa más que Recepción (230.5 de 360.5 vs 130.0 de 360.5)
+    assert dept_rows["Cocina"][4] == "63.9%"
+    assert dept_rows["Recepción"][4] == "36.1%"
+
+    company_table = presentation["tables"][0]
+    assert company_table["title"] == "Gasto abonado por empresa ETT"
+    company_rows = {row[0]: row for row in company_table["rows"]}
+    assert company_rows["ETT Uno"][3] == 230.5
+    assert company_rows["Adecco"][3] == 130.0
+
+    chart_titles = {c["title"] for c in presentation["charts"]}
+    assert chart_titles == {"Gasto de trabajo temporal por departamento", "Gasto abonado por empresa ETT"}
+
+
 @pytest.mark.parametrize("fmt", ["pdf", "xlsx", "pptx"])
 async def test_report_from_last_table(env: Any, fmt: str) -> None:
     registry, _, _ = env

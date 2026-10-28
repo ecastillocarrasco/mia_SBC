@@ -356,6 +356,15 @@ def to_document(
         if include_detail and isinstance(stats, dict) and stats.get("rows"):
             doc.blocks.append(Block("table", str(stats.get("title") or "Estadísticas"), stats))
 
+        # Tablas adicionales (p. ej. dos desgloses distintos de la misma consulta — por departamento
+        # Y por empresa — ninguno de los dos es "la" tabla de stats): a diferencia de "stats" (una
+        # sola), "tables" admite varias, cada una con su propio título.
+        extra_tables = presentation.get("tables")
+        if include_detail and isinstance(extra_tables, list):
+            for extra in extra_tables:
+                if isinstance(extra, dict) and extra.get("rows"):
+                    doc.blocks.append(Block("table", str(extra.get("title") or "Detalle"), extra))
+
         return doc
     if kind == "dashboard":
         doc.blocks.append(Block("kpis", "Indicadores", {_label(k): _flat(v) for k, v in presentation["kpis"].items()}))

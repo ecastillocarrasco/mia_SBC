@@ -113,18 +113,25 @@ def boletines(deps: Deps) -> Tool:
         if p.estado:
             rows = [r for r in rows if normalize_key(p.estado) in normalize_key(r.status)]
         totals: dict[str, dict[str, float]] = defaultdict(lambda: {"boletines": 0, "horas": 0.0, "importe": 0.0})
+        by_department: dict[str, dict[str, float]] = defaultdict(lambda: {"boletines": 0, "horas": 0.0, "importe": 0.0})
+        by_company: dict[str, dict[str, float]] = defaultdict(lambda: {"boletines": 0, "horas": 0.0, "importe": 0.0})
         for r in rows:
             for key in (f"empresa: {r.company}", f"departamento: {r.department}"):
                 totals[key]["boletines"] += 1
                 totals[key]["horas"] += r.hours_total or 0.0
                 totals[key]["importe"] += r.amount or 0.0
+            for bucket, bucket_key in ((by_department, r.department), (by_company, r.company)):
+                bucket[bucket_key]["boletines"] += 1
+                bucket[bucket_key]["horas"] += r.hours_total or 0.0
+                bucket[bucket_key]["importe"] += r.amount or 0.0
+        importe_total = round(sum(r.amount or 0 for r in rows), 2)
         summary: dict[str, Any] = {
             "desde": lo.isoformat(),
             "hasta": hi.isoformat(),
             "boletines": len(rows),
             "horas_totales": round(sum(r.hours_total or 0 for r in rows), 2),
             "horas_nocturnas": round(sum(r.hours_night or 0 for r in rows), 2),
-            "importe_total": round(sum(r.amount or 0 for r in rows), 2),
+            "importe_total": importe_total,
             "desglose": {k: {kk: round(vv, 2) for kk, vv in v.items()} for k, v in totals.items()},
             **fresh,
         }
@@ -139,6 +146,49 @@ def boletines(deps: Deps) -> Tool:
                 }
                 for r in rows
             ]
+
+        # Desglose por departamento y por empresa ETT con totales y porcentajes, además del listado
+        # crudo de boletines: antes solo se exportaba la tabla fila a fila (762 registros en una
+        # petición real), sin ningún total agregado ni gráfico -- "gastos... detalla totales y
+        # porcentajes por departamento... y las cantidades abonadas a cada empresa" no tenía dónde
+        # aparecer en pantalla ni en el PDF/Excel (incidencia real 2026-10-28).
+        def _breakdown_table(title: str, label: str, buckets: dict[str, dict[str, float]]) -> dict[str, Any]:
+            ordered = sorted(buckets.items(), key=lambda kv: -kv[1]["importe"])
+            rows_out = [
+                [
+                    name,
+                    int(v["boletines"]),
+                    round(v["horas"], 2),
+                    round(v["importe"], 2),
+                    f"{round(v['importe'] / importe_total * 100, 1)}%" if importe_total else "—",
+                ]
+                for name, v in ordered
+            ]
+            return table(title, [label, "Boletines", "Horas", "Importe", "Peso %"], rows_out)
+
+        dept_breakdown = _breakdown_table("Gasto de trabajo temporal por departamento", "Departamento", by_department)
+        company_breakdown = _breakdown_table("Gasto abonado por empresa ETT", "Empresa", by_company)
+        charts = [
+            {
+                "type": "donut",
+                "title": "Gasto de trabajo temporal por departamento",
+                "labels": [name for name, _ in sorted(by_department.items(), key=lambda kv: -kv[1]["importe"])],
+                "series": [{
+                    "name": "Importe",
+                    "values": [round(v["importe"], 2) for _, v in sorted(by_department.items(), key=lambda kv: -kv[1]["importe"])],
+                }],
+            },
+            {
+                "type": "donut",
+                "title": "Gasto abonado por empresa ETT",
+                "labels": [name for name, _ in sorted(by_company.items(), key=lambda kv: -kv[1]["importe"])],
+                "series": [{
+                    "name": "Importe",
+                    "values": [round(v["importe"], 2) for _, v in sorted(by_company.items(), key=lambda kv: -kv[1]["importe"])],
+                }],
+            },
+        ] if by_department and by_company else []
+
         return ToolResult(
             ToolStatus.OK,
             summary,
@@ -157,6 +207,9 @@ def boletines(deps: Deps) -> Tool:
                     ]
                     for r in rows
                 ],
+                stats=dept_breakdown,
+                tables=[company_breakdown],
+                charts=charts,
             ),
         )
 
