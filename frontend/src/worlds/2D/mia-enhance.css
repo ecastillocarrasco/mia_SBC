@@ -46,7 +46,8 @@
 .mia-attachments{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .mia-attachment{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:12px;
   border:1px solid rgba(76,167,163,.3);background:rgba(76,167,163,.1);color:#1f6f6b;
-  text-decoration:none;font-size:10.5px;transition:background .15s ease}
+  text-decoration:none;font:inherit;font-size:10.5px;cursor:pointer;transition:background .15s ease}
+.mia-attachment:disabled{cursor:default;opacity:.7}
 .mia-attachment:hover{background:rgba(76,167,163,.18)}
 .mia-attachment-name{font-weight:700;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mia-attachment-action{opacity:.75;font-size:9.5px}

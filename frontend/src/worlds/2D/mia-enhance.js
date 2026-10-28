@@ -142,11 +142,36 @@
   function attachmentCard(a) {
     var name = (a && a.nombre) || 'Adjunto';
     if (a && /^\/api\/mail\/attachment\//.test(a.url || '')) {
-      var link = document.createElement('a');
-      link.className = 'mia-attachment'; link.href = a.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
-      link.appendChild(el('span', 'mia-attachment-name', name));
-      link.appendChild(el('span', 'mia-attachment-action', 'Descargar ↓'));
-      return link;
+      var btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'mia-attachment';
+      var actionLabel = el('span', 'mia-attachment-action', 'Descargar ↓');
+      btn.appendChild(el('span', 'mia-attachment-name', name));
+      btn.appendChild(actionLabel);
+      btn.addEventListener('click', function () {
+        if (btn.disabled) return;
+        btn.disabled = true; actionLabel.textContent = 'Descargando…';
+        var getToken = typeof window.miaGetAccessToken === 'function' ? window.miaGetAccessToken : null;
+        Promise.resolve(getToken ? getToken() : null).then(function (token) {
+          return fetch(a.url, { headers: token ? { Authorization: 'Bearer ' + token } : {} });
+        }).then(function (res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.blob();
+        }).then(function (blob) {
+          var blobUrl = URL.createObjectURL(blob);
+          var tmp = document.createElement('a');
+          tmp.href = blobUrl; tmp.download = name; tmp.rel = 'noopener noreferrer';
+          document.body.appendChild(tmp); tmp.click(); document.body.removeChild(tmp);
+          setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 30000);
+        }).catch(function (err) {
+          console.warn('[mIA] No se pudo descargar el adjunto:', err);
+          actionLabel.textContent = 'Error al descargar';
+          return;
+        }).finally(function () {
+          btn.disabled = false;
+          if (actionLabel.textContent === 'Descargando…') actionLabel.textContent = 'Descargar ↓';
+        });
+      });
+      return btn;
     }
     var span = el('div', 'mia-attachment mia-attachment--unavailable');
     span.appendChild(el('span', 'mia-attachment-name', name));
@@ -478,9 +503,17 @@
       if (data.mail_thread) extras.push(mailThreadCard(data.mail_thread));
       if (data.mail_draft) extras.push(draftCard(data.mail_draft));
       if (Array.isArray(data.news_rows) && data.news_rows.length) extras.push(newsListCard(data.news_rows));
-      (Array.isArray(data.charts) ? data.charts : []).forEach(function (spec) {
-        if (spec && spec.series && spec.series[0] && spec.labels) extras.push(chartCard(spec));
-      });
+      // Solo para correo: ese es el único kind cuyo renderData base NO llega a pintar data.charts
+      // (vuelve antes, ver el "return" tras renderMailWorkspace en mia-2d.js) -- para cualquier
+      // otro kind (p. ej. "analytics", que es lo que toca para la vista previa de un informe),
+      // el renderCharts() base ya los pinta una vez; repetirlo aquí sin condición los duplicaba
+      // (incidencia real en preprod 2026-10-26, nunca visible antes porque data.charts casi nunca
+      // tenía contenido fuera del correo).
+      if (typeof detectResultKind === 'function' && detectResultKind(r, data) === 'mail') {
+        (Array.isArray(data.charts) ? data.charts : []).forEach(function (spec) {
+          if (spec && spec.series && spec.series[0] && spec.labels) extras.push(chartCard(spec));
+        });
+      }
       var all = msg.querySelectorAll('.results'), wrap = all.length > before ? all[all.length - 1] : null;
       if (wrap && Array.isArray(data.mail_rows) && data.mail_rows.length) decorateMailList(wrap, data.mail_rows);
       if (window.miaAutoOpenNextMail) {

@@ -33,6 +33,12 @@
       "package.json",
       "!**/*.map"
     ],
+    "extraFiles": [
+      { "from": "PROBAR_PRE_instalado.cmd", "to": "PROBAR_PRE_instalado.cmd" },
+      { "from": "INSTALAR_VOZ_LOCAL.cmd", "to": "INSTALAR_VOZ_LOCAL.cmd" },
+      { "from": "src/voice/requirements.txt", "to": "src/voice/requirements.txt" },
+      { "from": "src/voice/install_models.py", "to": "src/voice/install_models.py" }
+    ],
     "win": {
       "icon": "assets/mia.ico",
       "target": "nsis",
@@ -40,7 +46,10 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": false,
+      "include": "installer/installer.nsh"
     },
     "directories": {
       "output": "release"

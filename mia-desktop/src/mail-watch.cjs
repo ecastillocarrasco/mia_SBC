@@ -9,6 +9,7 @@
 // y determinista, pensado justo para preguntarse cada pocos minutos.
 const { Notification } = require('electron');
 const auth = require('./auth.cjs');
+const { withInsecureTls } = require('./insecure-tls.cjs');
 
 const POLL_MS = 60 * 1000; // mantener el aviso al día también en segundo plano
 const STARTUP_CATCHUP_MS = 5 * 60 * 1000;
@@ -38,7 +39,7 @@ async function checkOnce(base, onNewMail) {
   if (checking) return;
   checking = true;
   try {
-    const response = await fetch(`${base}/api/mail/notifications/poll?limite=10`, { headers: await authHeaders() });
+    const response = await withInsecureTls(async () => fetch(`${base}/api/mail/notifications/poll?limite=10`, { headers: await authHeaders() }));
     if (!response.ok) { console.warn(`[mIA Mail] El sondeo respondio HTTP ${response.status}; se reintentara.`); return; }
     const data = await response.json();
     const correos = Array.isArray(data?.correos) ? data.correos : [];

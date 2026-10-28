@@ -6,7 +6,9 @@ document.documentElement.setAttribute('data-mia-ui-build',MIA_UI_BUILD);
 const convo=document.getElementById('conversation'), input=document.getElementById('input'), send=document.getElementById('send'), mic=document.getElementById('mic');
 const avatarStage=document.getElementById('avatarStage'), avatarA=document.getElementById('avatarA'), avatarB=document.getElementById('avatarB');
 const pill=document.getElementById('statePill'), stateDetail=document.getElementById('stateDetail'), voiceSelect=document.getElementById('voiceSelect'), soundToggle=document.getElementById('soundToggle'), voiceStatus=document.getElementById('voiceStatus');
-let context={},speechEnabled=true,voices=[],selectedVoice=null,recognition=null,activeAvatar=0,currentState='reposo',lastProgressSpoken=false,lastAvatarChange=0,avatarTimer=null,recognitionFinalSent=false;
+const VOICE_MUTE_KEY='mia.voice_muted';// misma clave que core/voice-mute.js (3D/holograma): se comparte entre mundos
+let context={},speechEnabled=(safeLocalGet(VOICE_MUTE_KEY)!=='1'),voices=[],selectedVoice=null,recognition=null,activeAvatar=0,currentState='reposo',lastProgressSpoken=false,lastAvatarChange=0,avatarTimer=null,recognitionFinalSent=false;
+if(soundToggle)soundToggle.textContent=speechEnabled?'🔊':'🔇';
 const VOICE_PREF_KEY='mia.voice.v1038';
 const miaProfile={language:'es',locale:'es-ES',company:'Sunset Beach Club',role:null};
 const nf=new Intl.NumberFormat(miaProfile.locale,{maximumFractionDigits:2});
@@ -209,7 +211,7 @@ function renderEmployee360Presentation(presentation,data,wrap){
 function renderDocuments(data,wrap){
  const docs=Array.isArray(data?.documents)?data.documents:(data?.document&&typeof data.document==='object'?[data.document]:[]);if(!docs.length)return;
  const p=document.createElement('div');p.className='document-panel';p.innerHTML='<div class="result-head"><strong>Documento CV</strong><span>CVDocs · archivo validado</span></div>';
- const list=document.createElement('div');list.className='document-list';docs.forEach((d,i)=>{const url=cleanDisplay(d.Url||d.url),name=cleanDisplay(d.FileName||d.file_name)||('CV '+(i+1)),ext=(cleanDisplay(d.Extension)||name.split('.').pop()||'CV').toUpperCase(),who=cleanDisplay(d.Nombre||data?.candidate?.Nombre),mod=cleanDisplay(d.Modified);const c=document.createElement('div');c.className='document-card';const meta=[who,mod?('Actualizado '+humanDate(mod)):'',cleanDisplay(d.Source)||'CVDocs'].filter(Boolean).join(' · ');c.innerHTML='<div class="document-icon">'+encodeText(ext.slice(0,5))+'</div><div class="document-copy"><div class="document-name">'+encodeText(name)+'</div><div class="document-meta">'+encodeText(meta)+'</div></div>';if(url){const a=document.createElement('a');a.className='document-open';a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Abrir CV ↗';c.appendChild(a)}list.appendChild(c)});p.appendChild(list);wrap.appendChild(p)
+ const list=document.createElement('div');list.className='document-list';docs.forEach((d,i)=>{const url=cleanDisplay(d.Url||d.url),name=cleanDisplay(d.title||d.FileName||d.file_name)||('CV '+(i+1)),ext=(cleanDisplay(d.Extension)||'CV').toUpperCase(),who=cleanDisplay(d.subtitle||d.Nombre||data?.candidate?.Nombre),mod=cleanDisplay(d.date||d.Modified);const c=document.createElement('div');c.className='document-card';const meta=[who,mod?('Actualizado '+humanDate(mod)):'',cleanDisplay(d.Source)||'CVDocs'].filter(Boolean).join(' · ');c.innerHTML='<div class="document-icon">'+encodeText(ext.slice(0,5))+'</div><div class="document-copy"><div class="document-name">'+encodeText(name)+'</div><div class="document-meta">'+encodeText(meta)+'</div></div>';if(url){const a=document.createElement('a');a.className='document-open';a.href='#';a.textContent='Abrir CV ↗';a.addEventListener('click',e=>{e.preventDefault();miaDownloadFile(url,name)});c.appendChild(a)}list.appendChild(c)});p.appendChild(list);wrap.appendChild(p)
 }
 function renderLlmBadge(r,msg){const llm=r?._llm_v4;if(!llm)return;const general=llm.general_assistant||llm?.responder_meta?.general_assistant_version;const rm=llm.responder_meta||{};const natural=general||(!rm.degraded&&!rm.error&&(rm.composer_version||rm.request_id||rm.response_id));if(!natural)return;const b=document.createElement('div');b.className='llm-answer-badge';b.textContent=general?'Respuesta · mIA LLM':'Respuesta natural · LLM';const who=msg.querySelector('.who');if(who&&who.nextSibling)msg.insertBefore(b,who.nextSibling);else msg.appendChild(b)}
 function renderEmployee360EmergencyCard(presentation,data,wrap,error){
@@ -516,6 +518,23 @@ function renderCharts(data,wrap){
 // token de la cuenta MSAL activa a traves del global que esa capa ya expone (window.miaGetAccessToken).
 // Si el login esta desactivado (modo dev/easyauth) ese global no existe o devuelve null.
 async function miaAuthHeaders(){try{const t=typeof window.miaGetAccessToken==='function'?await window.miaGetAccessToken():null;return t?{Authorization:'Bearer '+t}:{}}catch(_){return {}}}
+// Descarga autenticada vía fetch+blob: un <a href> directo a /api/... nunca puede adjuntar el
+// Bearer (incidencia real en preprod 2026-10-25, "Necesita autorización" al pulsar cualquier
+// botón de descarga de informe) -- mismo patrón ya usado para adjuntos de correo en mia-enhance.js.
+async function miaDownloadFile(url,filename){
+ try{
+  const res=await fetch(url,{headers:await miaAuthHeaders()});
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  const blob=await res.blob();
+  const blobUrl=URL.createObjectURL(blob);
+  const tmp=document.createElement('a');tmp.href=blobUrl;tmp.download=filename||'';tmp.rel='noopener noreferrer';
+  document.body.appendChild(tmp);tmp.click();document.body.removeChild(tmp);
+  setTimeout(()=>URL.revokeObjectURL(blobUrl),30000);
+ }catch(error){
+  console.error('[mIA] No se pudo descargar el fichero:',error);
+  alert('No se pudo descargar el fichero. Inténtalo de nuevo.');
+ }
+}
 const MIA_JOBS_API='/api/jobs';
 const MIA_JOB_POLL_MS=2500;
 const miaJobCardsByJob=new Map();
@@ -535,7 +554,7 @@ function paintJobCard(card,job){
  card.querySelector('.mia-job-message').textContent=cleanDisplay(job.progress_message)||'';
  const actions=card.querySelector('.mia-job-actions');actions.innerHTML='';
  if(job.status==='queued'||job.status==='running'){const b=document.createElement('button');b.type='button';b.className='mia-job-cancel';b.textContent='Cancelar trabajo';b.addEventListener('click',()=>cancelJob(job.job_id));actions.appendChild(b)}
- if(job.status==='completed'&&job.report_id){const a=document.createElement('a');a.className='mia-job-download';a.href='/api/reports/'+encodeURIComponent(job.report_id);a.setAttribute('download','');a.textContent='↓ Descargar informe';actions.appendChild(a)}
+ if(job.status==='completed'&&job.report_id){const a=document.createElement('a');a.className='mia-job-download';a.href='#';a.textContent='↓ Descargar informe';a.addEventListener('click',e=>{e.preventDefault();miaDownloadFile('/api/reports/'+encodeURIComponent(job.report_id),'informe')});actions.appendChild(a)}
  let note=card.querySelector('.mia-job-note');
  const firstSeen=miaJobFirstSeenAt.get(job.job_id)||Date.now(),elapsed=Date.now()-firstSeen;
  let noteText='';
@@ -656,7 +675,7 @@ function renderData(r,msg){
  if(turnos.length){renderShiftTimeline(data,turnos,wrap);renderTurnsTable(data,turnos,wrap)}
  renderInsights(data,wrap);renderQuality(data,r,wrap);renderCharts(data,wrap);renderJob(data,wrap);
  visual.forEach(v=>{const p=document.createElement('div');p.className='viz';const h=document.createElement('div');h.className='viz-head';h.innerHTML='<strong>'+encodeText(cleanDisplay(v.title)||'Resumen')+'</strong><span>Visualización</span>';p.appendChild(h);const rows=(v.data||[]).map(x=>({label:cleanDisplay(x.label??x.Mes??''),value:Number(x.value??x.Horas??0)})).filter(x=>x.label);const max=Math.max(1,...rows.map(x=>Math.abs(x.value)));const b=document.createElement('div');b.className='bars';rows.forEach(x=>{const r0=document.createElement('div');r0.className='barrow';r0.innerHTML=`<span>${encodeText(x.label)}</span><div class="track"><div class="fill" style="width:${Math.max(1,Math.abs(x.value)/max*100)}%"></div></div><strong>${encodeText(fmt(x.value))}</strong>`;b.appendChild(r0)});p.appendChild(b);wrap.appendChild(p)});
- if(actions.length){const a=document.createElement('div');a.className='actions';actions.forEach(x=>{if(!x.url)return;const t=cleanDisplay(x.type);if(!['download','open','open_document'].includes(t))return;if(documents.length&&t==='open_document')return;const l=document.createElement('a');l.className='action-btn';l.href=x.url;if(t==='download'){l.setAttribute('download','');l.textContent='↓ '+(cleanDisplay(x.label)||'Descargar')}else{l.target='_blank';l.rel='noopener noreferrer';l.textContent='↗ '+(cleanDisplay(x.label)||'Abrir documento')}a.appendChild(l)});if(a.childNodes.length)wrap.appendChild(a)}
+ if(actions.length){const a=document.createElement('div');a.className='actions';actions.forEach(x=>{if(!x.url)return;const t=cleanDisplay(x.type);if(!['download','open','open_document'].includes(t))return;if(documents.length&&t==='open_document')return;const l=document.createElement('a');l.className='action-btn';l.href='#';if(t==='download'){l.textContent='↓ '+(cleanDisplay(x.label)||'Descargar')}else{l.textContent='↗ '+(cleanDisplay(x.label)||'Abrir documento')}l.addEventListener('click',e=>{e.preventDefault();miaDownloadFile(x.url,cleanDisplay(x.label)||(t==='download'?'descarga':'documento'))});a.appendChild(l)});if(a.childNodes.length)wrap.appendChild(a)}
  const renderedWebSources=renderWebSources(data,wrap);const src=(r.sources||[]).map(cleanDisplay).filter(Boolean);if(src.length&&!renderedWebSources){const d=document.createElement('details');d.className='sources-details';d.innerHTML='<summary>Ver fuentes consultadas</summary><div>'+encodeText(src.join(' · '))+'</div>';wrap.appendChild(d)}msg.appendChild(wrap);convo.scrollTop=convo.scrollHeight
 }
 function safeLocalGet(k){try{return localStorage.getItem(k)}catch(_){return null}}
@@ -698,7 +717,7 @@ function speak(text,finalState='sonriendo'){
  if(!speechEnabled||!('speechSynthesis'in window)||!text){setAvatarState(finalState);return}speechSynthesis.cancel();const chunks=splitSpeech(text);let i=0;
  const next=()=>{if(i>=chunks.length){setAvatarState(finalState);return}const chunk=chunks[i++],last=/[!?]$/.test(chunk),u=utteranceFor(chunk,last?.99:.965,1.01);u.onstart=()=>setAvatarState('hablando');u.onend=()=>setTimeout(next,/[,;:]$/.test(chunk)?150:95);u.onerror=()=>setAvatarState(finalState);speechSynthesis.speak(u)};next()
 }
-soundToggle.addEventListener('click',()=>{speechEnabled=!speechEnabled;soundToggle.textContent=speechEnabled?'🔊':'🔇';if(!speechEnabled&&'speechSynthesis'in window)speechSynthesis.cancel()});
+soundToggle.addEventListener('click',()=>{speechEnabled=!speechEnabled;safeLocalSet(VOICE_MUTE_KEY,speechEnabled?'0':'1');soundToggle.textContent=speechEnabled?'🔊':'🔇';if(!speechEnabled&&'speechSynthesis'in window)speechSynthesis.cancel()});
 const MIA_RUNTIME={
   isLocal:['localhost','127.0.0.1'].includes(location.hostname),
   backendBase:null,
@@ -829,13 +848,20 @@ async function miaElevenLabsSpeak(text,finalState='sonriendo',returnState=null){
 
 speak=function(text,finalState='sonriendo'){miaElevenLabsSpeak(text,finalState)};
 speakProgress=function(text,returnState){if(!speechEnabled||miaCurrentAudio)return;miaElevenLabsSpeak(text,returnState||'concentrada',returnState||'concentrada')};
-const miaMailSpeechQueue=[];let miaMailSpeechTimer=null;
+const miaMailSpeechQueue=[];let miaMailSpeechTimer=null;let miaMailSpeaking=false;
+// miaMailSpeaking se marca de forma SÍNCRONA antes de arrancar miaElevenLabsSpeak (que primero
+// hace un fetch asíncrono a /api/mia/voice) y solo se libera cuando esa promesa termina. Sin esto,
+// miaMailSpeechTimer queda en null mientras el fetch está en curso (currentState/miaCurrentAudio
+// todavía no reflejan "hablando" porque eso solo se fija en audio.onplay) y una segunda llamada a
+// miaSpeakMailNotification durante esa ventana volvería a creer que mIA está libre, lanzando una
+// SEGUNDA reproducción en paralelo del aviso de correo (voz duplicada sin pasar por `restored`).
 function drainMiaMailSpeech(){
  miaMailSpeechTimer=null;if(!miaMailSpeechQueue.length||!speechEnabled)return;
- if(['pensando','concentrada','escuchando','hablando'].includes(currentState)||miaCurrentAudio||('speechSynthesis'in window&&speechSynthesis.speaking)){
+ if(miaMailSpeaking||['pensando','concentrada','escuchando','hablando'].includes(currentState)||miaCurrentAudio||('speechSynthesis'in window&&speechSynthesis.speaking)){
   miaMailSpeechTimer=setTimeout(drainMiaMailSpeech,800);return;
  }
- const text=miaMailSpeechQueue.shift();void miaElevenLabsSpeak(text,'avisando','reposo').finally(()=>{if(miaMailSpeechQueue.length)miaMailSpeechTimer=setTimeout(drainMiaMailSpeech,250)});
+ miaMailSpeaking=true;
+ const text=miaMailSpeechQueue.shift();void miaElevenLabsSpeak(text,'avisando','reposo').finally(()=>{miaMailSpeaking=false;if(miaMailSpeechQueue.length)miaMailSpeechTimer=setTimeout(drainMiaMailSpeech,250)});
 }
 window.miaSpeakMailNotification=(text)=>{if(!speechEnabled||!String(text||'').trim())return;miaMailSpeechQueue.push(String(text).slice(0,300));if(!miaMailSpeechTimer)drainMiaMailSpeech()};
 

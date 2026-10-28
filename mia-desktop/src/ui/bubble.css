@@ -60,10 +60,14 @@ p{margin:0 0 1px;color:#846e7a;font-size:11px;line-height:1.45}
   border:1px solid rgba(236,219,228,.98);
   background:#fff!important;
   box-shadow:0 6px 24px rgba(89,39,63,.10),0 1px 2px rgba(63,22,44,.06)}
-textarea{display:block;background:white!important;color:#463241;width:100%;min-height:53px;
-  height:61px;padding:5px 4px 9px;border:0;outline:none;resize:none;line-height:1.5;
-  font:13px 'Segoe UI',Arial,sans-serif}
+textarea{display:block;background:white!important;color:#463241;width:100%;
+  min-height:38px;max-height:140px;padding:5px 4px 9px;border:0;outline:none;resize:none;
+  line-height:1.5;overflow-y:auto;font:13px 'Segoe UI',Arial,sans-serif}
 textarea::placeholder{color:#ac9ca5}
+/* El anillo rosa de foco de common.css (pensado para botones sueltos) queda feo sobre una caja de
+   texto que ya vive dentro de un recuadro propio; aquí basta con resaltar ese recuadro. */
+textarea:focus-visible{outline:none}
+.composer:focus-within{border-color:#cfa4bd}
 .actions{display:flex;align-items:center;justify-content:space-between;gap:7px}
 .right-actions{display:flex;align-items:center;gap:7px;min-width:0}
 .btn,.btn-soft{font-size:11px;min-height:34px;padding:8px 12px;white-space:nowrap;border-radius:11px}
@@ -94,21 +98,24 @@ button:disabled{opacity:.57;cursor:progress}
 .top-copy strong{font-size:15px}.top-copy span{font-size:9px}.content{padding:12px 13px 15px;gap:7px}
 .btn,.btn-soft{padding:7px 9px;font-size:10px}}
 @media (max-height:490px){.top{min-height:56px;padding-top:8px;padding-bottom:8px}.content{padding-top:10px;padding-bottom:12px;gap:5px}
-.content p{display:none}.tag{font-size:9px}.voice-status{padding:5px 8px}.composer{padding:8px}textarea{height:37px;min-height:37px;padding-top:1px;padding-bottom:3px}
+.content p{display:none}.tag{font-size:9px}.voice-status{padding:5px 8px}.composer{padding:8px}textarea{min-height:30px;max-height:100px;padding-top:1px;padding-bottom:3px}
 .thread{min-height:42px}.transcription{max-height:78px}.btn,.btn-soft{min-height:30px;padding-top:6px;padding-bottom:6px}}
 @media (prefers-reduced-motion: reduce){.icon-button,.btn{transition:none}}
 
-/* V0.3.2: explicit, per-chat control of the microphone; visible capture state. */
+/* V0.4: control del micrófono por iconos — un vistazo basta para ver el modo activo, sin
+   desplegable de texto ni insignia aparte (el estado detallado ya lo da #voiceStatus). */
 .mic-mode-row{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap;
   padding:7px 9px;border:1px solid rgba(114,65,87,.16);border-radius:12px;background:rgba(255,255,255,.52)}
-.mic-mode-row label{font-size:11px;font-weight:700;color:#6b2845}
-.mic-mode-row select{flex:1;min-width:135px;max-width:270px;border:1px solid rgba(128,68,93,.2);border-radius:8px;
-  padding:7px;background:#fff;color:#5e2841;font:600 11px 'Segoe UI',Arial,sans-serif}
-.mic-indicator{font-size:9px;letter-spacing:.07em;font-weight:800;color:#795969;
-  border-radius:99px;padding:5px 8px;background:rgba(250,246,248,.96);border:1px solid #e8dce3}
-.mic-indicator[data-status='listening']{color:#8e301f;background:#ffebdf;border-color:#f2c2a9}
-.mic-indicator[data-status='conversation']{color:#6a2758;background:#f4e7f4;border-color:#dfc2df}
-@media(max-width:450px){.mic-mode-row{gap:5px;padding:5px 7px}.mic-mode-row select{min-width:100px}}
+.mic-mode-label{font-size:11px;font-weight:700;color:#6b2845}
+.mic-mode-icons{display:flex;gap:4px}
+.mic-mode-icon{width:30px;height:30px;padding:0;border-radius:9px;border:1px solid transparent;
+  background:transparent;font-size:15px;line-height:1;color:#8c6f7e;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:background .15s,border-color .15s}
+.mic-mode-icon:hover{background:rgba(255,255,255,.7)}
+.mic-mode-icon.active{background:#fff;border-color:#e8d2dc;box-shadow:0 2px 6px rgba(89,39,63,.12)}
+.mic-mode-icon.live{animation:mic-pulse 1.4s ease-in-out infinite}
+@keyframes mic-pulse{0%,100%{box-shadow:0 0 0 0 rgba(139,43,80,.28)}50%{box-shadow:0 0 0 5px rgba(139,43,80,0)}}
+@media(max-width:450px){.mic-mode-row{gap:5px;padding:5px 7px}.mic-mode-icon{width:26px;height:26px;font-size:13px}}
 /* V0.2.5: conversational microphone state in the existing glass card. */
 .conversation-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 8px;border:1px solid rgba(114,65,87,.16);border-radius:10px;background:rgba(255,255,255,.53);font-size:10px;color:#6b2845}
 .conversation-toolbar[hidden]{display:none}

@@ -10,8 +10,7 @@ const {normalizeConfig}=require('../src/config.cjs');
 
 test('tres modos de chat visibles sin inicio automático de transcripción',()=>{
   const html=read('src/ui/bubble.html'),ui=read('src/ui/bubble.js');
-  for(const x of ['off','once','conversation'])assert.match(html,new RegExp('<option value="'+x+'"'));
-  assert.match(html,/id="micIndicator"/);
+  for(const x of ['off','once','conversation'])assert.match(html,new RegExp('data-mode="'+x+'"'));
   assert.match(ui,/bridge\.setChatMicMode\(mode\)/);
   assert.match(ui,/const epoch=captureEpoch/);
   assert.match(ui,/epoch!==captureEpoch/);

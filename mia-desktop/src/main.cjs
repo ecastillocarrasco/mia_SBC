@@ -49,6 +49,27 @@ const activePlaybackSenders=new Set();
 const pendingMailVoice=[];
 let pendingMailPrompt=null;
 let greetingTriggered = false;
+let loggedInFirstName = '';
+// Mismas formulaciones que frontend/src/core/identity-v45.js (3D/holograma): varias alternativas
+// en tono y contenido, elegidas al azar, para que el saludo no suene siempre a la misma frase
+// grabada. El 2D en producción no las tiene (saludo fijo por hora del día); aquí sí, porque es
+// justo lo que se pidió igualar.
+const WELCOME_TEMPLATES_WITH_NAME = [
+  name => `¡Hola ${name}! Soy mIA, tu asistente virtual. Estoy aquí para ayudarte con cualquier consulta. ¿Qué te gustaría saber?`,
+  name => `¡Hola ${name}! Qué alegría verte por aquí. Soy mIA, ¿en qué puedo ayudarte hoy?`,
+  name => `Bienvenido de nuevo, ${name}. Soy mIA, tu asistente virtual. Dime qué necesitas y te ayudo.`,
+  name => `¡Hola, ${name}! Aquí estoy para lo que necesites. ¿Qué te gustaría consultar?`,
+  name => `${name}, un placer tenerte por aquí otra vez. Soy mIA. ¿Qué te gustaría saber?`
+];
+const WELCOME_TEMPLATES_NO_NAME = [
+  () => '¡Hola! Soy mIA, tu asistente virtual. Estoy aquí para ayudarte con cualquier consulta. ¿Qué te gustaría saber?',
+  () => '¡Hola! Soy mIA. ¿En qué puedo ayudarte hoy?',
+  () => 'Bienvenido. Soy mIA, tu asistente virtual. Dime qué necesitas y te ayudo.'
+];
+function greetingText(name) {
+  const templates = name ? WELCOME_TEMPLATES_WITH_NAME : WELCOME_TEMPLATES_NO_NAME;
+  return templates[Math.floor(Math.random() * templates.length)](name);
+}
 let ceremonySequence=0, ceremonyBusy=false;
 const ceremonies=new Map();
 let lastResultsPayload = null;
@@ -555,8 +576,7 @@ function setupIPC() {
     if(!ownSender(event,[avatarWin]) || greetingTriggered || !visibility.canAutoShow()) return;
     greetingTriggered=true;
     if(config.startupGreeting) {
-      const h=new Date().getHours(); const salutation=h<13?'Buenos días':h<21?'Buenas tardes':'Buenas noches';
-      const welcome=`${salutation}${config.greetingName ? ', '+config.greetingName : ''}. Soy mIA, estoy aquí para ayudarte.`;
+      const welcome=greetingText(loggedInFirstName);
       avatarWin.webContents.send('mia:startup-greeting',{text:welcome, voiceEnabled:config.voiceEnabled, fallbackEnabled:config.voiceFallbackEnabled});
     }
   });
@@ -708,6 +728,7 @@ app.whenReady().then(async () => {
     app.quit();
     return;
   }
+  loggedInFirstName = auth.firstNameFromDisplayName(access.displayName) || config.greetingName || '';
   speech.configure(app.getPath('userData'));
   speech.setEnabled(config.voiceMode!=='off');
   protocol.handle('mia', async request => {

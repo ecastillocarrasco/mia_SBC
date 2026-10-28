@@ -1,6 +1,7 @@
 'use strict';
 const { normalizeBackendUrl } = require('./config.cjs');
 const auth = require('./auth.cjs');
+const { withInsecureTls } = require('./insecure-tls.cjs');
 const { extractPresentation } = require('./presentation.cjs');
 const { resolveEmployeeReply, selectedEmployeePresentation, getName, requestedEmployee } = require('./identity.cjs');
 const { planPrompt, safeConversationContext, normalized } = require('./conversation.cjs');
@@ -9,7 +10,7 @@ const {extractReport,isReportQuestion,validateDownloadUrl} = require('./report.c
 async function requestWithTimeout(url, opts, timeoutMs = 35000) {
   const ctrl = new AbortController();
   const id = setTimeout(() => ctrl.abort(), timeoutMs);
-  try { return await fetch(url, { ...opts, redirect: 'error', signal: ctrl.signal }); }
+  try { return await withInsecureTls(() => fetch(url, { ...opts, redirect: 'error', signal: ctrl.signal })); }
   finally { clearTimeout(id); }
 }
 async function authHeaders() {

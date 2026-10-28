@@ -14,6 +14,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { PublicClientApplication } = require('@azure/msal-node');
+const { withInsecureTls } = require('./insecure-tls.cjs');
 
 let pca = null;
 let authConfig = null;
@@ -47,7 +48,7 @@ function makeCachePlugin() {
 }
 
 async function fetchAuthConfig(base) {
-  const response = await fetch(base + '/api/auth/config');
+  const response = await withInsecureTls(() => fetch(base + '/api/auth/config'));
   if (!response.ok) throw new Error(`/api/auth/config respondió ${response.status}`);
   return response.json();
 }
@@ -140,15 +141,31 @@ async function ensureAuthorized(base) {
   if (!pca || !authConfig?.requires_login) return { ok: true };
   try {
     const token = await getAccessToken();
-    const response = await fetch(base + '/api/auth/me', { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    const response = await withInsecureTls(() => fetch(base + '/api/auth/me', { headers: token ? { Authorization: `Bearer ${token}` } : {} }));
     if (!response.ok) return { ok: false, reason: 'error' };
     const payload = await response.json();
     if (!payload.has_access) return { ok: false, reason: 'unauthorized', displayName: payload.display_name, email: payload.email };
-    return { ok: true };
+    return { ok: true, displayName: payload.display_name, email: payload.email };
   } catch (error) {
     console.error('[mIA Auth] No se pudo comprobar el acceso:', error);
     return { ok: false, reason: 'error' };
   }
 }
 
-module.exports = { ensureAuthenticated, getAccessToken, ensureAuthorized };
+/**
+ * Primer nombre, limpio y capitalizado, a partir del `display_name` que devuelve
+ * `GET /api/auth/me` (ya validado por el backend contra el token real) — equivalente de
+ * `textName()`/`firstNameFromAccount()` en frontend/src/core/identity-v45.js, usado allí para
+ * personalizar el saludo de 3D/holograma. Cadena vacía si no hay nombre o no tiene forma de
+ * nombre de pila (nunca se interpola un correo o un valor raro en el saludo hablado).
+ */
+function firstNameFromDisplayName(value) {
+  if (typeof value !== 'string') return '';
+  const clean = value.trim().replace(/\s+/g, ' ');
+  if (!clean) return '';
+  const candidate = clean.split(' ')[0];
+  if (!/^[\p{L}][\p{L}'’-]{0,39}$/u.test(candidate)) return '';
+  return candidate.charAt(0).toLocaleUpperCase('es-ES') + candidate.slice(1).toLocaleLowerCase('es-ES');
+}
+
+module.exports = { ensureAuthenticated, getAccessToken, ensureAuthorized, firstNameFromDisplayName };

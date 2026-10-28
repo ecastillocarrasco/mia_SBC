@@ -6,7 +6,7 @@ const send = document.getElementById('send');
 const mic = document.getElementById('mic');
 const voiceStatus = document.getElementById('voiceStatus');
 const chatMicMode=document.getElementById('chatMicMode');
-const micIndicator=document.getElementById('micIndicator');
+const micModeButtons=[...chatMicMode.querySelectorAll('.mic-mode-icon')];
 let cfg = {}, recognizing = false, answering = false, audio = null, audioUrl = null;
 let lastResult = null;
 let pendingMailPrompt = null, mailPromptTimer = null;
@@ -41,14 +41,26 @@ function scheduleNextTurn(){
   },420);
 }
 function stateText(value) { voiceStatus.textContent = value; }
+// La caja crece con el contenido (dictado incluido) hasta un máximo; a partir de ahí hace scroll
+// en vez de empujar los botones de abajo. max-height debe coincidir con el de bubble.css.
+const INPUT_MAX_HEIGHT = 140;
+function autoResizeInput() {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, INPUT_MAX_HEIGHT) + 'px';
+}
+input.addEventListener('input', autoResizeInput);
 function updateMicControls(){
   const mode=cfg.voiceMode||'off';
-  chatMicMode.value=mode;
+  const status=mode==='off'?'off':recognizing?'listening':conversationActive?'conversation':'idle';
+  for(const b of micModeButtons){
+    const active=b.dataset.mode===mode;
+    b.classList.toggle('active',active);
+    b.setAttribute('aria-checked',active?'true':'false');
+    b.classList.toggle('live',active&&(status==='listening'||status==='conversation'));
+  }
   // While talking hands-free, 'Detener' must remain clickable even during an active capture.
   mic.disabled=modeChanging||mode==='off'||answering||(recognizing&&!conversationActive);
   mic.textContent=mode==='conversation'?(conversationActive?'■ Detener':'🎙 Iniciar conversación'):'🎙 Hablar una vez';
-  micIndicator.dataset.status=mode==='off'?'off':recognizing?'listening':conversationActive?'conversation':'off';
-  micIndicator.textContent=mode==='off'?'APAGADO':recognizing?'ESCUCHANDO':conversationActive?'CONVERSANDO':cfg.wakePhraseEnabled?'SOLO COMANDOS':'EN ESPERA';
   conversationToolbar.hidden=!conversationActive;
 }
 async function setChatMode(mode){
@@ -68,9 +80,12 @@ async function setChatMode(mode){
     else {stateText('Modo conversación iniciado de forma explícita.');conversationActive=true;}
   }catch{cfg.voiceMode='off';bridge.stopDictation();stateText('Error al cambiar el modo. La captura del chat permanece bloqueada.');}
   finally{modeChanging=false;updateMicControls();}
+  // Pulsar el icono es la orden de "escúchame ahora": elegir modo y tener que pulsar un segundo
+  // botón aparte para empezar a hablar es justo la confusión que se pidió evitar.
   if(mode==='conversation'&&conversationActive)dictate({continuation:true});
+  else if(mode==='once'&&cfg.voiceMode==='once')dictate();
 }
-chatMicMode.addEventListener('change',()=>setChatMode(chatMicMode.value));
+for(const b of micModeButtons) b.addEventListener('click',()=>setChatMode(b.dataset.mode));
 function addMessage(text, type) {
   const el = document.createElement('div');
   el.className = `message ${type}`;
@@ -93,7 +108,7 @@ function chooseMail(action, c = pendingMailPrompt) {
   hideMailPrompt();
   bridge.resolveMailPrompt();
   if (action === 'dismiss') { void speakText('De acuerdo, seguimos con lo que estábamos.'); return; }
-  input.value = mailQuery(c, action); void submit();
+  input.value = mailQuery(c, action); autoResizeInput(); void submit();
 }
 function showMailPrompt(c) {
   if (!mailPrompt || !c) return;
@@ -178,7 +193,7 @@ async function submit() {
   if (mailReply?.action === 'dismiss') { await speakText('De acuerdo, seguimos con lo que estábamos.'); return; }
   if (mailReply?.action === 'summary' || mailReply?.action === 'details') question = mailQuery(mailReply.correo, mailReply.action);
   input.value = question;
-  stopAudio(); input.value = ''; document.getElementById('transcription').hidden=true; addMessage(question, 'user');
+  stopAudio(); input.value = ''; autoResizeInput(); document.getElementById('transcription').hidden=true; addMessage(question, 'user');
   lastResult = null;
   answering = true; send.disabled = true; updateMicControls();
   bridge.avatarAction('THINK'); stateText('Consultando mIA SBC…');
@@ -220,12 +235,12 @@ async function dictate(options={}) {
     if(epoch!==captureEpoch || cfg.voiceMode!==capturedMode || document.hidden || modeChanging)return;
     if(cfg.voiceMode==='conversation' && !conversationActive)return;
     if (!result.ok) { if(result.code==='COMMAND_HANDLED'||result.code==='CANCELLED')return;stateText((result.code?'['+result.code+'] ':'')+(result.error || 'No se ha reconocido la frase.')+' · Configuración > Comprobar motor local.'); return; }
-    input.value = result.text;
+    input.value = result.text; autoResizeInput();
     const score = typeof result.confidence==='number' ? Math.round(result.confidence*100) : null;
     stateText('Dictado recibido' + (score===null ? '' : ` · confianza ${score}%`) + ': ' + result.text.slice(0,95));
     const alts=document.getElementById('alternatives');alts.replaceChildren();
     const options=(Array.isArray(result.alternatives)?result.alternatives:[]).filter(x=>x?.text&&x.text!==result.text).slice(0,3);
-    for(const alt of options){const b=document.createElement('button');b.className='alt-option';b.type='button';b.textContent=alt.text;b.addEventListener('click',()=>{input.value=alt.text;input.focus();});alts.append(b);}
+    for(const alt of options){const b=document.createElement('button');b.className='alt-option';b.type='button';b.textContent=alt.text;b.addEventListener('click',()=>{input.value=alt.text;autoResizeInput();input.focus();});alts.append(b);}
     document.getElementById('transcriptionInfo').textContent=options.length?'Otras transcripciones posibles · puedes elegir o corregir el texto:':'Revisa el texto reconocido antes de enviarlo.';
     document.getElementById('transcription').hidden=false;
     if ((cfg.autoSendDictation && capturedMode==='once') || (capturedMode==='conversation' && conversationActive)) await submit();
@@ -251,7 +266,7 @@ document.getElementById('preview').addEventListener('click', () => bridge.openRe
 bridge.onMicrophoneRequest(() => {if(cfg.voiceMode!=='off')dictate();});
 // Aviso de correo nuevo (main.cjs, mail-watch.cjs): deja la pregunta escrita, lista para que el
 // usuario la confirme — nunca se envía sola, sin que el usuario pulse enviar.
-bridge.onPrefillInput(text => { if (typeof text === 'string' && text.trim()) { input.value = text; input.focus(); } });
+bridge.onPrefillInput(text => { if (typeof text === 'string' && text.trim()) { input.value = text; autoResizeInput(); input.focus(); } });
 bridge.onMailPrompt(showMailPrompt);
 bridge.onStopConversation(()=>{stopConversation();stopAudio();});
 bridge.onConfigChanged(value=>{
@@ -265,7 +280,7 @@ bridge.onVoiceStatus(status => { if(status.active && !recognizing && cfg.voiceMo
 // Global Escape must not accidentally dismiss the chat window.
 window.addEventListener('focus', () => input.focus());
 document.addEventListener('visibilitychange', () => { if (document.hidden) {stopConversation();stopAudio();} });
-input.focus();
+input.focus(); autoResizeInput();
 
 // Redimensionamiento completo del panel sin marco: bordes y cuatro esquinas.
 // Las dimensiones se guardan de forma persistente en el proceso principal.

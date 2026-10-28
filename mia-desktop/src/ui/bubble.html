@@ -7,7 +7,7 @@
   <div class="glass-light" aria-hidden="true"></div>
   <div class="top">
     <img class="mia-logo" src="../../assets/branding/mia-wordmark.svg" data-mia-logo alt="Logotipo mIA">
-    <div class="top-copy"><strong>mIA Desktop</strong><span>Asistente de Sunset Beach Club</span></div><div class="brand-logo-wrap"><img data-sbc-logo alt="Logotipo oficial Sunset Beach Club"></div>
+    <div class="top-copy"><strong>mIA</strong><span>Asistente de Sunset Beach Club</span></div><div class="brand-logo-wrap"><img data-sbc-logo alt="Logotipo oficial Sunset Beach Club"></div>
     <button class="icon-button" id="settings" title="Configuración" aria-label="Configuración">⚙</button>
     <button class="icon-button" id="minimize" title="Minimizar mIA a la bandeja" aria-label="Minimizar mIA">−</button>
     <button class="icon-button" id="close" title="Cerrar bocadillo" aria-label="Cerrar bocadillo">×</button>
@@ -17,13 +17,12 @@
     <h1>¿En qué puedo ayudarte?</h1>
     <p>Escribe o habla con mIA sin abrir los mundos web.</p>
     <div class="mic-mode-row" role="group" aria-label="Control del micrófono">
-      <label for="chatMicMode">Micrófono</label>
-      <select id="chatMicMode" aria-label="Modo del micrófono">
-        <option value="off">Desactivado</option>
-        <option value="once">Activado · una pregunta</option>
-        <option value="conversation">Conversación abierta</option>
-      </select>
-      <span class="mic-indicator" id="micIndicator" data-status="off" aria-live="polite">APAGADO</span>
+      <span class="mic-mode-label">Micrófono</span>
+      <div class="mic-mode-icons" id="chatMicMode" role="radiogroup" aria-label="Modo del micrófono">
+        <button type="button" class="mic-mode-icon" data-mode="off" role="radio" aria-checked="true" title="Desactivado" aria-label="Micrófono desactivado">🔇</button>
+        <button type="button" class="mic-mode-icon" data-mode="once" role="radio" aria-checked="false" title="Activado · una pregunta" aria-label="Activar para una pregunta">🎙️</button>
+        <button type="button" class="mic-mode-icon" data-mode="conversation" role="radio" aria-checked="false" title="Conversación abierta" aria-label="Activar conversación abierta">🔁</button>
+      </div>
     </div>
     <div id="voiceStatus" class="voice-status" role="status">Micrófono apagado · Pulsa «Hablar» para activarlo.</div>
     <div id="conversationToolbar" class="conversation-toolbar" hidden><span>Conversación abierta · mIA escuchará por turnos</span><button class="btn-soft" id="stopConversation" type="button">Terminar conversación</button></div>
