@@ -222,6 +222,15 @@ async def generate_narrative_block(
             break
     if not statements:
         return None
+    # Una métrica desconocida no prueba que la afirmación sea falsa, pero
+    # tampoco permite publicarla como un hecho verificado.
+    statements = [
+        statement
+        for statement in statements
+        if statement.get("kind") != "fact" or (statement.get("evidence") or {}).get("metric") in backend_values
+    ]
+    if not statements:
+        return None
     verified = enforce_narrative_integrity(statements, backend_values=backend_values)
     # Fase F, "coherencia temporal": verifica el campo ESTRUCTURADO `period` de cada afirmación contra
     # el periodo real del informe — nunca analiza la prosa libre con expresiones regulares.

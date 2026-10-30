@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from mia.data import Database
+from mia.modules.correo import register as register_mail
+from mia.modules.correo.deps import MailDeps
+from mia.modules.rrhh import build_rrhh_registry
 
 if TYPE_CHECKING:
     from mia.conversation import ToolRegistry
@@ -25,9 +28,6 @@ def build_registry(
 
     RRHH conserva su registro especializado; el correo se registra aquí como paquete autónomo.
     """
-    from mia.modules.correo import register as register_mail
-    from mia.modules.correo.deps import MailDeps
-    from mia.modules.rrhh import build_rrhh_registry
 
     hr_enabled = None if enabled is None else [domain for domain in enabled if domain != "correo"]
     registry = build_rrhh_registry(

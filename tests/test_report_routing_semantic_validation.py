@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import io
 import json
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -67,8 +68,10 @@ from mia.modules.rrhh.informes.render import RENDERERS
 from mia.reporting.planner import planner
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp
-from tests.test_analisis_economico import Q3_NOW, q3_registry  # noqa: F401 — fixture reutilizada
+from tests.test_analisis_economico import Q3_NOW, q3_registry
 from tests.test_phase4b import _pdf
+
+__all__ = ["q3_registry"]
 
 ADMIN = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
 
@@ -305,7 +308,15 @@ async def incident_engine(tmp_path: Path):
     )
 
     def scripted(req):
-        # Reproduce el incidente real: el LLM elige PRIMERO 'generar_informe_ejecutivo' (la herramienta
+        if not any(message.role == "tool" for message in req.messages):
+            return tool_call(
+                "planificar_tarea",
+                {"pasos": [{"objetivo": "Generar comparativa", "herramientas": ["generar_informe_ejecutivo"]}]},
+                call_id="plan",
+            )
+        if req.messages[-1].tool_call_id == "plan":
+            return tool_call("generar_informe_ejecutivo", {"formato": "pdf"})
+        # Reproduce el incidente real: la PRIMERA herramienta de negocio es 'generar_informe_ejecutivo' (la herramienta
         # equivocada que de verdad se seleccionó), nunca el generador económico directamente.
         if req.messages[-1].role == "tool":
             return final_answer("Aquí tienes el informe de costes salariales por departamento.", "Listo.")
@@ -325,19 +336,18 @@ async def incident_engine(tmp_path: Path):
 
 async def test_incident_request_through_the_real_chat_entry_point_delivers_the_real_report(
     incident_engine: ConversationEngine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Requisito 3: la solicitud EXACTA de la incidencia, desde el MISMO punto de entrada que usa el chat
     (`ConversationEngine.run()`, el método que invoca la ruta `/api/chat`), con un LLM simulado que elige
     PRIMERO la herramienta equivocada — exactamente como ocurrió en el incidente real. No se llama en
     ningún momento directamente a 'analisis_economico_nominas' ni se comprueba solo el rechazo: se
     comprueba que el usuario recibe el informe real, sin volver a pedirlo."""
-    original_store, original_broadcaster = diagnostics_module._store, diagnostics_module._broadcaster
     store = DiagnosticsStore(DiagnosticsSettings(enabled=True))
-    diagnostics_module.setup(store, LiveBroadcaster())
-    try:
+    with monkeypatch.context() as diagnostic_state:
+        diagnostic_state.setattr(diagnostics_module, "_state", replace(diagnostics_module._state))
+        diagnostics_module.setup(store, LiveBroadcaster())
         events = [e async for e in incident_engine.run(message=INCIDENT_REQUEST, user=ADMIN, session_id=None)]
-    finally:
-        diagnostics_module._store, diagnostics_module._broadcaster = original_store, original_broadcaster
 
     # ── 1. Resultado final: el usuario recibe el informe real, no un error ni una indicación de ruta ──
     result_events = [e for e in events if e.type == "result"]

@@ -88,16 +88,13 @@ def _set_cell_border(cell: Any, **edges: dict[str, Any]) -> None:
 def _add_field(paragraph: Any, instr: str, *, cached: str = "1") -> list[Any]:
     """Inserta un campo de Word (p. ej. ``PAGE``) con un valor en caché para que se vea algo incluso
     antes de que Word lo recalcule; ``updateFields`` (ver ``_force_field_update``) lo refresca al abrir."""
-    runs = []
-    for xml_builder in (
-        lambda: _field_run(paragraph, "begin"),
-        lambda: _instr_run(paragraph, instr),
-        lambda: _field_run(paragraph, "separate"),
-        lambda: paragraph.add_run(cached),
-        lambda: _field_run(paragraph, "end"),
-    ):
-        runs.append(xml_builder())
-    return runs
+    return [
+        _field_run(paragraph, "begin"),
+        _instr_run(paragraph, instr),
+        _field_run(paragraph, "separate"),
+        paragraph.add_run(cached),
+        _field_run(paragraph, "end"),
+    ]
 
 
 def _field_run(paragraph: Any, fld_type: str) -> Any:
@@ -137,7 +134,7 @@ def _chart_image(spec: dict[str, Any], width_in: float, *, caption: str | None =
     height_in = max(2.4, 0.34 * len(labels) + 1.1) if horizontal else 3.1
     fig = Figure(figsize=(width_in, height_in), dpi=220)
     fig.patch.set_facecolor("white")
-    canvas = FigureCanvasAgg(fig)
+    FigureCanvasAgg(fig)
     ax = fig.add_subplot(111)
     ax.set_facecolor("white")
     for spine in ("top", "right"):
@@ -158,8 +155,8 @@ def _chart_image(spec: dict[str, Any], width_in: float, *, caption: str | None =
         )
         legend_labels = [f"{label}  ({value / total:.0%})" for label, value in zip(labels, values, strict=True)]
         ax.legend(legend_labels, loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False, fontsize=8)
-        for spine in ax.spines.values():
-            spine.set_visible(False)
+        for axis_spine in ax.spines.values():
+            axis_spine.set_visible(False)
         ax.set_xticks([])
         ax.set_yticks([])
     elif kind in ("line", "area"):
@@ -224,7 +221,7 @@ def _chart_image(spec: dict[str, Any], width_in: float, *, caption: str | None =
         ax.set_title(caption, fontsize=9, color=f"#{NAVY}", fontweight="bold", loc="left")
     fig.tight_layout(pad=1.1)
     buffer = io.BytesIO()
-    canvas.print_png(buffer)
+    fig.savefig(buffer, format="png")
     return buffer.getvalue()
 
 
@@ -302,7 +299,7 @@ def _add_panels(word: Any, items: list[dict[str, Any]], *, kind: str) -> None:
             evidence = None
         else:
             color = GOLD
-            label = NARRATIVE_LABEL.get(item.get("kind"), str(item.get("kind", "")).upper())
+            label = NARRATIVE_LABEL.get(item.get("kind", ""), str(item.get("kind", "")).upper())
             message = str(item.get("text", ""))
             evidence_data = item.get("evidence") or {}
             evidence = f"Evidencia: {_flat_evidence(evidence_data)}" if evidence_data else None

@@ -25,31 +25,37 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from mia.diagnostics.models import EventStage, EventStatus, TraceStatus
 from mia.diagnostics.trace import TraceContext, current_call_id, current_trace, noop_trace  # noqa: F401
+from mia.diagnostics.trace import begin_trace as _begin_trace
 
 if TYPE_CHECKING:
     from mia.diagnostics.store import DiagnosticsStore
     from mia.diagnostics.streaming import LiveBroadcaster
 
-# Singletons — inicializados en create_app() si enabled=True
-_store: DiagnosticsStore | None = None
-_broadcaster: LiveBroadcaster | None = None
-_mask_pii: bool = False
+
+@dataclass
+class _DiagnosticsState:
+    store: DiagnosticsStore | None = None
+    broadcaster: LiveBroadcaster | None = None
+    mask_pii: bool = False
+
+
+_state = _DiagnosticsState()
 
 
 def is_enabled() -> bool:
-    return _store is not None
+    return _state.store is not None
 
 
 def setup(store: DiagnosticsStore, broadcaster: LiveBroadcaster, *, mask_pii: bool = False) -> None:
     """Inicializa el módulo de diagnóstico. Llamado desde create_app() si enabled=True."""
-    global _store, _broadcaster, _mask_pii
-    _store = store
-    _broadcaster = broadcaster
-    _mask_pii = mask_pii
+    _state.store = store
+    _state.broadcaster = broadcaster
+    _state.mask_pii = mask_pii
 
 
 @asynccontextmanager
@@ -66,11 +72,9 @@ async def begin_trace(
     - Si diagnósticos desactivados: yield None (sin overhead).
     - Si activados: crea TraceContext, lo fija en el ContextVar y lo cierra al salir.
     """
-    if _store is None or _broadcaster is None:
+    if _state.store is None or _state.broadcaster is None:
         yield None
         return
-
-    from mia.diagnostics.trace import begin_trace as _begin_trace
 
     async with _begin_trace(
         query=query,
@@ -78,9 +82,9 @@ async def begin_trace(
         user_name=user_name,
         session_id=session_id,
         request_id=request_id,
-        store=_store,
-        broadcaster=_broadcaster,
-        mask_pii=_mask_pii,
+        store=_state.store,
+        broadcaster=_state.broadcaster,
+        mask_pii=_state.mask_pii,
     ) as ctx:
         yield ctx
 

@@ -18,7 +18,7 @@ from mia.analytics.stats import TimePoint
 from mia.data import Employee, Payslip, ShiftDay, TtTimesheet, Vacation, VacationBalance
 from mia.ingestion.mappers.hr import ShiftKind
 from mia.modules.rrhh.common import Deps, fmt_date
-from mia.modules.rrhh.turnos.periods import absence_periods
+from mia.modules.rrhh.turnos.periods import AbsencePeriod, absence_periods
 from mia.reporting.document import Block, Document
 
 _insight_engine = InsightEngine()
@@ -30,6 +30,7 @@ async def build_executive_report(
     hi: date,
     today: date,
     dept_key: str | None,
+    *,
     dept_name: str | None,
 ) -> Document:
     """Construye el Document completo del informe ejecutivo de RRHH."""
@@ -37,7 +38,7 @@ async def build_executive_report(
     periodo_label = f"{fmt_date(lo)} – {fmt_date(hi)}"
 
     async with deps.db.session() as db:
-        blocks = await _collect_blocks(db, lo, hi, today, dept_key, ambito, periodo_label)
+        blocks = await _collect_blocks(db, lo, hi, today, dept_key, ambito=ambito, periodo_label=periodo_label)
 
     return Document(
         title=f"Informe Ejecutivo RRHH · {ambito}",
@@ -53,6 +54,7 @@ async def _collect_blocks(
     hi: date,
     today: date,
     dept_key: str | None,
+    *,
     ambito: str,
     periodo_label: str,
 ) -> list[Block]:
@@ -236,6 +238,32 @@ async def _collect_blocks(
             )
         )
 
+    _append_absence_blocks(blocks, absence_data, lo, hi, periodo_label=periodo_label)
+
+    _append_vacation_block(blocks, valid_balances, total_staff, today)
+
+    # 6 · ETT por empresa (chartable)
+    if tt_by_company:
+        blocks.append(
+            Block(
+                "table",
+                f"Trabajo temporal · {periodo_label}",
+                {
+                    "columns": ["Empresa", "Boletines", "Horas", "Importe (€)"],
+                    "rows": [
+                        [company, int(cnt), round(float(hours or 0), 1), round(float(amount or 0), 2)]
+                        for company, cnt, hours, amount in tt_by_company
+                    ],
+                },
+            )
+        )
+
+    return blocks
+
+
+def _append_absence_blocks(
+    blocks: list[Block], absence_data: list[AbsencePeriod], lo: date, hi: date, *, periodo_label: str
+) -> None:
     # 4 · Absentismo detallado por tipo
     if absence_data:
         by_kind_stats: dict[str, dict[str, Any]] = defaultdict(lambda: {"periodos": 0, "personas": set(), "dias": []})
@@ -307,7 +335,7 @@ async def _collect_blocks(
             # fases futuras, pero el VALOR sale siempre de aquí, nunca inventado. Con un solo mes de
             # datos no hay tendencia que detectar (from_time_series exige ≥2 puntos): no se añade un
             # bloque vacío ni uno con una afirmación sin base.
-            trend_points = [TimePoint(label=mes, value=float(dias)) for mes, dias in trend_rows]
+            trend_points = [TimePoint(label=mes, value=float(dias)) for mes, dias in sorted(by_month.items())]
             findings = _insight_engine.from_time_series(trend_points, label="el absentismo", unit="días")
             if findings:
                 blocks.append(
@@ -318,6 +346,8 @@ async def _collect_blocks(
                     )
                 )
 
+
+def _append_vacation_block(blocks: list[Block], valid_balances: list[float], total_staff: int, today: date) -> None:
     # 5 · Saldos de vacaciones — distribución por rangos (chartable)
     if valid_balances:
         ranges_ordered = ["Más de 20 días", "10 a 20 días", "0 a 9 días", "Saldo negativo"]
@@ -342,24 +372,6 @@ async def _collect_blocks(
                 {"columns": ["Rango", "Personas"], "rows": balance_rows},
             )
         )
-
-    # 6 · ETT por empresa (chartable)
-    if tt_by_company:
-        blocks.append(
-            Block(
-                "table",
-                f"Trabajo temporal · {periodo_label}",
-                {
-                    "columns": ["Empresa", "Boletines", "Horas", "Importe (€)"],
-                    "rows": [
-                        [company, int(cnt), round(float(hours or 0), 1), round(float(amount or 0), 2)]
-                        for company, cnt, hours, amount in tt_by_company
-                    ],
-                },
-            )
-        )
-
-    return blocks
 
 
 def _maybe_filter(stmt: Any, dept_key: str | None) -> Any:

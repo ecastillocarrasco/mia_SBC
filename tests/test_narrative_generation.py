@@ -145,3 +145,21 @@ def test_flatten_numeric_covers_nested_dicts_up_to_max_depth() -> None:
     assert flat["total_staff"] == 120.0
     assert flat["por_departamento.Cocina.total"] == 60000.0
     assert "por_departamento" not in flat  # el propio dict no es numérico, no se incluye
+
+
+async def test_unknown_metric_is_not_published_as_a_verified_fact():
+    fake = FakeLLMProvider(
+        script=_script_returning(
+            {
+                "statements": [
+                    {
+                        "kind": "fact",
+                        "text": "El supuesto beneficio es 9000.",
+                        "metric": "beneficio_inventado",
+                        "value": 9000,
+                    }
+                ]
+            }
+        )
+    )
+    assert await generate_narrative_block(fake, title="Informe", backend_summary=BACKEND_SUMMARY) is None

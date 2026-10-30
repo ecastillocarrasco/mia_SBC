@@ -1,20 +1,15 @@
 """Regresiones para la exportación comparativa sin tabla histórica activa."""
 
-import ast
 import asyncio
-import re
 from datetime import datetime
-from pathlib import Path
 from types import SimpleNamespace
 
+from mia.modules.rrhh.informes import tools as report_tools
 from mia.reporting.comparisons import (
     LAST_PAYROLL_COMPARISON,
-    explicit_month_comparison,
     is_export_followup,
     remembered_comparison,
 )
-
-ROOT = Path(__file__).resolve().parents[1] / "src/mia"
 
 
 def test_followup_does_not_need_both_tables_active():
@@ -28,15 +23,8 @@ def test_followup_does_not_need_both_tables_active():
     assert is_export_followup("genera el PDF del informe anterior")
 
 
-def test_exporter_routes_explicit_and_followup_comparisons_without_active_results():
-    tree = ast.parse((ROOT / "modules/rrhh/informes/tools.py").read_text(encoding="utf-8"))
-    node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "generar")
+def test_exporter_routes_explicit_and_followup_comparisons_without_active_results(monkeypatch):
     calls = []
-
-    class FakeTool:
-        def __init__(self, name, description, params, handler, **kwargs):
-            self.handler = handler
-            self.timeout_seconds = kwargs.get("timeout_seconds", 20)
 
     async def mock_comparison(_deps, _ctx, periods, **kwargs):
         calls.append((periods, kwargs["concepto"]))
@@ -47,40 +35,9 @@ def test_exporter_routes_explicit_and_followup_comparisons_without_active_result
         metrics = [SimpleNamespace(field=SimpleNamespace(domain="payroll", name="coste_empresa"))] if payroll else []
         return SimpleNamespace(metrics=metrics, compare=False, period=None)
 
-    class Permissions:
-        INFORMES_GENERAR = "informes"
-
-    ns = {
-        "Tool": FakeTool,
-        "InformeParams": object,
-        "Permission": Permissions,
-        "planner": SimpleNamespace(plan=fake_plan),
-        "explicit_month_comparison": explicit_month_comparison,
-        "remembered_comparison": remembered_comparison,
-        "LAST_TABLE": "ultima_presentacion",
-        "_contextual_payroll_concept": lambda state: (
-            "coste_empresa"
-            if state.get("ultima_presentacion", {}).get("__source_tool__") == "analisis_economico_nominas"
-            else None
-        ),
-        "_run_economic_comparison": mock_comparison,
-        "_infer_concepto": lambda fields: "coste_empresa" if "coste_empresa" in fields else "liquido",
-        "re": re,
-    }
-    exec(
-        compile(
-            ast.fix_missing_locations(
-                ast.Module(
-                    body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0), node],
-                    type_ignores=[],
-                )
-            ),
-            "<generar>",
-            "exec",
-        ),
-        ns,
-    )
-    tool = ns["generar"](object())
+    monkeypatch.setattr(report_tools, "planner", SimpleNamespace(plan=fake_plan))
+    monkeypatch.setattr(report_tools, "_run_economic_comparison", mock_comparison)
+    tool = report_tools.generar(object())
     assert tool.timeout_seconds >= 560  # dos consultas históricas independientes
     params = SimpleNamespace(
         formato="pdf", titulo=None, incluir_detalle=True, incluir_grafico=True, incluir_narrativa=False

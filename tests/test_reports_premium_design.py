@@ -5,38 +5,17 @@ All values are synthetic. No corporate data, network access, or live LLM calls.
 
 from __future__ import annotations
 
-import sys
-import types
 from datetime import datetime
 from io import BytesIO
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1] / "src/mia"
-# conftest.py (vía mia.main) ya ha importado estos paquetes de verdad antes de que pytest recoja
-# este fichero: hay que guardar lo que había (el módulo real, no None) para poder restaurarlo. El
-# guard "if fullname not in sys.modules" de antes asumía que, si ya estaba presente, era el real —
-# falso cuando otro fichero de test (test_report_engine_regressions.py) lo había dejado stubeado o
-# ausente; eso dejaba el stub puesto para el resto de la sesión de pytest sin limpiarlo nunca.
-_STUBBED_PACKAGES = ("mia.modules", "mia.modules.rrhh", "mia.modules.rrhh.informes")
-_saved_modules = {fullname: sys.modules.get(fullname) for fullname in _STUBBED_PACKAGES}
-for fullname, path in (
-    ("mia.modules", ROOT / "modules"),
-    ("mia.modules.rrhh", ROOT / "modules/rrhh"),
-    ("mia.modules.rrhh.informes", ROOT / "modules/rrhh/informes"),
-):
-    module = types.ModuleType(fullname)
-    module.__path__ = [str(path)]
-    sys.modules[fullname] = module
+import fitz
+from openpyxl import load_workbook
+from pptx import Presentation
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 
-from mia.modules.rrhh.informes.document import Block, Document
-from mia.modules.rrhh.informes.render import _chart_segments, to_pdf, to_pptx, to_xlsx
-from mia.modules.rrhh.informes.render_html import to_html
-
-for _fullname, _previous in _saved_modules.items():
-    if _previous is None:
-        sys.modules.pop(_fullname, None)
-    else:
-        sys.modules[_fullname] = _previous
+from mia.reporting.document import Block, Document
+from mia.reporting.render import _chart_segments, to_pdf, to_pptx, to_xlsx
+from mia.reporting.render_html import to_html
 
 NOW = datetime(2026, 10, 14)
 
@@ -65,7 +44,7 @@ def make_document(categories: int = 3) -> Document:
                 "Datos detallados",
                 {
                     "columns": ["Area", "2025", "2026"],
-                    "rows": [[name, a, b] for name, a, b in zip(labels, values_a, values_b)],
+                    "rows": [[name, a, b] for name, a, b in zip(labels, values_a, values_b, strict=True)],
                 },
             ),
             Block(
@@ -89,8 +68,6 @@ def test_chart_segments_keep_all_labels_values_and_series():
 
 
 def test_pptx_logo_on_every_slide_and_chart_series_preserved():
-    from pptx import Presentation
-    from pptx.enum.shapes import MSO_SHAPE_TYPE
 
     output = to_pptx(make_document(56), NOW)
     deck = Presentation(BytesIO(output))
@@ -103,7 +80,6 @@ def test_pptx_logo_on_every_slide_and_chart_series_preserved():
 
 
 def test_xlsx_kpis_link_to_real_cells_and_data_remain_numeric():
-    from openpyxl import load_workbook
 
     workbook = load_workbook(BytesIO(to_xlsx(make_document(10), NOW)))
     first = workbook.worksheets[0]
@@ -119,7 +95,6 @@ def test_xlsx_kpis_link_to_real_cells_and_data_remain_numeric():
 
 
 def test_pdf_has_logo_on_every_page_and_long_table_is_not_lost():
-    import fitz
 
     stream = to_pdf(make_document(56), NOW)
     pages = fitz.open(stream=stream, filetype="pdf")

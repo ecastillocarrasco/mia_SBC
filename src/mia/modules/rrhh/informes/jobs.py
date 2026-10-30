@@ -106,7 +106,7 @@ async def run_informe_economico_nominas(services: Any, job: JobSnapshot) -> str:
         raise RuntimeError(f"generar_informe: {informe_result.status.value} — {informe_result.summary}")
     # `generar_informe` construye el enlace como f"/api/reports/{report_id}" (ver informes/tools.py):
     # el propio informe ya lo recoge en la tabla `reports`, así que basta con el id para enlazarlo aquí.
-    return informe_result.summary["enlace"].rsplit("/", 1)[-1]
+    return str(informe_result.summary["enlace"]).rsplit("/", 1)[-1]
 
 
 # ------------------------------------------------------------------ punto de entrada conversacional

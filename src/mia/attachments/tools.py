@@ -14,6 +14,8 @@ from mia.attachments.dataset import dataset_info, dataset_query, extract_column
 from mia.attachments.intelligence import get_attachment_summary
 from mia.attachments.model import AttachmentContentType, get_active_refs
 from mia.conversation.tools import ToolContext, ToolResult, ToolStatus
+from mia.diagnostics import EventStage
+from mia.diagnostics import emit as diag_emit
 
 
 class ListAttachmentsParams(BaseModel):
@@ -87,9 +89,6 @@ async def handle_read_attachment(
     record = svc.get_for_user(params.attachment_id, ctx.user.user_id)
     if record is None:
         return ToolResult(ToolStatus.NOT_FOUND, f"Adjunto {params.attachment_id} no encontrado o expirado.")
-
-    from mia.diagnostics import EventStage  # noqa: PLC0415
-    from mia.diagnostics import emit as diag_emit
 
     diag_emit(
         EventStage.ATTACHMENT_RETRIEVAL,
@@ -165,9 +164,6 @@ async def handle_dataset_info(
     if content is None or content.content_type != AttachmentContentType.DATASET:
         return ToolResult(ToolStatus.ERROR, "El adjunto no contiene datos estructurados (Excel/CSV).")
 
-    from mia.diagnostics import EventStage  # noqa: PLC0415
-    from mia.diagnostics import emit as diag_emit
-
     diag_emit(EventStage.ATTACHMENT_DATASET_QUERY, data={"op": "info", "attachment_id": params.attachment_id})
 
     info = dataset_info(content)
@@ -190,9 +186,6 @@ async def handle_dataset_query(
     content = record.content
     if content is None or content.content_type != AttachmentContentType.DATASET:
         return ToolResult(ToolStatus.ERROR, "El adjunto no contiene datos estructurados.")
-
-    from mia.diagnostics import EventStage  # noqa: PLC0415
-    from mia.diagnostics import emit as diag_emit
 
     diag_emit(
         EventStage.ATTACHMENT_DATASET_QUERY,

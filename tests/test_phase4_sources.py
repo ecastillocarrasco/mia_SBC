@@ -8,7 +8,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import docx
+import pymupdf
 import pytest
+from PIL import Image, ImageDraw, ImageFont
 from sqlalchemy import func, select
 
 from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
@@ -197,8 +199,6 @@ def _scanned_cv_pdf(text: str = "CAMARERA DE PISOS CON EXPERIENCIA EN HOTELES") 
     """PDF «escaneado»: el texto vive solo como píxeles de una imagen incrustada (sin capa de
     texto nativa) — el OCR es local (Tesseract), así que la imagen debe contener texto real y
     reconocible (>=40 caracteres: el umbral de ``extract_document_text_local`` para «ok»)."""
-    import pymupdf
-    from PIL import Image, ImageDraw, ImageFont
 
     image = Image.new("RGB", (1300, 310), "white")
     draw = ImageDraw.Draw(image)

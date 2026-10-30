@@ -180,9 +180,10 @@ async def test_injected_instruction_in_db_sourced_content_cannot_escalate_tool_p
     assert result.status == "ok"  # el turno concluye con normalidad: la denegación no rompe la conversación
 
     outgoing = json.dumps([m.content for req in fake.requests for m in req.messages], ensure_ascii=False)
-    # Lo que de verdad impidió la fuga fue el control de permisos determinista de ToolRegistry — ni
-    # siquiera hizo falta que el escáner detectara la frase (no la detectó, ver arriba):
-    assert "no tiene permiso" in outgoing
+    # El catálogo ya excluye la herramienta no autorizada y el registro rechaza
+    # la llamada inventada, aunque la inyección haya pasado inadvertida.
+    assert all(tool.name != "ranking_salarial" for req in fake.requests for tool in req.tools)
+    assert "No existe la herramienta ranking_salarial" in outgoing
     # El ranking salarial real nunca llegó a ejecutarse: ningún nombre ni importe de Cocina salió.
     assert "Ana Gómez" not in outgoing
     assert "Luis Gil" not in outgoing

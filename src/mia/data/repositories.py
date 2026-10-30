@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import delete, select
+from sqlalchemy import CursorResult, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.data.models import AuditEvent, ConversationSession, ConversationTurn
@@ -59,7 +59,9 @@ class ConversationRepository:
             delete(ConversationTurn).where(ConversationTurn.session_id.in_(expired_sessions))
         )
         sessions_result = await db.execute(delete(ConversationSession).where(ConversationSession.updated_at < cutoff))
-        return int(turns_result.rowcount or 0) + int(sessions_result.rowcount or 0)
+        return int(cast(CursorResult[Any], turns_result).rowcount or 0) + int(
+            cast(CursorResult[Any], sessions_result).rowcount or 0
+        )
 
 
 class AuditRepository:
@@ -92,4 +94,4 @@ class AuditRepository:
         """Elimina eventos de auditoría vencidos. ``detail`` puede contener PII (argumentos de herramientas)."""
         cutoff = (now or datetime.now(UTC)) - timedelta(days=retention_days)
         result = await db.execute(delete(AuditEvent).where(AuditEvent.created_at < cutoff))
-        return int(result.rowcount or 0)
+        return int(cast(CursorResult[Any], result).rowcount or 0)

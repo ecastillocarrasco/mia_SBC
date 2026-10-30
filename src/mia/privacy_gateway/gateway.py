@@ -16,8 +16,9 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import Counter
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import replace
+from typing import Any
 
 from mia.llm.base import LLMEvent, LLMProvider, LLMRequest, TextDelta, ToolCall, ToolCallRequested
 from mia.privacy_gateway import audit
@@ -141,7 +142,7 @@ class PrivacyGateway(LLMProvider):
         return replace(request, system=new_system, messages=new_messages)
 
     @staticmethod
-    def _map_json_strings(value, transform):
+    def _map_json_strings(value: Any, transform: Callable[[str], str]) -> Any:
         """Transforma solo VALORES textuales, no claves; preserva JSON, Unicode y tipos."""
         if isinstance(value, str):
             return transform(value)
@@ -164,7 +165,7 @@ class PrivacyGateway(LLMProvider):
             # Mantener contrato original: ToolRegistry validará el JSON erróneo. Pero no
             # permitir ejecutar texto inválido que contenga identificadores tokenizados.
             if _TOKEN_RE.search(call.arguments or ""):
-                raise UnsafeContentBlockedError("Argumentos de herramienta inválidos con token protegido")
+                raise UnsafeContentBlockedError("Argumentos de herramienta inválidos con token protegido") from None
             return call, 0
 
         count = 0

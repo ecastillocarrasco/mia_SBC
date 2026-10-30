@@ -17,11 +17,18 @@ import re
 import sys
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from importlib import import_module
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from sqlalchemy import and_, func, or_, select, text
+from sqlalchemy.engine import make_url
+
+from mia.data import Database, HrDocumentChunk, HrDocumentText
+from mia.settings import get_settings
+
 POLICY = "nominas_min_v1"
-ORIGINAL_SCRIPT_SHA256 = "158be654f8e7c6b7148764d5078a68e0b27db54a5bf180dfce459df47190c60c"
+ORIGINAL_SCRIPT_SHA256 = "ec820bb018dc7773d09b00bc723b553600fb7599508be8438b1e13ac4acba9c7"
 EXPECTED_HISTORICAL_OK = 8000  # Base confirmada por la auditoria de 2026-10-15.
 PROGRESS_RE = re.compile(r"^\d+/\d+ procesado; estado=(ok|empty|unsupported|too_large|error|exception)$")
 COUNT_RE = re.compile(r"Candidatos lote:\s*(\d+)")
@@ -98,17 +105,16 @@ def check_batch_result(
 
 
 def validate_config(settings, script_path: Path) -> None:
-    from sqlalchemy.engine import make_url
 
-    from mia.modules.rrhh.document_indexing import DocumentIndexer
-    from mia.modules.rrhh.payroll_embedding_privacy import (
-        PAYROLL_EMBEDDING_POLICY_VERSION,
-        project_payroll_embedding,
-    )
+    DocumentIndexer = import_module("mia.modules.rrhh.document_indexing").DocumentIndexer
+    privacy = import_module("mia.modules.rrhh.payroll_embedding_privacy")
+    policy_version = privacy.PAYROLL_EMBEDDING_POLICY_VERSION
+    project_payroll_embedding = privacy.project_payroll_embedding
 
     if not script_path.is_file():
         raise SafetyStop("Falta tools/mia_index_lote_controlado.py (script existente).")
-    checksum = hashlib.sha256(script_path.read_bytes()).hexdigest()
+    # Git may check out the audited source with either LF or CRLF.
+    checksum = hashlib.sha256(script_path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
     if checksum != ORIGINAL_SCRIPT_SHA256:
         raise SafetyStop("El script de lotes difiere de la version auditada. No ejecutar automaticamente.")
     url = make_url(settings.database_url)
@@ -128,7 +134,7 @@ def validate_config(settings, script_path: Path) -> None:
     target = urlsplit(str(settings.llm.base_url))
     if target.scheme != "https" or target.hostname != "api.openai.com":
         raise SafetyStop("Endpoint de embeddings no coincide con el autorizado (api.openai.com).")
-    if PAYROLL_EMBEDDING_POLICY_VERSION != POLICY:
+    if policy_version != POLICY:
         raise SafetyStop("La version de minimizacion ha cambiado.")
     source = inspect.getsource(DocumentIndexer._index_one)
     if "project_payroll_embedding(chunk)" not in source or 'self._domain == "nominas"' not in source:
@@ -142,10 +148,7 @@ def validate_config(settings, script_path: Path) -> None:
 async def snapshot(db, *, size: int) -> tuple[Snapshot, int, bool]:
     """SELECT only; verifies that next candidate set excludes previously indexed OK rows."""
     # Reuse original selector, rather than duplicating its candidate logic.
-    from mia_index_lote_controlado import _candidate_query
-    from sqlalchemy import and_, func, or_, select, text
-
-    from mia.data import HrDocumentChunk, HrDocumentText
+    _candidate_query = import_module("mia_index_lote_controlado")._candidate_query
 
     async with db.session() as session:
         name = await session.scalar(text("SELECT current_database()"))
@@ -220,7 +223,8 @@ async def run_child(script: Path, *, size: int) -> tuple[int, int | None, dict[s
     lines: list[str] = []
 
     async def read_and_filter():
-        assert process.stdout is not None
+        if process.stdout is None:
+            raise SafetyStop("No está conectada la salida del proceso de indexación")
         while True:
             raw = await process.stdout.readline()
             if not raw:
@@ -238,7 +242,7 @@ async def run_child(script: Path, *, size: int) -> tuple[int, int | None, dict[s
     except (TimeoutError, asyncio.CancelledError, KeyboardInterrupt):
         process.kill()
         await process.wait()
-        raise SafetyStop("Interrumpido/tiempo agotado; comprobar estado antes de reanudar.")
+        raise SafetyStop("Interrumpido/tiempo agotado; comprobar estado antes de reanudar.") from None
     return rc, *parse_child_output(lines)
 
 
@@ -262,11 +266,18 @@ def log_safe(
         file.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
-async def main(args) -> int:
-    from mia.data import Database
-    from mia.settings import get_settings
+def _check_preflight(before: Snapshot, historical_candidate: bool) -> None:
+    if before.historical_ok != EXPECTED_HISTORICAL_OK:
+        raise SafetyStop("El numero de indices historicos cambio respecto a la referencia aprobada.")
+    if before.new_policy_ok != before.new_policy_with_vectors:
+        raise SafetyStop("Hay indices con nueva politica sin vectores.")
+    if historical_candidate:
+        raise SafetyStop("El siguiente lote contiene documentos previamente OK; no migrar historicos.")
 
-    root = Path(__file__).resolve().parent.parent
+
+async def main(args) -> int:
+
+    root = (await asyncio.to_thread(Path(__file__).resolve)).parent.parent
     script = root / "tools" / "mia_index_lote_controlado.py"
     validate_config(get_settings(), script)
     db = Database(get_settings().database_url)
@@ -278,12 +289,7 @@ async def main(args) -> int:
             f"Nuevos_politica={before.new_policy_ok} | nuevos_con_vectores={before.new_policy_with_vectors} "
             f"| historicos_no_migrados={before.historical_ok} | vectores_totales={before.all_with_vectors}"
         )
-        if before.historical_ok != EXPECTED_HISTORICAL_OK:
-            raise SafetyStop("El numero de indices historicos cambio respecto a la referencia aprobada.")
-        if before.new_policy_ok != before.new_policy_with_vectors:
-            raise SafetyStop("Hay indices con nueva politica sin vectores.")
-        if historical_candidate:
-            raise SafetyStop("El siguiente lote contiene documentos previamente OK; no migrar historicos.")
+        _check_preflight(before, historical_candidate)
         if not args.execute:
             print("SIMULACION: sin descargas, embeddings ni escrituras PostgreSQL.")
             return 0
@@ -357,10 +363,10 @@ def entrypoint():
             print(
                 f"BLOQUEADO: incidencia no prevista ({type(exc).__name__}). No reintentar sin revisar.", file=sys.stderr
             )
-        raise SystemExit(2)
+        raise SystemExit(2) from None
     except KeyboardInterrupt:
         print("INTERRUMPIDO: comprueba la auditoria antes de reanudar.", file=sys.stderr)
-        raise SystemExit(130)
+        raise SystemExit(130) from None
 
 
 if __name__ == "__main__":

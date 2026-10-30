@@ -66,6 +66,27 @@ def _is_time_like(labels: list[str]) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 # API pública principal (backward compatible)
 # ─────────────────────────────────────────────────────────────────────────────
+def _two_column_chart(title: str | None, columns: list[str], rows: list[list[Any]]) -> dict[str, Any] | None:
+    labels = [str(r[0]) if len(r) > 0 and r[0] not in (None, "") else "Sin dato" for r in rows]
+    values = [to_number(r[1]) if len(r) > 1 else None for r in rows]
+    if any(v is None for v in values):
+        return None
+    if len(set(labels)) != len(labels):
+        return None
+    if sum(v or 0 for v in values) <= 0:
+        return None
+    if any(to_number(label) is not None and len(str(label)) > 3 for label in labels):
+        return None
+    time_like = _is_time_like(labels)
+    kind: ChartType = "line" if time_like else ("donut" if len(rows) <= 6 else "bar")
+    return {
+        "type": kind,
+        "title": title,
+        "labels": labels,
+        "series": [{"name": str(columns[1]), "values": [float(v or 0) for v in values]}],
+    }
+
+
 def chart_spec(title: str | None, columns: list[str], rows: list[list[Any]]) -> dict[str, Any] | None:
     """{type, title, labels, series:[{name, values}]} o None si no procede un gráfico.
 
@@ -82,24 +103,7 @@ def chart_spec(title: str | None, columns: list[str], rows: list[list[Any]]) -> 
 
     # ── Tabla de 2 columnas (caso original)
     if len(columns) == 2:
-        labels = [str(r[0]) if len(r) > 0 and r[0] not in (None, "") else "Sin dato" for r in rows]
-        values = [to_number(r[1]) if len(r) > 1 else None for r in rows]
-        if any(v is None for v in values):
-            return None
-        if len(set(labels)) != len(labels):
-            return None
-        if sum(v or 0 for v in values) <= 0:
-            return None
-        if any(to_number(label) is not None and len(str(label)) > 3 for label in labels):
-            return None
-        time_like = _is_time_like(labels)
-        kind: ChartType = "line" if time_like else ("donut" if len(rows) <= 6 else "bar")
-        return {
-            "type": kind,
-            "title": title,
-            "labels": labels,
-            "series": [{"name": str(columns[1]), "values": [float(v or 0) for v in values]}],
-        }
+        return _two_column_chart(title, columns, rows)
 
     # ── Tabla con etiqueta + N columnas numéricas → grouped_bar o line multi-series
     if len(columns) >= 3:
@@ -268,16 +272,19 @@ def select_chart_type(
       - Hint 'distribution' → histogram
       - Hint 'correlation' → scatter
     """
-    if hint == "distribution":
-        return "histogram"
-    if hint == "correlation":
-        return "scatter"
+    hinted: dict[str, ChartType] = {"distribution": "histogram", "correlation": "scatter"}
+    if hint is not None and hint in hinted:
+        return hinted[hint]
     if hint == "ranking" or (not _is_time_like(labels) and len(labels) > 12):
         return "horizontal_bar"
     if _is_time_like(labels):
         return "line"
     if hint in ("composition", "share"):
         return "donut" if len(labels) <= 8 else "stacked_bar"
+    return _categorical_chart_type(labels, num_series)
+
+
+def _categorical_chart_type(labels: list[str], num_series: int) -> ChartType:
     if num_series > 1:
         return "grouped_bar"
     if len(labels) <= 6:

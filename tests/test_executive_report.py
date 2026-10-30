@@ -30,7 +30,7 @@ async def _report(tmp_path: Path, dept_key: str | None = None, dept_name: str | 
     db = await fresh_database(tmp_path, "executive_report.db")
     await seed(db)
     deps = Deps(db=db)
-    return await build_executive_report(deps, date(2026, 8, 1), date(2026, 8, 31), TODAY, dept_key, dept_name)
+    return await build_executive_report(deps, date(2026, 8, 1), date(2026, 8, 31), TODAY, dept_key, dept_name=dept_name)
 
 
 def _block(doc, title: str):
@@ -128,7 +128,7 @@ async def test_executive_report_monthly_trend_includes_a_second_month_with_a_ver
         s.add_all(rows)
 
     deps = Deps(db=db)
-    doc = await build_executive_report(deps, date(2026, 7, 1), date(2026, 8, 31), TODAY, None, None)
+    doc = await build_executive_report(deps, date(2026, 7, 1), date(2026, 8, 31), TODAY, None, dept_name=None)
 
     trend = _block(doc, "Tendencia mensual de absentismo").data
     # Clave de mes ISO ("%Y-%m"), determinista y sin depender del locale del proceso — no "jul"/"ago".

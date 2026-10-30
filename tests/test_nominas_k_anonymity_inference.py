@@ -26,8 +26,10 @@ from mia.llm import ToolCall
 from mia.modules.registry import build_registry
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp
-from tests.test_analisis_economico import Q3_NOW, q3_registry  # noqa: F401 — fixture y reloj reutilizados
+from tests.test_analisis_economico import Q3_NOW, q3_registry
 from tests.test_phase4b import _pdf
+
+__all__ = ["q3_registry"]
 
 ADMIN = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
 

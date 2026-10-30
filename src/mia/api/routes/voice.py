@@ -40,9 +40,7 @@ async def voice_stream(body: VoiceRequest, services: ServicesDep, _: UserDep) ->
 
 
 @router.get("/voice/welcome")
-async def voice_welcome(
-    user: UserDep, name: str | None = Query(default=None, max_length=40)
-) -> WelcomeResponse:
+async def voice_welcome(user: UserDep, name: str | None = Query(default=None, max_length=40)) -> WelcomeResponse:
     """Saludo inicial hablado, con el nombre del usuario autenticado.
 
     Única fuente del texto de bienvenida: 2D, 3D, holograma y mIA Desktop lo piden

@@ -10,10 +10,11 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from mia.data import Employee, OrgUnit, ShiftDay, Vacation, VacationBalance
-from mia.data.models import Base
 from mia.sources.mappers import hr
 from mia.sources.mappers.common import MapContext
+
+from mia.data import Employee, OrgUnit, ShiftDay, Vacation, VacationBalance
+from mia.data.models import Base
 
 Mapper = Callable[[dict[str, Any], MapContext], list[dict[str, Any]]]
 

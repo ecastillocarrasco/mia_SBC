@@ -13,11 +13,12 @@ import json
 import re
 import time
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from functools import lru_cache
-from typing import Any, Literal
+from importlib import import_module
+from typing import Any, Literal, cast
 from zoneinfo import ZoneInfo
 
 from mia.auth import Permission, UserContext
@@ -34,17 +35,21 @@ from mia.conversation.events import (
 )
 from mia.conversation.orchestrator import select_modules
 from mia.conversation.persona import AvatarState, Persona
+from mia.conversation.planning import PLAN_TOOL, TaskPlan, population_context_question, recovery_tools
 from mia.conversation.speech import SpeechExtractor
 from mia.conversation.tools import (
     LAST_CALL,
     ToolContext,
     ToolExecution,
     ToolRegistry,
+    ToolResult,
+    ToolStatus,
     remember_last_call,
     remember_population,
     remember_table,
 )
 from mia.data import Database
+from mia.data.models import ConversationTurn
 from mia.data.repositories import AuditRepository, ConversationRepository
 from mia.diagnostics import EventStage, EventStatus, begin_trace
 from mia.diagnostics import emit as diag_emit
@@ -57,10 +62,11 @@ from mia.llm import (
     TextDelta,
     ToolCall,
     ToolCallRequested,
+    ToolSchema,
     WebSources,
 )
 from mia.observability import current_request_id, get_logger
-from mia.presentation.intent import build_presentation_hint, classify_query
+from mia.presentation.intent import QueryAnalysis, build_presentation_hint, classify_query
 from mia.privacy_gateway.context_manager import set_operation_context
 from mia.reporting.comparisons import (
     LAST_PAYROLL_COMPARISON,
@@ -82,51 +88,29 @@ MAX_WEB_SOURCES = 12
 
 @lru_cache(maxsize=1)
 def _module_keywords() -> dict[str, tuple[str, ...]]:
-    """Vocabulario de cada dominio real, para el orquestador (`select_modules`). `rrhh` (las 3
-    herramientas de `sistema`) no necesita entrada: siempre se incluye por defecto. Reducir cuánto
-    catálogo se ofrece por turno es el motivo de esto (82 herramientas → ~21.000 tokens siempre,
-    confirmado por medición real); el diseño de `select_modules` hace que un vocabulario incompleto
-    nunca rompa nada, solo deje de ahorrar en ese mensaje (cae al catálogo completo).
+    """Carga el vocabulario del catálogo cuando conversación ya está inicializado.
 
-    Import diferido (no al nivel de módulo): cada dominio de ``mia.modules.rrhh`` importa de
-    ``mia.conversation`` (Tool, ToolRegistry…) para definirse, así que importarlos aquí arriba, en
-    un módulo que es parte de ``mia.conversation``, crearía un ciclo. Al llamarse ya con la app
-    arrancada, ``mia.conversation`` está completamente inicializado y la importación es segura;
-    ``lru_cache`` evita repetirla en cada turno.
+    Los dominios dependen de las herramientas conversacionales; por eso su carga
+    se difiere hasta el primer turno y se conserva en caché para los siguientes.
     """
-    from mia.modules.community.newsletter import KEYWORDS as newsletter
-    from mia.modules.community.noticias import KEYWORDS as noticias
-    from mia.modules.correo import KEYWORDS as correo
-    from mia.modules.finanzas import KEYWORDS as finanzas
-    from mia.modules.it import KEYWORDS as it
-    from mia.modules.rrhh.analitica import KEYWORDS as analitica
-    from mia.modules.rrhh.curriculums import KEYWORDS as curriculums
-    from mia.modules.rrhh.documentos import KEYWORDS as documentos
-    from mia.modules.rrhh.empleados import KEYWORDS as empleados
-    from mia.modules.rrhh.fichajes import KEYWORDS as fichajes
-    from mia.modules.rrhh.informes import KEYWORDS as informes
-    from mia.modules.rrhh.nominas import KEYWORDS as nominas
-    from mia.modules.rrhh.trabajo_temporal import KEYWORDS as trabajo_temporal
-    from mia.modules.rrhh.turnos import KEYWORDS as turnos
-    from mia.modules.rrhh.vacaciones import KEYWORDS as vacaciones
-
-    return {
-        "finanzas": finanzas,
-        "it": it,
-        "noticias": noticias,
-        "newsletter": newsletter,
-        "empleados": empleados,
-        "turnos": turnos,
-        "fichajes": fichajes,
-        "vacaciones": vacaciones,
-        "nominas": nominas,
-        "documentos": documentos,
-        "curriculums": curriculums,
-        "trabajo_temporal": trabajo_temporal,
-        "correo": correo,
-        "analitica": analitica,
-        "informes": informes,
+    modules = {
+        "finanzas": "mia.modules.finanzas",
+        "it": "mia.modules.it",
+        "noticias": "mia.modules.community.noticias",
+        "newsletter": "mia.modules.community.newsletter",
+        "empleados": "mia.modules.rrhh.empleados",
+        "turnos": "mia.modules.rrhh.turnos",
+        "fichajes": "mia.modules.rrhh.fichajes",
+        "vacaciones": "mia.modules.rrhh.vacaciones",
+        "nominas": "mia.modules.rrhh.nominas",
+        "documentos": "mia.modules.rrhh.documentos",
+        "curriculums": "mia.modules.rrhh.curriculums",
+        "trabajo_temporal": "mia.modules.rrhh.trabajo_temporal",
+        "correo": "mia.modules.correo",
+        "analitica": "mia.modules.rrhh.analitica",
+        "informes": "mia.modules.rrhh.informes",
     }
+    return {name: cast(tuple[str, ...], import_module(module).KEYWORDS) for name, module in modules.items()}
 
 
 def _module_hint(selected: set[str]) -> str:
@@ -173,7 +157,7 @@ def _report_hint(message: str, user: UserContext, today: date) -> str:
         {m.field.domain for m in plan.granted_metrics} | {d.domain for d in plan.dimensions},
         key=lambda d: _REPORT_DOMAIN_HINTS.get(d, d),
     )
-    described = [_REPORT_DOMAIN_HINTS.get(d) for d in domains if d in _REPORT_DOMAIN_HINTS]
+    described = [_REPORT_DOMAIN_HINTS[d] for d in domains if d in _REPORT_DOMAIN_HINTS]
     if not described:
         return ""
     period_note = f" Periodo detectado: {plan.period.label}." if plan.period else ""
@@ -195,7 +179,7 @@ def _report_hint(message: str, user: UserContext, today: date) -> str:
     )
 
 
-def _payroll_comparison_spec(message: str, user: UserContext, today: date) -> dict | None:
+def _payroll_comparison_spec(message: str, user: UserContext, today: date) -> dict[str, Any] | None:
     periods = explicit_month_comparison(message)
     if periods is None:
         return None
@@ -216,6 +200,7 @@ class _TurnState:
     usage: dict[str, int] = field(default_factory=lambda: {"input": 0, "cached": 0, "output": 0})
     spoken: list[str] = field(default_factory=list)
     web_sources: list[dict[str, str]] = field(default_factory=list)
+    verification_pending: list[str] = field(default_factory=list)
 
     def add_web_sources(self, sources: tuple[dict[str, str], ...]) -> None:
         known = {s["url"] for s in self.web_sources}
@@ -376,27 +361,7 @@ class ConversationEngine:
                 await repo.add_turn(session_id=session.id, request_id=request_id, role="user", content=message)
                 turn = _TurnState(time.perf_counter(), session.id, dict(session.state or {}))
 
-            # Un usuario puede analizar los dos ejercicios y solicitar el PDF en el turno siguiente.
-            # Recuperar únicamente la última intención comparativa explícita (sin importes), nunca
-            # depender de que ambos resultados estén «activos» en el buffer de una sola tabla.
-            local_today = datetime.now(self._tz).date()
-            current_plan = planner.plan(message, user=user, today=local_today)
-            competing_domain = any(m.field.domain != "payroll" for m in current_plan.metrics)
-            if competing_domain or (current_plan.period and not explicit_month_comparison(message)):
-                turn.state.pop(LAST_PAYROLL_COMPARISON, None)
-            latest = _payroll_comparison_spec(message, user, local_today)
-            if latest is not None:
-                turn.state[LAST_PAYROLL_COMPARISON] = latest
-            elif is_export_followup(message) and not competing_domain and LAST_PAYROLL_COMPARISON not in turn.state:
-                for previous in reversed(history):
-                    if previous.role != "user":
-                        continue
-                    if is_export_followup(previous.content):
-                        continue
-                    latest = _payroll_comparison_spec(previous.content, user, local_today)
-                    if latest is not None:
-                        turn.state[LAST_PAYROLL_COMPARISON] = latest
-                    break
+            self._restore_comparison(message, user, turn, history)
 
             diag_emit(
                 EventStage.USER_CONTEXT,
@@ -418,117 +383,14 @@ class ConversationEngine:
             yield SessionEvent(session_id=turn.session_id)
             yield AvatarEvent(state=AvatarState.PENSANDO.value)
 
-            messages = [
-                Message(role="user" if t.role == "user" else "assistant", content=t.content)
-                for t in history
-                if t.role in {"user", "assistant"}
-            ]
-            messages.append(Message(role="user", content=message))
-            now = datetime.now(self._tz)
-            if trace is not None:
-                trace.record.now_local = now.isoformat()
-            mailbox = self._mailbox_for(user) or "" if self._mailbox_for else ""
-            selected_modules = select_modules(message, _module_keywords())
-            if "consulta_agenda" in self._tools.names() and user.has(Permission.CORREO_LEER):
-                from mia.modules.correo.calendar.tools import INSTRUCTIONS  # noqa: PLC0415
-                from mia.modules.correo.calendar.tools import KEYWORDS as calendar_keywords  # noqa: PLC0415
-
-                calendar_modules = dict(_module_keywords())
-                calendar_modules["correo"] = (*calendar_modules["correo"], *calendar_keywords)
-                selected_modules = select_modules(message, calendar_modules)
-                if any(
-                    re.search(r"\b" + re.escape(keyword) + r"\b", normalize_key(message))
-                    for keyword in calendar_keywords
-                ):
-                    selected_modules = selected_modules - {"it", "finanzas"}
-            qa = classify_query(message)
-
-            diag_emit(EventStage.DOMAIN_DETECTION, data={"modules": list(selected_modules)})
-            diag_emit(
-                EventStage.PRESENTATION_INTENT_CLASSIFIED,
-                data={
-                    "intent": qa.presentation_intent.value,
-                    "depth": qa.response_depth.value,
-                    "comparison_requested": qa.comparison_requested,
-                    "analytics_requested": qa.analytics_requested,
-                    "summary_requested": qa.summary_requested,
-                    "temporal_scope": qa.temporal_scope,
-                },
-            )
-
-            diag_emit(EventStage.PROMPT_BUILD_START)
-            system = self.persona.system_prompt(
-                business_rules=rules_for_prompt(), capabilities=self._tools.capabilities_for(user)
-            )
-            if "consulta_agenda" in self._tools.names() and user.has(Permission.CORREO_LEER):
-                system += INSTRUCTIONS
-            _pres_hint = build_presentation_hint(qa)
-            context = self.persona.turn_context(
-                user_name=user.display_name,
-                now=now,
-                mailbox=mailbox,
-                focus=describe_focus(turn.state),
-                hint=(
-                    self.persona.hint_for(message, mailbox)
-                    + _module_hint(selected_modules)
-                    + _report_hint(message, user, now.date())
-                    + (
-                        "\n\n## Continuación de comparativa salarial\n"
-                        "El usuario pide exportar la comparativa previa de nóminas. Ejecuta "
-                        "generar_informe: recuperará los dos periodos de la petición anterior y "
-                        "consultará ambas fuentes sin que deban estar simultáneamente activas."
-                        if remembered_comparison(turn.state, message)
-                        else ""
-                    )
-                    + ("\n" + _pres_hint if _pres_hint else "")
-                ).strip(),
-            )
-            # Adjuntos: procesar IDs recibidos y actualizar session state
-            attachment_context = ""
-            if attachment_ids and attachment_service is not None:
-                from mia.attachments.model import (  # noqa: PLC0415
-                    AttachmentRef,
-                    get_active_refs,
-                    merge_refs,
-                    set_active_refs,
-                )
-
-                new_refs: list[AttachmentRef] = []
-                ctx_parts: list[str] = []
-                for aid in attachment_ids[:10]:
-                    record = attachment_service.get_for_user(aid, user.user_id)
-                    if record is not None:
-                        new_refs.append(attachment_service.to_ref(record))
-                        ctx_parts.append(attachment_service.build_context(aid, user.user_id))
-                if ctx_parts:
-                    existing = get_active_refs(turn.state)
-                    set_active_refs(turn.state, merge_refs(existing, new_refs))
-                    attachment_context = "\n\n## Archivos adjuntos en este mensaje\n" + "\n\n".join(ctx_parts)
-                    diag_emit(
-                        EventStage.ATTACHMENT_CONTEXT_INJECTED,
-                        data={
-                            "count": len(ctx_parts),
-                            "ids": attachment_ids[:10],
-                        },
-                    )
-
-            messages[-1] = Message(role="user", content=message + context + attachment_context)
-            diag_emit(
-                EventStage.PROMPT_BUILD_COMPLETE,
-                data={
-                    "system_chars": len(system),
-                    "context_chars": len(context),
-                    "attachment_context_chars": len(attachment_context),
-                    "total_history_messages": len(messages),
-                },
-            )
-
-            ctx = ToolContext(
-                user=user,
+            system, messages, ctx, selected_modules, qa = self._prepare_request(
+                message,
+                user,
+                turn,
+                history,
                 request_id=request_id,
-                now=now,
-                session_state=turn.state,
-                user_message=message,
+                trace=trace,
+                attachment_ids=attachment_ids,
                 attachment_service=attachment_service,
             )
 
@@ -548,6 +410,8 @@ class ConversationEngine:
                     else:
                         yield event
                 assert final is not None  # noqa: S101
+                if turn.verification_pending:
+                    status = "error"
             except LLMError as exc:
                 log.error("conversation.llm_failed", error=str(exc))
                 diag_emit(EventStage.LLM_ERROR, status=EventStatus.ERROR, data={"error": str(exc)})
@@ -559,80 +423,13 @@ class ConversationEngine:
             # archivos. Si se pidieron varios formatos, intentar exportarlos desde
             # los mismos resultados y exigir una presentación download por formato.
             if export_request:
-                original_request, formats = export_request
-                verified = download_formats(turn.executions)
-                missing = [fmt for fmt in formats if fmt not in verified]
-                if missing:
-                    # Varias tablas por departamento se guardaban separadas; la
-                    # última pisaba las anteriores. Consolidar las de la MISMA
-                    # herramienta con sus etiquetas antes de exportar.
-                    merged = merge_report_sources(
-                        turn.executions,
-                        title=original_request,
-                    )
-                    if merged is not None:
-                        source = next(
-                            e.call.name
-                            for e in turn.executions
-                            if e.result.presentation and e.result.presentation.get("type") in {"table", "dashboard"}
-                        )
-                        remember_table(turn.state, merged, self._max_report_rows, source_tool=source)
-                    can_export = bool(merged) or (
-                        message != original_request and bool(turn.state.get("ultima_presentacion"))
-                    )
-                    if can_export:
-                        # Todos los formatos que faltan se piden en UNA sola llamada (el motor de
-                        # informes los genera todos de una vez, ver persist_document_report) en vez
-                        # de una llamada por formato — ya no hace falta "uno a uno".
-                        export_ctx = replace(ctx, user_message=original_request)
-                        execution = await self._tools.execute(
-                            ToolCall(
-                                f"delivery:{uuid.uuid4().hex}",
-                                "generar_informe",
-                                json.dumps({"formato": missing}, ensure_ascii=False),
-                            ),
-                            export_ctx,
-                        )
-                        turn.executions.append(execution)
-                        yield ToolEvent(
-                            name=execution.call.name,
-                            status=execution.result.status.value,
-                            elapsed_ms=execution.elapsed_ms,
-                        )
-                verified = download_formats(turn.executions)
-                successes = [(fmt, verified[fmt]) for fmt in formats if fmt in verified]
-                missing = [fmt for fmt in formats if fmt not in verified]
-                labels = {"pdf": "PDF", "pptx": "PowerPoint", "xlsx": "Excel", "docx": "Word", "html": "HTML"}
-                lines = [f"- [{labels[fmt]}]({presentation['url']})" for fmt, presentation in successes]
-                if missing:
-                    lines.append(
-                        "No se han generado: "
-                        + ", ".join(labels[f] for f in missing)
-                        + ". No se confirma una entrega que no existe."
-                    )
-                    failures = [
-                        str(e.result.summary.get("mensaje", ""))[:220]
-                        for e in turn.executions
-                        if e.call.name == "generar_informe"
-                        and e.result.status.value != "ok"
-                        and isinstance(e.result.summary, dict)
-                    ]
-                    if failures:
-                        lines.append("Motivo comunicado por el motor: " + failures[-1])
-                    elif not successes:
-                        lines.append("No hay datos verificables y completos para exportar desde esta ejecución.")
-                else:
-                    lines.insert(0, "Archivos generados y disponibles para descargar:")
-                confirmed = "\n".join(lines)
-                spoken = (
-                    "Los archivos solicitados están generados y disponibles para descargar."
-                    if not missing
-                    else "No se han podido entregar todos los documentos solicitados. Consulta el detalle en pantalla."
-                )
-                final = FinalAnswer(spoken, final.avatar_state, confirmed)
-                if missing and not successes:
-                    status = "error"
-                yield SpeechEvent(text=spoken)
+                async for delivery in self._deliver_exports(export_request, final, ctx, turn):
+                    if isinstance(delivery, tuple):
+                        final, failed = delivery
+                        if failed:
+                            status = "error"
+                    else:
+                        yield delivery
 
             yield AvatarEvent(state=final.avatar_state)
             result = TurnResult(
@@ -657,62 +454,9 @@ class ConversationEngine:
                 presentation_intent=qa.presentation_intent.value,
             )
 
-            # 2) Transacción corta: respuesta, estado y auditoría.
-            async with self._db.session() as db:
-                repo = ConversationRepository(db)
-                session = await repo.get_or_create(turn.session_id, user.user_id)
-                session.state = turn.state
-                await repo.add_turn(
-                    session_id=turn.session_id,
-                    request_id=request_id,
-                    role="assistant",
-                    content=result.answer,
-                    speech=result.speech,
-                    avatar_state=result.avatar_state,
-                    tool_calls=result.tools,
-                    presentation={"items": result.presentations},
-                    latency_ms=result.elapsed_ms,
-                )
-                audit = AuditRepository(db)
-                for execution in turn.executions:
-                    if execution.audit_resource:
-                        await audit.record(
-                            user_id=user.user_id,
-                            action=f"tool:{execution.call.name}",
-                            resource=execution.audit_resource,
-                            outcome=execution.result.status.value,
-                            request_id=request_id,
-                            detail={"arguments": json.loads(execution.call.arguments or "{}")},
-                        )
+            await self._save_turn(result, turn, user, request_id)
 
-            diag_emit(
-                EventStage.RESPONSE_SENT,
-                status=EventStatus.SUCCESS,
-                data={
-                    "status": status,
-                    "elapsed_ms": result.elapsed_ms,
-                    "tools_called": len(result.tools),
-                    "tokens": result.usage,
-                    "presentations": [
-                        p.get("type") for p in result.presentations if isinstance(p, dict) and p.get("type")
-                    ],
-                },
-            )
-            if trace is not None:
-                trace.finish(
-                    answer=final.text,
-                    status=status,
-                    llm_model=self._llm.__class__.__name__,
-                )
-
-            log.info(
-                "conversation.turn",
-                session_id=turn.session_id,
-                status=status,
-                elapsed_ms=result.elapsed_ms,
-                tools=[t["name"] for t in result.tools],
-                **{f"tokens_{k}": v for k, v in turn.usage.items()},
-            )
+            self._finish_trace(result, turn, final=final, trace=trace, status=status)
             yield ResultEvent(result=result)
 
     @staticmethod
@@ -731,8 +475,261 @@ class ConversationEngine:
     async def _reason(
         self, system: str, messages: list[Message], ctx: ToolContext, turn: _TurnState, *, modules: set[str]
     ) -> AsyncIterator[TurnEvent | FinalAnswer]:
-        tools = self._tools.schemas_for(ctx.user, modules=modules)
+        if question := population_context_question(ctx):
+            final = FinalAnswer("Necesito que indiques el grupo de personas.", AvatarState.CONFUNDIDA.value, question)
+            for event in self._speak([final.speech], turn):
+                yield event
+            yield final
+            return
+        async for reason_event in self._reason_with_plan(system, messages, ctx, turn, modules=modules):
+            yield reason_event
+
+    async def _reason_with_plan(
+        self, system: str, messages: list[Message], ctx: ToolContext, turn: _TurnState, *, modules: set[str]
+    ) -> AsyncIterator[TurnEvent | FinalAnswer]:
+        tools, plan, planning_registry, planned = self._planning_context(ctx, modules)
+        if planned:
+            system += plan.instructions()
+        recovered = False
         diag_emit(EventStage.TOOL_SELECTION, data={"available": [t.name for t in tools]})
+        async for agenda_event in self._refresh_agenda(tools, ctx, turn, messages):
+            yield agenda_event
+        filler_sent = False
+        for round_index in range(self._max_tool_rounds + 1):
+            over_budget = (time.perf_counter() - turn.started) > self._turn_budget
+            allow_tools = bool(tools) and round_index < self._max_tool_rounds and not over_budget
+            self._warn_turn_budget(turn, over_budget=over_budget, round_index=round_index)
+            request = LLMRequest(
+                system=system,
+                messages=messages,
+                tools=tools if allow_tools else [],
+                response_schema=self.persona.response_schema(),
+                max_output_tokens=self._max_output_tokens,
+            )
+            extractor = SpeechExtractor()
+            raw: list[str] = []
+            calls: list[ToolCall] = []
+            async for speech_event in self._stream_round(
+                request, turn, round_index=round_index, planned=planned, extractor=extractor, raw=raw, calls=calls
+            ):
+                yield speech_event
+
+            # Model latency consumes the same turn budget as tool execution.
+            # Recheck after streaming before accepting calls or recovery attempts.
+            allow_tools = allow_tools and (time.perf_counter() - turn.started) <= self._turn_budget
+
+            if not calls:
+                candidate, missing, pending_steps = self._final_candidate(raw, plan, turn, planned=planned)
+                if pending_steps and allow_tools and not recovered:
+                    recovered = True
+                    tools = recovery_tools(self._tools.schemas_for(ctx.user) + planning_registry.schemas_for(ctx.user))
+                    messages.append(Message(role="user", content=plan.recovery_message(missing)))
+                    yield ProgressEvent(stage="verification", message="Revisando los pasos pendientes")
+                    continue
+                candidate = self._verify_candidate(
+                    candidate, plan, turn, planned=planned, missing=missing, pending_steps=pending_steps
+                )
+                for speech_event in self._speak([candidate.speech] if planned else extractor.finish(), turn):
+                    yield speech_event
+                yield candidate
+                return
+
+            if calls and not allow_tools:
+                turn.verification_pending = ["Límite de ejecución alcanzado; hay pasos sin verificar."]
+                text = (
+                    "No he podido completar la tarea dentro del límite de ejecución. "
+                    "No se confirman los pasos pendientes."
+                )
+                yield FinalAnswer(
+                    "La tarea está incompleta. Consulta el detalle en pantalla.", AvatarState.CONFUNDIDA.value, text
+                )
+                return
+
+            if any(call.name == PLAN_TOOL for call in calls):
+                planned = True
+                tools = await self._accept_plan(
+                    calls,
+                    ctx,
+                    messages,
+                    plan=plan,
+                    planning_registry=planning_registry,
+                    tools=tools,
+                    recovered=recovered,
+                )
+                yield ProgressEvent(stage="planning", message="Revisando el plan de trabajo")
+                continue
+
+            if planned and not plan.steps:
+                # No ejecutar ni siquiera una escritura confirmada si falta el plan
+                # de esta tarea compleja. La corrección consume el presupuesto normal.
+                self._require_plan(calls, messages)
+                yield ProgressEvent(stage="planning", message="Preparando el plan antes de ejecutar")
+                continue
+
+            if not filler_sent:
+                filler_sent = True
+                yield AvatarEvent(state=AvatarState.CONCENTRADA.value)
+                yield SpeechEvent(text=self.persona.next_waiting_phrase(), filler=True)
+            yield ProgressEvent(stage="tools", message="Consultando " + ", ".join(c.name for c in calls))
+
+            # Las exportaciones consumen una presentación producida por otra herramienta.
+            # Si GPT solicita ambas en la misma ronda, ejecutar primero las fuentes y
+            # guardar sus resultados en la sesión ANTES de llamar al exportador.
+            # No se cambia el orden de las respuestas al LLM ni sus call_id.
+            executions = await self._execute_round(calls, ctx, turn, plan=plan, tools=tools)
+            for tool_event in self._record_executions(executions, turn, messages, raw=raw, calls=calls):
+                yield tool_event
+
+            # Varias llamadas a la MISMA herramienta de tabla en el TURNO (p. ej. un "comparativo"
+            # que consulta cada departamento por separado, a menudo una llamada por ronda, no las
+            # dos en la misma) se guardaban una pisando a la otra arriba -- generar_informe
+            # exportaba solo la última (incidencia real en preprod 2026-10-27: PDF de "Cocina y
+            # Restaurante" con datos solo de Restaurante, aunque la pantalla mostraba ambos).
+            # Mirar turn.executions completo, no solo las de esta ronda -- el primer intento de
+            # este arreglo solo miraba la ronda actual y no disparaba cuando el modelo pedía cada
+            # departamento en una ronda separada (el caso real, confirmado en vivo). Mismo alcance
+            # que ya usa el bloque de exportación de arriba para su propia red de seguridad.
+            self._merge_turn_tables(turn, ctx)
+        raise LLMError("Se superó el número máximo de rondas de herramientas")  # pragma: no cover
+
+    async def _stream_round(
+        self,
+        request: LLMRequest,
+        turn: _TurnState,
+        *,
+        round_index: int,
+        planned: bool,
+        extractor: SpeechExtractor,
+        raw: list[str],
+        calls: list[ToolCall],
+    ) -> AsyncIterator[TurnEvent]:
+        llm_started = time.perf_counter()
+        first_token = False
+        diag_emit(EventStage.LLM_REQUEST, data={"round": round_index, "tools_offered": len(request.tools)})
+        async for event in self._llm.stream(request):
+            if isinstance(event, TextDelta):
+                if not first_token:
+                    first_token = True
+                    diag_emit(EventStage.LLM_FIRST_TOKEN, duration_ms=int((time.perf_counter() - llm_started) * 1000))
+                raw.append(event.text)
+                sentences = extractor.feed(event.text)
+                for speech_event in self._speak(sentences if not planned else [], turn):
+                    yield speech_event
+            elif isinstance(event, ToolCallRequested):
+                calls.append(event.call)
+            elif isinstance(event, WebSources):
+                turn.add_web_sources(event.sources)
+            elif isinstance(event, LLMCompleted):
+                turn.usage["input"] += event.input_tokens
+                turn.usage["cached"] += event.cached_tokens
+                turn.usage["output"] += event.output_tokens
+                diag_emit(
+                    EventStage.LLM_RESPONSE,
+                    status=EventStatus.SUCCESS,
+                    duration_ms=int((time.perf_counter() - llm_started) * 1000),
+                    data={
+                        "round": round_index,
+                        "input_tokens": event.input_tokens,
+                        "output_tokens": event.output_tokens,
+                        "cached_tokens": event.cached_tokens,
+                        "tool_calls_requested": len(calls),
+                    },
+                )
+
+    async def _execute_round(
+        self, calls: list[ToolCall], ctx: ToolContext, turn: _TurnState, *, plan: TaskPlan, tools: list[ToolSchema]
+    ) -> list[ToolExecution]:
+        report_names = {"generar_informe", "generar_informe_ejecutivo"}
+        sources = [c for c in calls if c.name not in report_names]
+        exports = [c for c in calls if c.name in report_names]
+        offered_names = {schema.name for schema in tools}
+        if sources and exports:
+            source_execs = await plan.execute(self._tools, sources, ctx, turn.executions, offered_names)
+            for source_exec in source_execs:
+                turn.state.update(source_exec.result.state_updates)
+                remember_table(
+                    turn.state,
+                    source_exec.result.presentation,
+                    self._max_report_rows,
+                    source_exec.result.summary,
+                    source_tool=source_exec.call.name,
+                )
+            # Un exportador puede depender del resultado del informe autónomo
+            # anterior. Evitar también concurrencia entre exportadores.
+            export_execs: list[ToolExecution] = []
+            for export_call in exports:
+                export_exec = (
+                    await plan.execute(
+                        self._tools,
+                        [export_call],
+                        ctx,
+                        [*turn.executions, *source_execs, *export_execs],
+                        offered_names,
+                    )
+                )[0]
+                export_execs.append(export_exec)
+                turn.state.update(export_exec.result.state_updates)
+            by_id = {e.call.call_id: e for e in (*source_execs, *export_execs)}
+            executions = [by_id[c.call_id] for c in calls]
+        else:
+            executions = await plan.execute(self._tools, calls, ctx, turn.executions, offered_names)
+        return executions
+
+    def _merge_turn_tables(self, turn: _TurnState, ctx: ToolContext) -> None:
+        table_groups: dict[str, list[Any]] = {}
+        for execution in turn.executions:
+            if (
+                execution.result.status.value == "ok"
+                and isinstance(execution.result.presentation, dict)
+                and execution.result.presentation.get("type") in {"table", "dashboard"}
+            ):
+                table_groups.setdefault(execution.call.name, []).append(execution)
+        for tool_name, group in table_groups.items():
+            if len(group) < 2:
+                continue
+            merged = merge_report_sources(group, title=ctx.user_message or tool_name)
+            if merged is not None:
+                remember_table(turn.state, merged, self._max_report_rows, source_tool=tool_name)
+
+    async def _accept_plan(
+        self,
+        calls: list[ToolCall],
+        ctx: ToolContext,
+        messages: list[Message],
+        *,
+        plan: TaskPlan,
+        planning_registry: ToolRegistry,
+        tools: list[ToolSchema],
+        recovered: bool,
+    ) -> list[ToolSchema]:
+        messages.append(Message(role="assistant", content="", tool_calls=tuple(calls)))
+        for call in calls:
+            if call.name == PLAN_TOOL:
+                execution = await planning_registry.execute(call, ctx)
+                if execution.result.status is ToolStatus.OK:
+                    required = {name for step in plan.steps for name in step.herramientas}
+                    selected = {schema.name: schema for schema in tools}
+                    eligible = self._tools.schemas_for(ctx.user)
+                    if recovered:
+                        eligible = recovery_tools(eligible)
+                    selected.update({schema.name: schema for schema in eligible if schema.name in required})
+                    tools = list(selected.values())
+            else:
+                execution = ToolExecution(
+                    call,
+                    ToolResult(
+                        ToolStatus.INVALID_ARGUMENTS,
+                        "Declara el plan en una ronda separada antes de ejecutarlo.",
+                    ),
+                    0,
+                    None,
+                )
+            messages.append(Message(role="tool", content=execution.as_llm_output(), tool_call_id=call.call_id))
+        return tools
+
+    async def _refresh_agenda(
+        self, tools: list[ToolSchema], ctx: ToolContext, turn: _TurnState, messages: list[Message]
+    ) -> AsyncIterator[TurnEvent]:
         # An explicit agenda request must refresh data and produce a calendar on every turn,
         # even when the LLM could answer from conversation history without calling a tool.
         if any(tool.name == "consulta_agenda" for tool in tools):
@@ -749,149 +746,406 @@ class ConversationEngine:
                 messages.append(Message(role="assistant", content="", tool_calls=(call,)))
                 messages.append(Message(role="tool", content=execution.as_llm_output(), tool_call_id=call.call_id))
                 yield ToolEvent(name=call.name, status=execution.result.status.value, elapsed_ms=execution.elapsed_ms)
-        filler_sent = False
-        for round_index in range(self._max_tool_rounds + 1):
-            over_budget = (time.perf_counter() - turn.started) > self._turn_budget
-            allow_tools = bool(tools) and round_index < self._max_tool_rounds and not over_budget
-            if over_budget and round_index:
-                log.warning("conversation.turn_budget_exceeded", elapsed_s=round(time.perf_counter() - turn.started, 1))
-                diag_emit(
-                    EventStage.WARNING,
-                    data={"reason": "turn_budget_exceeded", "elapsed_s": round(time.perf_counter() - turn.started, 1)},
-                )
-            request = LLMRequest(
-                system=system,
-                messages=messages,
-                tools=tools if allow_tools else [],
-                response_schema=self.persona.response_schema(),
-                max_output_tokens=self._max_output_tokens,
+
+    def _final_candidate(
+        self, raw: list[str], plan: TaskPlan, turn: _TurnState, *, planned: bool
+    ) -> tuple[FinalAnswer, list[str], list[str]]:
+        candidate = parse_final_answer("".join(raw))
+        missing = plan.missing(turn.executions) if planned else []
+        # La entrega de formatos dispone además de su recuperación determinista
+        # posterior en run(); aquí se verifican los pasos explícitos del modelo.
+        pending_steps = [item for item in missing if item.startswith("paso ")]
+        if planned and not plan.steps:
+            pending_steps.insert(0, "Plan explícito pendiente; no se ha verificado la tarea.")
+            missing = [*pending_steps, *missing]
+        return candidate, missing, pending_steps
+
+    def _verify_candidate(
+        self,
+        candidate: FinalAnswer,
+        plan: TaskPlan,
+        turn: _TurnState,
+        *,
+        planned: bool,
+        missing: list[str],
+        pending_steps: list[str],
+    ) -> FinalAnswer:
+        if pending_steps:
+            text = "No he podido completar todos los pasos con evidencia verificable: " + "; ".join(pending_steps)
+            candidate = FinalAnswer(
+                "La tarea está incompleta. Consulta el detalle en pantalla.", candidate.avatar_state, text
             )
-            extractor = SpeechExtractor()
-            raw: list[str] = []
-            calls: list[ToolCall] = []
-            llm_started = time.perf_counter()
-            first_token = False
+        turn.verification_pending = pending_steps
+        if planned:
+            turn.state["plan_ejecucion"] = {
+                "pasos": [step.model_dump() for step in plan.steps],
+                "revision": plan.revisions,
+                "pendientes": missing,
+            }
+        return candidate
+
+    def _record_executions(
+        self,
+        executions: list[ToolExecution],
+        turn: _TurnState,
+        messages: list[Message],
+        *,
+        raw: list[str],
+        calls: list[ToolCall],
+    ) -> Iterator[TurnEvent]:
+        turn.executions.extend(executions)
+        messages.append(Message(role="assistant", content="".join(raw), tool_calls=tuple(calls)))
+        for execution in executions:
+            turn.state.update(execution.result.state_updates)
+            remember_table(
+                turn.state,
+                execution.result.presentation,
+                self._max_report_rows,
+                execution.result.summary,
+                source_tool=execution.call.name,
+            )
+            remember_population(turn.state, execution.result.state_updates.get("ultima_poblacion"))
+            remember_last_call(turn.state, execution)
+            messages.append(
+                Message(role="tool", content=execution.as_llm_output(), tool_call_id=execution.call.call_id)
+            )
+            yield ToolEvent(
+                name=execution.call.name,
+                status=execution.result.status.value,
+                elapsed_ms=execution.elapsed_ms,
+            )
+
+    def _warn_turn_budget(self, turn: _TurnState, *, over_budget: bool, round_index: int) -> None:
+        if over_budget and round_index:
+            log.warning("conversation.turn_budget_exceeded", elapsed_s=round(time.perf_counter() - turn.started, 1))
             diag_emit(
-                EventStage.LLM_REQUEST, data={"round": round_index, "tools_offered": len(tools) if allow_tools else 0}
+                EventStage.WARNING,
+                data={"reason": "turn_budget_exceeded", "elapsed_s": round(time.perf_counter() - turn.started, 1)},
             )
-            async for event in self._llm.stream(request):
-                if isinstance(event, TextDelta):
-                    if not first_token:
-                        first_token = True
-                        diag_emit(
-                            EventStage.LLM_FIRST_TOKEN, duration_ms=int((time.perf_counter() - llm_started) * 1000)
-                        )
-                    raw.append(event.text)
-                    for speech_event in self._speak(extractor.feed(event.text), turn):
-                        yield speech_event
-                elif isinstance(event, ToolCallRequested):
-                    calls.append(event.call)
-                elif isinstance(event, WebSources):
-                    turn.add_web_sources(event.sources)
-                elif isinstance(event, LLMCompleted):
-                    turn.usage["input"] += event.input_tokens
-                    turn.usage["cached"] += event.cached_tokens
-                    turn.usage["output"] += event.output_tokens
-                    diag_emit(
-                        EventStage.LLM_RESPONSE,
-                        status=EventStatus.SUCCESS,
-                        duration_ms=int((time.perf_counter() - llm_started) * 1000),
-                        data={
-                            "round": round_index,
-                            "input_tokens": event.input_tokens,
-                            "output_tokens": event.output_tokens,
-                            "cached_tokens": event.cached_tokens,
-                            "tool_calls_requested": len(calls),
-                        },
-                    )
 
-            if not calls:
-                for speech_event in self._speak(extractor.finish(), turn):
-                    yield speech_event
-                yield parse_final_answer("".join(raw))
-                return
+    def _require_plan(self, calls: list[ToolCall], messages: list[Message]) -> None:
+        messages.append(Message(role="assistant", content="", tool_calls=tuple(calls)))
+        for call in calls:
+            execution = ToolExecution(
+                call,
+                ToolResult(
+                    ToolStatus.INVALID_ARGUMENTS,
+                    "Declara primero un plan válido con planificar_tarea en una ronda separada.",
+                ),
+                0,
+                None,
+            )
+            messages.append(Message(role="tool", content=execution.as_llm_output(), tool_call_id=call.call_id))
 
-            if not filler_sent:
-                filler_sent = True
-                yield AvatarEvent(state=AvatarState.CONCENTRADA.value)
-                yield SpeechEvent(text=self.persona.next_waiting_phrase(), filler=True)
-            yield ProgressEvent(stage="tools", message="Consultando " + ", ".join(c.name for c in calls))
-
-            # Las exportaciones consumen una presentación producida por otra herramienta.
-            # Si GPT solicita ambas en la misma ronda, ejecutar primero las fuentes y
-            # guardar sus resultados en la sesión ANTES de llamar al exportador.
-            # No se cambia el orden de las respuestas al LLM ni sus call_id.
-            report_names = {"generar_informe", "generar_informe_ejecutivo"}
-            sources = [c for c in calls if c.name not in report_names]
-            exports = [c for c in calls if c.name in report_names]
-            if sources and exports:
-                source_execs = await self._tools.execute_all(sources, ctx)
-                for source_exec in source_execs:
-                    turn.state.update(source_exec.result.state_updates)
-                    remember_table(
-                        turn.state,
-                        source_exec.result.presentation,
-                        self._max_report_rows,
-                        source_exec.result.summary,
-                        source_tool=source_exec.call.name,
-                    )
-                # Un exportador puede depender del resultado del informe autónomo
-                # anterior. Evitar también concurrencia entre exportadores.
-                export_execs = []
-                for export_call in exports:
-                    export_exec = await self._tools.execute(export_call, ctx)
-                    export_execs.append(export_exec)
-                    turn.state.update(export_exec.result.state_updates)
-                by_id = {e.call.call_id: e for e in (*source_execs, *export_execs)}
-                executions = [by_id[c.call_id] for c in calls]
-            else:
-                executions = await self._tools.execute_all(calls, ctx)
-            turn.executions.extend(executions)
-            messages.append(Message(role="assistant", content="".join(raw), tool_calls=tuple(calls)))
-            for execution in executions:
-                turn.state.update(execution.result.state_updates)
-                remember_table(
-                    turn.state,
-                    execution.result.presentation,
-                    self._max_report_rows,
-                    execution.result.summary,
-                    source_tool=execution.call.name,
+    async def _deliver_exports(
+        self, export_request: tuple[str, tuple[str, ...]], final: FinalAnswer, ctx: ToolContext, turn: _TurnState
+    ) -> AsyncIterator[TurnEvent | tuple[FinalAnswer, bool]]:
+        message = ctx.user_message
+        failed = False
+        original_request, formats = export_request
+        verified = download_formats(turn.executions)
+        missing = [fmt for fmt in formats if fmt not in verified]
+        if missing:
+            # Varias tablas por departamento se guardaban separadas; la
+            # última pisaba las anteriores. Consolidar las de la MISMA
+            # herramienta con sus etiquetas antes de exportar.
+            merged = merge_report_sources(
+                turn.executions,
+                title=original_request,
+            )
+            if merged is not None:
+                source = next(
+                    e.call.name
+                    for e in turn.executions
+                    if e.result.presentation and e.result.presentation.get("type") in {"table", "dashboard"}
                 )
-                remember_population(turn.state, execution.result.state_updates.get("ultima_poblacion"))
-                remember_last_call(turn.state, execution)
-                messages.append(
-                    Message(role="tool", content=execution.as_llm_output(), tool_call_id=execution.call.call_id)
+                remember_table(turn.state, merged, self._max_report_rows, source_tool=source)
+            can_export = bool(merged) or (message != original_request and bool(turn.state.get("ultima_presentacion")))
+            if can_export:
+                # Todos los formatos que faltan se piden en UNA sola llamada (el motor de
+                # informes los genera todos de una vez, ver persist_document_report) en vez
+                # de una llamada por formato — ya no hace falta "uno a uno".
+                export_ctx = replace(ctx, user_message=original_request)
+                execution = await self._tools.execute(
+                    ToolCall(
+                        f"delivery:{uuid.uuid4().hex}",
+                        "generar_informe",
+                        json.dumps({"formato": missing}, ensure_ascii=False),
+                    ),
+                    export_ctx,
                 )
+                turn.executions.append(execution)
                 yield ToolEvent(
                     name=execution.call.name,
                     status=execution.result.status.value,
                     elapsed_ms=execution.elapsed_ms,
                 )
+        verified = download_formats(turn.executions)
+        successes = [(fmt, verified[fmt]) for fmt in formats if fmt in verified]
+        missing = [fmt for fmt in formats if fmt not in verified]
+        labels = {"pdf": "PDF", "pptx": "PowerPoint", "xlsx": "Excel", "docx": "Word", "html": "HTML"}
+        lines = [f"- [{labels[fmt]}]({presentation['url']})" for fmt, presentation in successes]
+        if missing:
+            lines.append(
+                "No se han generado: "
+                + ", ".join(labels[f] for f in missing)
+                + ". No se confirma una entrega que no existe."
+            )
+            failures = [
+                str(e.result.summary.get("mensaje", ""))[:220]
+                for e in turn.executions
+                if e.call.name == "generar_informe"
+                and e.result.status.value != "ok"
+                and isinstance(e.result.summary, dict)
+            ]
+            if failures:
+                lines.append("Motivo comunicado por el motor: " + failures[-1])
+            elif not successes:
+                lines.append("No hay datos verificables y completos para exportar desde esta ejecución.")
+        elif turn.verification_pending:
+            lines.insert(0, "Hay archivos disponibles, pero la tarea no está completamente verificada:")
+            lines.extend(turn.verification_pending)
+        else:
+            lines.insert(0, "Archivos generados y disponibles para descargar:")
+        confirmed = "\n".join(lines)
+        spoken = (
+            "Los archivos solicitados están generados y disponibles para descargar."
+            if not missing and not turn.verification_pending
+            else "No se han podido entregar todos los documentos solicitados. Consulta el detalle en pantalla."
+        )
+        final = FinalAnswer(spoken, final.avatar_state, confirmed)
+        if missing and not successes:
+            failed = True
+        yield SpeechEvent(text=spoken)
 
-            # Varias llamadas a la MISMA herramienta de tabla en el TURNO (p. ej. un "comparativo"
-            # que consulta cada departamento por separado, a menudo una llamada por ronda, no las
-            # dos en la misma) se guardaban una pisando a la otra arriba -- generar_informe
-            # exportaba solo la última (incidencia real en preprod 2026-10-27: PDF de "Cocina y
-            # Restaurante" con datos solo de Restaurante, aunque la pantalla mostraba ambos).
-            # Mirar turn.executions completo, no solo las de esta ronda -- el primer intento de
-            # este arreglo solo miraba la ronda actual y no disparaba cuando el modelo pedía cada
-            # departamento en una ronda separada (el caso real, confirmado en vivo). Mismo alcance
-            # que ya usa el bloque de exportación de arriba para su propia red de seguridad.
-            table_groups: dict[str, list[Any]] = {}
-            for execution in turn.executions:
-                if (
-                    execution.result.status.value == "ok"
-                    and isinstance(execution.result.presentation, dict)
-                    and execution.result.presentation.get("type") in {"table", "dashboard"}
-                ):
-                    table_groups.setdefault(execution.call.name, []).append(execution)
-            for tool_name, group in table_groups.items():
-                if len(group) < 2:
+        yield final, failed
+
+    def _restore_comparison(
+        self, message: str, user: UserContext, turn: _TurnState, history: list[ConversationTurn]
+    ) -> None:
+        # Un usuario puede analizar los dos ejercicios y solicitar el PDF en el turno siguiente.
+        # Recuperar únicamente la última intención comparativa explícita (sin importes), nunca
+        # depender de que ambos resultados estén «activos» en el buffer de una sola tabla.
+        local_today = datetime.now(self._tz).date()
+        current_plan = planner.plan(message, user=user, today=local_today)
+        competing_domain = any(m.field.domain != "payroll" for m in current_plan.metrics)
+        if competing_domain or (current_plan.period and not explicit_month_comparison(message)):
+            turn.state.pop(LAST_PAYROLL_COMPARISON, None)
+        latest = _payroll_comparison_spec(message, user, local_today)
+        if latest is not None:
+            turn.state[LAST_PAYROLL_COMPARISON] = latest
+        elif is_export_followup(message) and not competing_domain and LAST_PAYROLL_COMPARISON not in turn.state:
+            for previous in reversed(history):
+                if previous.role != "user":
                     continue
-                merged = merge_report_sources(group, title=ctx.user_message or tool_name)
-                if merged is not None:
-                    remember_table(turn.state, merged, self._max_report_rows, source_tool=tool_name)
-        raise LLMError("Se superó el número máximo de rondas de herramientas")  # pragma: no cover
+                if is_export_followup(previous.content):
+                    continue
+                latest = _payroll_comparison_spec(previous.content, user, local_today)
+                if latest is not None:
+                    turn.state[LAST_PAYROLL_COMPARISON] = latest
+                break
+
+    async def _save_turn(self, result: TurnResult, turn: _TurnState, user: UserContext, request_id: str | None) -> None:
+        # 2) Transacción corta: respuesta, estado y auditoría.
+        async with self._db.session() as db:
+            repo = ConversationRepository(db)
+            session = await repo.get_or_create(turn.session_id, user.user_id)
+            session.state = turn.state
+            await repo.add_turn(
+                session_id=turn.session_id,
+                request_id=request_id,
+                role="assistant",
+                content=result.answer,
+                speech=result.speech,
+                avatar_state=result.avatar_state,
+                tool_calls=result.tools,
+                presentation={"items": result.presentations},
+                latency_ms=result.elapsed_ms,
+            )
+            audit = AuditRepository(db)
+            for execution in turn.executions:
+                if execution.audit_resource:
+                    await audit.record(
+                        user_id=user.user_id,
+                        action=f"tool:{execution.call.name}",
+                        resource=execution.audit_resource,
+                        outcome=execution.result.status.value,
+                        request_id=request_id,
+                        detail={"arguments": json.loads(execution.call.arguments or "{}")},
+                    )
+
+    def _prepare_request(
+        self,
+        message: str,
+        user: UserContext,
+        turn: _TurnState,
+        history: list[ConversationTurn],
+        *,
+        request_id: str | None,
+        trace: Any,
+        attachment_ids: list[str] | None,
+        attachment_service: Any,
+    ) -> tuple[str, list[Message], ToolContext, set[str], QueryAnalysis]:
+        messages = [
+            Message(role="user" if t.role == "user" else "assistant", content=t.content)
+            for t in history
+            if t.role in {"user", "assistant"}
+        ]
+        messages.append(Message(role="user", content=message))
+        now = datetime.now(self._tz)
+        if trace is not None:
+            trace.record.now_local = now.isoformat()
+        mailbox = self._mailbox_for(user) or "" if self._mailbox_for else ""
+        selected_modules = select_modules(message, _module_keywords())
+        if "consulta_agenda" in self._tools.names() and user.has(Permission.CORREO_LEER):
+            from mia.modules.correo.calendar.tools import INSTRUCTIONS  # noqa: PLC0415
+            from mia.modules.correo.calendar.tools import KEYWORDS as calendar_keywords  # noqa: PLC0415
+
+            calendar_modules = dict(_module_keywords())
+            calendar_modules["correo"] = (*calendar_modules["correo"], *calendar_keywords)
+            selected_modules = select_modules(message, calendar_modules)
+            if any(
+                re.search(r"\b" + re.escape(keyword) + r"\b", normalize_key(message)) for keyword in calendar_keywords
+            ):
+                selected_modules = selected_modules - {"it", "finanzas"}
+        qa = classify_query(message)
+
+        diag_emit(EventStage.DOMAIN_DETECTION, data={"modules": list(selected_modules)})
+        diag_emit(
+            EventStage.PRESENTATION_INTENT_CLASSIFIED,
+            data={
+                "intent": qa.presentation_intent.value,
+                "depth": qa.response_depth.value,
+                "comparison_requested": qa.comparison_requested,
+                "analytics_requested": qa.analytics_requested,
+                "summary_requested": qa.summary_requested,
+                "temporal_scope": qa.temporal_scope,
+            },
+        )
+
+        diag_emit(EventStage.PROMPT_BUILD_START)
+        system = self.persona.system_prompt(
+            business_rules=rules_for_prompt(), capabilities=self._tools.capabilities_for(user)
+        )
+        if "consulta_agenda" in self._tools.names() and user.has(Permission.CORREO_LEER):
+            system += INSTRUCTIONS
+        _pres_hint = build_presentation_hint(qa)
+        context = self.persona.turn_context(
+            user_name=user.display_name,
+            now=now,
+            mailbox=mailbox,
+            focus=describe_focus(turn.state),
+            hint=(
+                self.persona.hint_for(message, mailbox)
+                + _module_hint(selected_modules)
+                + _report_hint(message, user, now.date())
+                + (
+                    "\n\n## Continuación de comparativa salarial\n"
+                    "El usuario pide exportar la comparativa previa de nóminas. Ejecuta "
+                    "generar_informe: recuperará los dos periodos de la petición anterior y "
+                    "consultará ambas fuentes sin que deban estar simultáneamente activas."
+                    if remembered_comparison(turn.state, message)
+                    else ""
+                )
+                + ("\n" + _pres_hint if _pres_hint else "")
+            ).strip(),
+        )
+        # Adjuntos: procesar IDs recibidos y actualizar session state
+        attachment_context = ""
+        if attachment_ids and attachment_service is not None:
+            from mia.attachments.model import (  # noqa: PLC0415
+                AttachmentRef,
+                get_active_refs,
+                merge_refs,
+                set_active_refs,
+            )
+
+            new_refs: list[AttachmentRef] = []
+            ctx_parts: list[str] = []
+            for aid in attachment_ids[:10]:
+                record = attachment_service.get_for_user(aid, user.user_id)
+                if record is not None:
+                    new_refs.append(attachment_service.to_ref(record))
+                    ctx_parts.append(attachment_service.build_context(aid, user.user_id))
+            if ctx_parts:
+                existing = get_active_refs(turn.state)
+                set_active_refs(turn.state, merge_refs(existing, new_refs))
+                attachment_context = "\n\n## Archivos adjuntos en este mensaje\n" + "\n\n".join(ctx_parts)
+                diag_emit(
+                    EventStage.ATTACHMENT_CONTEXT_INJECTED,
+                    data={
+                        "count": len(ctx_parts),
+                        "ids": attachment_ids[:10],
+                    },
+                )
+
+        messages[-1] = Message(role="user", content=message + context + attachment_context)
+        diag_emit(
+            EventStage.PROMPT_BUILD_COMPLETE,
+            data={
+                "system_chars": len(system),
+                "context_chars": len(context),
+                "attachment_context_chars": len(attachment_context),
+                "total_history_messages": len(messages),
+            },
+        )
+
+        ctx = ToolContext(
+            user=user,
+            request_id=request_id,
+            now=now,
+            session_state=turn.state,
+            user_message=message,
+            attachment_service=attachment_service,
+        )
+
+        return system, messages, ctx, selected_modules, qa
+
+    def _planning_context(
+        self, ctx: ToolContext, modules: set[str]
+    ) -> tuple[list[ToolSchema], TaskPlan, ToolRegistry, bool]:
+        tools = self._tools.schemas_for(ctx.user, modules=modules)
+        analysis = classify_query(ctx.user_message)
+        planned = (
+            analysis.comparison_requested
+            or analysis.analytics_requested
+            or analysis.presentation_intent.value in {"report", "executive_analysis"}
+        )
+        plan = TaskPlan(ctx.user_message, frozenset(t.name for t in self._tools.schemas_for(ctx.user)))
+        planning_registry = ToolRegistry()
+        planning_registry.register(plan.tool())
+        tools += planning_registry.schemas_for(ctx.user)
+        return tools, plan, planning_registry, planned
+
+    def _finish_trace(
+        self, result: TurnResult, turn: _TurnState, *, final: FinalAnswer, trace: Any, status: str
+    ) -> None:
+        diag_emit(
+            EventStage.RESPONSE_SENT,
+            status=EventStatus.SUCCESS,
+            data={
+                "status": status,
+                "elapsed_ms": result.elapsed_ms,
+                "tools_called": len(result.tools),
+                "tokens": result.usage,
+                "presentations": [p.get("type") for p in result.presentations if isinstance(p, dict) and p.get("type")],
+            },
+        )
+        if trace is not None:
+            trace.finish(
+                answer=final.text,
+                status=status,
+                llm_model=self._llm.__class__.__name__,
+            )
+
+        log.info(
+            "conversation.turn",
+            session_id=turn.session_id,
+            status=status,
+            elapsed_ms=result.elapsed_ms,
+            tools=[t["name"] for t in result.tools],
+            **{f"tokens_{k}": v for k, v in turn.usage.items()},
+        )
 
     @property
     def tools(self) -> ToolRegistry:

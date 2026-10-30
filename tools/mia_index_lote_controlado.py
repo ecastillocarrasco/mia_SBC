@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections import Counter
+from importlib import import_module
 
 from sqlalchemy import and_, or_, select, text
 from sqlalchemy.engine import make_url
@@ -72,6 +73,45 @@ def _candidate_query(domain: str):
     )
 
 
+async def _process_candidates(settings, db: Database, domain: str, limit: int, candidates: list) -> int:
+    # Imports/clients are instantiated only when writes are authorized.
+    build_sharepoint_client = import_module("mia.ingestion.sync.factory").build_sharepoint_client
+    build_llm_provider = import_module("mia.llm").build_llm_provider
+    CvIndexer = import_module("mia.modules.rrhh.curriculums.indexer").CvIndexer
+    DocumentIndexer = import_module("mia.modules.rrhh.document_indexing").DocumentIndexer
+
+    client = build_sharepoint_client(settings)
+    llm = build_llm_provider(settings.llm, settings.privacy_gateway)
+    try:
+        common = dict(
+            db=db,
+            client=client,
+            llm=llm,
+            embedding_model=settings.curriculums.embedding_model,
+            batch=limit,
+            max_bytes=settings.curriculums.max_file_mb * 1024 * 1024,
+        )
+        if domain == "cv_docs":
+            indexer = CvIndexer(**common)
+        else:
+            model, title = (Payslip, "Nominas") if domain == "nominas" else (SignedDocument, "DocumentosFirmadosV2")
+            indexer = DocumentIndexer(domain=domain, list_title=title, model=model, **common)
+        results = Counter()
+        for i, document in enumerate(candidates, 1):
+            try:
+                status = await indexer._index_one(document)
+            except Exception as exc:
+                status = "exception"
+                print(f"ERROR en elemento {i}/{len(candidates)}: {type(exc).__name__}")
+            results[status] += 1
+            print(f"{i}/{len(candidates)} procesado; estado={status}", flush=True)
+        print("RESUMEN:", dict(results))
+        return 0 if not (results.get("exception") or results.get("error")) else 1
+    finally:
+        await llm.aclose()
+        await client.aclose()
+
+
 async def _run(domain: str, limit: int, execute: bool) -> int:
     settings = get_settings()
     url = make_url(settings.database_url)
@@ -106,50 +146,14 @@ async def _run(domain: str, limit: int, execute: bool) -> int:
                 async with db.session() as session:
                     candidates = list((await session.scalars(query)).all())
                 print(f"Base verificada: {database_name} | Dominio: {domain} | Candidatos lote: {len(candidates)}")
-                if not execute:
-                    print("SIMULACION: no se descargaron documentos ni se escribieron vectores.")
-                    return 0
-                if not candidates:
-                    print("No se encontraron candidatos elegibles para el lote.")
-                    return 0
-                # Imports/clients are instantiated only when writes are authorized.
-                from mia.ingestion.sync.factory import build_sharepoint_client
-                from mia.llm import build_llm_provider
-                from mia.modules.rrhh.curriculums.indexer import CvIndexer
-                from mia.modules.rrhh.document_indexing import DocumentIndexer
-
-                client = build_sharepoint_client(settings)
-                llm = build_llm_provider(settings.llm, settings.privacy_gateway)
-                try:
-                    common = dict(
-                        db=db,
-                        client=client,
-                        llm=llm,
-                        embedding_model=settings.curriculums.embedding_model,
-                        batch=limit,
-                        max_bytes=settings.curriculums.max_file_mb * 1024 * 1024,
+                if not execute or not candidates:
+                    print(
+                        "SIMULACION: no se descargaron documentos ni se escribieron vectores."
+                        if not execute
+                        else "No se encontraron candidatos elegibles para el lote."
                     )
-                    if domain == "cv_docs":
-                        indexer = CvIndexer(**common)
-                    else:
-                        model, title = (
-                            (Payslip, "Nominas") if domain == "nominas" else (SignedDocument, "DocumentosFirmadosV2")
-                        )
-                        indexer = DocumentIndexer(domain=domain, list_title=title, model=model, **common)
-                    results = Counter()
-                    for i, document in enumerate(candidates, 1):
-                        try:
-                            status = await indexer._index_one(document)
-                        except Exception as exc:
-                            status = "exception"
-                            print(f"ERROR en elemento {i}/{len(candidates)}: {type(exc).__name__}")
-                        results[status] += 1
-                        print(f"{i}/{len(candidates)} procesado; estado={status}", flush=True)
-                    print("RESUMEN:", dict(results))
-                    return 0 if not (results.get("exception") or results.get("error")) else 1
-                finally:
-                    await llm.aclose()
-                    await client.aclose()
+                    return 0
+                return await _process_candidates(settings, db, domain, limit, candidates)
             finally:
                 # Release on the same connection before it returns to the pool.
                 await guard.execute(

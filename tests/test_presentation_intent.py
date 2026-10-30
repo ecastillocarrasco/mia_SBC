@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import pytest
 
+from mia.api.legacy_view import _merge_same_schema_tables, legacy_view, summary_view
+from mia.modules.rrhh.common import table
 from mia.presentation.intent import (
     PresentationIntent,
     ResponseDepth,
@@ -254,7 +256,6 @@ def test_hint_direct_response_instruction_still_applies_without_summary() -> Non
 
 
 def test_suppress_comparison_elimina_comparativa_de_dict_of_dicts():
-    from mia.api.legacy_view import summary_view
 
     summaries = [
         {
@@ -274,7 +275,6 @@ def test_suppress_comparison_elimina_comparativa_de_dict_of_dicts():
 
 
 def test_suppress_comparison_false_por_defecto():
-    from mia.api.legacy_view import summary_view
 
     summaries = [
         {
@@ -291,7 +291,6 @@ def test_suppress_comparison_false_por_defecto():
 
 
 def test_suppress_comparison_no_afecta_cards():
-    from mia.api.legacy_view import summary_view
 
     summaries = [
         {
@@ -310,7 +309,6 @@ def test_suppress_comparison_no_afecta_cards():
 
 
 def test_legacy_view_suppress_comparison():
-    from mia.api.legacy_view import legacy_view
 
     summaries = [
         {
@@ -335,7 +333,6 @@ def _make_table(title: str, cols: list[str], rows: list[list]) -> dict:
 
 
 def test_merge_same_schema_combines_rows():
-    from mia.api.legacy_view import _merge_same_schema_tables
 
     cols = ["Persona", "Departamento"]
     t1 = _make_table("Turnos 07/10/2026 — Restaurante", cols, [["Ana", "Restaurante"]] * 14)
@@ -347,7 +344,6 @@ def test_merge_same_schema_combines_rows():
 
 
 def test_merge_strips_common_prefix_only():
-    from mia.api.legacy_view import _merge_same_schema_tables
 
     cols = ["Persona"]
     t1 = _make_table("Turnos 07/10/2026 — Restaurante", cols, [["Ana"]])
@@ -357,7 +353,6 @@ def test_merge_strips_common_prefix_only():
 
 
 def test_merge_does_not_merge_different_schemas():
-    from mia.api.legacy_view import _merge_same_schema_tables
 
     t1 = _make_table("Tabla A", ["Persona", "Tipo"], [["Ana", "T"]])
     t2 = _make_table("Tabla B", ["Persona", "Puesto"], [["Bob", "P"]])
@@ -366,15 +361,12 @@ def test_merge_does_not_merge_different_schemas():
 
 
 def test_merge_single_table_unchanged():
-    from mia.api.legacy_view import _merge_same_schema_tables
 
     t = _make_table("Solo", ["A"], [["x"]])
     assert _merge_same_schema_tables([t]) == [t]
 
 
 def test_legacy_view_merges_two_dept_tables():
-    from mia.api.legacy_view import legacy_view
-    from mia.modules.rrhh.common import table
 
     p1 = table(
         "Turnos 07/10/2026 — Restaurante",

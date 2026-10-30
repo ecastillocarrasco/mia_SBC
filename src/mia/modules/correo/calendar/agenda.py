@@ -92,9 +92,10 @@ def direct_agenda_period(message: str) -> str | None:
     """Recognize only an explicit, unfiltered request for the user's own agenda."""
     query = normalize_key(message).removeprefix("por favor ").removesuffix(" por favor")
     match = re.fullmatch(
-        r"(?:(?:muestrame|muestra|ensename|ensena|dime|consulta|ver|lista) )?"
+        r"(?:(?:vuelve a|volver a) )?"
+        r"(?:(?:muestrame|muestra|mostrar|ensename|ensena|dime|consulta|consultar|ver|lista)(?: de nuevo| otra vez)? )?"
         r"mi (?:agenda|calendario|reuniones)(?: de| para)? "
-        r"(hoy|manana|pasado manana|esta semana|proxima semana|semana que viene)",
+        r"(hoy|manana|pasado manana|esta semana|proxima semana|semana que viene)(?: de nuevo| otra vez)?",
         query,
     )
     return match[1] if match else None

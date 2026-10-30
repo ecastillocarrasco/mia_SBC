@@ -123,8 +123,8 @@ def test_ocho_departamentos_no_pierden_titulo_ni_filas():
     assert len({r[0] for r in merged["rows"]}) == 8
     assert (
         merge_report_sources(
-            executions
-            + [
+            [
+                *executions,
                 execution(
                     "otra_fuente",
                     "ok",
@@ -134,7 +134,7 @@ def test_ocho_departamentos_no_pierden_titulo_ni_filas():
                         "columns": ["Departamento", "Fecha", "Trabajo"],
                         "rows": [["A", "2026-10-12", 1]],
                     },
-                )
+                ),
             ],
             title=PROMPT,
         )

@@ -114,6 +114,7 @@ class ToolExecution:
     result: ToolResult
     elapsed_ms: int
     audit_resource: str | None
+    started_at: float = 0.0
 
     def as_llm_output(self) -> str:
         return json.dumps(
@@ -183,9 +184,11 @@ class ToolRegistry:
             if user.has(tool.permission) and (modules is None or self._module_of.get(tool.name) in modules)
         ]
 
-    async def execute(self, call: ToolCall, ctx: ToolContext) -> ToolExecution:
+    async def execute(
+        self, call: ToolCall, ctx: ToolContext, *, allowed_names: set[str] | None = None
+    ) -> ToolExecution:
         started = time.perf_counter()
-        tool = self._tools.get(call.name)
+        tool = self._tools.get(call.name) if allowed_names is None or call.name in allowed_names else None
         trace = current_trace()
 
         try:
@@ -265,10 +268,12 @@ class ToolRegistry:
             )
 
         log.info("tool.executed", tool=call.name, status=result.status.value, elapsed_ms=elapsed)
-        return ToolExecution(call, result, elapsed, tool.audit_resource if tool else None)
+        return ToolExecution(call, result, elapsed, tool.audit_resource if tool else None, started_at=started)
 
-    async def execute_all(self, calls: list[ToolCall], ctx: ToolContext) -> list[ToolExecution]:
-        return list(await asyncio.gather(*(self.execute(call, ctx) for call in calls)))
+    async def execute_all(
+        self, calls: list[ToolCall], ctx: ToolContext, *, allowed_names: set[str] | None = None
+    ) -> list[ToolExecution]:
+        return list(await asyncio.gather(*(self.execute(call, ctx, allowed_names=allowed_names) for call in calls)))
 
     @staticmethod
     async def _run(tool: Tool | None, call: ToolCall, ctx: ToolContext) -> ToolResult:

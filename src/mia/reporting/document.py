@@ -3,6 +3,7 @@ renderizan como PDF, Excel, PowerPoint, HTML o Word."""
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Literal
@@ -246,6 +247,117 @@ def _employee_document(card: dict[str, Any]) -> Document:
     return doc
 
 
+def _table_indicators(
+    doc: Document, presentation: dict[str, Any], summary: dict[str, Any], *, include_detail: bool
+) -> None:
+    # KPIs explícitos (p. ej. analisis_economico_nominas, vía table(..., kpis=[...])): tienen
+    # prioridad sobre los escalares derivados de __summary__ — son los que la propia herramienta ya
+    # decidió destacar, no una heurística genérica sobre lo que sobra.
+    explicit_kpis = presentation.get("kpis")
+    if isinstance(explicit_kpis, list) and explicit_kpis:
+        doc.blocks.append(
+            Block(
+                "kpis",
+                "Indicadores",
+                {str(k.get("label")): _flat(k.get("value")) for k in explicit_kpis if isinstance(k, dict)},
+            )
+        )
+    elif not include_detail and summary:
+        # KPI scalars from summary when not showing detail table (comportamiento existente, sin tocar)
+        kpis = {
+            _label(k): _flat(v)
+            for k, v in summary.items()
+            if not k.startswith("_")
+            and k not in _SKIP_KPI_KEYS
+            and isinstance(v, (int, float))
+            and not isinstance(v, bool)
+        }
+        if kpis:
+            doc.blocks.append(Block("kpis", "Indicadores", kpis))
+
+
+def _table_warnings(doc: Document, summary: dict[str, Any]) -> None:
+    # Advertencias del análisis (p. ej. meses sin datos, periodo incompleto, grupos ocultos por
+    # k-anonimato): vivían solo en ToolResult.summary y nunca llegaban a ningún informe. Cualquier
+    # herramienta que ponga `summary["advertencias"]` (lista de str o de dicts ya estructurados) se
+    # beneficia de esto, no solo nóminas.
+    advertencias = summary.get("advertencias")
+    if advertencias:
+        items = [
+            {
+                "severity": a.get("severity", "info"),
+                "code": a.get("code", "ANALYSIS_NOTE"),
+                "message": str(a.get("message", "")),
+                "source": a.get("source", "analysis"),
+                "context": dict(a.get("context") or {}),
+            }
+            if isinstance(a, dict)
+            else {
+                "severity": "info",
+                "code": "ANALYSIS_NOTE",
+                "message": str(a),
+                "source": "analysis",
+                "context": {},
+            }
+            for a in advertencias
+        ]
+        doc.blocks.append(warnings_block("Advertencias del análisis", items))
+
+
+def _table_charts(doc: Document, presentation: dict[str, Any], summary: dict[str, Any], *, include_chart: bool) -> None:
+    # Gráficos explícitos (p. ej. analisis_economico_nominas, vía table(..., charts=[...])): de
+    # primera clase (Block(kind="chart"), Fase D) — ya calculados por el backend, nunca re-derivados.
+    explicit_charts = presentation.get("charts")
+    if include_chart and isinstance(explicit_charts, list) and explicit_charts:
+        seen_chart_values: set[str] = set()
+        for spec in explicit_charts:
+            if isinstance(spec, dict) and spec.get("labels") and spec.get("series"):
+                # Ranking y donut de la misma distribución no aportan dos lecturas
+                # distintas al informe y ocupaban páginas completas duplicadas.
+
+                signature = json.dumps(
+                    [spec["labels"], [s.get("values") for s in spec["series"]]],
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    default=str,
+                )
+                if signature in seen_chart_values:
+                    continue
+                seen_chart_values.add(signature)
+                doc.blocks.append(Block("chart", str(spec.get("title") or doc.title), spec))
+    elif include_chart:
+        # Chart block from summary distribution data (comportamiento existente, sin tocar)
+        for dist_key in _DIST_KEYS:
+            dist = summary.get(dist_key)
+            if isinstance(dist, dict) and len(dist) >= 2 and all(isinstance(v, (int, float)) for v in dist.values()):
+                dist_block = Block(
+                    "table",
+                    _label(dist_key),
+                    {"columns": ["Categoría", "Personas"], "rows": [[k, v] for k, v in dist.items()]},
+                )
+                doc.blocks.append(dist_block)
+                break
+
+
+def _table_details(doc: Document, presentation: dict[str, Any], *, include_detail: bool) -> None:
+    if include_detail:
+        doc.blocks.append(Block("table", doc.title, presentation))
+
+    # Estadísticas adjuntas (p. ej. percentiles salariales): tabla adicional, no se pierden.
+    stats = presentation.get("stats")
+    if include_detail and isinstance(stats, dict) and stats.get("rows"):
+        doc.blocks.append(Block("table", str(stats.get("title") or "Estadísticas"), stats))
+
+    # Tablas adicionales (p. ej. dos desgloses distintos de la misma consulta — por departamento
+    # Y por empresa — ninguno de los dos es "la" tabla de stats): a diferencia de "stats" (una
+    # sola), "tables" admite varias, cada una con su propio título.
+    extra_tables = presentation.get("tables")
+    if include_detail and isinstance(extra_tables, list):
+        for extra in extra_tables:
+            if isinstance(extra, dict) and extra.get("rows"):
+                doc.blocks.append(Block("table", str(extra.get("title") or "Detalle"), extra))
+
+
 def to_document(
     presentation: dict[str, Any],
     *,
@@ -259,112 +371,10 @@ def to_document(
     if kind == "table":
         summary = presentation.get("__summary__") or {}
 
-        # KPIs explícitos (p. ej. analisis_economico_nominas, vía table(..., kpis=[...])): tienen
-        # prioridad sobre los escalares derivados de __summary__ — son los que la propia herramienta ya
-        # decidió destacar, no una heurística genérica sobre lo que sobra.
-        explicit_kpis = presentation.get("kpis")
-        if isinstance(explicit_kpis, list) and explicit_kpis:
-            doc.blocks.append(
-                Block(
-                    "kpis",
-                    "Indicadores",
-                    {str(k.get("label")): _flat(k.get("value")) for k in explicit_kpis if isinstance(k, dict)},
-                )
-            )
-        elif not include_detail and summary:
-            # KPI scalars from summary when not showing detail table (comportamiento existente, sin tocar)
-            kpis = {
-                _label(k): _flat(v)
-                for k, v in summary.items()
-                if not k.startswith("_")
-                and k not in _SKIP_KPI_KEYS
-                and isinstance(v, (int, float))
-                and not isinstance(v, bool)
-            }
-            if kpis:
-                doc.blocks.append(Block("kpis", "Indicadores", kpis))
-
-        # Advertencias del análisis (p. ej. meses sin datos, periodo incompleto, grupos ocultos por
-        # k-anonimato): vivían solo en ToolResult.summary y nunca llegaban a ningún informe. Cualquier
-        # herramienta que ponga `summary["advertencias"]` (lista de str o de dicts ya estructurados) se
-        # beneficia de esto, no solo nóminas.
-        advertencias = summary.get("advertencias")
-        if advertencias:
-            items = [
-                {
-                    "severity": a.get("severity", "info"),
-                    "code": a.get("code", "ANALYSIS_NOTE"),
-                    "message": str(a.get("message", "")),
-                    "source": a.get("source", "analysis"),
-                    "context": dict(a.get("context") or {}),
-                }
-                if isinstance(a, dict)
-                else {
-                    "severity": "info",
-                    "code": "ANALYSIS_NOTE",
-                    "message": str(a),
-                    "source": "analysis",
-                    "context": {},
-                }
-                for a in advertencias
-            ]
-            doc.blocks.append(warnings_block("Advertencias del análisis", items))
-
-        # Gráficos explícitos (p. ej. analisis_economico_nominas, vía table(..., charts=[...])): de
-        # primera clase (Block(kind="chart"), Fase D) — ya calculados por el backend, nunca re-derivados.
-        explicit_charts = presentation.get("charts")
-        if include_chart and isinstance(explicit_charts, list) and explicit_charts:
-            seen_chart_values: set[str] = set()
-            for spec in explicit_charts:
-                if isinstance(spec, dict) and spec.get("labels") and spec.get("series"):
-                    # Ranking y donut de la misma distribución no aportan dos lecturas
-                    # distintas al informe y ocupaban páginas completas duplicadas.
-                    import json
-
-                    signature = json.dumps(
-                        [spec["labels"], [s.get("values") for s in spec["series"]]],
-                        ensure_ascii=False,
-                        sort_keys=True,
-                        default=str,
-                    )
-                    if signature in seen_chart_values:
-                        continue
-                    seen_chart_values.add(signature)
-                    doc.blocks.append(Block("chart", str(spec.get("title") or doc.title), spec))
-        elif include_chart:
-            # Chart block from summary distribution data (comportamiento existente, sin tocar)
-            for dist_key in _DIST_KEYS:
-                dist = summary.get(dist_key)
-                if (
-                    isinstance(dist, dict)
-                    and len(dist) >= 2
-                    and all(isinstance(v, (int, float)) for v in dist.values())
-                ):
-                    dist_block = Block(
-                        "table",
-                        _label(dist_key),
-                        {"columns": ["Categoría", "Personas"], "rows": [[k, v] for k, v in dist.items()]},
-                    )
-                    doc.blocks.append(dist_block)
-                    break
-
-        if include_detail:
-            doc.blocks.append(Block("table", doc.title, presentation))
-
-        # Estadísticas adjuntas (p. ej. percentiles salariales): tabla adicional, no se pierden.
-        stats = presentation.get("stats")
-        if include_detail and isinstance(stats, dict) and stats.get("rows"):
-            doc.blocks.append(Block("table", str(stats.get("title") or "Estadísticas"), stats))
-
-        # Tablas adicionales (p. ej. dos desgloses distintos de la misma consulta — por departamento
-        # Y por empresa — ninguno de los dos es "la" tabla de stats): a diferencia de "stats" (una
-        # sola), "tables" admite varias, cada una con su propio título.
-        extra_tables = presentation.get("tables")
-        if include_detail and isinstance(extra_tables, list):
-            for extra in extra_tables:
-                if isinstance(extra, dict) and extra.get("rows"):
-                    doc.blocks.append(Block("table", str(extra.get("title") or "Detalle"), extra))
-
+        _table_indicators(doc, presentation, summary, include_detail=include_detail)
+        _table_warnings(doc, summary)
+        _table_charts(doc, presentation, summary, include_chart=include_chart)
+        _table_details(doc, presentation, include_detail=include_detail)
         return doc
     if kind == "dashboard":
         doc.blocks.append(Block("kpis", "Indicadores", {_label(k): _flat(v) for k, v in presentation["kpis"].items()}))

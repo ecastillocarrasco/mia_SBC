@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -168,10 +169,8 @@ def get_active_refs(state: dict[str, Any]) -> list[AttachmentRef]:
     result = []
     for item in raw:
         if isinstance(item, dict):
-            try:
+            with contextlib.suppress(KeyError, ValueError):
                 result.append(AttachmentRef.from_dict(item))
-            except (KeyError, ValueError):
-                pass
     return result
 
 

@@ -89,17 +89,34 @@ def _svg_bar(spec: dict[str, Any], *, horizontal: bool = False) -> str:
             label_x = bar_x - 6 if value < 0 else bar_x + bar_w + 8
             anchor = "end" if value < 0 else "start"
             bars.append(
-                f'<rect x="{bar_x:.1f}" y="{bar_y}" width="{bar_w:.1f}" height="14" rx="2" fill="{PALETTE[j % len(PALETTE)]}" />'
-                f'<text x="{label_x:.1f}" y="{bar_y + 11}" font-size="10" text-anchor="{anchor}" fill="{NAVY}">{_esc(round(value, 2))}</text>'
+                f'<rect x="{bar_x:.1f}" y="{bar_y}" width="{bar_w:.1f}" height="14" '
+                f'rx="2" fill="{PALETTE[j % len(PALETTE)]}" />'
+                f'<text x="{label_x:.1f}" y="{bar_y + 11}" font-size="10" text-anchor="{anchor}" '
+                f'fill="{NAVY}">{_esc(round(value, 2))}</text>'
             )
     if n > 1:
         legend = " ".join(
-            f'<span class="legend-dot" style="background:{PALETTE[j % len(PALETTE)]}"></span>{_esc(str(s.get("name", f"Serie {j + 1}")))}'
+            (
+                '<span class="legend-dot" style="background:'
+                f"{PALETTE[j % len(PALETTE)]}"
+                '"></span>'
+                f"{_esc(str(s.get('name', f'Serie {j + 1}')))}"
+            )
             for j, s in enumerate(series)
         )
         bars.append(f'<foreignObject x="0" y="{height - 5}" width="650" height="1"></foreignObject>')
         return (
-            f'<div><div class="legend">{legend}</div><svg viewBox="0 0 {width} {height}" width="100%" role="img" aria-label="{_esc(spec.get("title"))}">'
+            (
+                '<div><div class="legend">'
+                f"{legend}"
+                '</div><svg viewBox="0 0 '
+                f"{width}"
+                " "
+                f"{height}"
+                '" width="100%" role="img" aria-label="'
+                f"{_esc(spec.get('title'))}"
+                '">'
+            )
             + "".join(bars)
             + "</svg></div>"
         )
@@ -149,7 +166,8 @@ def _svg_line(spec: dict[str, Any], *, area: bool = False) -> str:
     all_values = [v or 0.0 for s in series for v in s["values"]]
     if not all_values or len(labels) < 2:
         return ""
-    vmax, vmin = max(all_values), min(0.0, min(all_values))
+    minimum_value = min(all_values)
+    vmax, vmin = max(all_values), min(0.0, minimum_value)
     span = (vmax - vmin) or 1.0
     step = (width - 2 * pad) / (len(labels) - 1)
 
@@ -175,7 +193,15 @@ def _svg_line(spec: dict[str, Any], *, area: bool = False) -> str:
     for i, label in enumerate(labels):
         x = pad + i * step
         parts.append(
-            f'<text x="{x:.1f}" y="{height - 8}" font-size="10" fill="{MUTED}" text-anchor="middle">{_esc(label)[:10]}</text>'
+            '<text x="'
+            f"{x:.1f}"
+            '" y="'
+            f"{height - 8}"
+            '" font-size="10" fill="'
+            f"{MUTED}"
+            '" text-anchor="middle">'
+            f"{_esc(label)[:10]}"
+            "</text>"
         )
     svg = (
         f'<svg viewBox="0 0 {width} {height}" width="100%" role="img" aria-label="{_esc(spec.get("title"))}">'
@@ -184,7 +210,12 @@ def _svg_line(spec: dict[str, Any], *, area: bool = False) -> str:
     )
     if len(series) > 1:
         legend = " ".join(
-            f'<span class="legend-dot" style="background:{PALETTE[i % len(PALETTE)]}"></span>{_esc(str(s.get("name", f"Serie {i + 1}")))}'
+            (
+                '<span class="legend-dot" style="background:'
+                f"{PALETTE[i % len(PALETTE)]}"
+                '"></span>'
+                f"{_esc(str(s.get('name', f'Serie {i + 1}')))}"
+            )
             for i, s in enumerate(series)
         )
         return f'<div><div class="legend">{legend}</div>{svg}</div>'
@@ -230,19 +261,7 @@ def _kpi_cards_html(items: list[tuple[str, Any]]) -> str:
     return f'<div class="kpi-grid">{cards}</div>'
 
 
-def _render_block(block: Block, *, chart_of: Any) -> str:
-    if block.kind == "kpis":
-        cards = _kpi_cards_html(list(block.data.items()))
-        return f'<section class="block"><h2>{_esc(block.title)}</h2>{cards}</section>'
-
-    if block.kind == "section":
-        rows = "".join(f"<dt>{_esc(k)}</dt><dd>{_esc(v)}</dd>" for k, v in block.data.items())
-        return f'<section class="block"><h2>{_esc(block.title)}</h2><dl class="section-list">{rows}</dl></section>'
-
-    if block.kind == "chart":
-        svg = _chart_svg(block.data)
-        return f'<section class="block"><h2>{_esc(block.title)}</h2><div class="chart">{svg}</div></section>'
-
+def _render_notes(block: Block) -> str:
     if block.kind == "warnings":
         items = "".join(
             f'<li class="warning-item" style="border-left-color:{SEVERITY_COLOR.get(i.get("severity"), MUTED)}">'
@@ -253,24 +272,26 @@ def _render_block(block: Block, *, chart_of: Any) -> str:
         )
         return f'<section class="block"><h2>{_esc(block.title)}</h2><ul class="warning-list">{items}</ul></section>'
 
-    if block.kind == "narrative":
-        items = "".join(
-            f'<li class="narrative-item"><span class="narrative-badge">{_esc(NARRATIVE_LABEL.get(s.get("kind"), s.get("kind")))}</span>'
-            f"<p>{_esc(s.get('text'))}</p>"
-            + (
-                f'<p class="evidence">Evidencia: {_esc(", ".join(f"{k}: {v}" for k, v in (s.get("evidence") or {}).items()))}</p>'
-                if s.get("evidence")
-                else ""
+    items = "".join(
+        f'<li class="narrative-item"><span class="narrative-badge">'
+        f"{_esc(NARRATIVE_LABEL.get(s.get('kind'), s.get('kind')))}</span>"
+        f"<p>{_esc(s.get('text'))}</p>"
+        + (
+            (
+                '<p class="evidence">Evidencia: '
+                f"{_esc(', '.join((f'{k}: {v}' for k, v in (s.get('evidence') or {}).items())))}"
+                "</p>"
             )
-            + "</li>"
-            for s in block.data.get("statements", [])
+            if s.get("evidence")
+            else ""
         )
-        return f'<section class="block"><h2>{_esc(block.title)}</h2><ul class="narrative-list">{items}</ul></section>'
+        + "</li>"
+        for s in block.data.get("statements", [])
+    )
+    return f'<section class="block"><h2>{_esc(block.title)}</h2><ul class="narrative-list">{items}</ul></section>'
 
-    if block.kind == "methodology":
-        items = "".join(f"<li>{_esc(n)}</li>" for n in block.data.get("notes", []))
-        return f'<section class="block"><h2>{_esc(block.title)}</h2><ol class="methodology-list">{items}</ol></section>'
 
+def _render_table(block: Block, *, chart_of: Any) -> str:
     # table / annex (y cualquier otro: fallback de pares clave/valor)
     columns, rows = _rows(block)
     notice = _annex_notice(block)
@@ -296,23 +317,99 @@ def _render_block(block: Block, *, chart_of: Any) -> str:
     )
 
 
+def _render_block(block: Block, *, chart_of: Any) -> str:
+    if block.kind == "kpis":
+        cards = _kpi_cards_html(list(block.data.items()))
+        return f'<section class="block"><h2>{_esc(block.title)}</h2>{cards}</section>'
+
+    if block.kind == "section":
+        pairs_html = "".join(f"<dt>{_esc(k)}</dt><dd>{_esc(v)}</dd>" for k, v in block.data.items())
+        return (
+            f'<section class="block"><h2>{_esc(block.title)}</h2><dl class="section-list">{pairs_html}</dl></section>'
+        )
+
+    if block.kind == "chart":
+        svg = _chart_svg(block.data)
+        return f'<section class="block"><h2>{_esc(block.title)}</h2><div class="chart">{svg}</div></section>'
+
+    if block.kind in {"warnings", "narrative"}:
+        return _render_notes(block)
+
+    if block.kind == "methodology":
+        items = "".join(f"<li>{_esc(n)}</li>" for n in block.data.get("notes", []))
+        return f'<section class="block"><h2>{_esc(block.title)}</h2><ol class="methodology-list">{items}</ol></section>'
+
+    return _render_table(block, chart_of=chart_of)
+
+
 _STYLE = f"""
 :root {{ --navy:{NAVY}; --gold:{GOLD}; --light:{LIGHT}; --line:{LINE}; --muted:{MUTED}; }}
 * {{ box-sizing:border-box; }}
 html {{ scroll-behavior:smooth; }}
-body {{ margin:0; font-family:'Aptos','Segoe UI',system-ui,-apple-system,sans-serif; color:#283045; background:#f2f4f8; line-height:1.55; }}
-.page {{ max-width:1120px; margin:32px auto; background:#fff; padding:42px 44px 52px; box-shadow:0 16px 60px rgba(27,37,89,.09); border:1px solid #e6e8ed; border-radius:22px; }}
-.header {{ display:flex; align-items:center; gap:26px; padding:0 0 28px; border-bottom:2px solid var(--gold); margin-bottom:30px; }}
+body {{ margin:0;
+font-family:'Aptos','Segoe UI',system-ui,-apple-system,sans-serif;
+color:#283045;
+background:#f2f4f8;
+line-height:1.55;
+}}
+.page {{ max-width:1120px;
+margin:32px auto;
+background:#fff;
+padding:42px 44px 52px;
+box-shadow:0 16px 60px rgba(27,37,89,.09);
+border:1px solid #e6e8ed;
+border-radius:22px;
+}}
+.header {{ display:flex;
+align-items:center;
+gap:26px;
+padding:0 0 28px;
+border-bottom:2px solid var(--gold);
+margin-bottom:30px;
+}}
 .header img {{ height:84px; width:auto; max-width:180px; object-fit:contain; flex-shrink:0; }}
-.header h1 {{ color:var(--navy); letter-spacing:-.03em; font-weight:750; font-size:clamp(1.65rem,3vw,2.25rem); line-height:1.15; margin:0 0 12px; overflow-wrap:anywhere; }}
+.header h1 {{ color:var(--navy);
+letter-spacing:-.03em;
+font-weight:750;
+font-size:clamp(1.65rem,3vw,2.25rem);
+line-height:1.15;
+margin:0 0 12px;
+overflow-wrap:anywhere;
+}}
 .header .meta {{ color:var(--muted); font-size:.9rem; }}
 .block {{ margin-bottom:34px; break-inside:auto; }}
-.block h2 {{ color:var(--navy); font-weight:700; font-size:1.22rem; letter-spacing:-.015em; border-left:5px solid var(--gold); padding-left:14px; margin:0 0 20px; }}
+.block h2 {{ color:var(--navy);
+font-weight:700;
+font-size:1.22rem;
+letter-spacing:-.015em;
+border-left:5px solid var(--gold);
+padding-left:14px;
+margin:0 0 20px;
+}}
 .kpi-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(205px,1fr)); gap:14px; }}
-.kpi-card {{ background:linear-gradient(145deg,#fff 0%,#f7f5f2 100%); border:1px solid var(--line); border-top:3px solid var(--gold); border-radius:14px; padding:22px 21px 19px; min-height:118px; box-shadow:0 5px 14px rgba(27,37,89,.04); text-align:left; overflow-wrap:anywhere; }}
-.kpi-value {{ color:var(--navy); font-weight:760; font-size:clamp(1.4rem,2.6vw,2rem); letter-spacing:-.035em; line-height:1.2; font-variant-numeric:tabular-nums; }}
+.kpi-card {{ background:linear-gradient(145deg,#fff 0%,#f7f5f2 100%);
+border:1px solid var(--line);
+border-top:3px solid var(--gold);
+border-radius:14px;
+padding:22px 21px 19px;
+min-height:118px;
+box-shadow:0 5px 14px rgba(27,37,89,.04);
+text-align:left;
+overflow-wrap:anywhere;
+}}
+.kpi-value {{ color:var(--navy);
+font-weight:760;
+font-size:clamp(1.4rem,2.6vw,2rem);
+letter-spacing:-.035em;
+line-height:1.2;
+font-variant-numeric:tabular-nums;
+}}
 .kpi-label {{ color:var(--muted); font-weight:550; font-size:.82rem; margin-top:13px; }}
-.section-list {{ display:grid; grid-template-columns:minmax(150px,30%) minmax(0,1fr); gap:0 22px; border-top:1px solid var(--line); }}
+.section-list {{ display:grid;
+grid-template-columns:minmax(150px,30%) minmax(0,1fr);
+gap:0 22px;
+border-top:1px solid var(--line);
+}}
 .section-list dt,.section-list dd {{ border-bottom:1px solid var(--line); padding:12px 0; }}
 .section-list dt {{ color:var(--muted); font-weight:650; font-size:.88rem; }}
 .section-list dd {{ margin:0; overflow-wrap:anywhere; }}
@@ -320,13 +417,28 @@ body {{ margin:0; font-family:'Aptos','Segoe UI',system-ui,-apple-system,sans-se
 .chart svg {{ max-width:100%; height:auto; }}
 .table-wrap {{ overflow-x:auto; border-radius:12px; border:1px solid var(--line); }}
 table {{ width:100%; border-collapse:separate; border-spacing:0; font-size:.9rem; font-variant-numeric:tabular-nums; }}
-th {{ background:var(--navy); color:#fff; text-align:left; padding:12px 15px; position:sticky; top:0; z-index:1; white-space:normal; font-weight:650; }}
+th {{ background:var(--navy);
+color:#fff;
+text-align:left;
+padding:12px 15px;
+position:sticky;
+top:0;
+z-index:1;
+white-space:normal;
+font-weight:650;
+}}
 td {{ padding:12px 15px; border-bottom:1px solid var(--line); overflow-wrap:anywhere; vertical-align:middle; }}
 tbody tr:nth-child(even) {{ background:#f8f6f3; }}
 tbody tr:hover {{ background:#f3f4fa; }}
 tbody tr:last-child td {{ border-bottom:0; }}
 td:first-child {{ color:var(--navy); font-weight:640; }}
-.warning-list,.narrative-list,.methodology-list {{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:13px; }}
+.warning-list,.narrative-list,.methodology-list {{ list-style:none;
+padding:0;
+margin:0;
+display:flex;
+flex-direction:column;
+gap:13px;
+}}
 .warning-item {{ border-left:4px solid var(--muted); background:var(--light); padding:16px 20px; border-radius:10px; }}
 .warning-item p,.narrative-item p {{ margin:8px 0 0; }}
 .warning-badge,.narrative-badge {{ font-weight:750; font-size:.72rem; letter-spacing:.055em; }}
@@ -337,9 +449,25 @@ td:first-child {{ color:var(--navy); font-weight:640; }}
 .donut-wrap {{ display:flex; align-items:center; gap:28px; flex-wrap:wrap; }}
 .legend-dot {{ display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:7px; }}
 .legend {{ font-size:.85rem; display:flex; flex-wrap:wrap; column-gap:18px; row-gap:9px; color:var(--muted); }}
-footer {{ color:var(--muted); border-top:1px solid var(--line); padding-top:18px; font-size:.78rem; text-align:right; margin-top:34px; }}
-@media (max-width:700px) {{ .page{{margin:0;padding:24px 16px;border-radius:0;box-shadow:none;}} .header{{gap:15px;align-items:flex-start;flex-direction:column;}} .header img{{height:60px;}} .kpi-grid{{grid-template-columns:repeat(auto-fit,minmax(145px,1fr));}} .section-list{{grid-template-columns:1fr;}} .section-list dt{{border-bottom:none;padding-bottom:0;}} .section-list dd{{padding-top:2px;}} }}
-@media print {{ @page{{margin:16mm;}} body{{background:#fff;}} .page{{max-width:none;margin:0;border:0;padding:0;box-shadow:none;}} .header,.kpi-card,.warning-item,.narrative-item{{break-inside:avoid;}} .block{{break-inside:auto;}} tr{{break-inside:avoid;}} th{{position:static;}} .chart{{break-inside:avoid;}} }}
+footer {{ color:var(--muted);
+border-top:1px solid var(--line);
+padding-top:18px;
+font-size:.78rem;
+text-align:right;
+margin-top:34px;
+}}
+@media (max-width:700px) {{ .page{{margin:0;padding:24px 16px;border-radius:0;box-shadow:none;}}
+.header{{gap:15px;align-items:flex-start;flex-direction:column;}}
+.header img{{height:60px;}}
+.kpi-grid{{grid-template-columns:repeat(auto-fit,minmax(145px,1fr));}}
+.section-list{{grid-template-columns:1fr;}}
+.section-list dt{{border-bottom:none;padding-bottom:0;}}
+.section-list dd{{padding-top:2px;}} }}
+@media print {{ @page{{margin:16mm;}} body{{background:#fff;}}
+.page{{max-width:none;margin:0;border:0;padding:0;box-shadow:none;}}
+.header,.kpi-card,.warning-item,.narrative-item{{break-inside:avoid;}}
+.block{{break-inside:auto;}} tr{{break-inside:avoid;}} th{{position:static;}}
+.chart{{break-inside:avoid;}} }}
 """
 
 

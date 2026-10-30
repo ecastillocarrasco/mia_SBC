@@ -24,6 +24,8 @@ datos sintéticos controlados (no el importe real de la incidencia)."""
 from __future__ import annotations
 
 import io
+import json
+import re as _re
 
 import httpx
 import pytest
@@ -31,11 +33,15 @@ from openpyxl import load_workbook
 from pptx import Presentation
 from pypdf import PdfReader
 
+from mia.api.services import Services
 from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
+from mia.conversation import ConversationEngine, Persona
+from mia.conversation.planning import PLAN_TOOL
 from mia.data import Payslip
 from mia.llm.base import LLMCompleted, LLMRequest, TextDelta, ToolCall, ToolCallRequested
 from mia.llm.fake import FakeLLMProvider, final_answer, tool_call
 from mia.main import create_app
+from mia.modules.registry import build_registry
 from tests.conftest import make_settings
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp
@@ -139,14 +145,19 @@ async def acceptance_app(tmp_path):
         # evita que este guion la confunda con el inicio de un turno nuevo y corrompa turn["n"].
         schema_props = (req.response_schema or {}).get("properties") or {}
         if "selected_indices" in schema_props:
-            import json as _json
-
-            inventory = _json.loads(req.messages[0].content)["bloques"]
-            decision = _json.dumps({"selected_indices": [b["index"] for b in inventory], "unavailable": []})
+            inventory = json.loads(req.messages[0].content)["bloques"]
+            decision = json.dumps({"selected_indices": [b["index"] for b in inventory], "unavailable": []})
             return [TextDelta(decision), LLMCompleted()]
 
         tool_rounds = [m for m in req.messages if m.role == "tool"]
         if not tool_rounds:
+            planned_tool = "generar_informe_ejecutivo" if turn["n"] == 0 else "generar_informe"
+            return tool_call(
+                PLAN_TOOL,
+                {"pasos": [{"objetivo": "Generar el informe solicitado", "herramientas": [planned_tool]}]},
+            )
+        business_calls = [call for m in req.messages for call in (m.tool_calls or ()) if call.name != PLAN_TOOL]
+        if not business_calls:
             turn["n"] += 1
             if turn["n"] == 1:
                 return [
@@ -162,10 +173,6 @@ async def acceptance_app(tmp_path):
 
     llm = FakeLLMProvider(scripted)
     settings = make_settings(tmp_path, database_url=f"sqlite+aiosqlite:///{tmp_path / 'incident_acceptance.db'}")
-
-    from mia.api.services import Services
-    from mia.conversation import ConversationEngine, Persona
-    from mia.modules.registry import build_registry
 
     services = Services.build(settings, llm=llm, db=db)
     registry = build_registry(
@@ -251,7 +258,6 @@ async def test_acceptance_conversation_all_five_turns_export_the_same_authorized
     # Las cifras por departamento deben coincidir EXACTAMENTE entre todos los formatos — se extraen
     # del propio PDF (ya verificado arriba que contiene los datos reales) y se buscan literalmente en
     # los otros tres, en vez de recalcularlas aquí de forma independiente.
-    import re as _re
 
     pdf_amounts = sorted(set(_re.findall(r"\d{1,3}(?:\.\d{3})*,\d{2}\s?€", texts_by_format["pdf"])))
     assert pdf_amounts, "no se encontró ninguna cifra en euros en el PDF para comparar"

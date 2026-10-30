@@ -48,6 +48,7 @@ from mia.modules.registry import build_registry
 from mia.privacy_gateway.gateway import PrivacyGateway
 from mia.settings import PrivacyGatewaySettings
 from tests.dbutil import fresh_database
+from tests.planning_script import planned_script
 from tests.test_phase4b import _pdf
 
 ADMIN = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
@@ -117,7 +118,7 @@ async def test_generated_xlsx_report_contains_real_data_while_llm_only_saw_pseud
             return final_answer(texto=last.content, habla="Informe generado.", estado_avatar="sonriendo")
         return tool_call("ranking_salarial", {"departamento": "Cocina", "cuantos": 3}, call_id="c_ranking")
 
-    fake = FakeLLMProvider(script=script)
+    fake = FakeLLMProvider(script=planned_script(script, ("ranking_salarial", "generar_informe")))
     gw_settings = PrivacyGatewaySettings(enabled=True, vault_key="clave-de-prueba-no-real", vault_ttl_seconds=60)
     gateway = PrivacyGateway(fake, gw_settings, provider_name="test", model="test-model")
     engine = ConversationEngine(llm=gateway, tools=registry, db=db, max_tool_rounds=4)

@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
+import contextlib
+import logging
 from collections import OrderedDict
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from mia.diagnostics.config import DiagnosticsSettings
 from mia.diagnostics.models import TraceRecord
+from mia.settings import DiagnosticsSettings as AppDiagnosticsSettings
+
+log = logging.getLogger(__name__)
 
 
 class DiagnosticsStore:
@@ -18,7 +24,7 @@ class DiagnosticsStore:
     tarea de fondo y no bloquea el pipeline principal nunca.
     """
 
-    def __init__(self, settings: DiagnosticsSettings) -> None:
+    def __init__(self, settings: DiagnosticsSettings | AppDiagnosticsSettings) -> None:
         self._max = settings.max_traces
         self._retention = timedelta(hours=settings.retention_hours)
         self._traces: OrderedDict[str, TraceRecord] = OrderedDict()
@@ -34,7 +40,7 @@ class DiagnosticsStore:
             if len(self._traces) > self._max:
                 self._traces.popitem(last=False)  # descarta la más antigua
         except Exception:  # pragma: no cover — almacén nunca rompe el pipeline
-            pass
+            log.warning("store.put.failed")
 
     # ── Lectura ───────────────────────────────────────────────────────────────
 
@@ -49,7 +55,7 @@ class DiagnosticsStore:
         domain: str | None = None,
         user_id: str | None = None,
         session_id: str | None = None,
-    ) -> list[TraceRecord]:
+    ) -> builtins.list[TraceRecord]:
         traces = list(reversed(self._traces.values()))
         if status:
             traces = [t for t in traces if t.status == status]
@@ -61,13 +67,13 @@ class DiagnosticsStore:
             traces = [t for t in traces if t.session_id == session_id]
         return traces[:limit]
 
-    def running(self) -> list[TraceRecord]:
+    def running(self) -> builtins.list[TraceRecord]:
         return [t for t in self._traces.values() if t.status == "running"]
 
     def count(self) -> int:
         return len(self._traces)
 
-    def metrics_window(self, *, minutes: int = 60) -> list[TraceRecord]:
+    def metrics_window(self, *, minutes: int = 60) -> builtins.list[TraceRecord]:
         cutoff = datetime.now(UTC) - timedelta(minutes=minutes)
         return [t for t in self._traces.values() if t.started_at >= cutoff]
 
@@ -85,7 +91,7 @@ class DiagnosticsStore:
             try:
                 self._evict_expired()
             except Exception:  # pragma: no cover
-                pass
+                log.warning("store._cleanup_loop.failed")
 
     def start_cleanup(self) -> None:
         self._cleanup_task = asyncio.create_task(self._cleanup_loop())
@@ -93,8 +99,6 @@ class DiagnosticsStore:
     async def aclose(self) -> None:
         if self._cleanup_task:
             self._cleanup_task.cancel()
-            import contextlib
-
             with contextlib.suppress(asyncio.CancelledError):
                 await self._cleanup_task
 

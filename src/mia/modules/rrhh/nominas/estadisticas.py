@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 from statistics import mean, median, quantiles
 from typing import Any, Literal
 
@@ -370,6 +371,26 @@ def comparativa_salarial(deps: Deps) -> Tool:
     )
 
 
+def _salary_groups(
+    read: list[tuple[Employee, dict[str, float]]],
+    people: list[Employee],
+    by_raw: Callable[[Employee], str | None] | None,
+) -> tuple[dict[str, list[tuple[Employee, dict[str, float]]]], dict[str, str], dict[str, int]]:
+    groups: dict[str, list[tuple[Employee, dict[str, float]]]] = {}
+    group_display: dict[str, str] = {}  # clave normalizada → nombre canónico de visualización
+    for e, r in read:
+        raw = (by_raw(e) if by_raw else "Total") or "Sin dato"
+        key = normalize_key(raw) if by_raw else "total"
+        group_display.setdefault(key, raw)
+        groups.setdefault(key, []).append((e, r))
+    totals: dict[str, int] = {}
+    for e in people:
+        raw = (by_raw(e) if by_raw else "Total") or "Sin dato"
+        key = normalize_key(raw) if by_raw else "total"
+        totals[key] = totals.get(key, 0) + 1
+    return groups, group_display, totals
+
+
 def estadisticas_salariales(deps: Deps) -> Tool:
     async def handler(p: SalarialesParams, ctx: ToolContext) -> ToolResult:
         if problem := content_unavailable(deps):
@@ -417,18 +438,7 @@ def estadisticas_salariales(deps: Deps) -> Tool:
         results = await asyncio.gather(*(_amounts(deps, latest[e.person_key or ""].sp_id, gate) for e in sample))
         read = [(e, r) for e, r in zip(sample, results, strict=True) if r]
         by_raw = {"puesto": lambda e: e.position, "departamento": lambda e: e.department}.get(p.agrupar_por)
-        groups: dict[str, list[tuple[Employee, dict[str, float]]]] = {}
-        group_display: dict[str, str] = {}  # clave normalizada → nombre canónico de visualización
-        for e, r in read:
-            raw = (by_raw(e) if by_raw else "Total") or "Sin dato"
-            key = normalize_key(raw) if by_raw else "total"
-            group_display.setdefault(key, raw)
-            groups.setdefault(key, []).append((e, r))
-        totals: dict[str, int] = {}
-        for e in people:
-            raw = (by_raw(e) if by_raw else "Total") or "Sin dato"
-            key = normalize_key(raw) if by_raw else "total"
-            totals[key] = totals.get(key, 0) + 1
+        groups, group_display, totals = _salary_groups(read, people, by_raw)
         summary: dict[str, Any] = {
             "poblacion": population_label(p.incluir_inactivos),
             "criterios": {

@@ -3,14 +3,38 @@
 from __future__ import annotations
 
 import io
+import logging
 from typing import Any
 
+from docx.oxml.ns import qn
+
 from mia.attachments.model import AttachmentContent, AttachmentContentType, TableBlock, TextBlock
+
+log = logging.getLogger(__name__)
+
+
+def _table_block(element: Any, heading: str) -> TableBlock | None:
+    # Table
+    tbl_rows: list[list[str]] = []
+    for row in element.findall(f".//{qn('w:tr')}"):
+        cells: list[str] = []
+        for cell in row.findall(f".//{qn('w:tc')}"):
+            cell_text = "".join(t.text or "" for t in cell.findall(f".//{qn('w:t')}")).strip()
+            cells.append(cell_text)
+        if any(cells):
+            tbl_rows.append(cells)
+
+    if tbl_rows:
+        headers = tbl_rows[0]
+        data_rows = tbl_rows[1:]
+        ref = f"heading={heading[:40]}" if heading else "table"
+        return TableBlock(headers=headers, rows=data_rows, source_ref=ref)
+
+    return None
 
 
 def parse_docx(content: bytes) -> AttachmentContent:
     import docx  # noqa: PLC0415
-    from docx.oxml.ns import qn  # noqa: PLC0415
 
     document = docx.Document(io.BytesIO(content))
 
@@ -32,11 +56,10 @@ def parse_docx(content: bytes) -> AttachmentContent:
             # Paragraph or heading
             para_style = ""
             try:
-                para_style = element.find(qn("w:pPr"), element.nsmap) or ""
                 style_elem = element.find(f".//{qn('w:pStyle')}")
                 para_style = style_elem.get(qn("w:val"), "") if style_elem is not None else ""
             except Exception:
-                pass
+                log.warning("docx.parse_docx.failed")
 
             # Extract text from runs
             text_parts: list[str] = []
@@ -59,21 +82,8 @@ def parse_docx(content: bytes) -> AttachmentContent:
                 text_blocks.append(TextBlock(text=text, source_ref=ref))
 
         elif tag == "tbl":
-            # Table
-            tbl_rows: list[list[str]] = []
-            for row in element.findall(f".//{qn('w:tr')}"):
-                cells: list[str] = []
-                for cell in row.findall(f".//{qn('w:tc')}"):
-                    cell_text = "".join(t.text or "" for t in cell.findall(f".//{qn('w:t')}")).strip()
-                    cells.append(cell_text)
-                if any(cells):
-                    tbl_rows.append(cells)
-
-            if tbl_rows:
-                headers = tbl_rows[0]
-                data_rows = tbl_rows[1:]
-                ref = f"heading={current_heading[:40]}" if current_heading else "table"
-                tables.append(TableBlock(headers=headers, rows=data_rows, source_ref=ref))
+            if block := _table_block(element, current_heading):
+                tables.append(block)
 
     metadata["tables_count"] = len(tables)
 

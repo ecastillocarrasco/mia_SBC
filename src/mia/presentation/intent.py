@@ -91,6 +91,38 @@ _CHART_RE = re.compile(r"\bgráfico\b|\bgráfica\b|\bvisualiz[a-z]*\b", re.IGNOR
 _SUMMARY_RE = re.compile(r"\bres[uú]m\w*\b", re.IGNORECASE)
 
 
+def _presentation_priority(
+    query: str, comparison_requested: bool, analytics_requested: bool, temporal_scope: str
+) -> tuple[PresentationIntent, ResponseDepth]:
+    # Priority: report > executive > comparison > analysis > operational > count > list > default
+    if _REPORT_RE.search(query):
+        intent = PresentationIntent.REPORT
+        depth = ResponseDepth.EXECUTIVE
+    elif _EXECUTIVE_RE.search(query):
+        intent = PresentationIntent.EXECUTIVE_ANALYSIS
+        depth = ResponseDepth.EXECUTIVE
+    elif comparison_requested:
+        intent = PresentationIntent.COMPARISON
+        depth = ResponseDepth.DETAILED
+    elif analytics_requested:
+        intent = PresentationIntent.ANALYSIS
+        depth = ResponseDepth.ANALYTICAL
+    elif temporal_scope == "current_instant" or _PEOPLE_RE.search(query):
+        intent = PresentationIntent.OPERATIONAL_LOOKUP
+        depth = ResponseDepth.DIRECT
+    elif _COUNT_RE.search(query):
+        intent = PresentationIntent.DIRECT_LOOKUP
+        depth = ResponseDepth.MINIMAL
+    elif _LIST_RE.search(query):
+        intent = PresentationIntent.LIST
+        depth = ResponseDepth.DIRECT
+    else:
+        intent = PresentationIntent.DIRECT_LOOKUP
+        depth = ResponseDepth.DIRECT
+
+    return intent, depth
+
+
 def classify_query(query: str) -> QueryAnalysis:
     """Clasifica la intención de presentación sin llamadas al LLM."""
     comparison_requested = bool(_COMPARISON_RE.search(query))
@@ -118,31 +150,7 @@ def classify_query(query: str) -> QueryAnalysis:
     if not outputs:
         outputs.add("answer")
 
-    # Priority: report > executive > comparison > analysis > operational > count > list > default
-    if _REPORT_RE.search(query):
-        intent = PresentationIntent.REPORT
-        depth = ResponseDepth.EXECUTIVE
-    elif _EXECUTIVE_RE.search(query):
-        intent = PresentationIntent.EXECUTIVE_ANALYSIS
-        depth = ResponseDepth.EXECUTIVE
-    elif comparison_requested:
-        intent = PresentationIntent.COMPARISON
-        depth = ResponseDepth.DETAILED
-    elif analytics_requested:
-        intent = PresentationIntent.ANALYSIS
-        depth = ResponseDepth.ANALYTICAL
-    elif temporal_scope == "current_instant" or _PEOPLE_RE.search(query):
-        intent = PresentationIntent.OPERATIONAL_LOOKUP
-        depth = ResponseDepth.DIRECT
-    elif _COUNT_RE.search(query):
-        intent = PresentationIntent.DIRECT_LOOKUP
-        depth = ResponseDepth.MINIMAL
-    elif _LIST_RE.search(query):
-        intent = PresentationIntent.LIST
-        depth = ResponseDepth.DIRECT
-    else:
-        intent = PresentationIntent.DIRECT_LOOKUP
-        depth = ResponseDepth.DIRECT
+    intent, depth = _presentation_priority(query, comparison_requested, analytics_requested, temporal_scope)
 
     return QueryAnalysis(
         presentation_intent=intent,

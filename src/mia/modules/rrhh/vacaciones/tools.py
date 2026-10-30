@@ -428,7 +428,7 @@ def conflictos_vacaciones(deps: Deps) -> Tool:
             fresh = await deps.freshness(db, "vacaciones")
 
         days_requested = (end - start).days + 1
-        compañeros = [
+        companeros = [
             {
                 "persona": v.employee_name,
                 "desde": fmt_date(v.start_date),
@@ -442,9 +442,9 @@ def conflictos_vacaciones(deps: Deps) -> Tool:
             "persona": e.name,
             "departamento": e.department,
             "periodo_solicitado": {"desde": start.isoformat(), "hasta": end.isoformat(), "dias": days_requested},
-            "companeros_ausentes": len(compañeros),
+            "companeros_ausentes": len(companeros),
             "total_activos_departamento": dept_total,
-            "detalle_ausencias": compañeros,
+            "detalle_ausencias": companeros,
             "saldo_vacaciones": balance_row.current_balance if balance_row else None,
             "nota": (
                 "El sistema no gestiona reglas de plantilla mínima: indica cuántos compañeros estarán fuera "
@@ -452,7 +452,7 @@ def conflictos_vacaciones(deps: Deps) -> Tool:
             ),
             **fresh,
         }
-        rows_table = [[c["persona"], c["desde"], c["hasta"], c["dias"], c["tipo"]] for c in compañeros]
+        rows_table = [[c["persona"], c["desde"], c["hasta"], c["dias"], c["tipo"]] for c in companeros]
         return ToolResult(
             ToolStatus.OK,
             summary,

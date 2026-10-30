@@ -13,12 +13,14 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from fastapi import HTTPException
 
+from mia.api.routes.mail import mail_attachment, mail_unread
 from mia.auth import Permission, UserContext
 from mia.connectors.graph import GraphClient
 from mia.connectors.sharepoint import StaticTokenProvider
 from mia.conversation.tools import ToolContext, ToolStatus
-from mia.modules.correo.tools import enviados, hilo, leer, recientes
+from mia.modules.correo.tools import enviados, hilo, leer, pendientes, recientes
 from mia.modules.registry import build_registry
 from mia.modules.rrhh.common import Deps
 from mia.settings import Environment, MailSettings, Settings
@@ -97,7 +99,6 @@ async def test_correos_recientes_without_attachments_has_no_adjuntos_detalle() -
 async def test_correos_sin_leer_still_filters_unread_only() -> None:
     """Guarda de regresión del propio contrato: ``correos_sin_leer`` sigue siendo el filtro
     explícito, no una alternativa de ``correos_recientes``."""
-    from mia.modules.correo.tools import pendientes
 
     seen: dict[str, str] = {}
 
@@ -346,7 +347,6 @@ def _services(graph: GraphClient, db) -> SimpleNamespace:
 
 
 async def test_mail_attachment_route_downloads_the_real_content(tmp_path: Path) -> None:
-    from mia.api.routes.mail import mail_attachment
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path.endswith("/messages/msg-1/attachments/att-1")
@@ -367,9 +367,6 @@ async def test_mail_attachment_route_downloads_the_real_content(tmp_path: Path) 
 
 
 async def test_mail_attachment_route_requires_permission(tmp_path: Path) -> None:
-    from fastapi import HTTPException
-
-    from mia.api.routes.mail import mail_attachment
 
     user_without_mail = UserContext("u2", "Sin permiso", roles=frozenset())
     db = await fresh_database(tmp_path, "mail_attachment_denied.db")
@@ -383,9 +380,6 @@ async def test_mail_attachment_route_requires_permission(tmp_path: Path) -> None
 
 
 async def test_mail_attachment_route_404s_when_graph_has_nothing(tmp_path: Path) -> None:
-    from fastapi import HTTPException
-
-    from mia.api.routes.mail import mail_attachment
 
     graph = _graph(lambda r: httpx.Response(404, json={"error": {"message": "not found"}}))
     db = await fresh_database(tmp_path, "mail_attachment_missing.db")
@@ -403,7 +397,6 @@ async def test_mail_attachment_route_404s_when_graph_has_nothing(tmp_path: Path)
 async def test_mail_unread_route_calls_the_tool_directly_without_an_llm_turn(tmp_path: Path) -> None:
     """mia-desktop sondea esto cada pocos minutos: debe funcionar sin gastar ningún turno de
     conversación (la ruta invoca correos_sin_leer directamente sobre el registro de herramientas)."""
-    from mia.api.routes.mail import mail_unread
 
     graph = _graph(lambda r: httpx.Response(200, json={"value": [_message("m1", read=False)]}))
     db = await fresh_database(tmp_path, "mail_unread.db")
@@ -422,7 +415,6 @@ async def test_mail_unread_route_calls_the_tool_directly_without_an_llm_turn(tmp
 async def test_mail_unread_route_is_available_to_any_recognized_role(tmp_path: Path) -> None:
     """CORREO_LEER es universal para cualquier rol reconocido, no un privilegio de "mia.rrhh":
     "Legal" no lo lleva declarado en ROLE_PERMISSIONS y debe poder usarlo igual."""
-    from mia.api.routes.mail import mail_unread
 
     user_legal = UserContext("u2", "Legal", roles=frozenset({"Legal"}))
     db = await fresh_database(tmp_path, "mail_unread_legal.db")
@@ -441,9 +433,6 @@ async def test_mail_unread_route_is_available_to_any_recognized_role(tmp_path: P
 async def test_mail_unread_route_denies_a_user_without_any_recognized_role(tmp_path: Path) -> None:
     """Sin ningún rol reconocido no hay acceso de ningún tipo, ni siquiera a correo (ver
     UserContext.permissions): 403, no un resultado vacío."""
-    from fastapi import HTTPException
-
-    from mia.api.routes.mail import mail_unread
 
     user_without_role = UserContext("u3", "Sin rol", roles=frozenset())
     db = await fresh_database(tmp_path, "mail_unread_denied.db")

@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from mia.auth import Permission
+from mia.conversation.tools import ToolRegistry
 from mia.data import Database
 from mia.modules import ModuleManifest
 from mia.modules.rrhh import (
@@ -29,12 +30,6 @@ from mia.modules.rrhh import (
     vacaciones,
 )
 from mia.modules.rrhh.common import Deps
-
-if TYPE_CHECKING:
-    # Import real solo para tipado: en ejecución, mia.modules.rrhh se importa como parte de la
-    # carga de mia.conversation.engine (vocabularios de select_modules), así que importar
-    # ToolRegistry aquí arriba crearía un ciclo. build_rrhh_registry() lo importa en caliente.
-    from mia.conversation import ToolRegistry
 
 MANIFEST = ModuleManifest(
     name="rrhh",
@@ -96,7 +91,6 @@ def build_rrhh_registry(
     report_storage: Any = None,
     enabled: list[str] | None = None,
 ) -> ToolRegistry:
-    from mia.conversation import ToolRegistry  # import en caliente: ver nota TYPE_CHECKING arriba.
 
     active = [d for d in DOMAINS if enabled is None or d in enabled]
     deps = Deps(

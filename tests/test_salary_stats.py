@@ -184,3 +184,20 @@ async def test_comparativa_without_previous_result_is_a_clear_not_found(registry
         )
     ).result
     assert result.status is ToolStatus.NOT_FOUND
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Compara el salario de esas tres personas en agosto de 2026",
+        "Salario de estos 3 empleados de Cocina",
+    ],
+)
+async def test_salary_comparison_keeps_exact_selection_without_model_flag(registry, message):
+    selected = {"etiqueta": "selección", "total": 3, "empleado_ids": [101, 103, 105], "person_keys": [], "emails": []}
+    ctx = ToolContext(
+        user=ADMIN, request_id=None, now=NOW, session_state={"ultima_poblacion": selected}, user_message=message
+    )
+    result = (await registry.execute(ToolCall("c", "comparativa_salarial", '{"periodo":"2026-08"}'), ctx)).result
+    assert result.status is ToolStatus.OK
+    assert {row["persona"] for row in result.summary["comparativa"]} == {"Cocinero 101", "Cocinero 103", "Cocinero 105"}

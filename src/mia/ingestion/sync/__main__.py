@@ -129,15 +129,24 @@ async def _index_sensitive_documents(settings: Settings, db: Database, client: S
                 batch=settings.curriculums.index_batch,
                 max_bytes=settings.curriculums.max_file_mb * 1024 * 1024,
             )
-            r = await indexer.run(
-                progress=lambda done, total, d=domain: print(f"  indexando {d}… {done}/{total}", flush=True)
-            )
+
+            def show_progress(done: int, total: int, label: str = domain) -> None:
+                print(f"  indexando {label}… {done}/{total}", flush=True)
+
+            r = await indexer.run(progress=show_progress)
             print(
                 f"{'indexación de ' + domain:28} procesados {r.processed:>5}  indexados {r.indexed:>5}  "
                 f"errores {r.failed:>4}  pendientes {r.pending:>5}  {r.statuses}"
             )
     finally:
         await llm.aclose()
+
+
+async def _index_after_sync(settings: Settings, db: Database, client: SharePointClient, *, index_enabled: bool) -> None:
+    if "curriculums" in settings.domains.enabled and index_enabled:
+        await _index_cvs(settings, db, client)
+    if settings.data.index_sensitive_content and index_enabled:
+        await _index_sensitive_documents(settings, db, client)
 
 
 async def _main(args: argparse.Namespace) -> int:
@@ -176,10 +185,7 @@ async def _main(args: argparse.Namespace) -> int:
                         f"{r.source:28} {r.mode.value:11} {r.status:5} leídos {r.fetched:>6}  "
                         f"borrados {r.deleted:>5}  filas {r.rows:>7}  {r.elapsed_ms:>6} ms{extra}"
                     )
-                if "curriculums" in settings.domains.enabled and not args.no_index:
-                    await _index_cvs(settings, db, client)
-                if settings.data.index_sensitive_content and not args.no_index:
-                    await _index_sensitive_documents(settings, db, client)
+                await _index_after_sync(settings, db, client, index_enabled=not args.no_index)
                 if not args.loop:
                     return 0 if all(r.status == "ok" for r in reports) else 1
                 mode = SyncMode.AUTO

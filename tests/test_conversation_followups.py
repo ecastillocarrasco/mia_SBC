@@ -26,7 +26,7 @@ from mia.conversation import ToolContext, ToolRegistry
 from mia.llm import ToolCall
 from mia.modules.registry import build_registry
 from tests.dbutil import fresh_database
-from tests.hr_seed import TODAY, _emp
+from tests.hr_seed import TODAY, _emp, _shift
 
 ADMIN = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
 NOW = datetime(TODAY.year, TODAY.month, TODAY.day, 10, 0, tzinfo=ZoneInfo("Europe/Madrid"))
@@ -103,3 +103,71 @@ async def test_followup_without_any_previous_result_is_a_clear_not_found(registr
     state: dict[str, Any] = {}
     result = await call(registry, "plantilla", state, mensaje="¿quiénes son?")
     assert result.status.value == "not_found"
+
+
+@pytest.mark.parametrize(
+    "message", ["compara esas tres personas", "salario de estas 3 empleadas", "lista esos empleados"]
+)
+async def test_demonstrative_population_does_not_require_llm_flag(registry, message):
+    state = {}
+    await call(registry, "plantilla", state, departamento="Pisos")
+    result = await call(registry, "plantilla", state, mensaje=message)
+    assert {p["nombre"] for p in result.summary["personas"]} == {"Marta Soto", "Nuria Ibáñez", "Olga Prats"}
+
+
+async def test_unknown_named_population_is_not_replaced_by_the_latest_group(registry):
+    state = {}
+    await call(registry, "plantilla", state, departamento="Pisos")
+    result = await call(registry, "plantilla", state, resultado="grupo que no existe")
+    assert result.status.value == "not_found"
+
+
+async def test_truncated_population_is_not_used_as_complete(registry):
+    state = {}
+    await call(registry, "plantilla", state, departamento="Pisos")
+    state["ultima_poblacion"]["empleado_ids"] = [1, 2]
+    result = await call(registry, "plantilla", state, mensaje="¿quiénes son?")
+    assert result.status.value == "not_found"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "¿Qué empleados están trabajando ahora mismo?",
+        "¿Quiénes están trabajando ahora?",
+        "¿Quién trabaja en este momento?",
+    ],
+)
+async def test_fresh_workforce_question_ignores_stale_model_filters_after_reopening(tmp_path, message):
+    db = await fresh_database(tmp_path, "fresh-workforce.db")
+    async with db.session() as session:
+        session.add_all(
+            [
+                _emp(1, "Persona Alfa", "Pisos", person_key="alfa"),
+                _emp(2, "Persona Beta", "Cocina", person_key="beta"),
+                _shift(1, "alfa", "Persona Alfa", "Pisos", TODAY, "Trabajo", "07:00-15:00"),
+                _shift(2, "beta", "Persona Beta", "Cocina", TODAY, "Trabajo", "07:00-15:00"),
+            ]
+        )
+    await db.dispose()
+    registry = build_registry(db)
+    state = {
+        "foco_departamento": "Pisos",
+        "ultima_poblacion": {"total": 1, "empleado_ids": [1], "person_keys": ["alfa"]},
+    }
+    try:
+        result = await call(
+            registry,
+            "turnos_dia",
+            state,
+            mensaje=message,
+            departamento="Pisos",
+            sobre_resultado_anterior=True,
+            hora="23:00",
+            franja="noche",
+        )
+        assert result.status.value == "ok"
+        assert set(state["ultima_poblacion"]["empleado_ids"]) == {1, 2}
+        assert state["foco_departamento"] is None
+    finally:
+        await db.dispose()

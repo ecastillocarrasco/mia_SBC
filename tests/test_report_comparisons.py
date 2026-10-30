@@ -1,5 +1,7 @@
 """Comparativas sintéticas con diferencias, protección de grupos y ausencia de datos."""
 
+from datetime import date
+
 import pytest
 
 from mia.reporting.comparisons import explicit_month_comparison, merge_payroll_comparison
@@ -53,6 +55,13 @@ def test_no_total_from_protected_groups():
     new = fixture_summary("2026-08", {"Protegido": {"total": 120, "personas_con_nomina": 3}})
     with pytest.raises(ValueError, match="No hay departamentos"):
         merge_payroll_comparison(old, new, ("2025-08", "2026-08"))
+
+
+def test_annual_comparison_rejects_a_single_month_disguised_as_a_year():
+    old = fixture_summary("2025-08", {"Sistemas": {"total": 100}})
+    new = fixture_summary("2026-08", {"Sistemas": {"total": 125}})
+    with pytest.raises(ValueError, match="meses analizados"):
+        merge_payroll_comparison(old, new, ("año pasado", "este año"), today=date(2026, 10, 30))
 
 
 @pytest.mark.parametrize(

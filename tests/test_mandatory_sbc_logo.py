@@ -11,6 +11,7 @@ import openpyxl
 import pytest
 from pptx import Presentation
 
+import mia.assets
 from mia.assets import resolve_logo
 from mia.modules.rrhh.informes.document import Block, Document
 from mia.modules.rrhh.informes.render import to_pdf, to_pptx, to_xlsx
@@ -61,7 +62,6 @@ def test_logo_present_across_all_pages_sheets_slides_and_html():
 
 def test_missing_packaged_logo_blocks_export(monkeypatch, tmp_path):
     # Ni siquiera una exportación llamada directamente debe funcionar sin marca.
-    import mia.assets
 
     monkeypatch.setattr(mia.assets, "LOGO", tmp_path / "no_existe.png")
     document = Document("Informe", [Block("section", "Resumen", {"dato": 1})])

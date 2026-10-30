@@ -19,29 +19,35 @@ Cobertura mínima del spec (punto 57):
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
+
+import mia.diagnostics as d
+from mia.diagnostics import current_call_id, current_trace, emit
+from mia.diagnostics.analyzer import analyze, assess
+from mia.diagnostics.config import DiagnosticsSettings
+from mia.diagnostics.metrics import compute_metrics
+from mia.diagnostics.models import DiagnosticEvent, DiagnosticIssueType, EventStage, TraceRecord, TraceStatus
+from mia.diagnostics.sanitizer import redact
+from mia.diagnostics.store import DiagnosticsStore
+from mia.diagnostics.streaming import LiveBroadcaster
+from mia.diagnostics.trace import TraceContext, new_trace_id
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 
 
 def _make_store(max_traces: int = 100, retention_hours: int = 24):
-    from mia.diagnostics.config import DiagnosticsSettings
-    from mia.diagnostics.store import DiagnosticsStore
 
     return DiagnosticsStore(DiagnosticsSettings(enabled=True, max_traces=max_traces, retention_hours=retention_hours))
 
 
 def _make_broadcaster():
-    from mia.diagnostics.streaming import LiveBroadcaster
 
     return LiveBroadcaster()
 
 
 def _make_trace(query: str = "test query"):
-    from mia.diagnostics.models import TraceRecord
-    from mia.diagnostics.trace import new_trace_id
 
     return TraceRecord(
         trace_id=new_trace_id(),
@@ -55,27 +61,24 @@ def _make_trace(query: str = "test query"):
 
 def test_disabled_is_enabled_returns_false():
     """Con MIA_DIAGNOSTICS__ENABLED=false, is_enabled() debe ser False."""
-    import mia.diagnostics as d
 
     # Reseteamos singletons para test aislado
-    original_store = d._store
-    d._store = None
+    original_store = d._state.store
+    d._state.store = None
     try:
         assert d.is_enabled() is False
     finally:
-        d._store = original_store
+        d._state.store = original_store
 
 
 def test_disabled_emit_is_noop():
     """emit() no lanza cuando no hay traza activa."""
-    from mia.diagnostics import EventStage, emit
 
     emit(EventStage.REQUEST_RECEIVED, data={"test": True})  # no debe lanzar
 
 
 def test_disabled_current_trace_returns_none():
     """current_trace() devuelve None cuando no hay traza en el contextvar."""
-    from mia.diagnostics import current_trace
 
     assert current_trace() is None
 
@@ -83,25 +86,23 @@ def test_disabled_current_trace_returns_none():
 @pytest.mark.asyncio
 async def test_disabled_begin_trace_yields_none():
     """begin_trace() cuando disabled (no store) debe yield None sin errores."""
-    import mia.diagnostics as d
 
-    original_store = d._store
-    original_broadcaster = d._broadcaster
-    d._store = None
-    d._broadcaster = None
+    original_store = d._state.store
+    original_broadcaster = d._state.broadcaster
+    d._state.store = None
+    d._state.broadcaster = None
     try:
         async with d.begin_trace(query="hola") as trace:
             assert trace is None
     finally:
-        d._store = original_store
-        d._broadcaster = original_broadcaster
+        d._state.store = original_store
+        d._state.broadcaster = original_broadcaster
 
 
 # ── TRACE CREATION ────────────────────────────────────────────────────────────
 
 
 def test_new_trace_id_format():
-    from mia.diagnostics.trace import new_trace_id
 
     tid = new_trace_id()
     assert tid.startswith("mia-")
@@ -121,8 +122,6 @@ def test_trace_record_initial_state():
 
 
 def test_trace_context_emit_adds_event():
-    from mia.diagnostics.models import EventStage
-    from mia.diagnostics.trace import TraceContext
 
     store = _make_store()
     broadcaster = _make_broadcaster()
@@ -134,7 +133,6 @@ def test_trace_context_emit_adds_event():
 
 
 def test_trace_context_emit_never_raises_on_bad_data():
-    from mia.diagnostics.trace import TraceContext
 
     store = _make_store()
     broadcaster = _make_broadcaster()
@@ -145,8 +143,6 @@ def test_trace_context_emit_never_raises_on_bad_data():
 
 
 def test_trace_context_domain_detection_updates_summary():
-    from mia.diagnostics.models import EventStage
-    from mia.diagnostics.trace import TraceContext
 
     store = _make_store()
     record = _make_trace()
@@ -157,8 +153,6 @@ def test_trace_context_domain_detection_updates_summary():
 
 
 def test_trace_context_tool_call_updates_tools_list():
-    from mia.diagnostics.models import EventStage
-    from mia.diagnostics.trace import TraceContext
 
     store = _make_store()
     record = _make_trace()
@@ -168,8 +162,6 @@ def test_trace_context_tool_call_updates_tools_list():
 
 
 def test_trace_context_llm_response_updates_token_counts():
-    from mia.diagnostics.models import EventStage
-    from mia.diagnostics.trace import TraceContext
 
     store = _make_store()
     record = _make_trace()
@@ -184,7 +176,6 @@ def test_trace_context_llm_response_updates_token_counts():
 
 
 def test_redact_removes_api_key():
-    from mia.diagnostics.sanitizer import redact
 
     data = {"api_key": "sk-abcdef12345", "query": "test"}
     result = redact(data)
@@ -193,7 +184,6 @@ def test_redact_removes_api_key():
 
 
 def test_redact_removes_password_nested():
-    from mia.diagnostics.sanitizer import redact
 
     data = {"db": {"password": "secret123", "host": "localhost"}}
     result = redact(data)
@@ -202,7 +192,6 @@ def test_redact_removes_password_nested():
 
 
 def test_redact_mask_pii_when_enabled():
-    from mia.diagnostics.sanitizer import redact
 
     data = {"nombre": "Juan García", "salario": 30000}
     result = redact(data, mask_pii=True)
@@ -211,7 +200,6 @@ def test_redact_mask_pii_when_enabled():
 
 
 def test_redact_no_pii_mask_when_disabled():
-    from mia.diagnostics.sanitizer import redact
 
     data = {"nombre": "Juan García"}
     result = redact(data, mask_pii=False)
@@ -246,7 +234,6 @@ def test_store_evicts_oldest_when_full():
 
 
 def test_store_list_returns_most_recent_first():
-    from datetime import timedelta
 
     store = _make_store()
     r1 = _make_trace("old")
@@ -297,8 +284,6 @@ def test_broadcaster_unsubscribe_removes_queue():
 
 
 def test_trace_finish_sets_completed_status():
-    from mia.diagnostics.models import TraceStatus
-    from mia.diagnostics.trace import TraceContext
 
     store = _make_store()
     record = _make_trace()
@@ -314,7 +299,6 @@ def test_trace_finish_sets_completed_status():
 
 
 def test_analyzer_detects_performance_warning():
-    from mia.diagnostics.analyzer import analyze
 
     record = _make_trace()
     record.elapsed_ms = 15_000
@@ -325,7 +309,6 @@ def test_analyzer_detects_performance_warning():
 
 
 def test_analyzer_detects_tool_error():
-    from mia.diagnostics.analyzer import analyze
 
     record = _make_trace()
     record.tool_errors = 2
@@ -336,7 +319,6 @@ def test_analyzer_detects_tool_error():
 
 
 def test_analyzer_no_false_positive_on_clean_trace():
-    from mia.diagnostics.analyzer import analyze
 
     record = _make_trace()
     record.elapsed_ms = 1000
@@ -351,7 +333,6 @@ def test_analyzer_no_false_positive_on_clean_trace():
 
 
 def test_metrics_empty_input():
-    from mia.diagnostics.metrics import compute_metrics
 
     m = compute_metrics([])
     assert m["total_requests"] == 0
@@ -359,7 +340,6 @@ def test_metrics_empty_input():
 
 
 def test_metrics_computes_error_rate():
-    from mia.diagnostics.metrics import compute_metrics
 
     r1 = _make_trace()
     r1.status = "completed"
@@ -372,7 +352,6 @@ def test_metrics_computes_error_rate():
 
 
 def test_metrics_computes_cache_hit_rate():
-    from mia.diagnostics.metrics import compute_metrics
 
     r1 = _make_trace()
     r1.status = "completed"
@@ -389,7 +368,6 @@ def test_metrics_computes_cache_hit_rate():
 
 
 def test_metrics_cache_hit_rate_none_without_input_tokens():
-    from mia.diagnostics.metrics import compute_metrics
 
     r1 = _make_trace()
     r1.status = "completed"
@@ -402,10 +380,6 @@ def test_metrics_cache_hit_rate_none_without_input_tokens():
 
 def test_temporal_constraint_dropped_detected():
     """Detecta TEMPORAL_CONSTRAINT_DROPPED cuando el usuario dice 'ahora' y no se pasa hora."""
-    from datetime import UTC, datetime
-
-    from mia.diagnostics.analyzer import analyze
-    from mia.diagnostics.models import DiagnosticEvent, DiagnosticIssueType, EventStage
 
     record = _make_trace("quien esta trabajando ahora en restaurante")
     record.now_local = "2026-10-07T21:55:00+02:00"
@@ -424,10 +398,6 @@ def test_temporal_constraint_dropped_detected():
 
 def test_temporal_constraint_not_flagged_when_hora_present():
     """No debe marcarse si el LLM pasó 'hora' correctamente."""
-    from datetime import UTC, datetime
-
-    from mia.diagnostics.analyzer import analyze
-    from mia.diagnostics.models import DiagnosticEvent, DiagnosticIssueType, EventStage
 
     record = _make_trace("quien esta trabajando ahora en restaurante")
     record.status = "completed"
@@ -445,10 +415,6 @@ def test_temporal_constraint_not_flagged_when_hora_present():
 
 def test_temporal_constraint_not_flagged_without_temporal_query():
     """No debe marcarse para consultas sin lenguaje temporal de 'ahora'."""
-    from datetime import UTC, datetime
-
-    from mia.diagnostics.analyzer import analyze
-    from mia.diagnostics.models import DiagnosticEvent, DiagnosticIssueType, EventStage
 
     record = _make_trace("quien trabaja el lunes en restaurante")
     record.status = "completed"
@@ -466,10 +432,6 @@ def test_temporal_constraint_not_flagged_without_temporal_query():
 
 def test_temporal_constraint_not_flagged_for_non_temporal_tools():
     """No debe marcarse para herramientas que no requieren filtro de hora."""
-    from datetime import UTC, datetime
-
-    from mia.diagnostics.analyzer import analyze
-    from mia.diagnostics.models import DiagnosticEvent, DiagnosticIssueType, EventStage
 
     record = _make_trace("cuantos empleados hay ahora")
     record.status = "completed"
@@ -487,7 +449,6 @@ def test_temporal_constraint_not_flagged_for_non_temporal_tools():
 
 def test_call_graph_node_added_to_trace():
     """add_call_graph_node() debe añadir nodos al call_graph de TraceRecord."""
-    from mia.diagnostics.trace import TraceContext
 
     store = _make_store()
     record = _make_trace()
@@ -508,7 +469,6 @@ def test_call_graph_node_added_to_trace():
 
 def test_call_graph_node_never_raises():
     """add_call_graph_node() no debe lanzar si se pasan datos problemáticos."""
-    from mia.diagnostics.trace import TraceContext
 
     store = _make_store()
     record = _make_trace()
@@ -518,10 +478,6 @@ def test_call_graph_node_never_raises():
 
 def test_now_local_field_exists_in_trace_record():
     """TraceRecord debe tener campo now_local."""
-    from datetime import UTC, datetime
-
-    from mia.diagnostics.models import TraceRecord
-    from mia.diagnostics.trace import new_trace_id
 
     record = TraceRecord(
         trace_id=new_trace_id(),
@@ -537,10 +493,6 @@ def test_now_local_field_exists_in_trace_record():
 
 def test_temporal_constraint_issue_includes_now_local_in_details():
     """El issue TEMPORAL_CONSTRAINT_DROPPED debe incluir now_local en details."""
-    from datetime import UTC, datetime
-
-    from mia.diagnostics.analyzer import analyze
-    from mia.diagnostics.models import DiagnosticEvent, DiagnosticIssueType, EventStage
 
     record = _make_trace("quien trabaja ahora")
     record.now_local = "2026-10-07T21:55:00+02:00"
@@ -560,10 +512,6 @@ def test_temporal_constraint_issue_includes_now_local_in_details():
 
 def test_assess_includes_semantic_analysis():
     """assess() debe incluir semantic_analysis cuando hay TEMPORAL_CONSTRAINT_DROPPED."""
-    from datetime import UTC, datetime
-
-    from mia.diagnostics.analyzer import assess
-    from mia.diagnostics.models import DiagnosticEvent, EventStage
 
     record = _make_trace("quien trabaja ahora en cocina")
     record.now_local = "2026-10-07T21:55:00+02:00"
@@ -586,7 +534,6 @@ def test_assess_includes_semantic_analysis():
 
 def test_current_call_id_default_none():
     """current_call_id() debe devolver None cuando no hay call activo."""
-    from mia.diagnostics import current_call_id
 
     assert current_call_id() is None
 
@@ -597,7 +544,6 @@ def test_current_call_id_default_none():
 @pytest.mark.asyncio
 async def test_begin_trace_enabled_creates_context():
     """begin_trace() con store activo debe crear y devolver un TraceContext."""
-    import mia.diagnostics as d
 
     store = _make_store()
     broadcaster = _make_broadcaster()
@@ -610,14 +556,13 @@ async def test_begin_trace_enabled_creates_context():
             assert len(trace.record.events) > 0
     finally:
         # Limpieza: reseteamos para no afectar otros tests
-        d._store = None
-        d._broadcaster = None
+        d._state.store = None
+        d._state.broadcaster = None
 
 
 @pytest.mark.asyncio
 async def test_begin_trace_contextvar_is_set_and_reset():
     """El ContextVar debe estar activo dentro del bloque y None fuera."""
-    import mia.diagnostics as d
 
     store = _make_store()
     broadcaster = _make_broadcaster()
@@ -628,14 +573,13 @@ async def test_begin_trace_contextvar_is_set_and_reset():
             assert d.current_trace() is trace
         assert d.current_trace() is None
     finally:
-        d._store = None
-        d._broadcaster = None
+        d._state.store = None
+        d._state.broadcaster = None
 
 
 @pytest.mark.asyncio
 async def test_begin_trace_internal_exception_does_not_swallow_original():
     """Errores DENTRO del bloque deben propagarse aunque el trace falle."""
-    import mia.diagnostics as d
 
     store = _make_store()
     broadcaster = _make_broadcaster()
@@ -645,8 +589,8 @@ async def test_begin_trace_internal_exception_does_not_swallow_original():
             async with d.begin_trace(query="test"):
                 raise ValueError("error de negocio")
     finally:
-        d._store = None
-        d._broadcaster = None
+        d._state.store = None
+        d._state.broadcaster = None
 
 
 # ── PHASE 3: RAG / BÚSQUEDA SEMÁNTICA ────────────────────────────────────────
@@ -654,10 +598,6 @@ async def test_begin_trace_internal_exception_does_not_swallow_original():
 
 def test_rag_no_results_detected():
     """RAG_SEARCH_COMPLETE con hits=0 debe marcar RAG_NO_RESULTS."""
-    from datetime import UTC, datetime
-
-    from mia.diagnostics.analyzer import analyze
-    from mia.diagnostics.models import DiagnosticEvent, DiagnosticIssueType, EventStage
 
     record = _make_trace("busca en las nominas algo sobre dietas")
     record.status = "completed"
@@ -675,10 +615,6 @@ def test_rag_no_results_detected():
 
 
 def test_rag_no_results_not_flagged_when_hits_present():
-    from datetime import UTC, datetime
-
-    from mia.diagnostics.analyzer import analyze
-    from mia.diagnostics.models import DiagnosticEvent, DiagnosticIssueType, EventStage
 
     record = _make_trace("busca en las nominas algo sobre dietas")
     record.status = "completed"
@@ -697,10 +633,6 @@ def test_rag_no_results_not_flagged_when_hits_present():
 
 def test_rag_low_confidence_detected_below_threshold():
     """RAG_SEARCH_COMPLETE con hits>0 pero top_score por debajo del umbral debe marcar RAG_LOW_CONFIDENCE."""
-    from datetime import UTC, datetime
-
-    from mia.diagnostics.analyzer import analyze
-    from mia.diagnostics.models import DiagnosticEvent, DiagnosticIssueType, EventStage
 
     record = _make_trace("busca en los documentos algo sobre vacaciones")
     record.status = "completed"
@@ -718,10 +650,6 @@ def test_rag_low_confidence_detected_below_threshold():
 
 
 def test_rag_low_confidence_not_flagged_above_threshold():
-    from datetime import UTC, datetime
-
-    from mia.diagnostics.analyzer import analyze
-    from mia.diagnostics.models import DiagnosticEvent, DiagnosticIssueType, EventStage
 
     record = _make_trace("busca en los documentos algo sobre vacaciones")
     record.status = "completed"
@@ -740,10 +668,6 @@ def test_rag_low_confidence_not_flagged_above_threshold():
 
 def test_rag_issues_not_duplicated_across_multiple_searches_in_same_trace():
     """Dos búsquedas RAG sin resultados en la misma traza deben producir un único issue RAG_NO_RESULTS."""
-    from datetime import UTC, datetime
-
-    from mia.diagnostics.analyzer import analyze
-    from mia.diagnostics.models import DiagnosticEvent, DiagnosticIssueType, EventStage
 
     record = _make_trace("busca en nominas y documentos algo sobre dietas")
     record.status = "completed"

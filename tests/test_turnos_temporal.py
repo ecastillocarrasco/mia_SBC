@@ -5,7 +5,9 @@ Cobertura de TUR-002 (works_at medianoche) y TUR-003 (auto-hora para 'ahora').
 
 from __future__ import annotations
 
+from datetime import datetime
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 from mia.modules.rrhh.turnos.tools import _NOW_RE, _minutes, works_at
 
@@ -144,14 +146,11 @@ def test_tur003_hora_efectiva_en_handler():
     """Verifica que el handler de turnos_dia usa hora_efectiva cuando p.hora es None y 'ahora' está en la consulta."""
     # Este test valida la lógica sin construir el handler completo (dependencias de BD).
     # Comprobamos que _NOW_RE detecta "ahora" en la consulta y que works_at filtra correctamente.
-    from mia.modules.rrhh.turnos.tools import _NOW_RE, works_at
 
     user_message = "quien esta trabajando ahora en restaurante"
     assert _NOW_RE.search(user_message) is not None, "El patrón _NOW_RE debe detectar 'ahora' en la consulta"
 
     # Simula la lógica de hora_efectiva
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
 
     now = datetime(2026, 10, 7, 14, 30, tzinfo=ZoneInfo("Europe/Madrid"))
     hora_efectiva = now.strftime("%H:%M")
@@ -169,7 +168,6 @@ def test_tur003_hora_efectiva_en_handler():
 
 def test_tur003_turno_nocturno_activo_a_medianoche():
     """Verifica que un turno 22:00-06:00 se detecta como activo a las 00:30."""
-    from mia.modules.rrhh.turnos.tools import works_at
 
     shift = _shift("22:00", "06:00")
     assert works_at(shift, _minutes("00:30")) is True

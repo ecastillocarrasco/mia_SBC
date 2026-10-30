@@ -107,7 +107,7 @@ async def process_attachment(
             ):
                 # PDF escaneado: renderizar primeras páginas y usar Vision
                 try:
-                    from mia.modules.rrhh.curriculums.indexer import render_pdf_pages  # noqa: PLC0415
+                    from mia.modules.rrhh.document_indexing import render_pdf_pages  # noqa: PLC0415
 
                     pages = await asyncio.to_thread(render_pdf_pages, raw_content, 3)
                     descriptions = []
@@ -176,6 +176,25 @@ def _parser_name(mime: str) -> str:
     return _map.get(mime, "text")
 
 
+def _document_context(content: AttachmentContent) -> list[str]:
+    parts: list[str] = []
+    pc = content.metadata.get("page_count", 0)
+    if pc:
+        parts.append(f"Documento de {pc} página(s).")
+    if content.text_blocks:
+        # Primeros ~1500 caracteres de texto
+        preview = content.full_text[:1500]
+        if len(content.full_text) > 1500:
+            preview += f"\n… ({len(content.text_blocks)} bloques de texto en total)"
+        parts.append(preview)
+    if content.tables:
+        parts.append(f"Contiene {len(content.tables)} tabla(s).")
+    if content.parse_error:
+        parts.append(f"Nota: {content.parse_error}")
+
+    return parts
+
+
 def build_attachment_context(record: AttachmentRecord) -> str:
     """Genera una descripción compacta del adjunto para inyectar como contexto al LLM."""
     content = record.content
@@ -204,19 +223,7 @@ def build_attachment_context(record: AttachmentRecord) -> str:
             parts.append("(Pendiente de análisis visual)")
 
     elif content.content_type == AttachmentContentType.DOCUMENT:
-        pc = content.metadata.get("page_count", 0)
-        if pc:
-            parts.append(f"Documento de {pc} página(s).")
-        if content.text_blocks:
-            # Primeros ~1500 caracteres de texto
-            preview = content.full_text[:1500]
-            if len(content.full_text) > 1500:
-                preview += f"\n… ({len(content.text_blocks)} bloques de texto en total)"
-            parts.append(preview)
-        if content.tables:
-            parts.append(f"Contiene {len(content.tables)} tabla(s).")
-        if content.parse_error:
-            parts.append(f"Nota: {content.parse_error}")
+        parts.extend(_document_context(content))
 
     elif content.content_type == AttachmentContentType.DATASET:
         sc = len(content.sheets)

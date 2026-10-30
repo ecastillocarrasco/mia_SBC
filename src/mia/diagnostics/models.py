@@ -3,148 +3,152 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
-from enum import StrEnum
+from datetime import UTC, datetime
+from enum import StrEnum, auto
 from typing import Any
 
 
 class EventStage(StrEnum):
+    @staticmethod
+    def _generate_next_value_(name: str, start: int, count: int, last_values: list[Any]) -> str:
+        return name
+
     # ── Entrada ──────────────────────────────────────────────
-    REQUEST_RECEIVED = "REQUEST_RECEIVED"
+    REQUEST_RECEIVED = auto()
 
     # ── Contexto ─────────────────────────────────────────────
-    AUTH_CONTEXT = "AUTH_CONTEXT"
-    USER_CONTEXT = "USER_CONTEXT"
-    TENANT_CONTEXT = "TENANT_CONTEXT"
-    CONVERSATION_CONTEXT = "CONVERSATION_CONTEXT"
+    AUTH_CONTEXT = auto()
+    USER_CONTEXT = auto()
+    TENANT_CONTEXT = auto()
+    CONVERSATION_CONTEXT = auto()
 
     # ── Procesamiento de la consulta ──────────────────────────
-    QUERY_NORMALIZATION = "QUERY_NORMALIZATION"
-    QUERY_REWRITE = "QUERY_REWRITE"
-    QUERY_EXPANSION = "QUERY_EXPANSION"
+    QUERY_NORMALIZATION = auto()
+    QUERY_REWRITE = auto()
+    QUERY_EXPANSION = auto()
 
     # ── Routing ───────────────────────────────────────────────
-    DOMAIN_DETECTION = "DOMAIN_DETECTION"
-    INTENT_DETECTION = "INTENT_DETECTION"
-    ENTITY_EXTRACTION = "ENTITY_EXTRACTION"
-    SEMANTIC_RESOLUTION = "SEMANTIC_RESOLUTION"
-    AMBIGUITY_DETECTION = "AMBIGUITY_DETECTION"
+    DOMAIN_DETECTION = auto()
+    INTENT_DETECTION = auto()
+    ENTITY_EXTRACTION = auto()
+    SEMANTIC_RESOLUTION = auto()
+    AMBIGUITY_DETECTION = auto()
 
     # ── Plan de ejecución ─────────────────────────────────────
-    QUERY_PLANNING = "QUERY_PLANNING"
-    PLAN_CREATED = "PLAN_CREATED"
-    PLAN_STEP_START = "PLAN_STEP_START"
-    PLAN_STEP_COMPLETE = "PLAN_STEP_COMPLETE"
+    QUERY_PLANNING = auto()
+    PLAN_CREATED = auto()
+    PLAN_STEP_START = auto()
+    PLAN_STEP_COMPLETE = auto()
 
     # ── Capacidades ───────────────────────────────────────────
-    CAPABILITY_LOOKUP = "CAPABILITY_LOOKUP"
-    CAPABILITY_SELECTED = "CAPABILITY_SELECTED"
-    CAPABILITY_MISSING = "CAPABILITY_MISSING"
+    CAPABILITY_LOOKUP = auto()
+    CAPABILITY_SELECTED = auto()
+    CAPABILITY_MISSING = auto()
 
     # ── Herramientas ──────────────────────────────────────────
-    TOOL_SELECTION = "TOOL_SELECTION"
-    TOOL_CALL_START = "TOOL_CALL_START"
-    TOOL_CALL_COMPLETE = "TOOL_CALL_COMPLETE"
-    TOOL_CALL_ERROR = "TOOL_CALL_ERROR"
+    TOOL_SELECTION = auto()
+    TOOL_CALL_START = auto()
+    TOOL_CALL_COMPLETE = auto()
+    TOOL_CALL_ERROR = auto()
 
     # ── Fuentes de datos ──────────────────────────────────────
-    DATA_SOURCE_SELECTION = "DATA_SOURCE_SELECTION"
-    SQL_QUERY_START = "SQL_QUERY_START"
-    SQL_QUERY_COMPLETE = "SQL_QUERY_COMPLETE"
-    SQL_QUERY_ERROR = "SQL_QUERY_ERROR"
-    SAP_CALL_START = "SAP_CALL_START"
-    SAP_CALL_COMPLETE = "SAP_CALL_COMPLETE"
-    SAP_CALL_ERROR = "SAP_CALL_ERROR"
-    SHAREPOINT_CALL_START = "SHAREPOINT_CALL_START"
-    SHAREPOINT_CALL_COMPLETE = "SHAREPOINT_CALL_COMPLETE"
-    SHAREPOINT_CALL_ERROR = "SHAREPOINT_CALL_ERROR"
-    GRAPH_CALL_START = "GRAPH_CALL_START"
-    GRAPH_CALL_COMPLETE = "GRAPH_CALL_COMPLETE"
-    GRAPH_CALL_ERROR = "GRAPH_CALL_ERROR"
-    API_CALL_START = "API_CALL_START"
-    API_CALL_COMPLETE = "API_CALL_COMPLETE"
-    API_CALL_ERROR = "API_CALL_ERROR"
-    RAG_SEARCH_START = "RAG_SEARCH_START"
-    RAG_SEARCH_COMPLETE = "RAG_SEARCH_COMPLETE"
-    RAG_SEARCH_ERROR = "RAG_SEARCH_ERROR"
-    DOCUMENT_SEARCH = "DOCUMENT_SEARCH"
-    DOCUMENT_RETRIEVAL = "DOCUMENT_RETRIEVAL"
-    MAIL_SEARCH = "MAIL_SEARCH"
-    MAIL_RETRIEVAL = "MAIL_RETRIEVAL"
+    DATA_SOURCE_SELECTION = auto()
+    SQL_QUERY_START = auto()
+    SQL_QUERY_COMPLETE = auto()
+    SQL_QUERY_ERROR = auto()
+    SAP_CALL_START = auto()
+    SAP_CALL_COMPLETE = auto()
+    SAP_CALL_ERROR = auto()
+    SHAREPOINT_CALL_START = auto()
+    SHAREPOINT_CALL_COMPLETE = auto()
+    SHAREPOINT_CALL_ERROR = auto()
+    GRAPH_CALL_START = auto()
+    GRAPH_CALL_COMPLETE = auto()
+    GRAPH_CALL_ERROR = auto()
+    API_CALL_START = auto()
+    API_CALL_COMPLETE = auto()
+    API_CALL_ERROR = auto()
+    RAG_SEARCH_START = auto()
+    RAG_SEARCH_COMPLETE = auto()
+    RAG_SEARCH_ERROR = auto()
+    DOCUMENT_SEARCH = auto()
+    DOCUMENT_RETRIEVAL = auto()
+    MAIL_SEARCH = auto()
+    MAIL_RETRIEVAL = auto()
 
     # ── Procesamiento de datos ────────────────────────────────
-    DATA_NORMALIZATION = "DATA_NORMALIZATION"
-    DATA_FILTERING = "DATA_FILTERING"
-    DATA_AGGREGATION = "DATA_AGGREGATION"
-    DATA_CALCULATION = "DATA_CALCULATION"
+    DATA_NORMALIZATION = auto()
+    DATA_FILTERING = auto()
+    DATA_AGGREGATION = auto()
+    DATA_CALCULATION = auto()
 
     # ── Analítica ─────────────────────────────────────────────
-    ANALYTICS_START = "ANALYTICS_START"
-    ANALYTICS_COMPLETE = "ANALYTICS_COMPLETE"
-    ANOMALY_DETECTION = "ANOMALY_DETECTION"
-    COMPARISON = "COMPARISON"
-    FORECAST = "FORECAST"
-    INSIGHT_GENERATION = "INSIGHT_GENERATION"
+    ANALYTICS_START = auto()
+    ANALYTICS_COMPLETE = auto()
+    ANOMALY_DETECTION = auto()
+    COMPARISON = auto()
+    FORECAST = auto()
+    INSIGHT_GENERATION = auto()
 
     # ── LLM ───────────────────────────────────────────────────
-    PROMPT_BUILD_START = "PROMPT_BUILD_START"
-    PROMPT_BUILD_COMPLETE = "PROMPT_BUILD_COMPLETE"
-    LLM_REQUEST = "LLM_REQUEST"
-    LLM_FIRST_TOKEN = "LLM_FIRST_TOKEN"
-    LLM_RESPONSE = "LLM_RESPONSE"
-    LLM_ERROR = "LLM_ERROR"
-    POSTPROCESSING = "POSTPROCESSING"
+    PROMPT_BUILD_START = auto()
+    PROMPT_BUILD_COMPLETE = auto()
+    LLM_REQUEST = auto()
+    LLM_FIRST_TOKEN = auto()
+    LLM_RESPONSE = auto()
+    LLM_ERROR = auto()
+    POSTPROCESSING = auto()
 
     # ── Privacy Gateway ────────────────────────────────────────
-    PRIVACY_GATEWAY_INSPECT = "PRIVACY_GATEWAY_INSPECT"
+    PRIVACY_GATEWAY_INSPECT = auto()
     """Resumen de una llamada protegida: política aplicada y categorías detectadas (nunca los valores)."""
-    PRIVACY_GATEWAY_BLOCKED = "PRIVACY_GATEWAY_BLOCKED"
+    PRIVACY_GATEWAY_BLOCKED = auto()
     """Fallo seguro: la llamada externa se bloqueó (Presidio no disponible, secreto irredactable, etc.)."""
-    PRIVACY_GATEWAY_RESTORED = "PRIVACY_GATEWAY_RESTORED"
+    PRIVACY_GATEWAY_RESTORED = auto()
     """Restauración de tokens en la respuesta del LLM antes de mostrarla."""
 
     # ── Presentación ──────────────────────────────────────────
-    PRESENTATION_INTENT_CLASSIFIED = "PRESENTATION_INTENT_CLASSIFIED"
-    PRESENTATION_ROUTING = "PRESENTATION_ROUTING"
-    PRESENTATION_SELECTED = "PRESENTATION_SELECTED"
-    SUPPRESSED_COMPONENT = "SUPPRESSED_COMPONENT"
-    CHART_GENERATION = "CHART_GENERATION"
-    CARD_GENERATION = "CARD_GENERATION"
-    TABLE_GENERATION = "TABLE_GENERATION"
-    REPORT_GENERATION = "REPORT_GENERATION"
-    VOICE_GENERATION = "VOICE_GENERATION"
+    PRESENTATION_INTENT_CLASSIFIED = auto()
+    PRESENTATION_ROUTING = auto()
+    PRESENTATION_SELECTED = auto()
+    SUPPRESSED_COMPONENT = auto()
+    CHART_GENERATION = auto()
+    CARD_GENERATION = auto()
+    TABLE_GENERATION = auto()
+    REPORT_GENERATION = auto()
+    VOICE_GENERATION = auto()
 
     # ── Adjuntos ──────────────────────────────────────────────
-    ATTACHMENT_RECEIVED = "ATTACHMENT_RECEIVED"
-    ATTACHMENT_VALIDATION_START = "ATTACHMENT_VALIDATION_START"
-    ATTACHMENT_VALIDATION_COMPLETE = "ATTACHMENT_VALIDATION_COMPLETE"
-    ATTACHMENT_CLASSIFICATION = "ATTACHMENT_CLASSIFICATION"
-    ATTACHMENT_PROCESSING_START = "ATTACHMENT_PROCESSING_START"
-    ATTACHMENT_PROCESSING_COMPLETE = "ATTACHMENT_PROCESSING_COMPLETE"
-    ATTACHMENT_PROCESSING_ERROR = "ATTACHMENT_PROCESSING_ERROR"
-    ATTACHMENT_CONTEXT_INJECTED = "ATTACHMENT_CONTEXT_INJECTED"
-    ATTACHMENT_EXPIRED = "ATTACHMENT_EXPIRED"
-    PDF_EXTRACTION = "PDF_EXTRACTION"
-    DOCX_EXTRACTION = "DOCX_EXTRACTION"
-    EXCEL_EXTRACTION = "EXCEL_EXTRACTION"
-    CSV_EXTRACTION = "CSV_EXTRACTION"
-    VISION_ANALYSIS_START = "VISION_ANALYSIS_START"
-    VISION_ANALYSIS_COMPLETE = "VISION_ANALYSIS_COMPLETE"
-    ATTACHMENT_DATASET_QUERY = "ATTACHMENT_DATASET_QUERY"
-    ATTACHMENT_RETRIEVAL = "ATTACHMENT_RETRIEVAL"
-    CROSS_SOURCE_ANALYSIS_START = "CROSS_SOURCE_ANALYSIS_START"
-    CROSS_SOURCE_ANALYSIS_COMPLETE = "CROSS_SOURCE_ANALYSIS_COMPLETE"
-    IDENTITY_RESOLUTION = "IDENTITY_RESOLUTION"
+    ATTACHMENT_RECEIVED = auto()
+    ATTACHMENT_VALIDATION_START = auto()
+    ATTACHMENT_VALIDATION_COMPLETE = auto()
+    ATTACHMENT_CLASSIFICATION = auto()
+    ATTACHMENT_PROCESSING_START = auto()
+    ATTACHMENT_PROCESSING_COMPLETE = auto()
+    ATTACHMENT_PROCESSING_ERROR = auto()
+    ATTACHMENT_CONTEXT_INJECTED = auto()
+    ATTACHMENT_EXPIRED = auto()
+    PDF_EXTRACTION = auto()
+    DOCX_EXTRACTION = auto()
+    EXCEL_EXTRACTION = auto()
+    CSV_EXTRACTION = auto()
+    VISION_ANALYSIS_START = auto()
+    VISION_ANALYSIS_COMPLETE = auto()
+    ATTACHMENT_DATASET_QUERY = auto()
+    ATTACHMENT_RETRIEVAL = auto()
+    CROSS_SOURCE_ANALYSIS_START = auto()
+    CROSS_SOURCE_ANALYSIS_COMPLETE = auto()
+    IDENTITY_RESOLUTION = auto()
 
     # ── Respuesta ─────────────────────────────────────────────
-    RESPONSE_BUILD = "RESPONSE_BUILD"
-    RESPONSE_SENT = "RESPONSE_SENT"
+    RESPONSE_BUILD = auto()
+    RESPONSE_SENT = auto()
 
     # ── Control ───────────────────────────────────────────────
-    WARNING = "WARNING"
-    ERROR = "ERROR"
-    EXCEPTION = "EXCEPTION"
-    TRACE_COMPLETE = "TRACE_COMPLETE"
+    WARNING = auto()
+    ERROR = auto()
+    EXCEPTION = auto()
+    TRACE_COMPLETE = auto()
 
 
 class EventStatus(StrEnum):
@@ -279,7 +283,6 @@ class TraceRecord:
     events: list[DiagnosticEvent] = field(default_factory=list)
 
     def elapsed_since_start(self) -> int:
-        from datetime import UTC
 
         now = datetime.now(UTC)
         return int((now - self.started_at).total_seconds() * 1000)

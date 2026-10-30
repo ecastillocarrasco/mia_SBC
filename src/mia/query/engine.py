@@ -16,7 +16,9 @@ Operaciones soportadas:
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -49,70 +51,73 @@ class FilterClause:
     value: Any = None
 
 
+def _equal_filter(value: Any, reference: Any) -> bool:
+    return str(value).lower() == str(reference).lower() if isinstance(reference, str) else value == reference
+
+
+def _members(reference: Any) -> list[Any] | set[Any] | tuple[Any, ...]:
+    return reference if isinstance(reference, (list, set, tuple)) else [reference]
+
+
+_FILTER_OPERATORS: dict[str, Callable[[Any, Any], bool]] = {
+    "eq": _equal_filter,
+    "neq": lambda value, reference: not _equal_filter(value, reference),
+    "gt": lambda value, reference: float(value) > float(reference),
+    "gte": lambda value, reference: float(value) >= float(reference),
+    "lt": lambda value, reference: float(value) < float(reference),
+    "lte": lambda value, reference: float(value) <= float(reference),
+    "contains": lambda value, reference: str(reference).lower() in str(value).lower(),
+    "not_contains": lambda value, reference: str(reference).lower() not in str(value).lower(),
+    "starts_with": lambda value, reference: str(value).lower().startswith(str(reference).lower()),
+    "in": lambda value, reference: value in _members(reference),
+    "not_in": lambda value, reference: value not in _members(reference),
+}
+
+
 def _match(row: Row, clause: FilterClause) -> bool:
-    v = row.get(clause.field)
-    ref = clause.value
-    op = clause.op
-    if op == "is_null":
-        return v is None
-    if op == "is_not_null":
-        return v is not None
-    if v is None:
+    value = row.get(clause.field)
+    if clause.op == "is_null":
+        return value is None
+    if clause.op == "is_not_null":
+        return value is not None
+    if value is None:
         return False
-    if op == "eq":
-        return str(v).lower() == str(ref).lower() if isinstance(ref, str) else v == ref
-    if op == "neq":
-        return str(v).lower() != str(ref).lower() if isinstance(ref, str) else v != ref
-    if op == "gt":
-        return float(v) > float(ref)
-    if op == "gte":
-        return float(v) >= float(ref)
-    if op == "lt":
-        return float(v) < float(ref)
-    if op == "lte":
-        return float(v) <= float(ref)
-    if op == "contains":
-        return str(ref).lower() in str(v).lower()
-    if op == "not_contains":
-        return str(ref).lower() not in str(v).lower()
-    if op == "starts_with":
-        return str(v).lower().startswith(str(ref).lower())
-    if op == "in":
-        return v in (ref if isinstance(ref, (list, set, tuple)) else [ref])
-    if op == "not_in":
-        return v not in (ref if isinstance(ref, (list, set, tuple)) else [ref])
-    return True
+    operation = _FILTER_OPERATORS.get(clause.op)
+    return operation(value, clause.value) if operation is not None else True
 
 
 # ------------------------------------------------------------------ aggregation
+def _median(values: list[float]) -> float:
+    ordered = sorted(values)
+    size = len(ordered)
+    return ordered[size // 2] if size % 2 else (ordered[size // 2 - 1] + ordered[size // 2]) / 2
+
+
+def _sample_std(values: list[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    average = sum(values) / len(values)
+    variance = sum((value - average) ** 2 for value in values) / (len(values) - 1)
+    return math.sqrt(variance)
+
+
+_AGGREGATORS: dict[str, Callable[[list[float]], float]] = {
+    "count": lambda values: float(len(values)),
+    "sum": sum,
+    "mean": lambda values: sum(values) / len(values),
+    "min": min,
+    "max": max,
+    "distinct_count": lambda values: float(len(set(values))),
+    "median": _median,
+    "std": _sample_std,
+}
+
+
 def _agg(values: list[float], func: AggFunc) -> float | None:
     if not values:
         return None
-    if func == "count":
-        return float(len(values))
-    if func == "sum":
-        return sum(values)
-    if func == "mean":
-        return sum(values) / len(values)
-    if func == "min":
-        return min(values)
-    if func == "max":
-        return max(values)
-    if func == "distinct_count":
-        return float(len(set(values)))
-    if func == "median":
-        s = sorted(values)
-        n = len(s)
-        if n % 2:
-            return s[n // 2]
-        return (s[n // 2 - 1] + s[n // 2]) / 2
-    if func == "std":
-        if len(values) < 2:
-            return 0.0
-        mean = sum(values) / len(values)
-        variance = sum((x - mean) ** 2 for x in values) / (len(values) - 1)
-        return variance**0.5
-    return None
+    operation = _AGGREGATORS.get(func)
+    return operation(values) if operation is not None else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,11 +174,12 @@ class UniversalQueryEngine:
         # disturbs the relative order already settled by an earlier one).
         rows = list(ds.rows)
         for key, asc in reversed(list(zip(keys, dirs, strict=True))):
-            rows = sorted(
-                rows,
-                key=lambda r, k=key: (0 if r.get(k) is None else 1, r.get(k)),
-                reverse=not asc,
-            )
+
+            def sort_key(row: Row, field: str = key) -> tuple[int, Any]:
+                value = row.get(field)
+                return (0 if value is None else 1, value)
+
+            rows = sorted(rows, key=sort_key, reverse=not asc)
         return ds.clone_with(rows=rows)
 
     # -- limit ----------------------------------------------------------------

@@ -4,7 +4,6 @@ from mia.reporting.document import (
     Block,
     Document,
     annex_block,
-    format_number,
     methodology_block,
     narrative_block,
     narrative_statement,
@@ -12,6 +11,7 @@ from mia.reporting.document import (
     warnings_block,
 )
 from mia.reporting.render_docx import to_docx
+from mia.text import format_number
 
 __all__ = [
     "Block",

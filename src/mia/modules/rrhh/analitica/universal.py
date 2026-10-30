@@ -21,6 +21,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.analytics.insights import Insight, InsightEngine
 from mia.analytics.stats import TimePoint, time_series_stats
@@ -35,7 +36,7 @@ from mia.modules.rrhh.common import (
     resolve_department,
     table,
 )
-from mia.modules.rrhh.turnos.periods import absence_periods
+from mia.modules.rrhh.turnos.periods import AbsencePeriod, absence_periods
 from mia.query.period import PeriodEngine
 
 _period_engine = PeriodEngine()
@@ -65,6 +66,83 @@ class AnalizarParams(BaseModel):
     )
 
 
+async def _optional_department_data(
+    db: AsyncSession, p: AnalizarParams, *, dept_key: str, today: date, staff: list[Employee], lo: date, hi: date
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    # ETT (opcional)
+    ett_data: dict[str, Any] = {}
+    if p.incluir_ett:
+        ett = (
+            await db.execute(
+                select(func.count(), func.sum(TtTimesheet.hours_total), func.sum(TtTimesheet.amount)).where(
+                    TtTimesheet.department_key == dept_key, TtTimesheet.day.between(lo, hi)
+                )
+            )
+        ).one()
+        ett_data = {
+            "boletines": int(ett[0] or 0),
+            "horas_total": round(float(ett[1] or 0), 1),
+            "importe_total": round(float(ett[2] or 0), 2),
+        }
+
+    # Vacaciones (opcional)
+    vac_data: dict[str, Any] = {}
+    if p.incluir_vacaciones:
+        emails = {e.email for e in staff if e.email}
+        balances = list(
+            (
+                await db.scalars(
+                    select(VacationBalance).where(
+                        VacationBalance.year == today.year,
+                        func.lower(VacationBalance.employee_email).in_({m.lower() for m in emails}),
+                    )
+                )
+            ).all()
+        )
+        valid_balances = [b.current_balance for b in balances if b.current_balance is not None]
+        vac_data = {
+            "saldo_medio": round(sum(valid_balances) / len(valid_balances), 1) if valid_balances else None,
+            "con_saldo_negativo": sum(1 for v in valid_balances if v < 0),
+        }
+
+    return ett_data, vac_data
+
+
+def _monthly_absences(periods: list[AbsencePeriod], lo: date, hi: date) -> tuple[dict[str, int], list[str]]:
+    months_covered = _months_between(lo, hi)
+    monthly_abs: dict[str, int] = defaultdict(int)
+    for ap in periods:
+        for y, m in months_covered:
+            d_in = ap.days_within(date(y, m, 1), _month_end(y, m))
+            if d_in > 0:
+                monthly_abs[f"{y}-{m:02d}"] += d_in
+
+    month_labels = [f"{y}-{m:02d}" for y, m in months_covered]
+    return monthly_abs, month_labels
+
+
+def _add_analysis_details(
+    summary: dict[str, Any],
+    p: AnalizarParams,
+    *,
+    vac_data: dict[str, Any],
+    ett_data: dict[str, Any],
+    top_absent: list[tuple[str, int]],
+    insights: list[Insight],
+    ts_stats: dict[str, Any],
+) -> None:
+    if vac_data:
+        summary["vacaciones"] = vac_data
+    if ett_data:
+        summary["ett_en_periodo"] = ett_data
+    if top_absent and p.profundidad == "completo":
+        summary["personas_con_mas_ausencias"] = [{"nombre": n, "dias": d} for n, d in top_absent]
+    if insights and p.profundidad == "completo":
+        summary["insights"] = _insight_engine.top_insights(insights, n=4)
+    if ts_stats.get("trend") and p.profundidad == "completo":
+        summary["tendencia_absentismo"] = ts_stats["trend"]
+
+
 def analizar_departamento(deps: Deps) -> Tool:
     """Análisis integral de un departamento: plantilla, ausencias, tendencias, insights."""
 
@@ -89,41 +167,9 @@ def analizar_departamento(deps: Deps) -> Tool:
             staff = list((await db.scalars(staff_stmt)).all())
             headcount = len(staff)
 
-            # ETT (opcional)
-            ett_data: dict[str, Any] = {}
-            if p.incluir_ett:
-                ett = (
-                    await db.execute(
-                        select(func.count(), func.sum(TtTimesheet.hours_total), func.sum(TtTimesheet.amount)).where(
-                            TtTimesheet.department_key == dept.key, TtTimesheet.day.between(lo, hi)
-                        )
-                    )
-                ).one()
-                ett_data = {
-                    "boletines": int(ett[0] or 0),
-                    "horas_total": round(float(ett[1] or 0), 1),
-                    "importe_total": round(float(ett[2] or 0), 2),
-                }
-
-            # Vacaciones (opcional)
-            vac_data: dict[str, Any] = {}
-            if p.incluir_vacaciones:
-                emails = {e.email for e in staff if e.email}
-                balances = list(
-                    (
-                        await db.scalars(
-                            select(VacationBalance).where(
-                                VacationBalance.year == today.year,
-                                func.lower(VacationBalance.employee_email).in_({m.lower() for m in emails}),
-                            )
-                        )
-                    ).all()
-                )
-                valid_balances = [b.current_balance for b in balances if b.current_balance is not None]
-                vac_data = {
-                    "saldo_medio": round(sum(valid_balances) / len(valid_balances), 1) if valid_balances else None,
-                    "con_saldo_negativo": sum(1 for v in valid_balances if v < 0),
-                }
+            ett_data, vac_data = await _optional_department_data(
+                db, p, dept_key=dept.key, today=today, staff=staff, lo=lo, hi=hi
+            )
 
         # ── Estadísticas de ausencias
         by_kind: Counter[str] = Counter(ap.kind for ap in periods)
@@ -131,15 +177,7 @@ def analizar_departamento(deps: Deps) -> Tool:
         absence_rate = round(total_days / max(headcount * (hi - lo).days, 1) * 100, 2) if headcount > 0 else 0
 
         # Tendencia mensual de ausencias en el periodo
-        months_covered = _months_between(lo, hi)
-        monthly_abs: dict[str, int] = defaultdict(int)
-        for ap in periods:
-            for y, m in months_covered:
-                d_in = ap.days_within(date(y, m, 1), _month_end(y, m))
-                if d_in > 0:
-                    monthly_abs[f"{y}-{m:02d}"] += d_in
-
-        month_labels = [f"{y}-{m:02d}" for y, m in months_covered]
+        monthly_abs, month_labels = _monthly_absences(periods, lo, hi)
         ts_points = [TimePoint(label=lbl, value=float(monthly_abs.get(lbl, 0))) for lbl in month_labels]
         ts_stats = time_series_stats(ts_points) if len(ts_points) >= 2 else {}
 
@@ -151,7 +189,8 @@ def analizar_departamento(deps: Deps) -> Tool:
         # Outliers por persona (quiénes más días de ausencia)
         person_days: dict[str, int] = defaultdict(int)
         for ap in periods:
-            person_days[ap.name] = person_days[ap.name] + ap.days_within(lo, hi)
+            if ap.name is not None:
+                person_days[ap.name] += ap.days_within(lo, hi)
 
         top_absent = sorted(person_days.items(), key=lambda x: -x[1])[:5]
 
@@ -173,19 +212,18 @@ def analizar_departamento(deps: Deps) -> Tool:
                 "personas_distintas": len({ap.person_key for ap in periods if ap.person_key}),
             },
         }
-        if vac_data:
-            summary["vacaciones"] = vac_data
-        if ett_data:
-            summary["ett_en_periodo"] = ett_data
-        if top_absent and p.profundidad == "completo":
-            summary["personas_con_mas_ausencias"] = [{"nombre": n, "dias": d} for n, d in top_absent]
-        if insights and p.profundidad == "completo":
-            summary["insights"] = _insight_engine.top_insights(insights, n=4)
-        if ts_stats.get("trend") and p.profundidad == "completo":
-            summary["tendencia_absentismo"] = ts_stats["trend"]
+        _add_analysis_details(
+            summary,
+            p,
+            vac_data=vac_data,
+            ett_data=ett_data,
+            top_absent=top_absent,
+            insights=insights,
+            ts_stats=ts_stats,
+        )
 
         # ── Presentación
-        kpi_rows = [
+        kpi_rows: list[list[Any]] = [
             ["Plantilla activa", headcount],
             ["Trabajando hoy", snapshot.get("trabajando")],
             ["Horas programadas hoy", snapshot.get("horas_programadas")],
@@ -295,12 +333,12 @@ def tendencia_metrica(deps: Deps) -> Tool:
             if dept.status is not ToolStatus.OK:
                 return department_problem(dept, p.departamento)
 
-            data = await _fetch_metric_series(deps, db, p.metrica, lo, hi, dept.key)
+            data = await _fetch_metric_series(deps, db, p.metrica, lo, hi, dept_key=dept.key)
             prev_data: list[tuple[str, float]] = []
             if p.comparar_con_anio_anterior:
                 prev_hi = _subtract_months(hi, 12)
                 prev_lo = _subtract_months(lo, 12)
-                prev_data = await _fetch_metric_series(deps, db, p.metrica, prev_lo, prev_hi, dept.key)
+                prev_data = await _fetch_metric_series(deps, db, p.metrica, prev_lo, prev_hi, dept_key=dept.key)
 
         # Aggregate by granularity
         if p.granularidad == "trimestral":
@@ -420,7 +458,7 @@ def comparar_universal(deps: Deps) -> Tool:
             for orig_name, dname in dept_names.items():
                 dkey = dept_keys[orig_name]
                 for metric in p.metricas:
-                    series = await _fetch_metric_series(deps, db, metric, lo, hi, dkey)
+                    series = await _fetch_metric_series(deps, db, metric, lo, hi, dept_key=dkey)
                     results[dname][METRICA_LABELS.get(metric, metric)] = round(sum(v for _, v in series), 2)
 
         # Build comparison table
@@ -492,6 +530,15 @@ class DistribucionParams(BaseModel):
     departamento: str | None = Field(default=None, description="Filtrar por departamento (cuando por=puesto)")
 
 
+def _age_band(value: int | None) -> str:
+    if value is None:
+        return "Sin edad"
+    for threshold, label in ((30, "< 30"), (40, "30–39"), (50, "40–49"), (60, "50–59")):
+        if value < threshold:
+            return label
+    return "60+"
+
+
 def distribucion_plantilla(deps: Deps) -> Tool:
     """Distribución de la plantilla por departamento, puesto o franja de edad."""
 
@@ -517,21 +564,7 @@ def distribucion_plantilla(deps: Deps) -> Tool:
         elif p.por == "puesto":
             groups = Counter(e.position or "Sin dato" for e in staff)
         elif p.por == "franja_edad":
-            groups = Counter()
-            for e in staff:
-                a = age(e.birth_date, today)
-                if a is None:
-                    groups["Sin edad"] += 1
-                elif a < 30:
-                    groups["< 30"] += 1
-                elif a < 40:
-                    groups["30–39"] += 1
-                elif a < 50:
-                    groups["40–49"] += 1
-                elif a < 60:
-                    groups["50–59"] += 1
-                else:
-                    groups["60+"] += 1
+            groups = Counter(_age_band(age(e.birth_date, today)) for e in staff)
         else:  # departamento_puesto
             groups = Counter(f"{e.department} · {e.position or 'Sin puesto'}" for e in staff)
 
@@ -616,6 +649,7 @@ async def _fetch_metric_series(
     metrica: str,
     lo: date,
     hi: date,
+    *,
     dept_key: str | None,
 ) -> list[tuple[str, float]]:
     """Devuelve [(label_mes, valor)] para la métrica en el rango dado."""

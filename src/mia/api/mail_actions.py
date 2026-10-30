@@ -1,7 +1,8 @@
 """Acciones de correo lanzadas desde la pantalla (abrir, proponer respuesta, guardar borrador, enviar, descartar).
 
 Usan LAS MISMAS herramientas y salvaguardas que la conversación (COR-001: borrador previo, bloqueo de no-reply,
-envío activado, buzón ligado a la referencia), pero sin pasar por el modelo: abrir un correo es inmediato y la conversación
+envío activado, buzón ligado a la referencia), pero sin pasar por el modelo: abrir un correo es inmediato
+y la conversación
 no se llena de mensajes técnicos. Pulsar «Sí, enviar» en pantalla es la confirmación explícita del usuario.
 """
 
@@ -130,7 +131,7 @@ async def execute_mail_action(services: Any, user: UserContext, action: str, pay
             else {"ok": False, "error": _failure(opened)}
         )
     else:
-        tool, args, spoken = {
+        action_specs: dict[str, tuple[str, dict[str, Any], str]] = {
             "draft": (
                 "preparar_respuesta",
                 {"ref": ref, "texto": text, "buzon": _text(payload.get("buzon")) or None},
@@ -139,7 +140,8 @@ async def execute_mail_action(services: Any, user: UserContext, action: str, pay
             "update": ("modificar_borrador", {"borrador": draft, "texto": text}, ""),
             "send": ("enviar_borrador", {"borrador": draft}, CONFIRMATION),
             "discard": ("descartar_borrador", {"borrador": draft}, ""),
-        }[action]
+        }
+        tool, args, spoken = action_specs[action]
         done = await _run_tool(services, user, state, tool, args, message=spoken)
         if done.status.value != "ok":
             result = {"ok": False, "error": _failure(done)}

@@ -8,6 +8,7 @@ el gateway no paga ese coste.
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -116,7 +117,8 @@ class PresidioEngine:
                 for recognizer in build_spanish_recognizers():
                     analyzer.registry.add_recognizer(recognizer)
                 self._analyzer = analyzer
-                self._anonymizer = AnonymizerEngine()
+                anonymizer_factory: Callable[[], AnonymizerEngine] = AnonymizerEngine
+                self._anonymizer = anonymizer_factory()
             except Exception as exc:  # pragma: no cover — depende del entorno (modelo no instalado, etc.)
                 raise UnsafeContentBlockedError(
                     f"No se pudo inicializar el motor Presidio: {type(exc).__name__}"

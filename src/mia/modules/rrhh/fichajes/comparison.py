@@ -79,7 +79,7 @@ def compare_person(
     scheduled_days: set[date] = set()
     for shift in shifts:
         scheduled_days.add(shift.day)
-        day_sessions = sessions_by_day.get(shift.day)
+        day_sessions = sessions_by_day.get(shift.day, [])
         if not day_sessions:
             if shift.day in incomplete_days:
                 # Hubo un intento de fichaje ese día, pero quedó sin pareja (ver pairing.py): no es

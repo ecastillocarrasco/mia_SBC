@@ -27,6 +27,7 @@ from pypdf import PdfReader
 
 from mia.llm.fake import final_answer, tool_call
 from tests.hr_seed import seed
+from tests.planning_script import planned_script
 
 FORMATS = ["pdf", "xlsx", "pptx", "html"]
 
@@ -81,6 +82,7 @@ async def test_domain_table_matches_the_downloaded_document(
     script: list,
     domain_label: str,
     tool_name: str,
+    *,
     tool_args: dict,
     expected_value: str,
     formato: str,
@@ -95,7 +97,7 @@ async def test_domain_table_matches_the_downloaded_document(
             return tool_call("generar_informe", {"formato": formato})
         return final_answer(f"Aquí tienes el informe de {domain_label}.", "Listo.")
 
-    script[0] = scripted
+    script[0] = planned_script(scripted, (tool_name, "generar_informe"))
     response = await client.post("/api/mia/chat", json={"message": f"Informe de {domain_label}"})
     assert response.status_code == 200
     body = response.json()

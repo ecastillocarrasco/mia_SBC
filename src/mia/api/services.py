@@ -123,7 +123,7 @@ class Services:
         if self.attachment_service is not None:
             await self.attachment_service.aclose()
         if self.report_storage is not None and hasattr(self.report_storage, "aclose"):
-            await self.report_storage.aclose()  # type: ignore[attr-defined]
+            await self.report_storage.aclose()
         await self.llm.aclose()
         await self.voice.aclose()
         if self.graph is not None:

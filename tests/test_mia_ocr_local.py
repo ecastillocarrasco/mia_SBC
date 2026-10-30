@@ -8,10 +8,12 @@ from __future__ import annotations
 from io import BytesIO
 from types import SimpleNamespace
 
+import pymupdf
 import pytest
 from PIL import Image, ImageDraw, ImageFont
 
-from mia.modules.rrhh.curriculums.indexer import CvIndexer
+import mia.modules.rrhh.document_indexing as extraction
+from mia.modules.rrhh.curriculums.indexer import CvIndexer, render_pdf_pages
 from mia.modules.rrhh.document_indexing import (
     DocumentIndexer,
     LocalOCRError,
@@ -45,7 +47,6 @@ def _png_bytes():
 
 
 def _scan_pdf(pages=1, first_native=False):
-    import pymupdf
 
     doc = pymupdf.open()
     for i in range(pages):
@@ -66,7 +67,6 @@ def test_image_uses_tesseract_without_llm():
 
 
 def test_native_pdf_keeps_text_without_ocr():
-    import pymupdf
 
     pdf = pymupdf.open()
     page = pdf.new_page()
@@ -90,7 +90,6 @@ def test_mixed_pdf_preserves_native_and_scanned():
 
 
 def test_ocr_limit_fails_closed(monkeypatch):
-    import mia.modules.rrhh.document_indexing as extraction
 
     monkeypatch.setattr(extraction, "LOCAL_OCR_MAX_SCANNED_PAGES", 1)
     with pytest.raises(LocalOCRError, match="No se indexa parcialmente"):
@@ -164,7 +163,6 @@ async def test_cv_indexer_uses_local_ocr_without_remote_or_db():
 
 @pytest.mark.asyncio
 async def test_ocr_failure_preserves_previous_index(monkeypatch):
-    import mia.modules.rrhh.document_indexing as extraction
 
     monkeypatch.setattr(extraction, "LOCAL_OCR_MAX_SCANNED_PAGES", 1)
     indexer = DocumentIndexer(
@@ -187,6 +185,5 @@ async def test_ocr_failure_preserves_previous_index(monkeypatch):
 
 def test_previous_render_pdf_pages_import_remains_available():
     # El procesador de adjuntos depende de este import anterior.
-    from mia.modules.rrhh.curriculums.indexer import render_pdf_pages
 
     assert callable(render_pdf_pages)

@@ -312,7 +312,7 @@ def cobertura_documental(deps: Deps) -> Tool:
 
         # Build coverage per type name
         type_names = sorted({r.name for r in type_configs})
-        rows = []
+        rows: list[list[Any]] = []
         for name in type_names:
             key = normalize_key(name)
             count = len(by_type.get(key, set()))
@@ -347,7 +347,7 @@ def cobertura_documental(deps: Deps) -> Tool:
     )
 
 
-# ------------------------------------------------------------------ búsqueda semántica (indexación de contenido sensible)
+# Búsqueda semántica con indexación de contenido sensible
 class BuscarEnDocumentosParams(BaseModel):
     consulta: str = Field(description="Qué buscar en el texto de los documentos, descrito en general")
     nombre: str | None = Field(default=None, description="Limitar la búsqueda a una persona (opcional)")
@@ -458,11 +458,11 @@ def buscar_en_documentos(deps: Deps) -> Tool:
             for h in hits
             if h.document_id in docs
         ]
-        rows = [[r["documento"], r["tipo"], r["evidencia"][:160]] for r in results]
+        result_rows = [[r["documento"], r["tipo"], r["evidencia"][:160]] for r in results]
         return ToolResult(
             ToolStatus.OK,
             {"consulta": p.consulta, "coincidencias": results, "regla": RULE, **fresh},
-            table(f"Documentos: {p.consulta}", ["Documento", "Tipo", "Evidencia"], rows),
+            table(f"Documentos: {p.consulta}", ["Documento", "Tipo", "Evidencia"], result_rows),
         )
 
     return Tool(
@@ -491,6 +491,32 @@ class LeerParams(PersonaParams):
     documento: str | None = Field(default=None, description="Nombre (o parte) del fichero, si hay varios del tipo")
 
 
+def _readable_document(docs: list[SignedDocument], p: LeerParams, ctx: ToolContext) -> SignedDocument | ToolResult:
+    if p.tipo:
+        docs = [d for d in docs if normalize_key(p.tipo) in normalize_key(d.doc_type)]
+    if p.documento:
+        docs = [d for d in docs if normalize_key(p.documento) in normalize_key(d.file_name)]
+    if not docs:
+        return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": "No hay ningún documento así"})
+    # Con tipo especificado y varios del mismo tipo → el más reciente (sin pedir más input al usuario)
+    if len(docs) > 1 and p.tipo:
+        docs = sorted(docs, key=lambda d: (d.doc_year or 0, d.created_at or d.sp_id), reverse=True)
+    elif len(docs) > 1:
+        return ToolResult(
+            ToolStatus.AMBIGUOUS,
+            {
+                "documentos": [{"tipo": d.doc_type, "documento": d.file_name} for d in docs[:20]],
+                "mensaje": "Indica el tipo de documento",
+            },
+        )
+    doc = docs[0]
+    if is_medical_document_type(doc.doc_type) and not ctx.user.has(Permission.DOCUMENTOS_CONTENIDO_MEDICO):
+        return ToolResult(
+            ToolStatus.PERMISSION_DENIED, "No tienes permiso para leer el contenido de reconocimientos médicos"
+        )
+    return doc
+
+
 def leer_documento(deps: Deps) -> Tool:
     async def handler(p: LeerParams, ctx: ToolContext) -> ToolResult:
         if problem := content_unavailable(deps):
@@ -505,28 +531,10 @@ def leer_documento(deps: Deps) -> Tool:
                 docs = list(
                     (await db.scalars(select(SignedDocument).where(SignedDocument.person_key == e.person_key))).all()
                 )
-        if p.tipo:
-            docs = [d for d in docs if normalize_key(p.tipo) in normalize_key(d.doc_type)]
-        if p.documento:
-            docs = [d for d in docs if normalize_key(p.documento) in normalize_key(d.file_name)]
-        if not docs:
-            return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": "No hay ningún documento así"})
-        # Con tipo especificado y varios del mismo tipo → el más reciente (sin pedir más input al usuario)
-        if len(docs) > 1 and p.tipo:
-            docs = sorted(docs, key=lambda d: (d.doc_year or 0, d.created_at or d.sp_id), reverse=True)
-        elif len(docs) > 1:
-            return ToolResult(
-                ToolStatus.AMBIGUOUS,
-                {
-                    "documentos": [{"tipo": d.doc_type, "documento": d.file_name} for d in docs[:20]],
-                    "mensaje": "Indica el tipo de documento",
-                },
-            )
-        doc = docs[0]
-        if is_medical_document_type(doc.doc_type) and not ctx.user.has(Permission.DOCUMENTOS_CONTENIDO_MEDICO):
-            return ToolResult(
-                ToolStatus.PERMISSION_DENIED, "No tienes permiso para leer el contenido de reconocimientos médicos"
-            )
+        selected = _readable_document(docs, p, ctx)
+        if isinstance(selected, ToolResult):
+            return selected
+        doc = selected
         try:
             content = await deps.sharepoint.download_item_file("DocumentosFirmadosV2", doc.sp_id, MAX_BYTES)
             text = document_text(content)

@@ -19,6 +19,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+import mia.diagnostics as d
 from mia.api.services import Services
 from mia.llm.fake import FakeLLMProvider, final_answer
 from mia.main import create_app
@@ -127,14 +128,13 @@ async def test_panel_html_still_404_when_diagnostics_disabled(tmp_path: Path) ->
     """``_require_enabled()`` debe comprobarse incluso con credenciales válidas -- no basta con
     que el 404 ocurra "antes" de la auth, porque ya no hay ningún camino sin auth en absoluto.
 
-    ``mia.diagnostics._store`` es un singleton a nivel de módulo que ``create_app`` solo
+    ``mia.diagnostics._state.store`` es un singleton a nivel de módulo que ``create_app`` solo
     inicializa (nunca lo resetea a ``None`` al cerrar, ver ``main.py`` lifespan) -- se resetea
     aquí explícitamente antes y después, igual que ``tests/test_diagnostics.py``, para no
     depender de qué test con diagnostics habilitado corrió antes en el mismo proceso."""
-    import mia.diagnostics as d
 
-    original_store, original_broadcaster = d._store, d._broadcaster
-    d._store, d._broadcaster = None, None
+    original_store, original_broadcaster = d._state.store, d._state.broadcaster
+    d._state.store, d._state.broadcaster = None, None
     try:
         # admin_users/admin_password se fijan igualmente (el validador solo los exige cuando
         # enabled=True, no prohíbe tenerlos con enabled=False) para probar con credenciales
@@ -156,4 +156,4 @@ async def test_panel_html_still_404_when_diagnostics_disabled(tmp_path: Path) ->
         await services.aclose()
         assert response.status_code == 404
     finally:
-        d._store, d._broadcaster = original_store, original_broadcaster
+        d._state.store, d._state.broadcaster = original_store, original_broadcaster

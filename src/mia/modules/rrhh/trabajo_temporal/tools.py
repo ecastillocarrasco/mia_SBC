@@ -113,8 +113,12 @@ def boletines(deps: Deps) -> Tool:
         if p.estado:
             rows = [r for r in rows if normalize_key(p.estado) in normalize_key(r.status)]
         totals: dict[str, dict[str, float]] = defaultdict(lambda: {"boletines": 0, "horas": 0.0, "importe": 0.0})
-        by_department: dict[str, dict[str, float]] = defaultdict(lambda: {"boletines": 0, "horas": 0.0, "importe": 0.0})
-        by_company: dict[str, dict[str, float]] = defaultdict(lambda: {"boletines": 0, "horas": 0.0, "importe": 0.0})
+        by_department: dict[str | None, dict[str, float]] = defaultdict(
+            lambda: {"boletines": 0, "horas": 0.0, "importe": 0.0}
+        )
+        by_company: dict[str | None, dict[str, float]] = defaultdict(
+            lambda: {"boletines": 0, "horas": 0.0, "importe": 0.0}
+        )
         for r in rows:
             for key in (f"empresa: {r.company}", f"departamento: {r.department}"):
                 totals[key]["boletines"] += 1
@@ -157,7 +161,7 @@ def boletines(deps: Deps) -> Tool:
         # petición real), sin ningún total agregado ni gráfico -- "gastos... detalla totales y
         # porcentajes por departamento... y las cantidades abonadas a cada empresa" no tenía dónde
         # aparecer en pantalla ni en el PDF/Excel (incidencia real 2026-10-28).
-        def _breakdown_table(title: str, label: str, buckets: dict[str, dict[str, float]]) -> dict[str, Any]:
+        def _breakdown_table(title: str, label: str, buckets: dict[str | None, dict[str, float]]) -> dict[str, Any]:
             ordered = sorted(buckets.items(), key=lambda kv: -kv[1]["importe"])
             rows_out = [
                 [
@@ -173,26 +177,40 @@ def boletines(deps: Deps) -> Tool:
 
         dept_breakdown = _breakdown_table("Gasto de trabajo temporal por departamento", "Departamento", by_department)
         company_breakdown = _breakdown_table("Gasto abonado por empresa ETT", "Empresa", by_company)
-        charts = [
-            {
-                "type": "donut",
-                "title": "Gasto de trabajo temporal por departamento",
-                "labels": [name for name, _ in sorted(by_department.items(), key=lambda kv: -kv[1]["importe"])],
-                "series": [{
-                    "name": "Importe",
-                    "values": [round(v["importe"], 2) for _, v in sorted(by_department.items(), key=lambda kv: -kv[1]["importe"])],
-                }],
-            },
-            {
-                "type": "donut",
-                "title": "Gasto abonado por empresa ETT",
-                "labels": [name for name, _ in sorted(by_company.items(), key=lambda kv: -kv[1]["importe"])],
-                "series": [{
-                    "name": "Importe",
-                    "values": [round(v["importe"], 2) for _, v in sorted(by_company.items(), key=lambda kv: -kv[1]["importe"])],
-                }],
-            },
-        ] if by_department and by_company else []
+        charts = (
+            [
+                {
+                    "type": "donut",
+                    "title": "Gasto de trabajo temporal por departamento",
+                    "labels": [name for name, _ in sorted(by_department.items(), key=lambda kv: -kv[1]["importe"])],
+                    "series": [
+                        {
+                            "name": "Importe",
+                            "values": [
+                                round(v["importe"], 2)
+                                for _, v in sorted(by_department.items(), key=lambda kv: -kv[1]["importe"])
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "type": "donut",
+                    "title": "Gasto abonado por empresa ETT",
+                    "labels": [name for name, _ in sorted(by_company.items(), key=lambda kv: -kv[1]["importe"])],
+                    "series": [
+                        {
+                            "name": "Importe",
+                            "values": [
+                                round(v["importe"], 2)
+                                for _, v in sorted(by_company.items(), key=lambda kv: -kv[1]["importe"])
+                            ],
+                        }
+                    ],
+                },
+            ]
+            if by_department and by_company
+            else []
+        )
 
         return ToolResult(
             ToolStatus.OK,
@@ -474,7 +492,8 @@ def tarifas_tt(deps: Deps) -> Tool:
     return Tool(
         "tarifas_tt",
         "Consulta las tarifas contratadas con cada ETT (empresa de trabajo temporal): precio/hora normal y nocturno, "
-        "dieta y plus de contrato corto, con sus franjas horarias. Útil para estimar costes o resolver dudas de facturación.",
+        "dieta y plus de contrato corto, con sus franjas horarias. Útil "
+        "para estimar costes o resolver dudas de facturación.",
         TarifasParams,
         handler,
         permission=Permission.TRABAJO_TEMPORAL_LEER,
@@ -491,7 +510,6 @@ def contactos_ett(deps: Deps) -> Tool:
         async with deps.db.session() as db:
             stmt = select(TtCompany).order_by(TtCompany.name)
             if p.empresa:
-                key = normalize_key(p.empresa)
                 stmt = stmt.where(TtCompany.name.like(f"%{p.empresa}%"))
             companies = list((await db.scalars(stmt)).all())
 
@@ -597,7 +615,7 @@ def boletines_faltantes(deps: Deps) -> Tool:
             workers = list(
                 (await db.scalars(select(TtWorker).where(TtWorker.visible.is_(True)).order_by(TtWorker.name))).all()
             )
-            worker_ids_with_boletin: set[int] = set(
+            worker_ids_with_boletin: set[int | None] = set(
                 (
                     await db.scalars(
                         select(TtTimesheet.worker_id)

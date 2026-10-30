@@ -119,21 +119,21 @@ async def _request_returns(db: AsyncSession, kinds: tuple[str, ...], scope: Scop
     for v in rows:
         if (v.employee_email or "").lower() in by_email:
             grouped[((v.employee_email or "").lower(), REQUEST_KINDS[normalize_key(v.request_type)])].append(v)
-    candidates = [
+    returns = [
         ReturnItem(by_email[mail].person_key or "", by_email[mail].name, by_email[mail].department, kind, a, b)
         for (mail, kind), requests in grouped.items()
         for a, b in _blocks(requests)
         if b >= floor
     ]
-    if not candidates:
+    if not returns:
         return []
     shifts = (
         await db.scalars(
             select(ShiftDay)
             .where(
-                ShiftDay.person_key.in_({c.person_key for c in candidates}),
+                ShiftDay.person_key.in_({c.person_key for c in returns}),
                 ShiftDay.kind == ShiftKind.TRABAJO,
-                ShiftDay.day > min(c.end for c in candidates),
+                ShiftDay.day > min(c.end for c in returns),
                 ShiftDay.day <= scope.hi,
             )
             .order_by(ShiftDay.day)
@@ -143,11 +143,11 @@ async def _request_returns(db: AsyncSession, kinds: tuple[str, ...], scope: Scop
     for s in shifts:
         if s.person_key:
             days_by_person[s.person_key].append(s)
-    for c in candidates:
+    for c in returns:
         first = next((s for s in days_by_person.get(c.person_key, []) if s.day > c.end), None)
         if first:
             c.return_day, c.return_raw = first.day, first.raw_value
-    return candidates
+    return returns
 
 
 async def collect_returns(

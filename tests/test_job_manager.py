@@ -11,6 +11,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from mia.data import Report
 from mia.data.jobs import JOB_CANCELLED, JOB_COMPLETED, JOB_FAILED, JOB_QUEUED, JOB_RUNNING, ReportJob
 from mia.reporting import job_manager as jm
 from tests.dbutil import fresh_database
@@ -146,6 +147,18 @@ async def test_progress_updates_persist_and_are_clamped_to_zero_one(tmp_path: Pa
 async def test_completing_a_job_links_the_real_report_id(tmp_path: Path) -> None:
     db = await fresh_database(tmp_path, "jobs_complete.db")
     async with db.session() as s:
+        s.add(
+            Report(
+                id="report-123",
+                user_id="u1",
+                title="Prueba",
+                format="pdf",
+                file_name="prueba.pdf",
+                path="prueba.pdf",
+                expires_at=datetime.now(UTC) + timedelta(days=1),
+            )
+        )
+    async with db.session() as s:
         job_id = await jm.submit(s, user_id="u1", kind="x", params={})
         await jm.claim_next(s, worker_id="w1")
         await jm.complete(s, job_id, report_id="report-123")
@@ -210,6 +223,18 @@ async def test_cancelling_a_running_job_is_cooperative_not_immediate(tmp_path: P
 
 async def test_cannot_cancel_an_already_completed_job(tmp_path: Path) -> None:
     db = await fresh_database(tmp_path, "jobs_cancel_completed.db")
+    async with db.session() as s:
+        s.add(
+            Report(
+                id="r1",
+                user_id="u1",
+                title="Prueba",
+                format="pdf",
+                file_name="prueba.pdf",
+                path="prueba.pdf",
+                expires_at=datetime.now(UTC) + timedelta(days=1),
+            )
+        )
     async with db.session() as s:
         job_id = await jm.submit(s, user_id="u1", kind="x", params={})
         await jm.claim_next(s, worker_id="w1")

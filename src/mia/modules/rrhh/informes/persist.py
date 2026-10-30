@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import re
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -26,6 +26,7 @@ from mia.diagnostics import emit as diag_emit
 from mia.modules.rrhh.common import Deps
 from mia.reporting.document import Document
 from mia.reporting.render import RENDERERS
+from mia.reporting.verification import verify_artifact
 
 ReportFormat = Literal["pdf", "xlsx", "pptx", "html", "docx"]
 
@@ -60,7 +61,9 @@ def normalize_formats(formato: str | Sequence[str]) -> list[str]:
 
 
 def render_document(formato: str, document: Document, generated: datetime, logo: Path | None) -> bytes:
-    return RENDERERS[formato](document, generated, resolve_logo(logo))
+    content = RENDERERS[formato](document, generated, resolve_logo(logo))
+    verify_artifact(formato, content, document)
+    return content
 
 
 _PREVIEW_MAX_TABLES = 2
@@ -135,7 +138,7 @@ async def persist_document_report(
         path = f"{report_id}.{fmt}"
         storage = deps.services.get("report_storage")
         if storage is None:
-            directory = Path(settings.directory if settings else "informes")
+            directory = await asyncio.to_thread(Path(settings.directory if settings else "informes").resolve)
             await asyncio.to_thread(_write, directory / path, content)
             path = str(directory / path)
         else:
@@ -152,7 +155,7 @@ async def persist_document_report(
                     file_name=file_name,
                     path=str(path),
                     required_permission=required_permission,
-                    expires_at=ctx.now + ttl,
+                    expires_at=datetime.now(UTC) + ttl,
                 )
             )
         url = f"/api/reports/{report_id}"

@@ -630,7 +630,7 @@ def tendencia_ausencias(deps: Deps) -> Tool:
                 by_month_people[d.day.month].add(d.person_key)
 
         kinds = sorted({d.kind for d in days_data}, key=lambda k: (k != ShiftKind.BAJA, k))
-        monthly = [
+        monthly: list[dict[str, Any]] = [
             {
                 "mes": months_es[m - 1],
                 "total_dias": sum(by_month_kind[m].values()),
@@ -649,7 +649,7 @@ def tendencia_ausencias(deps: Deps) -> Tool:
             "mes_de_mayor_absentismo": peak["mes"] if peak and peak["total_dias"] > 0 else None,
             "por_mes": monthly,
         }
-        cols = ["Mes", "Total días", "Personas"] + list(kinds)
+        cols = ["Mes", "Total días", "Personas", *list(kinds)]
         rows = [[r["mes"], r["total_dias"], r["personas"]] + [r.get(k, 0) for k in kinds] for r in monthly]
         return ToolResult(ToolStatus.OK, summary, table(f"Tendencia de ausencias {year}", cols, rows))
 
@@ -774,7 +774,7 @@ def proximos_jubilacion(deps: Deps) -> Tool:
                 stmt = stmt.where(Employee.department_key == dept.key)
             staff = list((await db.scalars(stmt)).all())
 
-        proximos = []
+        proximos: list[dict[str, Any]] = []
         for e in staff:
             current_age = age(e.birth_date, today)
             if current_age is None or current_age < threshold:

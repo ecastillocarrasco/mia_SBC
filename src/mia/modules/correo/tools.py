@@ -12,7 +12,7 @@ import base64
 import html
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote
 
 from pydantic import BaseModel, Field
@@ -275,7 +275,7 @@ def _mailbox(deps: MailDeps, ctx: ToolContext, requested: str | None = None, *, 
 
 
 async def _graph_request(deps: MailDeps, ctx: ToolContext, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
-    return await deps.graph.request(method, path, user=ctx.user, **kwargs)
+    return cast(dict[str, Any], await deps.graph.request(method, path, user=ctx.user, **kwargs))
 
 
 # ------------------------------------------------------------------ lectura
@@ -334,7 +334,9 @@ def pendientes(deps: MailDeps) -> Tool:
 class RecientesParams(BaseModel):
     buzon: str | None = Field(
         default=None,
-        description="UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph.",
+        description=(
+            "UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph."
+        ),
     )
     limite: int = Field(default=15, ge=1, le=50)
     incluir_texto: bool = Field(default=False, description="true para un triaje a fondo (lee el cuerpo de cada correo)")
@@ -374,7 +376,9 @@ def recientes(deps: MailDeps) -> Tool:
 
     return Tool(
         "correos_recientes",
-        "Los últimos correos recibidos en el buzón indicado (o en el personal si no se indica), SIN filtrar por si están leídos o no — es lo "
+        "Los últimos correos recibidos en el buzón indicado (o en el "
+        "personal si no se indica), SIN filtrar por si están leídos o no "
+        "— es lo "
         "que se pide con «mis últimos correos», «resume mi bandeja», «correos recibidos» o «el "
         "correo» sin más matización. Si el usuario pide expresamente «sin leer»/«pendientes», usa "
         "correos_sin_leer en su lugar. NO es un empleado.",
@@ -388,7 +392,9 @@ def recientes(deps: MailDeps) -> Tool:
 class EnviadosParams(BaseModel):
     buzon: str | None = Field(
         default=None,
-        description="UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph.",
+        description=(
+            "UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph."
+        ),
     )
     limite: int = Field(default=15, ge=1, le=50)
 
@@ -420,7 +426,8 @@ def enviados(deps: MailDeps) -> Tool:
 
     return Tool(
         "correos_enviados",
-        "Últimos correos ENVIADOS desde el buzón indicado (o el personal) (carpeta Elementos enviados). Úsala cuando el "
+        "Últimos correos ENVIADOS desde el buzón indicado (o el personal) "
+        "(carpeta Elementos enviados). Úsala cuando el "
         "usuario pregunte por correos que él (o el buzón) ha enviado, no recibido.",
         EnviadosParams,
         handler,
@@ -432,7 +439,9 @@ def enviados(deps: MailDeps) -> Tool:
 class BuscarParams(BaseModel):
     buzon: str | None = Field(
         default=None,
-        description="UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph.",
+        description=(
+            "UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph."
+        ),
     )
     consulta: str = Field(description="Texto a buscar: remitente, asunto o contenido")
     limite: int = Field(default=15, ge=1, le=50)
@@ -463,7 +472,11 @@ def buscar(deps: MailDeps) -> Tool:
 
     return Tool(
         "buscar_correos",
-        "Busca correos por remitente, asunto o contenido. Usa buzon solo si el usuario identifica un buzón compartido concreto; si dice mis correos, omítelo.",
+        (
+            "Busca correos por remitente, asunto o contenido. Usa buzon solo "
+            "si el usuario identifica un buzón compartido concreto; si dice "
+            "mis correos, omítelo."
+        ),
         BuscarParams,
         handler,
         permission=Permission.CORREO_LEER,
@@ -474,7 +487,10 @@ def buscar(deps: MailDeps) -> Tool:
 class HiloParams(BaseModel):
     buzon: str | None = Field(
         default=None,
-        description="UPN o dirección del buzón compartido solicitado; omítelo para conservar el buzón de la referencia. Graph valida el acceso.",
+        description=(
+            "UPN o dirección del buzón compartido solicitado; omítelo para "
+            "conservar el buzón de la referencia. Graph valida el acceso."
+        ),
     )
     ref: str = Field(description="Referencia (c1, c2…) de cualquier correo de esa conversación")
 
@@ -564,7 +580,10 @@ def _attachment_text(attachment: dict[str, Any]) -> str | None:
 class LeerParams(BaseModel):
     buzon: str | None = Field(
         default=None,
-        description="UPN o dirección del buzón compartido solicitado; omítelo para conservar el buzón de la referencia. Graph valida el acceso.",
+        description=(
+            "UPN o dirección del buzón compartido solicitado; omítelo para "
+            "conservar el buzón de la referencia. Graph valida el acceso."
+        ),
     )
     ref: str = Field(description="Referencia del correo (c1, c2…) de una lista anterior")
 
@@ -675,7 +694,10 @@ def leer(deps: MailDeps) -> Tool:
 class BorradorParams(BaseModel):
     buzon: str | None = Field(
         default=None,
-        description="UPN o dirección del buzón compartido solicitado; omítelo para conservar el buzón de la referencia. Graph valida el acceso.",
+        description=(
+            "UPN o dirección del buzón compartido solicitado; omítelo para "
+            "conservar el buzón de la referencia. Graph valida el acceso."
+        ),
     )
     ref: str = Field(description="Referencia del correo al que se responde")
     texto: str = Field(description="Texto de la respuesta", min_length=1, max_length=5000)
@@ -771,13 +793,8 @@ class EnviarParams(BaseModel):
     borrador: str = Field(description="Referencia del borrador (b1, b2…)")
 
 
-def _send_blocker(deps: MailDeps, draft: dict[str, Any] | None, ctx: ToolContext) -> ToolResult | None:
-    """Motivo por el que NO se puede enviar, o None si todo está en regla (COR-001)."""
+def _draft_send_blocker(deps: MailDeps, draft: dict[str, Any], ctx: ToolContext) -> ToolResult | None:
     denied = ToolStatus.PERMISSION_DENIED
-    if not deps.settings.mail.send_enabled:
-        return ToolResult(denied, "El envío de correos está desactivado en la configuración")
-    if not draft:
-        return ToolResult(ToolStatus.NOT_FOUND, "No existe ese borrador en esta conversación.")
     if draft.get("request_id") == ctx.request_id:
         return ToolResult(denied, "El borrador se acaba de preparar: enséñaselo al usuario y espera su confirmación.")
     if not _CONFIRM.search(ctx.user_message) or _DENY.search(ctx.user_message):
@@ -791,6 +808,16 @@ def _send_blocker(deps: MailDeps, draft: dict[str, Any] | None, ctx: ToolContext
     }:
         return ToolResult(denied, "Ese borrador pertenece a otro buzón: no se puede enviar desde esta sesión.")
     return None
+
+
+def _send_blocker(deps: MailDeps, draft: dict[str, Any] | None, ctx: ToolContext) -> ToolResult | None:
+    """Motivo por el que NO se puede enviar, o None si todo está en regla (COR-001)."""
+    denied = ToolStatus.PERMISSION_DENIED
+    if not deps.settings.mail.send_enabled:
+        return ToolResult(denied, "El envío de correos está desactivado en la configuración")
+    if not draft:
+        return ToolResult(ToolStatus.NOT_FOUND, "No existe ese borrador en esta conversación.")
+    return _draft_send_blocker(deps, draft, ctx)
 
 
 def enviar(deps: MailDeps) -> Tool:
@@ -933,7 +960,9 @@ def descartar(deps: MailDeps) -> Tool:
 class GuardadosParams(BaseModel):
     buzon: str | None = Field(
         default=None,
-        description="UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph.",
+        description=(
+            "UPN o dirección del buzón compartido solicitado; omítelo para usar mi buzón. El acceso se valida en Graph."
+        ),
     )
     limite: int = Field(default=10, ge=1, le=30)
 

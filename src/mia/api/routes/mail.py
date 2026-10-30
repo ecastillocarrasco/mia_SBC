@@ -6,7 +6,7 @@ import base64
 import hashlib
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
@@ -42,7 +42,7 @@ async def mail_unread(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "No tienes permiso para leer el correo")
     if result.status is not ToolStatus.OK:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "No se ha podido comprobar el correo")
-    return result.summary
+    return cast(dict[str, Any], result.summary)
 
 
 @router.get("/api/mail/notifications/poll")
@@ -117,6 +117,7 @@ async def mail_attachment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "No tienes permiso para abrir adjuntos de correo")
     if services.graph is None or not services.settings:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "El buzón de correo no está configurado")
+    mailbox: str | None
     if buzon and buzon.strip():
         mailbox = buzon.strip()
     elif user.auth_method == "entra":

@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import mia.modules.rrhh.document_indexing as indexing
 from mia.modules.rrhh.document_indexing import DocumentIndexer
 from mia.modules.rrhh.payroll_embedding_privacy import (
     PAYROLL_EMBEDDING_POLICY_VERSION,
@@ -105,7 +106,6 @@ def test_projection_deterministic_and_fixed_vocabulary():
 
 @pytest.mark.asyncio
 async def test_nominas_embed_minimized_but_stored_local_full(monkeypatch):
-    import mia.modules.rrhh.document_indexing as indexing
 
     monkeypatch.setattr(
         indexing, "extract_document_text_local", lambda *_: ("ok", SYNTHETIC, "ocr_local:pdf 1/1 paginas")
@@ -131,7 +131,6 @@ async def test_nominas_embed_minimized_but_stored_local_full(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_other_domain_unchanged(monkeypatch):
-    import mia.modules.rrhh.document_indexing as indexing
 
     monkeypatch.setattr(indexing, "extract_document_text_local", lambda *_: ("ok", SYNTHETIC, None))
     provider = _CapturedProvider()
@@ -147,7 +146,6 @@ async def test_other_domain_unchanged(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_projection_failure_fails_closed_and_keeps_previous_index(monkeypatch):
-    import mia.modules.rrhh.document_indexing as indexing
 
     monkeypatch.setattr(indexing, "extract_document_text_local", lambda *_: ("ok", SYNTHETIC, None))
 

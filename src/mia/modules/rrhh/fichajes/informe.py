@@ -182,6 +182,7 @@ def _build_document(
     hi: date,
     today: date,
     people: list[_PersonHours],
+    *,
     warnings: list[dict[str, Any]],
     import_summary: dict[str, Any] | None,
 ) -> Document:
@@ -369,6 +370,35 @@ def _build_document(
     )
 
 
+async def _import_clock_attachment(
+    deps: Deps, ctx: ToolContext, attachment_id: str
+) -> ToolResult | tuple[dict[str, Any], tuple[datetime, datetime] | None, list[dict[str, Any]]]:
+    svc = ctx.attachment_service
+    if svc is None:
+        return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, "La funcionalidad de adjuntos no está activa.")
+    record = svc.get_for_user(attachment_id, ctx.user.user_id)
+    if record is None:
+        return ToolResult(ToolStatus.NOT_FOUND, f"Adjunto {attachment_id} no encontrado o expirado.")
+    content = await svc.get_bytes(attachment_id, ctx.user.user_id)
+    if not content:
+        return ToolResult(ToolStatus.ERROR, "No se pudo leer el contenido del adjunto.")
+    try:
+        import_report = await import_from_attachment(deps.db, content, record.original_filename, now=ctx.now)
+    except ValueError as exc:
+        return ToolResult(ToolStatus.INVALID_ARGUMENTS, {"mensaje": str(exc)})
+    import_summary = {
+        "adjunto": record.original_filename,
+        "filas_leidas": import_report.rows_read,
+        "marcas_importadas": import_report.imported,
+        "sin_cruzar": import_report.unmatched_rows,
+        "ambiguas": import_report.ambiguous_rows,
+    }
+    imported_period = import_report.period
+    warnings = _import_warnings(import_report)
+
+    return import_summary, imported_period, warnings
+
+
 def informe_comparativo_turnos_fichajes(deps: Deps) -> Tool:
     async def handler(p: InformeComparativoTurnosFichajesParams, ctx: ToolContext) -> ToolResult:
         async with deps.db.session() as db:
@@ -382,28 +412,10 @@ def informe_comparativo_turnos_fichajes(deps: Deps) -> Tool:
         import_summary: dict[str, Any] | None = None
         imported_period: tuple[datetime, datetime] | None = None
         if p.adjunto_id:
-            svc = ctx.attachment_service
-            if svc is None:
-                return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, "La funcionalidad de adjuntos no está activa.")
-            record = svc.get_for_user(p.adjunto_id, ctx.user.user_id)
-            if record is None:
-                return ToolResult(ToolStatus.NOT_FOUND, f"Adjunto {p.adjunto_id} no encontrado o expirado.")
-            content = await svc.get_bytes(p.adjunto_id, ctx.user.user_id)
-            if not content:
-                return ToolResult(ToolStatus.ERROR, "No se pudo leer el contenido del adjunto.")
-            try:
-                import_report = await import_from_attachment(deps.db, content, record.original_filename, now=ctx.now)
-            except ValueError as exc:
-                return ToolResult(ToolStatus.INVALID_ARGUMENTS, {"mensaje": str(exc)})
-            import_summary = {
-                "adjunto": record.original_filename,
-                "filas_leidas": import_report.rows_read,
-                "marcas_importadas": import_report.imported,
-                "sin_cruzar": import_report.unmatched_rows,
-                "ambiguas": import_report.ambiguous_rows,
-            }
-            imported_period = import_report.period
-            warnings.extend(_import_warnings(import_report))
+            imported = await _import_clock_attachment(deps, ctx, p.adjunto_id)
+            if isinstance(imported, ToolResult):
+                return imported
+            import_summary, imported_period, warnings = imported
 
         status, lo, hi = _resolve_period(p, today, imported_period)
         if status is not ToolStatus.OK:
@@ -475,7 +487,9 @@ def informe_comparativo_turnos_fichajes(deps: Deps) -> Tool:
                             {
                                 "severity": "data_quality",
                                 "code": code,
-                                "message": f"{e.name}, {fmt_date(sd.day)}: {detail} — sus horas nocturnas no se calculan.",
+                                "message": (
+                                    f"{e.name}, {fmt_date(sd.day)}: {detail} — sus horas nocturnas no se calculan."
+                                ),
                                 "source": "turnos",
                                 "context": {"persona": e.name, "fecha": sd.day.isoformat()},
                             }
@@ -506,7 +520,9 @@ def informe_comparativo_turnos_fichajes(deps: Deps) -> Tool:
         if not people:
             return ToolResult(ToolStatus.NOT_FOUND, "No hay turnos ni fichajes en ese periodo para comparar.")
 
-        document = _build_document(dept.name or p.departamento, lo, hi, today, people, warnings, import_summary)
+        document = _build_document(
+            dept.name or p.departamento, lo, hi, today, people, warnings=warnings, import_summary=import_summary
+        )
         if p.titulo:
             document.title = p.titulo
 

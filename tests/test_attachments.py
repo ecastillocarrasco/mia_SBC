@@ -24,6 +24,7 @@ from mia.attachments.model import (
     merge_refs,
     set_active_refs,
 )
+from mia.attachments.service import AttachmentService
 from mia.attachments.storage import LocalStorage
 from mia.attachments.validation import sanitize_filename, sha256_hex, validate
 from tests.conftest import make_settings

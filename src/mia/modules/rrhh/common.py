@@ -213,66 +213,78 @@ def _fallback_name_from_message(user_message: str) -> str:
     return " ".join(tokens)
 
 
-async def resolve_person(db: AsyncSession, params: PersonaParams, *, ctx: Any = None) -> PersonMatch:
-    query = _strip_leading_command_words(params.nombre) if params.nombre else ""
-    if params.empleado_id is not None:
-        employee = await db.get(Employee, params.empleado_id)
-        # Defensa en profundidad: el modelo puede mandar un empleado_id obsoleto (de un foco de
-        # turnos atrás) o directamente inventado (ninguno de los dos existe de verdad, no solo el
-        # "obsoleto" apunta a otra persona) — ambos casos reproducidos de verdad en preprod, el
-        # segundo con el nombre correcto SIN rellenar el argumento `nombre`, solo en el mensaje
-        # del turno. Nunca confiar en el id a ciegas.
-        if query.strip():
-            # Nombre explícito en los argumentos junto al id.
-            if employee is not None and _name_matches(query, employee.name_key):
-                return PersonMatch(ToolStatus.OK, employee)
-            # No existe, o existe pero no coincide -> cae a la búsqueda por nombre de abajo,
-            # ignorando el empleado_id obsoleto/erróneo.
-        else:
-            # Sin nombre explícito en los argumentos: el caso normal es una pregunta de
-            # seguimiento que confía en el foco ("muéstrame sus turnos") y aquí NO hay que tocar
-            # nada. El único dato adicional disponible para detectar un id obsoleto/inventado es
-            # el propio mensaje del turno — si nombra de verdad a otra persona que existe en la
-            # base de datos, eso manda por encima del id (exista o no); si no nombra a nadie (o
-            # solo palabras sueltas que no son un nombre real), el id sigue mandando si existe.
-            fallback = _fallback_name_from_message(getattr(ctx, "user_message", "") or "") if ctx is not None else ""
-            if fallback and not (employee is not None and _name_matches(fallback, employee.name_key)):
-                fallback_matches = await find_people(db, fallback)
-                if fallback_matches:
-                    query = fallback
-                elif employee is not None:
-                    return PersonMatch(ToolStatus.OK, employee)
-                else:
-                    return PersonMatch(ToolStatus.NOT_FOUND)
+async def _resolve_person_id(db: AsyncSession, params: PersonaParams, query: str, *, ctx: Any) -> PersonMatch | str:
+    employee = await db.get(Employee, params.empleado_id)
+    # Defensa en profundidad: el modelo puede mandar un empleado_id obsoleto (de un foco de
+    # turnos atrás) o directamente inventado (ninguno de los dos existe de verdad, no solo el
+    # "obsoleto" apunta a otra persona) — ambos casos reproducidos de verdad en preprod, el
+    # segundo con el nombre correcto SIN rellenar el argumento `nombre`, solo en el mensaje
+    # del turno. Nunca confiar en el id a ciegas.
+    if query.strip():
+        # Nombre explícito en los argumentos junto al id.
+        if employee is not None and _name_matches(query, employee.name_key):
+            return PersonMatch(ToolStatus.OK, employee)
+        # No existe, o existe pero no coincide -> cae a la búsqueda por nombre de abajo,
+        # ignorando el empleado_id obsoleto/erróneo.
+    else:
+        # Sin nombre explícito en los argumentos: el caso normal es una pregunta de
+        # seguimiento que confía en el foco ("muéstrame sus turnos") y aquí NO hay que tocar
+        # nada. El único dato adicional disponible para detectar un id obsoleto/inventado es
+        # el propio mensaje del turno — si nombra de verdad a otra persona que existe en la
+        # base de datos, eso manda por encima del id (exista o no); si no nombra a nadie (o
+        # solo palabras sueltas que no son un nombre real), el id sigue mandando si existe.
+        fallback = _fallback_name_from_message(getattr(ctx, "user_message", "") or "") if ctx is not None else ""
+        if fallback and not (employee is not None and _name_matches(fallback, employee.name_key)):
+            fallback_matches = await find_people(db, fallback)
+            if fallback_matches:
+                query = fallback
             elif employee is not None:
                 return PersonMatch(ToolStatus.OK, employee)
             else:
                 return PersonMatch(ToolStatus.NOT_FOUND)
+        elif employee is not None:
+            return PersonMatch(ToolStatus.OK, employee)
+        else:
+            return PersonMatch(ToolStatus.NOT_FOUND)
+    return query
+
+
+async def _disambiguate_person(db: AsyncSession, pool: list[Employee], query: str, *, ctx: Any) -> PersonMatch:
+    exact = [m for m in pool if m.name_key == normalize_key(query)]
+    if len(exact) == 1:
+        return PersonMatch(ToolStatus.OK, exact[0])
+    # Defensa en profundidad adicional, reproducida en preprod 2026-10-26: el modelo a veces
+    # recorta un apellido real al construir `nombre` (p. ej. nombre="mari carmen" para la
+    # pregunta "ficha mari carmen salas") -- el texto completo del turno SÍ tenía el apellido
+    # que habría desambiguado. Antes de preguntar, probar con ese texto completo (limpio de
+    # palabras de mando); si estrecha a una única persona real, usarla. Si no estrecha nada
+    # (p. ej. un typo real, "camen" por "carmen", sin palabras nuevas que aportar), se sigue
+    # preguntando como antes -- nunca se adivina.
+    if ctx is not None:
+        richer = _fallback_name_from_message(getattr(ctx, "user_message", "") or "")
+        if richer and richer != normalize_key(query):
+            richer_matches = await find_people(db, richer)
+            richer_active = [m for m in richer_matches if m.active]
+            richer_pool = richer_active or richer_matches
+            if len(richer_pool) == 1:
+                return PersonMatch(ToolStatus.OK, richer_pool[0])
+    return PersonMatch(ToolStatus.AMBIGUOUS, candidates=tuple(pool[:10]))
+
+
+async def resolve_person(db: AsyncSession, params: PersonaParams, *, ctx: Any = None) -> PersonMatch:
+    query = _strip_leading_command_words(params.nombre) if params.nombre else ""
+    if params.empleado_id is not None:
+        resolved = await _resolve_person_id(db, params, query, ctx=ctx)
+        if isinstance(resolved, PersonMatch):
+            return resolved
+        query = resolved
     matches = await find_people(db, query)
     active = [m for m in matches if m.active]
     pool = active or matches
     if len(pool) == 1:
         return PersonMatch(ToolStatus.OK, pool[0])
     if len(pool) > 1:
-        exact = [m for m in pool if m.name_key == normalize_key(query)]
-        if len(exact) == 1:
-            return PersonMatch(ToolStatus.OK, exact[0])
-        # Defensa en profundidad adicional, reproducida en preprod 2026-10-26: el modelo a veces
-        # recorta un apellido real al construir `nombre` (p. ej. nombre="mari carmen" para la
-        # pregunta "ficha mari carmen salas") -- el texto completo del turno SÍ tenía el apellido
-        # que habría desambiguado. Antes de preguntar, probar con ese texto completo (limpio de
-        # palabras de mando); si estrecha a una única persona real, usarla. Si no estrecha nada
-        # (p. ej. un typo real, "camen" por "carmen", sin palabras nuevas que aportar), se sigue
-        # preguntando como antes -- nunca se adivina.
-        if ctx is not None:
-            richer = _fallback_name_from_message(getattr(ctx, "user_message", "") or "")
-            if richer and richer != normalize_key(query):
-                richer_matches = await find_people(db, richer)
-                richer_active = [m for m in richer_matches if m.active]
-                richer_pool = richer_active or richer_matches
-                if len(richer_pool) == 1:
-                    return PersonMatch(ToolStatus.OK, richer_pool[0])
-        return PersonMatch(ToolStatus.AMBIGUOUS, candidates=tuple(pool[:10]))
+        return await _disambiguate_person(db, pool, query, ctx=ctx)
     if loose := await _without_one_word(db, query):
         return loose
     names = (await db.scalars(select(Employee.name))).all()
@@ -422,9 +434,21 @@ def previous_population(ctx: Any, label: str | None = None) -> dict[str, Any] | 
         wanted = normalize_key(label)
         for population in reversed(ctx.session_state.get("historial_poblaciones") or []):
             if isinstance(population, dict) and wanted in normalize_key(population.get("etiqueta")):
-                return population
+                return _complete_population(population)
+        # Una referencia concreta nunca puede caer silenciosamente en OTRO grupo.
+        return None
     value = ctx.session_state.get(POPULATION)
-    return value if isinstance(value, dict) else None
+    return _complete_population(value)
+
+
+def _complete_population(value: Any) -> dict[str, Any] | None:
+    """No presentar una selección recortada por MAX_POPULATION como si fuera completa."""
+    if not isinstance(value, dict):
+        return None
+    ids = value.get("empleado_ids")
+    if not isinstance(ids, list) or value.get("total") != len(set(ids)):
+        return None
+    return value
 
 
 def no_population() -> ToolResult:
@@ -598,4 +622,11 @@ def wants_previous(p: Any, ctx: Any) -> bool:
         or getattr(p, "resultado", None)
         or referred_label(message)
         or _GENERIC_FOLLOWUP.search(message)
+        or re.search(
+            r"\b(?:de\s+)?(?:esas?|esos?|estas?|estos?|aquellas?|aquellos?)\s+"
+            r"(?:(?:\d+|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+)?"
+            r"(?:personas?|emplead[oa]s?|trabajador(?:es|as)?|seleccionad[oa]s?)\b",
+            message,
+            re.IGNORECASE,
+        )
     )

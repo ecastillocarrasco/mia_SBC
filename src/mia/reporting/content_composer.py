@@ -66,6 +66,20 @@ class MissingReportEvidence(Exception):
         super().__init__("; ".join(missing))
 
 
+def _selection(decision: Any, block_count: int) -> tuple[list[int], list[str]] | None:
+    if not isinstance(decision, dict):
+        return None
+    selected = decision.get("selected_indices")
+    missing = decision.get("unavailable")
+    if not isinstance(selected, list) or not selected or not isinstance(missing, list):
+        return None
+    if any(type(idx) is not int or idx < 0 or idx >= block_count for idx in selected):
+        return None
+    if any(not isinstance(s, str) for s in missing):
+        return None
+    return selected, missing
+
+
 async def compose_for_request(
     document: Document,
     request: str,
@@ -106,16 +120,10 @@ async def compose_for_request(
             if isinstance(event, TextDelta):
                 raw.append(event.text)
         decision = json.loads("".join(raw))
-        if not isinstance(decision, dict):
+        selection = _selection(decision, len(document.blocks))
+        if selection is None:
             return document
-        selected = decision.get("selected_indices")
-        missing = decision.get("unavailable")
-        if not isinstance(selected, list) or not selected or not isinstance(missing, list):
-            return document
-        if any(type(idx) is not int or idx < 0 or idx >= len(document.blocks) for idx in selected):
-            return document
-        if any(not isinstance(s, str) for s in missing):
-            return document
+        selected, missing = selection
         if missing:
             raise MissingReportEvidence([s[:160] for s in missing[:8] if s.strip()])
         # No podemos ocultar avisos de k-anonimato o ausencia de datos aunque la IA

@@ -61,7 +61,7 @@ async def test_report_generation_emits_a_traceable_diagnostic_event(tmp_path: Pa
     db = await fresh_database(tmp_path, "reports_trace.db")
     registry = build_registry(db, settings=_stub_settings(tmp_path / "informes"))
 
-    execution, trace = await _generate(registry, date(2026, 10, 11))
+    _execution, trace = await _generate(registry, date(2026, 10, 11))
 
     report_events = [e for e in trace.record.events if e.stage == "REPORT_GENERATION"]
     assert len(report_events) == 1

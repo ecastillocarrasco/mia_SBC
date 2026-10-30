@@ -11,16 +11,23 @@ sensibles (importes, nombres…)."""
 
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
+
 from pydantic import BaseModel
 
 from mia.auth import UserContext
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
+from mia.data import Database
 from mia.diagnostics import EventStage
+from mia.diagnostics import EventStage as DiagStage
 from mia.diagnostics.store import DiagnosticsStore
 from mia.diagnostics.streaming import LiveBroadcaster
 from mia.diagnostics.trace import begin_trace
 from mia.llm import ToolCall
+from mia.modules.registry import build_registry
 from mia.settings import DiagnosticsSettings
+from tests.dbutil import fresh_database
 
 ADMIN = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
 
@@ -79,13 +86,6 @@ async def test_semantic_search_tools_report_tool_call_error_when_llm_unavailable
     ``deps.llm is None`` — confirma que ``ToolRegistry.execute()`` lo sigue tratando como
     TOOL_CALL_ERROR (is_error incluye "source_unavailable") sin necesidad de cambios ahí, y que el
     nuevo evento RAG_SEARCH_ERROR específico del dominio también se emite."""
-    import json
-    from types import SimpleNamespace
-
-    from mia.data import Database
-    from mia.diagnostics import EventStage as DiagStage
-    from mia.modules.registry import build_registry
-    from tests.dbutil import fresh_database
 
     db: Database = await fresh_database(tmp_path, "rag_llm_unavailable.db")
     settings = SimpleNamespace(

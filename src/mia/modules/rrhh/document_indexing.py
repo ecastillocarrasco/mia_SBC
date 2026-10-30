@@ -20,9 +20,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import lru_cache
-from typing import Any
+from importlib import import_module
+from pathlib import Path
+from typing import Any, Protocol, cast
 
 import numpy as np
+import pymupdf
+from PIL import Image
+from pypdf import PdfReader
 from sqlalchemy import and_, delete, or_, select
 
 from mia.connectors.sharepoint import SharePointClient, SharePointError
@@ -104,18 +109,27 @@ class LocalOCRError(RuntimeError):
     """No se puede completar el OCR sin recurrir a proveedores externos."""
 
 
+class _TesseractCommand(Protocol):
+    tesseract_cmd: str
+
+
+class _TesseractBackend(Protocol):
+    pytesseract: _TesseractCommand
+
+    def get_languages(self, config: str = "") -> list[str]: ...
+    def image_to_string(self, image: Any, *, lang: str, config: str, timeout: int) -> str: ...
+
+
 @lru_cache(maxsize=1)
-def _local_tesseract():
+def _local_tesseract() -> _TesseractBackend:
     """Localiza Tesseract y comprueba el modelo espanol una vez por proceso."""
     try:
-        import pytesseract
+        pytesseract = cast(_TesseractBackend, import_module("pytesseract"))
     except ImportError as exc:
         raise LocalOCRError("Falta pytesseract en el entorno virtual") from exc
 
     command = shutil.which("tesseract")
     if command is None:
-        from pathlib import Path
-
         for path in (
             Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
             Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
@@ -160,8 +174,6 @@ def extract_document_text_local(content: bytes, file_name: str) -> tuple[str, st
     como completo un documento parcialmente leido.
     """
     if content.startswith(_IMAGE_MAGIC):
-        from PIL import Image
-
         with Image.open(io.BytesIO(content)) as image:
             text = _ocr_pil_image(image)
         return ("ok" if len(text) >= 40 else "empty"), text, "ocr_local:imagen"
@@ -169,8 +181,6 @@ def extract_document_text_local(content: bytes, file_name: str) -> tuple[str, st
     if content[:4] != b"%PDF":
         status, text = extract_text(content, file_name)
         return status, text, None if status != "unsupported" else "formato no soportado"
-
-    from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(content))
     page_texts: list[str] = []
@@ -195,20 +205,19 @@ def extract_document_text_local(content: bytes, file_name: str) -> tuple[str, st
         )
 
     if pages_without_text:
-        import pymupdf
-        from PIL import Image
-
-        with pymupdf.open(stream=content, filetype="pdf") as pdf:
+        open_pdf: Callable[..., Any] = pymupdf.open
+        make_matrix: Callable[[float, float], Any] = pymupdf.Matrix
+        with open_pdf(stream=content, filetype="pdf") as pdf:
             if pdf.page_count != len(page_texts):
                 raise LocalOCRError("Desajuste en numero de paginas PDF")
             for index in pages_without_text:
                 page = pdf[index]
                 # Calidad OCR y cota por pixeles para evitar cargas desproporcionadas.
                 scale = min(1.9, (LOCAL_OCR_MAX_PIXELS / max(page.rect.width * page.rect.height, 1)) ** 0.5)
-                pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), colorspace=pymupdf.csRGB, alpha=False)
+                pix = page.get_pixmap(matrix=make_matrix(scale, scale), colorspace=pymupdf.csRGB, alpha=False)
                 try:
-                    image = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-                    page_texts[index] = _ocr_pil_image(image)
+                    raster = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                    page_texts[index] = _ocr_pil_image(raster)
                 finally:
                     del pix
 
@@ -272,7 +281,7 @@ def normalize(vector: list[float]) -> list[float]:
     pero se mantiene por consistencia con los vectores ya persistidos antes de la migración a pgvector."""
     array = np.asarray(vector, dtype=np.float32)
     norm = float(np.linalg.norm(array)) or 1.0
-    return (array / norm).tolist()
+    return cast(list[float], (array / norm).tolist())
 
 
 class DocumentIndexer:
@@ -342,7 +351,7 @@ class DocumentIndexer:
                 )
                 .order_by(model.modified_at.desc())
             )
-            pending = list((await db.scalars(stale)).all())
+            pending: list[Any] = list((await db.scalars(stale)).all())
         report.pending = max(0, len(pending) - self._batch)
         for document in pending[: self._batch]:
             status = await self._index_one(document)

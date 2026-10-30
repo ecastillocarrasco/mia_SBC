@@ -33,21 +33,43 @@ async def collect(gateway: PrivacyGateway, request: LLMRequest):
     return [event async for event in gateway.stream(request)]
 
 
-async def main() -> None:
+def echo_script(req: LLMRequest):
+    token = PERSON_TOKEN.search(req.messages[0].content)
+    content = "Respuesta de prueba " + (token.group(0) if token else "SIN_TOKEN")
+    # Emula un streaming con un token dividido entre varios fragmentos.
+    return [*[TextDelta(content[i : i + 4]) for i in range(0, len(content), 4)], LLMCompleted()]
+
+
+def tool_call_script(req: LLMRequest):
+    match = PERSON_TOKEN.search(req.messages[0].content)
+    who = match.group(0) if match else "SIN_TOKEN"
+    return [
+        ToolCallRequested(
+            ToolCall(
+                call_id="call_test",
+                name="buscar_empleado_prueba",
+                arguments=json.dumps({"nombre": who}, ensure_ascii=False),
+            )
+        ),
+        LLMCompleted(),
+    ]
+
+
+def _privacy_settings():
     s = get_settings()
     if not s.privacy_gateway.enabled or s.privacy_gateway.fail_open:
         raise SystemExit("BLOQUEADO: gateway desactivado o fail_open activo")
     if not s.privacy_gateway.vault_key.get_secret_value():
         raise SystemExit("BLOQUEADO: Token Vault sin clave propia")
 
+    return s
+
+
+async def main() -> None:
+    s = _privacy_settings()
+
     # Prueba A: captura el texto EXACTAMENTE al otro lado del PrivacyGateway.
     # El proveedor es simulado: no existe conexion a OpenAI.
-    def echo_script(req: LLMRequest):
-        token = PERSON_TOKEN.search(req.messages[0].content)
-        content = "Respuesta de prueba " + (token.group(0) if token else "SIN_TOKEN")
-        # Emula un streaming con un token dividido entre varios fragmentos.
-        return [*[TextDelta(content[i : i + 4]) for i in range(0, len(content), 4)], LLMCompleted()]
-
     fake = FakeLLMProvider(script=echo_script)
     gateway = PrivacyGateway(fake, s.privacy_gateway, provider_name="fake", model="test")
     chat_op = uuid4().hex
@@ -107,20 +129,6 @@ async def main() -> None:
 
     # Prueba C: detecta si los pseudo-tokens se restauran al RECIBIR argumentos
     # de herramientas. No ejecuta la herramienta; solo inspecciona ese contrato.
-    def tool_call_script(req: LLMRequest):
-        match = PERSON_TOKEN.search(req.messages[0].content)
-        who = match.group(0) if match else "SIN_TOKEN"
-        return [
-            ToolCallRequested(
-                ToolCall(
-                    call_id="call_test",
-                    name="buscar_empleado_prueba",
-                    arguments=json.dumps({"nombre": who}, ensure_ascii=False),
-                )
-            ),
-            LLMCompleted(),
-        ]
-
     fake_call = FakeLLMProvider(script=tool_call_script)
     gateway_call = PrivacyGateway(fake_call, s.privacy_gateway, provider_name="fake", model="test")
     set_operation_context(user_id="prueba-local", operation_id=uuid4().hex)

@@ -85,7 +85,12 @@ def build_mail_signature(display_name: str, position: str | None, phone: str | N
     contact_phone = phone.strip() if phone and phone.strip() else None
 
     identity = [
-        f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#00a0b5">{html.escape(name)}</div>'
+        (
+            '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px'
+            ';font-weight:700;color:#00a0b5">'
+            f"{html.escape(name)}"
+            "</div>"
+        )
     ]
     if role_es:
         title = html.escape(role_es)
@@ -96,12 +101,17 @@ def build_mail_signature(display_name: str, position: str | None, phone: str | N
         )
     if contact_phone:
         identity.append(
-            f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#0b2f55">{html.escape(contact_phone)}</div>'
+            '<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px'
+            ';color:#0b2f55">'
+            f"{html.escape(contact_phone)}"
+            "</div>"
         )
     identity.append(
         '<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#0b2f55">'
         '<a href="tel:+34952579400" style="color:#0b2f55;text-decoration:none">+34 952 579400 Ext.7702</a>'
-        ' &nbsp;|&nbsp; <a href="https://sunsetbeachclub.com" style="color:#00a0b5;text-decoration:none">sunsetbeachclub.com</a>'
+        ' &nbsp;|&nbsp; <a href="https://sunsetbeachclub.com" '
+        'style="color:#00a0b5;text-decoration:none">sunsetbeachclub.com</a'
+        ">"
         "</div>"
     )
     identity.append(

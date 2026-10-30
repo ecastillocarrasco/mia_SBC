@@ -46,9 +46,11 @@ from tests.conftest import make_settings
 from tests.dbutil import fresh_database
 from tests.dbutil import test_database_url as _test_database_url
 from tests.hr_seed import _emp
-from tests.test_analisis_economico import Q3_NOW, q3_registry  # noqa: F401 — fixture reutilizada
+from tests.test_analisis_economico import Q3_NOW, q3_registry
 from tests.test_phase4b import _pdf
 from tests.test_report_routing_semantic_validation import _AUG_DEPARTMENTS, _payslip_text_with_ss
+
+__all__ = ["q3_registry"]
 
 ADMIN = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
 AUTH_ADMIN = {"user_id": "u", "display_name": "Enrique", "roles": ["mia.admin"]}
@@ -184,7 +186,6 @@ async def test_restart_recovery_requeues_a_job_abandoned_by_a_crashed_worker(job
     job_id = await _submit(job_services)
     async with job_services.db.session() as db:
         await job_manager.claim_next(db, worker_id="worker-que-se-cae", lease_seconds=1)
-    import asyncio
 
     await asyncio.sleep(1.2)
 

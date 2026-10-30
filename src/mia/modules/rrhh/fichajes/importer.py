@@ -35,6 +35,7 @@ silencio.
 
 from __future__ import annotations
 
+import asyncio
 import io
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -222,12 +223,12 @@ async def import_directory(
     duplica, solo actualiza metadatos (origen, terminal) si han cambiado."""
     tz = ZoneInfo(timezone)
     report = ImportReport()
-    paths = sorted(directory.glob("*.xlsx"))
+    paths = await asyncio.to_thread(lambda: sorted(directory.glob("*.xlsx")))
     async with db.session() as session:
         index = await _employee_index(session)
         for path in paths:
             report.files += 1
-            await _import_rows(session, index, _read_rows(path), tz=tz, now=now, report=report)
+            await _import_rows(session, index, await asyncio.to_thread(_read_rows, path), tz=tz, now=now, report=report)
     return report
 
 

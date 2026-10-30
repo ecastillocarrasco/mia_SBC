@@ -36,11 +36,11 @@ def test_first_name_from_empty_or_missing_display_name() -> None:
 
 
 def test_welcome_text_with_name_uses_one_of_the_named_templates() -> None:
-    text = welcome_text("Enrique", choice=random.Random(0))
+    text = welcome_text("Enrique", choice=random.SystemRandom())
     assert any(template.format(name="Enrique") == text for template in WELCOME_TEMPLATES_WITH_NAME)
     assert "Enrique" in text
 
 
 def test_welcome_text_without_name_uses_the_no_name_templates() -> None:
-    text = welcome_text("", choice=random.Random(0))
+    text = welcome_text("", choice=random.SystemRandom())
     assert text in WELCOME_TEMPLATES_NO_NAME

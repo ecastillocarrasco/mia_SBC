@@ -8,6 +8,7 @@ from mia.auth import UserContext
 from mia.conversation import Tool, ToolContext, ToolRegistry, ToolResult
 from mia.conversation.orchestrator import select_modules
 from mia.conversation.tools import DEFAULT_MODULE
+from mia.modules.correo.tools import KEYWORDS as CORREO_KEYWORDS
 from mia.modules.finanzas import KEYWORDS as FINANZAS_KEYWORDS
 
 MODULE_KEYWORDS: dict[str, tuple[str, ...]] = {"finanzas": FINANZAS_KEYWORDS}
@@ -123,7 +124,6 @@ def test_natural_language_variation_for_correo() -> None:
     """Mejora de correo pedida por el usuario: "los últimos recibidos sin filtro", "correos
     enviados", "el hilo completo" y "descargar el adjunto" deben seguir activando el módulo de
     correo, no sólo la frase canónica "tengo correos sin leer"."""
-    from mia.modules.correo.tools import KEYWORDS as CORREO_KEYWORDS
 
     module_keywords = {**_REAL_MODULE_KEYWORDS, "correo": CORREO_KEYWORDS}
     phrases = (

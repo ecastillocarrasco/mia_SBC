@@ -24,8 +24,7 @@ WELCOME_TEMPLATES_WITH_NAME: tuple[str, ...] = (
 )
 
 WELCOME_TEMPLATES_NO_NAME: tuple[str, ...] = (
-    "¡Hola! Soy mIA, tu asistente virtual. Estoy aquí para ayudarte con cualquier consulta. "
-    "¿Qué te gustaría saber?",
+    "¡Hola! Soy mIA, tu asistente virtual. Estoy aquí para ayudarte con cualquier consulta. ¿Qué te gustaría saber?",
     "¡Hola! Soy mIA. ¿En qué puedo ayudarte hoy?",
     "Bienvenido. Soy mIA, tu asistente virtual. Dime qué necesitas y te ayudo.",
 )
@@ -56,8 +55,9 @@ def first_name_from_display_name(display_name: str | None) -> str:
     cleaned = " ".join(display_name.strip().split())
     if not cleaned:
         return ""
-    candidate = cleaned.split("@")[0].split("_")[0].split(".")[0].split("-")[0] \
-        if "@" in cleaned else cleaned.split(" ")[0]
+    candidate = (
+        cleaned.split("@")[0].split("_")[0].split(".")[0].split("-")[0] if "@" in cleaned else cleaned.split(" ")[0]
+    )
     return _valid_first_name(candidate)
 
 

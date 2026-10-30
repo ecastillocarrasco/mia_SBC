@@ -110,6 +110,7 @@ def parecidos(deps: Deps) -> Tool:
                         )
                     )
                 ).all()
+                if cid is not None
             }
         results = []
         seen2: set[str] = set()
@@ -152,7 +153,9 @@ class CandidaturasParams(BaseModel):
     estado: str | None = None
     desde: date | None = Field(
         default=None,
-        description="Recibidas desde AAAA-MM-DD (por fecha de candidatura o, si no existe, por fecha de alta en el sistema)",
+        description=(
+            "Recibidas desde AAAA-MM-DD (por fecha de candidatura o, si no existe, por fecha de alta en el sistema)"
+        ),
     )
     hasta: date | None = Field(default=None, description="Recibidas hasta AAAA-MM-DD")
 
@@ -322,7 +325,8 @@ class Requisito(BaseModel):
             "Ejemplos: inglés → english, inglés; cocina japonesa → japonesa, japanese, sushi, washoku, itamae. "
             "IMPORTANTE: para cocinas nacionales («cocina italiana», «cocina japonesa») usa solo términos culinarios; "
             "NO añadas el gentilicio del idioma (no uses «italiano» para «cocina italiana»: "
-            "buscaría también a candidatos cuyo único italiano es el idioma). Añade siempre los equivalentes relevantes."
+            "buscaría también a candidatos cuyo único italiano es el idioma). "
+            "Añade siempre los equivalentes relevantes."
         ),
     )
 

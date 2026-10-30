@@ -115,10 +115,15 @@ class CalendarService:
                 "si hay varios, usa referencias legibles como «confirma cambio 1».",
             },
             presentation={
-                "type": "calendar", "title": "Cambio de agenda propuesto", "timezone": operation["timezone"],
-                "days": [], "events": [],
+                "type": "calendar",
+                "title": "Cambio de agenda propuesto",
+                "timezone": operation["timezone"],
+                "days": [],
+                "events": [],
                 "confirmation": {
-                    "prompt": f"confirma {label}", "label": "Sí, confirmo", "reference": label,
+                    "prompt": f"confirma {label}",
+                    "label": "Sí, confirmo",
+                    "reference": label,
                     "expires_at": proposed.expires_at.isoformat(),
                     "review": {**describe_operation(operation), "detalle": review},
                 },

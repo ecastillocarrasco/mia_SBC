@@ -26,8 +26,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+from mia import diagnostics
 from mia.api.deps import ServicesDep
 from mia.diagnostics import analyzer, is_enabled
+from mia.diagnostics.metrics import compute_metrics
 
 router = APIRouter(prefix="/api/admin/diagnostics", tags=["diagnóstico"])
 
@@ -95,15 +97,14 @@ async def panel(_: DiagAdminDep) -> FileResponse:
 @router.get("/status")
 async def status(services: ServicesDep, _: DiagAdminDep) -> dict[str, Any]:
     _require_enabled()
-    from mia.diagnostics import _broadcaster, _store  # type: ignore[attr-defined]
 
-    store_status = _store.to_status() if _store else {}
+    store_status = diagnostics._state.store.to_status() if diagnostics._state.store else {}
     return {
         "diagnostics_enabled": True,
         "environment": services.settings.environment.value,
         "llm_provider": services.settings.llm.provider.value,
         "llm_model": services.settings.llm.model,
-        "subscribers": _broadcaster.subscriber_count() if _broadcaster else 0,
+        "subscribers": diagnostics._state.broadcaster.subscriber_count() if diagnostics._state.broadcaster else 0,
         **store_status,
     }
 
@@ -120,11 +121,10 @@ async def list_traces(
     user_id: str | None = None,
 ) -> list[dict[str, Any]]:
     _require_enabled()
-    from mia.diagnostics import _store  # type: ignore[attr-defined]
 
-    if _store is None:
+    if diagnostics._state.store is None:
         return []
-    traces = _store.list(limit=limit, status=status_filter, domain=domain, user_id=user_id)
+    traces = diagnostics._state.store.list(limit=limit, status=status_filter, domain=domain, user_id=user_id)
     return [t.to_summary() for t in traces]
 
 
@@ -134,9 +134,8 @@ async def list_traces(
 @router.get("/traces/{trace_id}")
 async def get_trace(_: DiagAdminDep, trace_id: str) -> dict[str, Any]:
     _require_enabled()
-    from mia.diagnostics import _store  # type: ignore[attr-defined]
 
-    trace = _store.get(trace_id) if _store else None
+    trace = diagnostics._state.store.get(trace_id) if diagnostics._state.store else None
     if trace is None:
         raise HTTPException(status_code=404, detail=f"Traza no encontrada: {trace_id}")
     assessment = analyzer.assess(trace)
@@ -151,9 +150,8 @@ async def get_trace(_: DiagAdminDep, trace_id: str) -> dict[str, Any]:
 @router.get("/traces/{trace_id}/events")
 async def get_trace_events(_: DiagAdminDep, trace_id: str) -> list[dict[str, Any]]:
     _require_enabled()
-    from mia.diagnostics import _store  # type: ignore[attr-defined]
 
-    trace = _store.get(trace_id) if _store else None
+    trace = diagnostics._state.store.get(trace_id) if diagnostics._state.store else None
     if trace is None:
         raise HTTPException(status_code=404, detail=f"Traza no encontrada: {trace_id}")
     return [e.to_dict() for e in trace.events]
@@ -165,12 +163,10 @@ async def get_trace_events(_: DiagAdminDep, trace_id: str) -> list[dict[str, Any
 @router.get("/metrics")
 async def metrics(_: DiagAdminDep, minutes: int = 60) -> dict[str, Any]:
     _require_enabled()
-    from mia.diagnostics import _store  # type: ignore[attr-defined]
-    from mia.diagnostics.metrics import compute_metrics
 
-    if _store is None:
+    if diagnostics._state.store is None:
         return {}
-    window = _store.metrics_window(minutes=minutes)
+    window = diagnostics._state.store.metrics_window(minutes=minutes)
     return compute_metrics(window)
 
 
@@ -180,14 +176,13 @@ async def metrics(_: DiagAdminDep, minutes: int = 60) -> dict[str, Any]:
 @router.get("/live")
 async def live_stream(_: DiagAdminDep) -> StreamingResponse:
     _require_enabled()
-    from mia.diagnostics import _broadcaster  # type: ignore[attr-defined]
 
-    if _broadcaster is None:
+    if diagnostics._state.broadcaster is None:
         raise HTTPException(status_code=503, detail="Broadcaster no inicializado")
 
-    q = _broadcaster.subscribe()
+    q = diagnostics._state.broadcaster.subscribe()
     return StreamingResponse(
-        _broadcaster.stream(q),
+        diagnostics._state.broadcaster.stream(q),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -208,8 +203,6 @@ async def label_trace(_: DiagAdminDep, trace_id: str, body: LabelRequest) -> dic
     if body.label not in _VALID_LABELS:
         raise HTTPException(status_code=400, detail=f"Etiqueta no válida. Opciones: {_VALID_LABELS}")
 
-    from mia.diagnostics import _store  # type: ignore[attr-defined]
-
-    if _store is None or not _store.label(trace_id, body.label, body.notes):
+    if diagnostics._state.store is None or not diagnostics._state.store.label(trace_id, body.label, body.notes):
         raise HTTPException(status_code=404, detail=f"Traza no encontrada: {trace_id}")
     return {"trace_id": trace_id, "label": body.label, "ok": True}

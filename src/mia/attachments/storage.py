@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 
 
 @runtime_checkable
@@ -70,7 +70,7 @@ class AzureBlobStorage:
 
     async def read(self, path: str) -> bytes:
         stream = await self._container.get_blob_client(path).download_blob()
-        return await stream.readall()
+        return cast(bytes, await stream.readall())
 
     async def delete(self, path: str) -> None:
         from azure.core.exceptions import ResourceNotFoundError  # noqa: PLC0415
@@ -79,7 +79,7 @@ class AzureBlobStorage:
             await self._container.get_blob_client(path).delete_blob(delete_snapshots="include")
 
     async def exists(self, path: str) -> bool:
-        return await self._container.get_blob_client(path).exists()
+        return cast(bool, await self._container.get_blob_client(path).exists())
 
     async def aclose(self) -> None:
         await self._service.close()

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from mia.diagnostics.models import DiagnosticIssueType, EventStage, TraceRecord
+from mia.diagnostics.models import DiagnosticIssue, DiagnosticIssueType, EventStage, TraceRecord
 
 # Herramientas que interpretan presencia en tiempo real (requieren hora o franja para «ahora»)
 _TEMPORAL_NOW_TOOLS = frozenset({"turnos_dia", "turnos_historico", "metricas_turnos"})
@@ -71,16 +71,15 @@ def analyze(record: TraceRecord) -> None:
         and not record.tools_called
         and record.domain
         and DiagnosticIssueType.CAPABILITY_MISSING not in existing_types
+        and record.llm_rounds > 0
     ):
-        # Solo marca si LLM llegó a ejecutarse (hay rounds)
-        if record.llm_rounds > 0:
-            record.issues.append(
-                _issue(
-                    DiagnosticIssueType.TOOL_NOT_SELECTED,
-                    "El LLM respondió sin invocar ninguna herramienta. Posible gap de capacidad o routing incorrecto.",
-                    domain=record.domain,
-                )
+        record.issues.append(
+            _issue(
+                DiagnosticIssueType.TOOL_NOT_SELECTED,
+                "El LLM respondió sin invocar ninguna herramienta. Posible gap de capacidad o routing incorrecto.",
+                domain=record.domain,
             )
+        )
 
     # Errores en herramientas
     if record.tool_errors > 0 and DiagnosticIssueType.TOOL_ERROR not in existing_types:
@@ -170,7 +169,7 @@ def _detect_period_range_truncated(record: TraceRecord, existing_types: set[str]
         if event.stage != EventStage.DATA_AGGREGATION:
             continue
         call_id = event.metadata.get("call_id")
-        periodo = requested_periods.get(call_id)
+        periodo = requested_periods.get(call_id) if call_id is not None else None
         if not periodo:
             continue
         meses_resueltos = event.data.get("meses_resueltos")
@@ -296,6 +295,5 @@ def _primary_issue(issues: list[Any]) -> str | None:
 
 
 def _issue(issue_type: str, message: str, **details: Any) -> Any:
-    from mia.diagnostics.models import DiagnosticIssue
 
     return DiagnosticIssue(type=issue_type, message=message, details=details)

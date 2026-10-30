@@ -324,19 +324,46 @@ class TurnosDiaParams(CohortParams, ActivosParams):
     tipo: str | None = Field(default=None, description="Trabajo, Descanso, Vacaciones, Baja/IT… (por defecto todos)")
 
 
+def _day_request(p: TurnosDiaParams, ctx: ToolContext) -> tuple[TurnosDiaParams, date, str | None, str | None]:
+    # Una pregunta completa sobre TODA la plantilla ahora no puede heredar
+    # filtros inventados por el modelo a partir de un turno anterior.
+    # El patrón está anclado: una petición que nombra un departamento no entra.
+    if re.fullmatch(
+        r"(?:que (?:empleados|personas|trabajadores)|quienes|quien) "
+        r"(?:(?:estan|esta) )?(?:trabajando|trabajan|trabaja) "
+        r"(?:ahora(?: mismo)?|en este momento)",
+        normalize_key(ctx.user_message),
+    ):
+        p = p.model_copy(
+            update={
+                "fecha": ctx.now.date(),
+                "departamento": None,
+                "franja": None,
+                "empieza_a": None,
+                "hora": ctx.now.strftime("%H:%M"),
+                "tipo": "Trabajo",
+                "sobre_resultado_anterior": False,
+                "resultado": None,
+                "incluir_inactivos": False,
+            }
+        )
+    day = p.fecha or ctx.now.date()
+    note = None
+    if tomorrow_not_morning(ctx.user_message, p.franja, p.fecha, ctx.now.date()):
+        # «¿Quién trabaja mañana?» es el día siguiente, no el turno de mañana (fallo real repetido).
+        day, p.franja = ctx.now.date() + timedelta(days=1), None
+        note = "Interpretado como el día de mañana (no como el turno de mañana)."
+    # TUR-003: «ahora» sin hora explícita → filtrar por la hora actual del contexto.
+    # works_at() ya maneja turnos que cruzan medianoche correctamente (TUR-002).
+    hora_efectiva = p.hora
+    if hora_efectiva is None and _NOW_RE.search(ctx.user_message or ""):
+        hora_efectiva = ctx.now.strftime("%H:%M")
+    return p, day, note, hora_efectiva
+
+
 def turnos_dia(deps: Deps) -> Tool:
     async def handler(p: TurnosDiaParams, ctx: ToolContext) -> ToolResult:
-        day = p.fecha or ctx.now.date()
-        note = None
-        if tomorrow_not_morning(ctx.user_message, p.franja, p.fecha, ctx.now.date()):
-            # «¿Quién trabaja mañana?» es el día siguiente, no el turno de mañana (fallo real repetido).
-            day, p.franja = ctx.now.date() + timedelta(days=1), None
-            note = "Interpretado como el día de mañana (no como el turno de mañana)."
-        # TUR-003: «ahora» sin hora explícita → filtrar por la hora actual del contexto.
-        # works_at() ya maneja turnos que cruzan medianoche correctamente (TUR-002).
-        hora_efectiva = p.hora
-        if hora_efectiva is None and _NOW_RE.search(ctx.user_message or ""):
-            hora_efectiva = ctx.now.strftime("%H:%M")
+        p, day, note, hora_efectiva = _day_request(p, ctx)
         async with deps.db.session() as db:
             status, dept_key, options = await resolve_shift_department(db, p.departamento)
             if status is not ToolStatus.OK:
@@ -851,7 +878,7 @@ def horas_trabajadas(deps: Deps) -> Tool:
                     return department_problem(dept, p.departamento)
                 dept_key = dept.key
 
-            stmt = (
+            aggregate_stmt = (
                 select(ShiftDay.department, func.count(), func.sum(ShiftDay.hours))
                 .where(
                     ShiftDay.day.between(lo, hi),
@@ -862,22 +889,24 @@ def horas_trabajadas(deps: Deps) -> Tool:
                 .order_by(func.sum(ShiftDay.hours).desc())
             )
             if dept_key:
-                stmt = stmt.where(ShiftDay.department_key.like(f"%{dept_key}%"))
-            rows_data = list((await db.execute(stmt)).all())
+                aggregate_stmt = aggregate_stmt.where(ShiftDay.department_key.like(f"%{dept_key}%"))
+            rows_data = list((await db.execute(aggregate_stmt)).all())
 
-        rows = [[dept or "Sin dato", int(dias), round(float(h or 0), 1)] for dept, dias, h in rows_data]
-        total_global = round(sum(r[2] for r in rows), 1)
+        aggregate_rows: list[list[Any]] = [
+            [dept or "Sin dato", int(dias), round(float(h or 0), 1)] for dept, dias, h in rows_data
+        ]
+        total_global = round(sum(r[2] for r in aggregate_rows), 1)
         return ToolResult(
             ToolStatus.OK,
             {
                 "periodo": f"{fmt_date(lo)} – {fmt_date(hi)}",
                 "horas_totales_global": total_global,
-                "por_departamento": [{"departamento": r[0], "dias": r[1], "horas": r[2]} for r in rows],
+                "por_departamento": [{"departamento": r[0], "dias": r[1], "horas": r[2]} for r in aggregate_rows],
             },
             table(
                 "Horas trabajadas por departamento",
                 ["Departamento", "Días trabajados", "Horas totales"],
-                rows,
+                aggregate_rows,
             ),
         )
 

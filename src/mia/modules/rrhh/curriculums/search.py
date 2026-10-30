@@ -9,8 +9,9 @@ Postgres: nunca se trae a memoria más que los resultados ya filtrados.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +25,9 @@ class Hit:
     evidence: str
 
 
-def _best_per_candidate_query(query_vector: list[float], candidate_ids: set[int] | None):
+def _best_per_candidate_query(
+    query_vector: list[float], candidate_ids: set[int] | None
+) -> Select[tuple[int | None, str, Any]]:
     """``DISTINCT ON (candidate_id)``: el fragmento más parecido de cada candidatura, ordenado por
     distancia coseno — equivalente SQL de "mejor fragmento por candidato", calculado por el índice
     HNSW en vez de en memoria."""

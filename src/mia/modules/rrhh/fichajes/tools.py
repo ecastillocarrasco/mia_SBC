@@ -84,7 +84,10 @@ class ComparacionParams(BaseModel):
     nombre: str | None = Field(default=None, description="Limitar a una persona por nombre, si no hay empleado_id")
     departamento: str | None = Field(
         default=None,
-        description="Limitar a un departamento; sin persona ni departamento, toda la plantilla con turno o fichaje en el periodo",
+        description=(
+            "Limitar a un departamento; sin persona ni departamento, toda la "
+            "plantilla con turno o fichaje en el periodo"
+        ),
     )
     desde: date | None = Field(default=None, description="Inicio del periodo (por defecto, lunes de esta semana)")
     hasta: date | None = Field(default=None, description="Fin del periodo (por defecto, hoy)")

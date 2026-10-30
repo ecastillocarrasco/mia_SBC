@@ -66,6 +66,52 @@ def _null_counts(sheet: DatasetSheet) -> dict[str, int]:
     return counts
 
 
+def _group_rows(
+    sheet: DatasetSheet,
+    rows: list[list[Any]],
+    *,
+    group_by: str,
+    aggregate: str | None,
+    agg_col: str | None,
+    limit: int,
+) -> dict[str, Any]:
+    gcol = _col_index(sheet, group_by)
+    if gcol is None:
+        return {"error": f"Columna «{group_by}» no encontrada."}
+
+    groups: defaultdict[str, list[list[Any]]] = defaultdict(list)
+    for row in rows:
+        key = str(row[gcol]) if gcol < len(row) and row[gcol] is not None else "—"
+        groups[key].append(row)
+
+    agg_fn = (aggregate or "count").lower()
+    result_rows = []
+    for key, group_rows in sorted(groups.items()):
+        if agg_fn == "count":
+            result_rows.append([key, len(group_rows)])
+        elif agg_fn in ("sum", "avg", "mean") and agg_col:
+            acol = _col_index(sheet, agg_col)
+            if acol is None:
+                return {"error": f"Columna «{agg_col}» no encontrada."}
+            numeric = [row[acol] for row in group_rows if acol < len(row) and isinstance(row[acol], (int, float))]
+            if agg_fn == "sum":
+                val: float | str = sum(numeric) if numeric else 0
+            else:
+                val = round(sum(numeric) / len(numeric), 2) if numeric else 0
+            result_rows.append([key, val])
+        else:
+            result_rows.append([key, len(group_rows)])
+
+    agg_label = f"{agg_fn}({agg_col})" if agg_col else "count"
+    return {
+        "sheet": sheet.name,
+        "group_by": group_by,
+        "aggregation": agg_label,
+        "rows": result_rows[:limit],
+        "total_groups": len(result_rows),
+    }
+
+
 def dataset_query(
     content: AttachmentContent,
     *,
@@ -93,43 +139,8 @@ def dataset_query(
         pattern = re.compile(re.escape(filter_value), re.IGNORECASE)
         rows = [r for r in rows if col_idx < len(r) and r[col_idx] is not None and pattern.search(str(r[col_idx]))]
 
-    # Agrupar y agregar
     if group_by:
-        gcol = _col_index(sheet, group_by)
-        if gcol is None:
-            return {"error": f"Columna «{group_by}» no encontrada."}
-
-        groups: defaultdict[str, list[list[Any]]] = defaultdict(list)
-        for row in rows:
-            key = str(row[gcol]) if gcol < len(row) and row[gcol] is not None else "—"
-            groups[key].append(row)
-
-        agg_fn = (aggregate or "count").lower()
-        result_rows = []
-        for key, group_rows in sorted(groups.items()):
-            if agg_fn == "count":
-                result_rows.append([key, len(group_rows)])
-            elif agg_fn in ("sum", "avg", "mean") and agg_col:
-                acol = _col_index(sheet, agg_col)
-                if acol is None:
-                    return {"error": f"Columna «{agg_col}» no encontrada."}
-                numeric = [row[acol] for row in group_rows if acol < len(row) and isinstance(row[acol], (int, float))]
-                if agg_fn == "sum":
-                    val: float | str = sum(numeric) if numeric else 0
-                else:
-                    val = round(sum(numeric) / len(numeric), 2) if numeric else 0
-                result_rows.append([key, val])
-            else:
-                result_rows.append([key, len(group_rows)])
-
-        agg_label = f"{agg_fn}({agg_col})" if agg_col else "count"
-        return {
-            "sheet": sheet.name,
-            "group_by": group_by,
-            "aggregation": agg_label,
-            "rows": result_rows[:limit],
-            "total_groups": len(result_rows),
-        }
+        return _group_rows(sheet, rows, group_by=group_by, aggregate=aggregate, agg_col=agg_col, limit=limit)
 
     # Sin agrupación: devolver filas
     result_headers = headers

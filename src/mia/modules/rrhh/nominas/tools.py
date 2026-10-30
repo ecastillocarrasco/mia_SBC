@@ -264,6 +264,19 @@ class AnomaliasNominasParams(CohortParams):
     departamento: str | None = None
 
 
+def _payslip_indices(slips: list[Payslip]) -> tuple[dict[str, list[Payslip]], dict[str, list[Payslip]]]:
+    # Construir índices
+    by_folder: dict[str, list[Payslip]] = {}
+    by_email: dict[str, list[Payslip]] = {}
+    for s in slips:
+        if s.person_key:
+            by_folder.setdefault(s.person_key, []).append(s)
+        elif s.employee_email:
+            by_email.setdefault(s.employee_email, []).append(s)
+
+    return by_folder, by_email
+
+
 def anomalias_nominas(deps: Deps) -> Tool:
     async def handler(p: AnomaliasNominasParams, ctx: ToolContext) -> ToolResult:
         try:
@@ -286,21 +299,14 @@ def anomalias_nominas(deps: Deps) -> Tool:
             slips = list((await db.scalars(select(Payslip).where(Payslip.period == p.periodo))).all())
             fresh = await deps.freshness(db, "nominas", "empleados")
 
-        # Construir índices
-        by_folder: dict[str, list[Payslip]] = {}
-        by_email: dict[str, list[Payslip]] = {}
-        for s in slips:
-            if s.person_key:
-                by_folder.setdefault(s.person_key, []).append(s)
-            elif s.employee_email:
-                by_email.setdefault(s.employee_email, []).append(s)
+        by_folder, by_email = _payslip_indices(slips)
 
         issues: list[dict[str, Any]] = []
 
         # 1. Duplicados: más de una nómina ordinaria para la misma persona en el periodo
         for emp in employees:
             key = emp.person_key
-            matched = (by_folder.get(key or "") or []) + (by_email.get(emp.email or "") if not key else [])
+            matched = (by_folder.get(key or "") or []) + (by_email.get(emp.email or "", []) if not key else [])
             ordinary = [s for s in matched if not s.special]
             if len(ordinary) > 1:
                 issues.append(
@@ -365,7 +371,7 @@ def anomalias_nominas(deps: Deps) -> Tool:
                 ["Tipo", "Persona / Archivo", "Departamento", "Detalle"],
                 rows,
             ),
-            population_state(f"con anomalía en {p.periodo}", missing_emp) if missing_emp else None,
+            population_state(f"con anomalía en {p.periodo}", missing_emp) if missing_emp else {},
         )
 
     return Tool(
@@ -554,7 +560,7 @@ def evolucion_nominas(deps: Deps) -> Tool:
     )
 
 
-# ------------------------------------------------------------------ búsqueda semántica (indexación de contenido sensible)
+# Búsqueda semántica con indexación de contenido sensible
 class BuscarEnNominasParams(BaseModel):
     consulta: str = Field(description="Qué buscar en el texto de las nóminas, descrito en general")
     nombre: str | None = Field(default=None, description="Limitar la búsqueda a una persona (opcional)")
@@ -649,7 +655,7 @@ def buscar_en_nominas(deps: Deps) -> Tool:
             for h in hits
             if h.document_id in slips
         ]
-        rows = [[r["persona"], r["periodo"], r["evidencia"][:160]] for r in results]
+        rows = [[r["persona"], r["periodo"], (r["evidencia"] or "")[:160]] for r in results]
         return ToolResult(
             ToolStatus.OK,
             {"consulta": p.consulta, "coincidencias": results, "regla": AMOUNTS_RULE, **fresh},

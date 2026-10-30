@@ -184,6 +184,9 @@ class PeriodEngine:
 
     # ------------------------------------------------------------------ patrones
     def _exact(self, n: str, ref: date) -> ResolvedPeriod | None:
+        return self._exact_day(n, ref) or self._exact_week_month(n, ref) or self._exact_year(n, ref)
+
+    def _exact_day(self, n: str, ref: date) -> ResolvedPeriod | None:
         if n in ("hoy", "today"):
             return ResolvedPeriod(ref, ref, "hoy")
         if n in ("ayer", "yesterday"):
@@ -192,6 +195,9 @@ class PeriodEngine:
         if n in ("manana", "mañana", "tomorrow"):
             d = ref + timedelta(days=1)
             return ResolvedPeriod(d, d, "mañana")
+        return None
+
+    def _exact_week_month(self, n: str, ref: date) -> ResolvedPeriod | None:
         if n in ("esta semana", "semana actual"):
             monday = ref - timedelta(days=ref.weekday())
             sunday = monday + timedelta(days=6)
@@ -208,6 +214,9 @@ class PeriodEngine:
             last_month = first_this - timedelta(days=1)
             start = last_month.replace(day=1)
             return ResolvedPeriod(start, last_month, _month_label(last_month))
+        return None
+
+    def _exact_year(self, n: str, ref: date) -> ResolvedPeriod | None:
         if n in ("este ano", "este año", "el ano actual", "el año actual"):
             start = ref.replace(month=1, day=1)
             return ResolvedPeriod(start, ref, str(ref.year))

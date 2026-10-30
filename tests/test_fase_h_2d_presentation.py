@@ -24,15 +24,19 @@ import httpx
 import pytest
 from pypdf import PdfReader
 
+from mia.api.services import Services
 from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
+from mia.conversation import ConversationEngine, Persona
 from mia.data import Payslip
 from mia.llm.fake import FakeLLMProvider, final_answer, tool_call
 from mia.main import create_app
+from mia.modules.registry import build_registry
 from mia.modules.rrhh.informes.jobs import JOB_KIND_INFORME_ECONOMICO, run_informe_economico_nominas
 from mia.reporting.worker import ReportJobWorker
 from tests.conftest import make_settings
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp, seed
+from tests.planning_script import planned_script
 from tests.test_phase4b import _pdf
 from tests.test_report_routing_semantic_validation import _AUG_DEPARTMENTS, _payslip_text_with_ss
 
@@ -79,12 +83,8 @@ async def chat_app(tmp_path):
             return final_answer("Aquí tienes la comparativa de costes por departamento.", "Listo.")
         return tool_call("analisis_economico_nominas", {"periodo": "agosto de 2026", "concepto": "coste_empresa"})
 
-    llm = FakeLLMProvider(scripted)
+    llm = FakeLLMProvider(planned_script(scripted, ("analisis_economico_nominas",)))
     settings = make_settings(tmp_path, database_url=f"sqlite+aiosqlite:///{tmp_path / 'fase_h_2d.db'}")
-
-    from mia.api.services import Services
-    from mia.conversation import ConversationEngine, Persona
-    from mia.modules.registry import build_registry
 
     services = Services.build(settings, llm=llm, db=db)
     # Services.build() ya construyó su propio registro/engine con sharepoint=None (Deps es inmutable,
@@ -200,12 +200,8 @@ async def chat_app_with_hidden_department(tmp_path):
             return final_answer("Aquí tienes la comparativa de costes por departamento.", "Listo.")
         return tool_call("analisis_economico_nominas", {"periodo": "agosto de 2026", "concepto": "coste_empresa"})
 
-    llm = FakeLLMProvider(scripted)
+    llm = FakeLLMProvider(planned_script(scripted, ("analisis_economico_nominas",)))
     settings = make_settings(tmp_path, database_url=f"sqlite+aiosqlite:///{tmp_path / 'fase_h_2d_hidden.db'}")
-
-    from mia.api.services import Services
-    from mia.conversation import ConversationEngine, Persona
-    from mia.modules.registry import build_registry
 
     services = Services.build(settings, llm=llm, db=db)
     registry = build_registry(
@@ -259,11 +255,13 @@ async def test_hidden_department_privacy_warning_reaches_the_2d_screen(chat_app_
 
 
 @pytest.fixture
-async def chat_app_jobs_enabled(tmp_path):
+async def chat_app_jobs_enabled(tmp_path, monkeypatch):
     """Mismo escenario sintético de agosto de 2026 que `chat_app`, pero con el worker en segundo plano
     HABILITADO (`settings.jobs.enabled=True`) para que `informe_economico_en_segundo_plano` quede
     registrada en el `ToolRegistry` y el LLM simulado pueda invocarla — exactamente como ocurriría si
     el usuario pidiera el informe "en segundo plano" desde el mundo 2D real."""
+    # This test drives the real worker manually; the lifespan worker must not race it.
+    monkeypatch.setattr(ReportJobWorker, "start", lambda self: None)
     db = await fresh_database(tmp_path, "fase_h_2d_jobs.db")
     async with db.session() as s:
         sp_id = 7800
@@ -301,16 +299,12 @@ async def chat_app_jobs_enabled(tmp_path):
             {"periodo": "agosto de 2026", "concepto": "coste_empresa", "formato": "pdf"},
         )
 
-    llm = FakeLLMProvider(scripted)
+    llm = FakeLLMProvider(planned_script(scripted, ("informe_economico_en_segundo_plano",)))
     settings = make_settings(
         tmp_path,
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'fase_h_2d_jobs.db'}",
         jobs={"enabled": True, "allow_sensitive_async": True},
     )
-
-    from mia.api.services import Services
-    from mia.conversation import ConversationEngine, Persona
-    from mia.modules.registry import build_registry
 
     services = Services.build(settings, llm=llm, db=db)
     registry = build_registry(

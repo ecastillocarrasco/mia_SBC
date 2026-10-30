@@ -5,21 +5,34 @@ decisión explícita (ver ``DataSettings.index_sensitive_content``, ``mia.module
 from __future__ import annotations
 
 import io
+import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import docx
 import httpx
+import pymupdf
 import pytest
+from PIL import Image, ImageDraw, ImageFont
 from reportlab.pdfgen import canvas
 from sqlalchemy import select
 
+from mia.auth import UserContext
 from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
+from mia.conversation import ToolContext
 from mia.data import Database, Employee, HrDocumentChunk, HrDocumentText, Payslip, SignedDocument
+from mia.diagnostics import EventStage
+from mia.diagnostics.store import DiagnosticsStore
+from mia.diagnostics.streaming import LiveBroadcaster
+from mia.diagnostics.trace import begin_trace
+from mia.llm import ToolCall
 from mia.llm.fake import FakeLLMProvider
+from mia.modules.registry import build_registry
 from mia.modules.rrhh.document_indexing import DocumentIndexer
 from mia.modules.rrhh.document_search import DocumentSearchIndex
+from mia.settings import DiagnosticsSettings
 from tests.dbutil import POSTGRES_URL, fresh_database
 
 requires_postgres = pytest.mark.skipif(
@@ -43,8 +56,6 @@ def _scanned_pdf(text: str = "NOMINA DE JULIO CON PLUS DE NOCTURNIDAD INCLUIDO")
     texto nativa) — desde que el OCR es local (Tesseract, no un LLM al que baste con darle un
     guion), la imagen debe contener texto real y reconocible (>=40 caracteres: el umbral de
     ``extract_document_text_local`` para «ok» frente a «empty») para que el test tenga sentido."""
-    import pymupdf
-    from PIL import Image, ImageDraw, ImageFont
 
     image = Image.new("RGB", (1300, 310), "white")
     draw = ImageDraw.Draw(image)
@@ -268,18 +279,6 @@ async def test_buscar_en_nominas_emits_rag_and_document_diagnostic_events(db: Da
     """La herramienta conversacional ``buscar_en_nominas`` debe emitir RAG_SEARCH_START/COMPLETE y
     DOCUMENT_SEARCH/DOCUMENT_RETRIEVAL durante una búsqueda real (no solo en la ruta de error), para que
     un panel de diagnóstico pueda ver qué dominio se consultó, cuántos resultados hubo y con qué confianza."""
-    import json
-    from types import SimpleNamespace
-
-    from mia.auth import UserContext
-    from mia.conversation import ToolContext
-    from mia.diagnostics import EventStage
-    from mia.diagnostics.store import DiagnosticsStore
-    from mia.diagnostics.streaming import LiveBroadcaster
-    from mia.diagnostics.trace import begin_trace
-    from mia.llm import ToolCall
-    from mia.modules.registry import build_registry
-    from mia.settings import DiagnosticsSettings
 
     async with db.session() as s:
         s.add_all(

@@ -33,13 +33,17 @@ from openpyxl import load_workbook
 from pptx import Presentation
 from pypdf import PdfReader
 
+from mia.api.services import Services
 from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
+from mia.conversation import ConversationEngine, Persona
 from mia.data import Payslip
 from mia.llm.fake import FakeLLMProvider, final_answer, tool_call
 from mia.main import create_app
+from mia.modules.registry import build_registry
 from tests.conftest import make_settings
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp, seed
+from tests.planning_script import planned_script
 from tests.test_phase4b import _pdf
 from tests.test_report_routing_semantic_validation import _AUG_DEPARTMENTS, _payslip_text_with_ss
 
@@ -88,12 +92,8 @@ async def _build_payroll_chat_app(tmp_path, *, formato: str, db_name: str):
             return tool_call("generar_informe", {"formato": formato})
         return final_answer("Aquí tienes la comparativa de costes por departamento.", "Listo.")
 
-    llm = FakeLLMProvider(scripted)
+    llm = FakeLLMProvider(planned_script(scripted, ("analisis_economico_nominas", "generar_informe")))
     settings = make_settings(tmp_path, database_url=f"sqlite+aiosqlite:///{tmp_path / db_name}")
-
-    from mia.api.services import Services
-    from mia.conversation import ConversationEngine, Persona
-    from mia.modules.registry import build_registry
 
     services = Services.build(settings, llm=llm, db=db)
     registry = build_registry(
@@ -225,10 +225,8 @@ async def test_screen_table_value_matches_the_downloaded_document_for_a_non_payr
             return tool_call("generar_informe", {"formato": "pdf"})
         return final_answer("Aquí tienes el informe de ausencias.", "Listo.")
 
-    llm = FakeLLMProvider(scripted)
+    llm = FakeLLMProvider(planned_script(scripted, ("ausencias", "generar_informe")))
     settings = make_settings(tmp_path, database_url=f"sqlite+aiosqlite:///{tmp_path / 'fase_i_ausencias.db'}")
-
-    from mia.api.services import Services
 
     services = Services.build(settings, llm=llm, db=db)
     app = create_app(settings, services=services)

@@ -378,12 +378,64 @@ def _absorb_report_preview(p: dict[str, Any], tables: list[dict[str, Any]], char
     charts.extend(c for c in preview.get("charts") or [] if isinstance(c, dict))
 
 
+def _absorb_mail(p: dict[str, Any], data: dict[str, Any]) -> None:
+    kind = p.get("type")
+    if kind == "mail":
+        data["mail_message"] = mail_message_view(p)
+    elif kind == "mail_thread":
+        rows = p.get("mail_rows") or []
+        data.update(mail_rows_view(rows))
+        data["mail_thread"] = {"title": p.get("title"), "count": len(rows)}
+    elif kind == "mail_draft":
+        data["mail_draft"] = {k: p.get(k) for k in ("borrador", "texto", "responde_a", "envio_habilitado")}
+
+
+def _absorb_table(
+    p: dict[str, Any],
+    data: dict[str, Any],
+    tables: list[dict[str, Any]],
+    *,
+    cards: list[dict[str, Any]],
+    charts: list[dict[str, Any]],
+) -> None:
+    tables.append(table_view(p))
+    # Fase H: los KPI y gráficos de primera clase que la herramienta YA calculó (p. ej.
+    # analisis_economico_nominas) se perdían por completo — table_view() solo traduce columnas/
+    # filas. Se priorizan sobre los derivados heurísticamente más abajo en legacy_view().
+    cards.extend(kpis_to_cards(p.get("kpis")))
+    if isinstance(p.get("charts"), list):
+        charts.extend(c for c in p["charts"] if isinstance(c, dict))
+    # Estadísticas de primera clase (p. ej. media/mediana/mínimo/máximo por departamento, ya
+    # calculadas): se muestran como su propia tabla con nombre, nunca mezcladas en silencio con
+    # la tabla principal ni descartadas.
+    if isinstance(p.get("stats"), dict) and p["stats"].get("rows"):
+        data["stats"] = table_view(p["stats"], "Estadísticas")
+
+
+def _absorb_generic(
+    p: dict[str, Any], actions: list[dict[str, Any]], cards: list[dict[str, Any]], tables: list[dict[str, Any]]
+) -> None:
+    body = {k: v for k, v in p.items() if k not in {"type", "title"}}
+    cards.extend(cards_from(body))
+    tables.extend(
+        [
+            _list_table(_label(k), v)
+            for k, v in body.items()
+            if isinstance(v, list) and v and all(isinstance(x, dict) for x in v)
+        ]
+    )
+    for key in ("documento", "enlace", "url"):
+        if isinstance(body.get(key), str) and body[key].startswith("/api/"):
+            actions.append({"type": "open_document", "url": body[key], "label": "Abrir documento"})
+
+
 def _absorb(
     p: dict[str, Any],
     data: dict[str, Any],
     actions: list[dict[str, Any]],
     cards: list[dict[str, Any]],
     tables: list[dict[str, Any]],
+    *,
     charts: list[dict[str, Any]],
 ) -> None:
     """Traduce una presentación de mIA a lo que pinta el 2D (tablas, tarjetas, acciones, correo…)."""
@@ -398,32 +450,15 @@ def _absorb(
         data.update(mail_rows_view(p["mail_rows"]))
     elif kind == "calendar":
         data.setdefault("calendars", []).append(p)
-    elif kind == "mail":
-        data["mail_message"] = mail_message_view(p)
-    elif kind == "mail_thread":
-        rows = p.get("mail_rows") or []
-        data.update(mail_rows_view(rows))
-        data["mail_thread"] = {"title": p.get("title"), "count": len(rows)}
-    elif kind == "mail_draft":
-        data["mail_draft"] = {k: p.get(k) for k in ("borrador", "texto", "responde_a", "envio_habilitado")}
+    elif kind in {"mail", "mail_thread", "mail_draft"}:
+        _absorb_mail(p, data)
     elif kind == "news_list":
         # Rama propia (igual que el correo): sin ella, news_rows caía en el "else" genérico, que
         # la reconstruye como una tabla cruda sin formato (mia.modules.community.noticias.tools) — sin
         # enlaces clicables ni la tarjeta premium que sí entiende el panel de noticias del 2D.
         data["news_rows"] = p.get("news_rows") or []
     elif kind == "table":
-        tables.append(table_view(p))
-        # Fase H: los KPI y gráficos de primera clase que la herramienta YA calculó (p. ej.
-        # analisis_economico_nominas) se perdían por completo — table_view() solo traduce columnas/
-        # filas. Se priorizan sobre los derivados heurísticamente más abajo en legacy_view().
-        cards.extend(kpis_to_cards(p.get("kpis")))
-        if isinstance(p.get("charts"), list):
-            charts.extend(c for c in p["charts"] if isinstance(c, dict))
-        # Estadísticas de primera clase (p. ej. media/mediana/mínimo/máximo por departamento, ya
-        # calculadas): se muestran como su propia tabla con nombre, nunca mezcladas en silencio con
-        # la tabla principal ni descartadas.
-        if isinstance(p.get("stats"), dict) and p["stats"].get("rows"):
-            data["stats"] = table_view(p["stats"], "Estadísticas")
+        _absorb_table(p, data, tables, cards=cards, charts=charts)
     elif kind == "dashboard":
         cards.extend(cards_from(p.get("kpis") or {}))
         tables.extend([table_view(t, "Panel") for t in p.get("tables") or [] if t.get("rows")])
@@ -446,18 +481,7 @@ def _absorb(
         # aquí, solo se transporta lo que el backend ya sabe en el momento de encolar.
         data["job"] = {k: p.get(k) for k in ("job_id", "kind", "status", "periodo", "formato")}
     else:
-        body = {k: v for k, v in p.items() if k not in {"type", "title"}}
-        cards.extend(cards_from(body))
-        tables.extend(
-            [
-                _list_table(_label(k), v)
-                for k, v in body.items()
-                if isinstance(v, list) and v and all(isinstance(x, dict) for x in v)
-            ]
-        )
-        for key in ("documento", "enlace", "url"):
-            if isinstance(body.get(key), str) and body[key].startswith("/api/"):
-                actions.append({"type": "open_document", "url": body[key], "label": "Abrir documento"})
+        _absorb_generic(p, actions, cards, tables)
 
 
 def _merge_same_schema_tables(tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -481,7 +505,7 @@ def _merge_same_schema_tables(tables: list[dict[str, Any]]) -> list[dict[str, An
     shared_base = all(t.split(" — ")[0] == base for t in raw_titles)
     merged_title = base if shared_base and base != raw_titles[0] else raw_titles[0]
     merged = {**mergeable[0], "title": merged_title, "rows": all_rows, "total": len(all_rows)}
-    return [merged] + other
+    return [merged, *other]
 
 
 def legacy_view(
@@ -496,15 +520,22 @@ def legacy_view(
     cards: list[dict[str, Any]] = []
     tables: list[dict[str, Any]] = []
     native_charts: list[dict[str, Any]] = []
-    calendar_tools = {"consulta_agenda", "detalle_reunion", "disponibilidad_agenda", "calendarios_disponibles",
-                      "proponer_reunion", "ejecutar_propuesta_agenda", "preparar_reunion"}
+    calendar_tools = {
+        "consulta_agenda",
+        "detalle_reunion",
+        "disponibilidad_agenda",
+        "calendarios_disponibles",
+        "proponer_reunion",
+        "ejecutar_propuesta_agenda",
+        "preparar_reunion",
+    }
     # Calendar counts/timestamps are not business KPI. Other domains retain their summaries.
     extra = summary_view(
         [item for item in summaries or [] if item.get("tool") not in calendar_tools],
         suppress_comparison=suppress_comparison,
     )
     for p in presentations:
-        _absorb(p, data, actions, cards, tables, native_charts)
+        _absorb(p, data, actions, cards, tables, charts=native_charts)
     tables = _merge_same_schema_tables(tables)
     every_table = list(tables)
     if tables:

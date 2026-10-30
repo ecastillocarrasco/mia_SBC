@@ -17,6 +17,7 @@ from mia.data import ClockMark
 from mia.ingestion.mappers.hr import ShiftKind
 from mia.llm import ToolCall
 from mia.modules.registry import build_registry
+from mia.modules.rrhh.fichajes.tools import _localize_marks
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp, _shift
 
@@ -119,7 +120,6 @@ def test_localize_marks_converts_utc_to_local_madrid_time() -> None:
     hora de fichaje 2h por detrás de la real. 12:00 UTC en octubre (CEST, UTC+2) son las 14:00 en
     Madrid. Prueba pura, a propósito separada de la base de datos: SQLite (solo tests) no reproduce
     el comportamiento real de PostgreSQL de devolver el tzinfo tal cual se guardó."""
-    from mia.modules.rrhh.fichajes.tools import _localize_marks
 
     marks = [datetime(2026, 10, 12, 12, 0, tzinfo=UTC), datetime(2026, 10, 12, 20, 0, tzinfo=UTC)]
     localized = _localize_marks(marks)

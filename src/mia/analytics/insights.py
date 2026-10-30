@@ -116,7 +116,9 @@ class InsightEngine:
                 Insight(
                     type="max_value",
                     importance=0.5,
-                    text=f"El valor más alto se registró en {mx['label']}: {mx['value']}{(' ' + unit) if unit else ''}.",
+                    text=(
+                        f"El valor más alto se registró en {mx['label']}: {mx['value']}{(' ' + unit if unit else '')}."
+                    ),
                     data=mx,
                 )
             )
@@ -125,7 +127,9 @@ class InsightEngine:
                 Insight(
                     type="min_value",
                     importance=0.4,
-                    text=f"El valor más bajo se registró en {mn['label']}: {mn['value']}{(' ' + unit) if unit else ''}.",
+                    text=(
+                        f"El valor más bajo se registró en {mn['label']}: {mn['value']}{(' ' + unit if unit else '')}."
+                    ),
                     data=mn,
                 )
             )

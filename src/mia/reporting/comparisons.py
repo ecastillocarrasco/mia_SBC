@@ -8,8 +8,10 @@ solo calcula diferencias cuando ambos periodos permiten exponer ese agregado.
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import Any
 
+from mia.query.period import period_engine
 from mia.text import normalize_key
 
 _MONTHS = {
@@ -50,7 +52,7 @@ def explicit_month_comparison(request: str) -> tuple[str, str] | None:
         if iso not in full:
             full.append(iso)
     if len(full) == 2 and len(list(re.finditer(rf"\b({month_names})\b", text))) == 2:
-        return tuple(sorted(full))
+        return min(full), max(full)
     if len(full) > 2:
         return None
 
@@ -58,9 +60,7 @@ def explicit_month_comparison(request: str) -> tuple[str, str] | None:
     # «agosto de 2025 y 2026», «agosto 2025/2026», «agosto de los años 2025 y 2026».
     all_months = list(re.finditer(rf"\b({month_names})\b", text))
     years = list(re.finditer(r"\b20\d{2}\b", text))
-    if len(all_months) != 1 or len(years) != 2:
-        return None
-    if years[0].group() == years[1].group():
+    if len(all_months) != 1 or len(years) != 2 or years[0].group() == years[1].group():
         return None
     connector = text[years[0].end() : years[1].start()]
     valid_connector = bool(
@@ -81,7 +81,8 @@ def explicit_month_comparison(request: str) -> tuple[str, str] | None:
     after_ok = bool(re.fullmatch(r"\s*(?:en|de(?:l)?|para(?:\s+el\s+mes\s+de)?)\s+", after))
     if not before_ok and not after_ok:
         return None
-    return tuple(sorted(f"{y.group()}-{_MONTHS[month.group(1)]:02d}" for y in years))
+    periods = sorted(f"{y.group()}-{_MONTHS[month.group(1)]:02d}" for y in years)
+    return periods[0], periods[1]
 
 
 _THIS_YEAR_HINTS = ("este ano", "el ano actual", "ano actual", "ano en curso")
@@ -89,7 +90,7 @@ _LAST_YEAR_HINTS = ("ano pasado", "el ano anterior", "ano anterior", "ultimo ano
 
 
 def relative_year_comparison(request: str) -> tuple[str, str] | None:
-    """"Este año y el año pasado", "año actual comparado con el anterior"... — a diferencia de
+    """ "Este año y el año pasado", "año actual comparado con el anterior"... — a diferencia de
     ``explicit_month_comparison`` (un mes concreto en dos años, p. ej. "agosto 2025 y 2026"), esto
     compara los DOS AÑOS COMPLETOS (el actual, hasta hoy; el pasado, completo).
 
@@ -147,14 +148,18 @@ def is_export_followup(text: str) -> bool:
         return False
     generic_previous = bool(
         re.fullmatch(
-            r"(?:ahora )?(?:genera|generame|haz|prepara|pasame|dame|quiero|exporta) (?:el |un |la )?(?:informe )?(?:en )?(?:pdf|excel|xlsx|pptx|powerpoint)(?: del informe)?",
+            (
+                "(?:ahora )?(?:genera|generame|haz|prepara|pasame|dame|quiero|expo"
+                "rta) (?:el |un |la )?(?:informe )?(?:en "
+                ")?(?:pdf|excel|xlsx|pptx|powerpoint)(?: del informe)?"
+            ),
             norm,
         )
     )
     return export and (reference or generic_previous)
 
 
-def remembered_comparison(state: dict, message: str) -> tuple[tuple[str, str], set[str]] | None:
+def remembered_comparison(state: dict[str, Any], message: str) -> tuple[tuple[str, str], set[str]] | None:
     """Resuelve un seguimiento explícito contra metadatos sin cifras personales."""
     if not is_export_followup(message):
         return None
@@ -175,10 +180,37 @@ def remembered_comparison(state: dict, message: str) -> tuple[tuple[str, str], s
     return tuple(sorted(periods)), set(fields)
 
 
+def _validate_comparison_periods(
+    a: dict[str, Any], b: dict[str, Any], periods: tuple[str, str], *, today: date | None
+) -> None:
+    single_month = re.compile(r"^20\d{2}-(?:0[1-9]|1[0-2])$")
+    for summary, period in ((a, periods[0]), (b, periods[1])):
+        analyzed = summary.get("meses_analizados")
+        if single_month.fullmatch(period):
+            # Comportamiento original, sin tocar: un mes concreto ("2026-08") debe analizar
+            # EXACTAMENTE ese mes, ni uno distinto ni un rango -- si no coincide, el resultado no
+            # corresponde a lo pedido (p. ej. una ejecución de julio reutilizada para "agosto").
+            if analyzed != [period]:
+                raise ValueError(f"El análisis no corresponde exactamente al mes {period}")
+        else:
+            resolved = period_engine.resolve(period, today=today)
+            if resolved is None:
+                raise ValueError("No se puede verificar el periodo de la comparación")
+            start = resolved.start.year * 12 + resolved.start.month - 1
+            end = resolved.end.year * 12 + resolved.end.month - 1
+            expected = [f"{month // 12:04d}-{month % 12 + 1:02d}" for month in range(start, end + 1)]
+            if analyzed != expected:
+                raise ValueError("Los meses analizados no corresponden exactamente al periodo solicitado")
+        if summary.get("meses_sin_datos") or summary.get("meses_con_datos") != analyzed:
+            raise ValueError(f"Faltan datos para completar el periodo {period}; no se fabrica una comparación")
+
+
 def merge_payroll_comparison(
     first: dict[str, Any],
     second: dict[str, Any],
     periods: tuple[str, str],
+    *,
+    today: date | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Une resultados ya autorizados sin reconstruir datos de empleados.
 
@@ -190,22 +222,7 @@ def merge_payroll_comparison(
         raise ValueError("Los dos periodos deben calcular el mismo concepto económico")
     if a.get("poblacion") != b.get("poblacion"):
         raise ValueError("Las dos consultas deben usar el mismo filtro de población")
-    single_month = re.compile(r"^20\d{2}-(?:0[1-9]|1[0-2])$")
-    for summary, period in ((a, periods[0]), (b, periods[1])):
-        analyzed = summary.get("meses_analizados")
-        if single_month.fullmatch(period):
-            # Comportamiento original, sin tocar: un mes concreto ("2026-08") debe analizar
-            # EXACTAMENTE ese mes, ni uno distinto ni un rango -- si no coincide, el resultado no
-            # corresponde a lo pedido (p. ej. una ejecución de julio reutilizada para "agosto").
-            if analyzed != [period]:
-                raise ValueError(f"El análisis no corresponde exactamente al mes {period}")
-        elif not isinstance(analyzed, list) or not analyzed:
-            # Periodo multi-mes ("año pasado"/"este año", vía period_engine): no hay un único mes
-            # literal contra el que comparar el string del periodo, así que no se repite esa
-            # comprobación -- solo que de verdad se haya analizado algo.
-            raise ValueError(f"El análisis no corresponde al periodo {period}")
-        if summary.get("meses_sin_datos") or summary.get("meses_con_datos") != analyzed:
-            raise ValueError(f"Faltan datos para completar el periodo {period}; no se fabrica una comparación")
+    _validate_comparison_periods(a, b, periods, today=today)
     da = a.get("por_departamento") or {}
     db = b.get("por_departamento") or {}
     names = sorted(set(da) | set(db))
@@ -346,8 +363,13 @@ def _merge_bucket_comparison(
     included.sort(key=lambda r: -r[2])
     rows = [
         [
-            name, round(lv, 2), round(rv, 2), round(rv - lv, 2),
-            round((rv - lv) / lv * 100, 2) if lv else None, round(lh, 2), round(rh, 2),
+            name,
+            round(lv, 2),
+            round(rv, 2),
+            round(rv - lv, 2),
+            round((rv - lv) / lv * 100, 2) if lv else None,
+            round(lh, 2),
+            round(rh, 2),
         ]
         for name, lv, rv, lh, rh in included
     ]
@@ -355,14 +377,17 @@ def _merge_bucket_comparison(
         "type": "table",
         "title": f"Comparativa de trabajo temporal por {row_label.lower()} · {label_a} / {label_b}",
         "columns": [
-            row_label, label_a + " (€)", label_b + " (€)", "Variación (€)", "Variación (%)",
-            "Horas " + label_a, "Horas " + label_b,
+            row_label,
+            label_a + " (€)",
+            label_b + " (€)",
+            "Variación (€)",
+            "Variación (%)",
+            "Horas " + label_a,
+            "Horas " + label_b,
         ],
         "rows": rows,
     }
-    warnings = (
-        [f"{len(excluded)} {row_label.lower()}(s) sin datos comparables en ambos periodos."] if excluded else []
-    )
+    warnings = [f"{len(excluded)} {row_label.lower()}(s) sin datos comparables en ambos periodos."] if excluded else []
     return table, [(name, lv, rv) for name, lv, rv, *_ in included], warnings
 
 
@@ -376,8 +401,12 @@ def merge_trabajo_temporal_comparison(
     protegidos: cada boletín ya es un importe individual visible, no hay umbral que proteger)."""
     a, b = first, second
     label_a, label_b = periods
-    dept = _merge_bucket_comparison(a.get("por_departamento") or {}, b.get("por_departamento") or {}, label_a, label_b, "Departamento")
-    company = _merge_bucket_comparison(a.get("por_empresa") or {}, b.get("por_empresa") or {}, label_a, label_b, "Empresa")
+    dept = _merge_bucket_comparison(
+        a.get("por_departamento") or {}, b.get("por_departamento") or {}, label_a, label_b, "Departamento"
+    )
+    company = _merge_bucket_comparison(
+        a.get("por_empresa") or {}, b.get("por_empresa") or {}, label_a, label_b, "Empresa"
+    )
     if dept is None and company is None:
         raise ValueError("No hay departamentos ni empresas con datos comparables en ambos periodos")
     warnings: list[str] = []
@@ -396,15 +425,17 @@ def merge_trabajo_temporal_comparison(
             total_b = round(sum(r[2] for r in rows_pairs), 2)
         else:
             tables.append(table)
-        charts.append({
-            "type": "grouped_bar",
-            "title": table["title"],
-            "labels": [r[0] for r in rows_pairs],
-            "series": [
-                {"name": label_a, "values": [r[1] for r in rows_pairs]},
-                {"name": label_b, "values": [r[2] for r in rows_pairs]},
-            ],
-        })
+        charts.append(
+            {
+                "type": "grouped_bar",
+                "title": table["title"],
+                "labels": [r[0] for r in rows_pairs],
+                "series": [
+                    {"name": label_a, "values": [r[1] for r in rows_pairs]},
+                    {"name": label_b, "values": [r[2] for r in rows_pairs]},
+                ],
+            }
+        )
     assert main_table is not None  # noqa: S101 — garantizado por el `if dept is None and company is None` de arriba
     difference = round(total_b - total_a, 2)
     pct = round(difference / total_a * 100, 2) if total_a else None

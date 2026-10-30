@@ -13,9 +13,11 @@ import pytest
 
 from mia.llm.base import LLMCompleted, LLMRequest, Message, TextDelta, ToolCall, ToolCallRequested
 from mia.llm.fake import FakeLLMProvider
+from mia.privacy_gateway import gateway as gateway_module
 from mia.privacy_gateway.context_manager import set_operation_context
 from mia.privacy_gateway.exceptions import UnsafeContentBlockedError
 from mia.privacy_gateway.gateway import PrivacyGateway
+from mia.privacy_gateway.presidio_engine import DetectedEntity
 from mia.privacy_gateway.token_vault import TokenVault
 from mia.settings import PrivacyGatewaySettings
 
@@ -26,8 +28,6 @@ NAME_B = "Laura Pérez Díaz"
 def fake_gateway(monkeypatch, script):
     # Test unitario de integración: sustituye solo el detector NLP por uno determinista
     # para evitar dependencias del modelo spaCy y mantener la prueba rápida y estable.
-    from mia.privacy_gateway import gateway as gateway_module
-    from mia.privacy_gateway.presidio_engine import DetectedEntity
 
     class Detector:
         def analyze(self, text):
@@ -161,7 +161,6 @@ async def test_business_identifier_with_token_like_shape_is_left_untouched(monke
 
 @pytest.mark.asyncio
 async def test_disabled_gateway_pass_through(monkeypatch):
-    from mia.privacy_gateway import gateway as gateway_module
 
     monkeypatch.setattr(gateway_module, "get_presidio_engine", lambda _: None)
     settings = PrivacyGatewaySettings(enabled=False)

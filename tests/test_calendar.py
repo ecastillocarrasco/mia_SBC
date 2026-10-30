@@ -505,10 +505,18 @@ async def test_unknown_provider_does_not_fall_back_to_microsoft(calendar):
 
 async def test_optional_schema_is_not_required_when_disabled(calendar):
     async with calendar.db.session() as session:
-        await session.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
+        await session.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL)"))
+        previous = list((await session.execute(text("SELECT version_num FROM alembic_version"))).scalars())
+        await session.execute(text("DELETE FROM alembic_version"))
         await session.execute(text("INSERT INTO alembic_version VALUES ('0013')"))
-    assert await schema_problem(calendar.db) is None
-    assert await schema_problem(calendar.db, calendar_enabled=True)
+    try:
+        assert await schema_problem(calendar.db) is None
+        assert await schema_problem(calendar.db, calendar_enabled=True)
+    finally:
+        async with calendar.db.session() as session:
+            await session.execute(text("DELETE FROM alembic_version"))
+            for revision in previous:
+                await session.execute(text("INSERT INTO alembic_version VALUES (:revision)"), {"revision": revision})
 
 
 @pytest.mark.parametrize("failure", [False, True])
@@ -925,7 +933,11 @@ async def test_reported_tomorrow_request_preserves_both_meetings(calendar):
     assert calendar.requests[-1].url.params["endDateTime"].startswith("2026-10-31T00:00")
 
 
-async def test_repeated_explicit_agenda_always_refreshes_calendar_even_if_llm_only_answers(calendar):
+@pytest.mark.parametrize(
+    "repeat_message",
+    ["Muestrame mi agenda de mañana", "Vuelve a mostrar mi agenda de mañana", "Muéstrame de nuevo mi agenda de mañana"],
+)
+async def test_repeated_explicit_agenda_always_refreshes_calendar_even_if_llm_only_answers(calendar, repeat_message):
     from mia.conversation.events import ResultEvent  # noqa: PLC0415
 
     fake = FakeLLMProvider(lambda request: final_answer("Tus reuniones para mañana.", "Tu agenda de mañana."))
@@ -937,7 +949,7 @@ async def test_repeated_explicit_agenda_always_refreshes_calendar_even_if_llm_on
     second = [
         e
         async for e in engine.run(
-            message="Muestrame mi agenda de mañana",
+            message=repeat_message,
             user=USER,
             session_id=first_result.session_id,
         )

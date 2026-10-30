@@ -91,7 +91,7 @@ def select_modules(message: str, module_keywords: dict[str, tuple[str, ...]]) ->
     """Los módulos que esta pregunta necesita, además de los que se incluyen siempre."""
     normalized = normalize_key(message)
     if _is_pure_greeting(normalized):
-        return ALWAYS_ON
+        return set(ALWAYS_ON)
     matched = {module for module, keywords in module_keywords.items() if any(_matches(k, normalized) for k in keywords)}
     if not (matched - _SOFT_SIGNAL):
         # Nada reconocido (o solo señales "blandas" como "empleados"): catálogo completo, igual
@@ -99,4 +99,4 @@ def select_modules(message: str, module_keywords: dict[str, tuple[str, ...]]) ->
         # reconocido" (no cae en este fallback): coincidir con finanzas no debe arrastrar los 82
         # de RRHH, solo añadir ese aviso.
         matched |= {m for m in module_keywords if m not in _WITHOUT_REAL_TOOLS}
-    return ALWAYS_ON | matched
+    return matched | ALWAYS_ON

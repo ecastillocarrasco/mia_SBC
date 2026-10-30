@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -11,7 +12,7 @@ from mia.api.sse import to_sse
 from mia.conversation import TurnResult
 
 
-def _att_kwargs(body: ChatRequest, services: ServicesDep) -> dict:
+def _att_kwargs(body: ChatRequest, services: ServicesDep) -> dict[str, Any]:
     """Extrae kwargs de adjuntos del request si la funcionalidad está activa."""
     if services.settings.attachments.enabled and body.attachment_ids:
         return {"attachment_ids": body.attachment_ids, "attachment_service": services.attachment_service}

@@ -26,7 +26,9 @@ from tests.conftest import make_settings
 _VALID_PRODUCTION_BASE: dict[str, object] = {
     "environment": Environment.PRODUCTION,
     "auth": {"mode": AuthMode.EASYAUTH},
-    "llm": {"provider": LLMProviderName.OPENAI},
+    "mail": {"mailbox_source": "user"},
+    "llm": {"provider": LLMProviderName.AZURE_OPENAI, "base_url": "https://prueba.openai.azure.com/openai/v1"},
+    "reports": {"backend": "azure_blob", "azure_account_url": "https://prueba.blob.core.windows.net"},
     "data": {"pseudonym_key": "clave-real-desde-key-vault"},
     "privacy_gateway": {"enabled": True, "fail_open": False, "vault_key": "clave-real-desde-key-vault"},
 }

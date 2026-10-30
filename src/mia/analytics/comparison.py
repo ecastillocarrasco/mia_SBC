@@ -160,6 +160,8 @@ class MultiGroupComparison:
             hib = self.metric_higher_is_better.get(metric)
             values = [(g, self.groups[g].get(metric)) for g in group_names]
             valid = [(g, v) for g, v in values if v is not None]
+            best: tuple[str | None, float | None]
+            worst: tuple[str | None, float | None]
             if valid and hib is True:
                 best = max(valid, key=lambda x: x[1])
                 worst = min(valid, key=lambda x: x[1])

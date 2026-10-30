@@ -125,7 +125,7 @@ def time_series_stats(points: list[TimePoint]) -> dict[str, Any]:
 
     # MoM (mes a mes) — variación entre periodos consecutivos
     if n >= 2:
-        mom = []
+        mom: list[dict[str, Any]] = []
         for i in range(1, n):
             prev, curr = values[i - 1], values[i]
             abs_d = curr - prev
@@ -160,7 +160,7 @@ def time_series_stats(points: list[TimePoint]) -> dict[str, Any]:
 
     # Rolling average (ventana 3)
     if n >= 3:
-        rolling = []
+        rolling: list[float | None] = []
         window = 3
         for i in range(n):
             if i < window - 1:

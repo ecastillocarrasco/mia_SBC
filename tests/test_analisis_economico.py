@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from collections.abc import AsyncIterator
@@ -13,10 +14,16 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 
+import mia.modules.rrhh.nominas.analisis_economico as module
 from mia.auth import UserContext
 from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.conversation import ToolContext, ToolRegistry, ToolStatus
 from mia.data import Payslip
+from mia.diagnostics.analyzer import assess
+from mia.diagnostics.config import DiagnosticsSettings
+from mia.diagnostics.store import DiagnosticsStore
+from mia.diagnostics.streaming import LiveBroadcaster
+from mia.diagnostics.trace import begin_trace
 from mia.llm import ToolCall
 from mia.modules.registry import build_registry
 from tests.dbutil import fresh_database
@@ -471,11 +478,6 @@ async def test_q3_real_trace_reports_no_period_range_mismatch(q3_registry: ToolR
     """Integración de extremo a extremo con el sistema de diagnóstico REAL (no eventos simulados a mano):
     envuelve la llamada real en begin_trace(), deja que la propia herramienta emita su evento de integridad
     temporal, y comprueba con el analizador real que NO marca TEMPORAL_SCOPE_MISMATCH para «T3 2026»."""
-    from mia.diagnostics.analyzer import assess
-    from mia.diagnostics.config import DiagnosticsSettings
-    from mia.diagnostics.store import DiagnosticsStore
-    from mia.diagnostics.streaming import LiveBroadcaster
-    from mia.diagnostics.trace import begin_trace
 
     store = DiagnosticsStore(DiagnosticsSettings(enabled=True))
     broadcaster = LiveBroadcaster()
@@ -518,7 +520,6 @@ NET_PER_PERSON_SCALE = 1000.0
 async def _run_scale_scenario(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, name: str, n_people: int, n_depts: int, n_months: int
 ) -> Any:
-    import mia.modules.rrhh.nominas.analisis_economico as module
 
     async def _fake_amounts(deps: Any, slip_id: int, gate: asyncio.Semaphore) -> dict[str, float]:
         return {"liquido": NET_PER_PERSON_SCALE, "total_devengado": NET_PER_PERSON_SCALE + 200.0}
@@ -560,7 +561,7 @@ async def _run_scale_scenario(
 async def test_scales_to_332_employees_without_artificial_rejection(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, n_months: int
 ) -> None:
-    result, n_people, n_depts, months, sizes = await _run_scale_scenario(
+    result, _n_people, n_depts, _months, sizes = await _run_scale_scenario(
         tmp_path, monkeypatch, name=f"scale_332_{n_months}.db", n_people=332, n_depts=8, n_months=n_months
     )
     assert result.status is ToolStatus.OK, result.summary
@@ -584,7 +585,7 @@ async def test_scales_to_332_employees_without_artificial_rejection(
 async def test_scales_to_500_employees_twelve_months_without_artificial_rejection(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    result, n_people, n_depts, months, sizes = await _run_scale_scenario(
+    result, _n_people, _n_depts, _months, _sizes = await _run_scale_scenario(
         tmp_path, monkeypatch, name="scale_500_12.db", n_people=500, n_depts=10, n_months=12
     )
     assert result.status is ToolStatus.OK, result.summary
@@ -600,7 +601,6 @@ async def test_rectificative_payslips_are_not_double_counted(tmp_path: Path, mon
     """Nóminas adicionales/rectificativas: si una persona tiene DOS filas de Payslip para el mismo mes
     (p. ej. una ordinaria y una rectificativa posterior), el agregador debe contar una sola vez, no sumar
     ambas (ya lo hacía `slip_index`, que se queda con la primera; esto lo deja probado explícitamente)."""
-    import mia.modules.rrhh.nominas.analisis_economico as module
 
     async def _fake_amounts(deps: Any, slip_id: int, gate: asyncio.Semaphore) -> dict[str, float]:
         return {"liquido": NET_PER_PERSON_SCALE, "total_devengado": NET_PER_PERSON_SCALE + 200.0}

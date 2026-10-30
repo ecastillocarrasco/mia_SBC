@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
 from mia.diagnostics.models import DiagnosticEvent, DiagnosticIssue, EventStage, EventStatus, TraceRecord, TraceStatus
 from mia.diagnostics.sanitizer import redact
+
+log = logging.getLogger(__name__)
 
 _current_trace: ContextVar[TraceContext | None] = ContextVar("_mia_trace", default=None)
 _current_call_id: ContextVar[str | None] = ContextVar("_mia_call_id", default=None)
@@ -95,7 +98,7 @@ class TraceContext:
             # Retransmite al panel en tiempo real
             self._broadcaster.publish({"type": "event", "trace_id": self._record.trace_id, **event.to_dict()})
         except Exception:  # pragma: no cover — diagnósticos nunca rompen el pipeline
-            pass
+            log.warning("trace.emit.failed")
 
     def _update_summary(self, stage: str | EventStage, data: dict[str, Any]) -> None:
         """Actualiza los campos de resumen de la TraceRecord basándose en el stage."""
@@ -117,7 +120,7 @@ class TraceContext:
             self._record.tokens_input += data.get("input_tokens", 0)
             self._record.tokens_output += data.get("output_tokens", 0)
             self._record.tokens_cached += data.get("cached_tokens", 0)
-        elif s == EventStage.ERROR or s == EventStage.EXCEPTION:
+        elif s in (EventStage.ERROR, EventStage.EXCEPTION):
             self._record.error_count += 1
         elif s == EventStage.WARNING:
             self._record.warning_count += 1
@@ -134,7 +137,7 @@ class TraceContext:
         try:
             self._record.call_graph.append(node)
         except Exception:  # pragma: no cover
-            pass
+            log.warning("trace.add_call_graph_node.failed")
 
     def finish(
         self,
@@ -161,7 +164,7 @@ class TraceContext:
                 {"type": "trace_complete", "trace_id": self._record.trace_id, **self._record.to_summary()}
             )
         except Exception:  # pragma: no cover
-            pass
+            log.warning("trace.finish.failed")
 
 
 @asynccontextmanager
@@ -202,12 +205,9 @@ async def begin_trace(
         ctx.finish(status=TraceStatus.ERROR)
         raise
     finally:
-        try:
+        # El cliente SSE puede cerrar el generador desde otro contexto asyncio.
+        with suppress(ValueError):
             _current_trace.reset(token)
-        except ValueError:
-            # El generador fue cerrado desde un contexto asyncio diferente al que lo creó
-            # (SSE stream cerrado por el cliente). El reset falla pero es seguro ignorarlo.
-            pass
         # Si finish() no fue llamado explícitamente (error inesperado), cierro aquí
         if record.status == TraceStatus.RUNNING:
             ctx.finish(status=TraceStatus.ERROR)

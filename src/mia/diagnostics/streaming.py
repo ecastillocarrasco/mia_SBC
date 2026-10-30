@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from collections.abc import AsyncIterator
 from typing import Any
@@ -31,10 +32,8 @@ class LiveBroadcaster:
         return q
 
     def unsubscribe(self, q: asyncio.Queue[dict[str, Any] | None]) -> None:
-        try:
+        with contextlib.suppress(ValueError):
             self._queues.remove(q)
-        except ValueError:
-            pass
         # Desbloquea al consumidor enviando sentinel
         if not q.full():
             q.put_nowait(None)
@@ -46,10 +45,8 @@ class LiveBroadcaster:
             try:
                 if q.full():
                     # Descarta el más antiguo para hacer hueco
-                    try:
+                    with contextlib.suppress(asyncio.QueueEmpty):
                         q.get_nowait()
-                    except asyncio.QueueEmpty:
-                        pass
                 q.put_nowait(data)
             except Exception:  # pragma: no cover
                 dead.append(q)

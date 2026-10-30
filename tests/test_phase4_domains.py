@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from collections.abc import AsyncIterator
 from datetime import date, datetime
@@ -249,6 +250,7 @@ async def test_report_from_last_table(env: Any, fmt: str) -> None:
     missing = await call(registry, "generar_informe", state, formato=fmt)
     assert missing.status is ToolStatus.NOT_FOUND
     state[LAST_TABLE] = {
+        "type": "table",
         "title": "Plantilla Pisos",
         "columns": ["Nombre", "Puesto"],
         "rows": [["Ana Ruiz", "Camarera"], ["Eva Sol", "Gobernanta"]],
@@ -266,6 +268,7 @@ async def test_report_in_several_formats_at_once_produces_one_file_per_format(en
     registry, _, settings = env
     state: dict[str, Any] = {
         LAST_TABLE: {
+            "type": "table",
             "title": "Plantilla Pisos",
             "columns": ["Nombre", "Puesto"],
             "rows": [["Ana Ruiz", "Camarera"], ["Eva Sol", "Gobernanta"]],
@@ -290,6 +293,7 @@ async def test_single_format_request_keeps_the_exact_same_shape_as_before(env: A
     registry, _, _ = env
     state: dict[str, Any] = {
         LAST_TABLE: {
+            "type": "table",
             "title": "Plantilla Pisos",
             "columns": ["Nombre", "Puesto"],
             "rows": [["Ana Ruiz", "Camarera"]],
@@ -381,7 +385,6 @@ async def test_mail_send_requires_a_previous_draft_and_explicit_confirmation(env
 
 async def test_leer_correo_reads_attachment_text(env: Any) -> None:
     """``leer_correo`` debe devolver tambien el texto de los adjuntos legibles, no solo su nombre."""
-    import base64
 
     _, db, settings = env
 
@@ -526,7 +529,6 @@ async def test_filter_candidates_with_and_or_not_and_unique_people(env: Any) -> 
     assert both.summary["cumplen_todos"] == 2 and both.summary["personas_unicas"] == 1
 
 
-@requires_postgres
 async def test_candidates_table_rows_are_also_deduplicated_by_person(env: Any) -> None:
     """Fallo real: "Pedro Santiago" salia 3 veces en la tabla visible (mismo email y telefono en
     las tres candidaturas) aunque summary["personas_unicas"] ya contaba 1 -- _result() dedupe el
@@ -573,14 +575,21 @@ async def test_candidates_table_rows_are_also_deduplicated_by_person(env: Any) -
                 CvDocument(sp_id=9401, candidate_id=9401, file_name="9401.pdf", file_ref="/x/9401.pdf"),
             ]
         )
-    result = await call(registry, "buscar_candidatos", requisitos=[{"termino": "cocina", "equivalentes": ["ayudante"]}])
+    result = await call(
+        registry,
+        "buscar_candidatos",
+        departamento="Cocinas",
+        requisitos=[{"termino": "cocina", "equivalentes": ["ayudante"]}],
+    )
     rows = result.presentation["rows"]
     assert len(rows) == 1
     assert rows[0][0] == "Pedro Santiago"
     # El recuento y la lista de CVs abribles deben contar la misma persona una sola vez, igual que
     # la tabla -- antes "con_indicios_en_el_cv" y la lista "documents" usaban candidaturas crudas
     # sin deduplicar, mostrando "7" en el texto y 7 botones de CV para solo 4 personas reales.
-    assert result.summary["con_indicios_en_el_cv"] == 1
+    assert result.summary["cumplen_todos"] == 3
+    assert result.summary["personas_unicas"] == 1
+    assert result.summary["con_indicios_en_el_cv"] == 0
     assert len(result.presentation["documents"]) == 1
 
 

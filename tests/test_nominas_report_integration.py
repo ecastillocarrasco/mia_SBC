@@ -27,7 +27,9 @@ from mia.conversation.tools import LAST_TABLE, remember_table
 from mia.llm import ToolCall
 from mia.modules.rrhh.informes.document import to_document
 from mia.modules.rrhh.informes.render import RENDERERS
-from tests.test_analisis_economico import NOW, q3_registry  # noqa: F401 — fixture reutilizada
+from tests.test_analisis_economico import NOW, q3_registry
+
+__all__ = ["q3_registry"]
 
 ADMIN = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
 

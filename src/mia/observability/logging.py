@@ -40,7 +40,9 @@ def configure_logging(level: str = "INFO", json_output: bool = True) -> None:
     # pero no debe impedir que arranque el resto del logging).
     for stream in (sys.stdout, sys.stderr):
         try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
+            reconfigure = getattr(stream, "reconfigure", None)
+            if reconfigure is not None:
+                reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError):
             pass
     logging.basicConfig(format="%(message)s", stream=sys.stdout, level=level.upper(), force=True)

@@ -22,9 +22,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.data.jobs import (
@@ -175,7 +175,7 @@ async def claim_next(
                 attempt_count=ReportJob.attempt_count + 1,
             )
         )
-        if result.rowcount == 1:
+        if cast(CursorResult[Any], result).rowcount == 1:
             await db.flush()
             return await get(db, candidate_id)
     return None
@@ -192,7 +192,7 @@ async def heartbeat(
         .values(lease_until=_now() + timedelta(seconds=lease_seconds))
     )
     await db.flush()
-    return result.rowcount == 1
+    return cast(CursorResult[Any], result).rowcount == 1
 
 
 async def update_progress(db: AsyncSession, job_id: str, *, progress: float, message: str | None = None) -> None:
@@ -279,4 +279,4 @@ async def reap_stale_leases(db: AsyncSession, *, now: datetime | None = None) ->
         .values(status=JOB_QUEUED, lease_owner=None, lease_until=None)
     )
     await db.flush()
-    return result.rowcount
+    return cast(CursorResult[Any], result).rowcount

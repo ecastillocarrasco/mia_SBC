@@ -27,24 +27,40 @@ def _vec_literal(blob: bytes) -> str:
     return "[" + ",".join(repr(float(x)) for x in floats) + "]"
 
 
+def _embedding_table(name: str) -> sa.TableClause:
+    return sa.table(
+        name,
+        sa.column("id", sa.Integer()),
+        sa.column("embedding", sa.LargeBinary()),
+        sa.column("embedding_vec", Vector(DIM)),
+    )
+
+
 def _backfill_up(table: str) -> None:
     bind = op.get_bind()
-    rows = bind.execute(sa.text(f"SELECT id, embedding FROM {table} WHERE embedding IS NOT NULL")).fetchall()
+    source = _embedding_table(table)
+    rows = bind.execute(sa.select(source.c.id, source.c.embedding).where(source.c.embedding.is_not(None))).fetchall()
+    statement = (
+        source.update()
+        .where(source.c.id == sa.bindparam("row_id"))
+        .values(embedding_vec=sa.cast(sa.bindparam("vec", type_=sa.Text()), Vector(DIM)))
+    )
     for start in range(0, len(rows), BATCH):
         batch = rows[start : start + BATCH]
-        bind.execute(
-            sa.text(f"UPDATE {table} SET embedding_vec = CAST(:vec AS vector) WHERE id = :id"),
-            [{"id": r.id, "vec": _vec_literal(r.embedding)} for r in batch],
-        )
+        bind.execute(statement, [{"row_id": row.id, "vec": _vec_literal(row.embedding)} for row in batch])
 
 
 def _backfill_down(table: str) -> None:
     bind = op.get_bind()
-    rows = bind.execute(sa.text(f"SELECT id, embedding_vec FROM {table} WHERE embedding_vec IS NOT NULL")).fetchall()
+    source = _embedding_table(table)
+    rows = bind.execute(
+        sa.select(source.c.id, source.c.embedding_vec).where(source.c.embedding_vec.is_not(None))
+    ).fetchall()
+    statement = source.update().where(source.c.id == sa.bindparam("row_id")).values(embedding=sa.bindparam("raw"))
     for start in range(0, len(rows), BATCH):
         batch = rows[start : start + BATCH]
-        params = [{"id": r.id, "raw": np.asarray(r.embedding_vec, dtype=np.float32).tobytes()} for r in batch]
-        bind.execute(sa.text(f"UPDATE {table} SET embedding = :raw WHERE id = :id"), params)
+        params = [{"row_id": row.id, "raw": np.asarray(row.embedding_vec, dtype=np.float32).tobytes()} for row in batch]
+        bind.execute(statement, params)
 
 
 def upgrade() -> None:

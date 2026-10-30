@@ -97,7 +97,7 @@ class Tokenizer:
             e for e in entities if e.score >= threshold and action_for(e.entity_type, policy) is Action.TOKENIZE
         ]
         if not relevant:
-            result = (text, Counter())
+            result: tuple[str, Counter[str]] = (text, Counter())
             with self._lock:
                 self._tokenize_cache[cache_key] = result
             return result
@@ -139,9 +139,9 @@ class Tokenizer:
             for k in stale:
                 del self._assigned[k]
             stale_counters = [k for k in self._counters if k[0] == operation_id]
-            for k in stale_counters:
-                del self._counters[k]
+            for counter_key in stale_counters:
+                del self._counters[counter_key]
             stale_cache = [k for k in self._tokenize_cache if k[0] == operation_id]
-            for k in stale_cache:
-                del self._tokenize_cache[k]
+            for cache_key in stale_cache:
+                del self._tokenize_cache[cache_key]
         self._vault.purge_operation(operation_id)

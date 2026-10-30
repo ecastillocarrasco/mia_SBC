@@ -23,6 +23,7 @@ from mia.sources.mappers.common import (
     sp_local_date,
     text,
 )
+
 from mia.text import normalize_key
 
 Row = dict[str, Any]

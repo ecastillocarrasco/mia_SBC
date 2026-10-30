@@ -47,7 +47,7 @@ log = get_logger(__name__)
 
 def _start_retention_tasks(
     services: Services, settings: Settings
-) -> tuple[asyncio.Task, asyncio.Task, asyncio.Task | None]:
+) -> tuple[asyncio.Task[None], asyncio.Task[None], asyncio.Task[None] | None]:
     conversations = asyncio.create_task(run_retention_cleanup(services.db, settings.conversation_retention_days))
     audit = asyncio.create_task(run_audit_retention_cleanup(services.db, settings.audit_retention_days))
     reports = (
@@ -74,6 +74,13 @@ def _start_calendar_cleanup(services: Services, settings: Settings) -> asyncio.T
     from mia.modules.correo.calendar.store import run_retention_cleanup as run_calendar_cleanup  # noqa: PLC0415
 
     return asyncio.create_task(run_calendar_cleanup(services.db, settings.conversation_retention_days))
+
+
+async def _cancel_background_task(task: asyncio.Task[object] | None) -> None:
+    if task is not None:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
 
 
 def create_app(settings: Settings | None = None, services: Services | None = None) -> FastAPI:
@@ -121,23 +128,8 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
         try:
             yield
         finally:
-            if calendar_cleanup is not None:
-                calendar_cleanup.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await calendar_cleanup
-            if report_cleanup is not None:
-                report_cleanup.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await report_cleanup
-            retention_cleanup.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await retention_cleanup
-            audit_cleanup.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await audit_cleanup
-            warm.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await warm
+            for task in (calendar_cleanup, report_cleanup, retention_cleanup, audit_cleanup, warm):
+                await _cancel_background_task(task)
             if job_worker is not None:
                 await job_worker.aclose()
             if diag_store:

@@ -23,6 +23,8 @@ from mia.attachments.model import (
 )
 from mia.attachments.storage import LocalStorage, StorageBackend, attachment_path
 from mia.attachments.validation import sanitize_filename, sha256_hex, validate
+from mia.diagnostics import EventStage, EventStatus
+from mia.diagnostics import emit as diag_emit
 from mia.observability import get_logger
 
 if TYPE_CHECKING:
@@ -68,11 +70,10 @@ class AttachmentService:
         declared_mime: str,
         user_id: str,
         session_id: str | None,
+        *,
         tenant_id: str = "default",
     ) -> AttachmentRecord:
         """Valida, almacena y procesa un archivo. Devuelve el registro resultante."""
-        from mia.diagnostics import EventStage, EventStatus  # noqa: PLC0415
-        from mia.diagnostics import emit as diag_emit
 
         diag_emit(
             EventStage.ATTACHMENT_RECEIVED,
@@ -89,7 +90,9 @@ class AttachmentService:
         result = validate(content, safe_name, declared_mime, self._max_bytes)
         if not result.ok:
             diag_emit(EventStage.ATTACHMENT_VALIDATION_COMPLETE, status=EventStatus.ERROR, data={"error": result.error})
-            record = self._make_error_record(safe_name, declared_mime, user_id, session_id, tenant_id, result.error)
+            record = self._make_error_record(
+                safe_name, declared_mime, user_id, session_id, tenant_id, error=result.error
+            )
             return record
 
         diag_emit(
@@ -209,8 +212,6 @@ class AttachmentService:
 
     async def expire_old(self) -> int:
         """Elimina adjuntos vencidos. Devuelve el número eliminado."""
-        from mia.diagnostics import EventStage  # noqa: PLC0415
-        from mia.diagnostics import emit as diag_emit
 
         now = datetime.now(UTC)
         expired_ids = [aid for aid, r in self._records.items() if r.expires_at <= now]
@@ -219,7 +220,7 @@ class AttachmentService:
             try:
                 await self._storage.delete(r.storage_location)
             except Exception:
-                pass
+                log.warning("service.expire_old.failed")
             r.status = AttachmentStatus.EXPIRED
             del self._records[aid]
             diag_emit(EventStage.ATTACHMENT_EXPIRED, data={"attachment_id": aid, "filename": r.original_filename})
@@ -261,6 +262,7 @@ class AttachmentService:
         user_id: str,
         session_id: str | None,
         tenant_id: str,
+        *,
         error: str,
     ) -> AttachmentRecord:
         now = datetime.now(UTC)

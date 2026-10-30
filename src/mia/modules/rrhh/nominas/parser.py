@@ -97,7 +97,7 @@ def parse_employer_ss(text: str) -> dict[str, Any]:
     if not ss_start:
         return {}
     section = text[ss_start.end() :]
-    lines = []
+    lines: list[dict[str, Any]] = []
     for m in _SS_LINE.finditer(section):
         try:
             tipo = float(m.group(3).replace(",", "."))

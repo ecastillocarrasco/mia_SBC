@@ -92,7 +92,7 @@ def download_formats(executions: list[Any]) -> dict[str, dict[str, Any]]:
 
 
 def _quality_notes(executions: list[Any]) -> dict[str, Any]:
-    notes = []
+    notes: list[str] = []
     for e in executions:
         summary = getattr(e.result, "summary", None)
         if not isinstance(summary, dict):
@@ -103,6 +103,81 @@ def _quality_notes(executions: list[Any]) -> dict[str, Any]:
         if summary.get("al_dia") is False and summary.get("aviso"):
             notes.append(str(summary["aviso"]))
     return {"advertencias": list(dict.fromkeys(notes))} if notes else {}
+
+
+def _mergeable_schema(sources: list[Any]) -> list[str] | None:
+    if len(sources) < 2 or len({e.call.name for e in sources}) != 1:
+        return None
+    if not all(e.result.presentation.get("type") == "table" for e in sources):
+        return None
+    schemas = {tuple(map(str, e.result.presentation.get("columns") or [])) for e in sources}
+    if len(schemas) != 1:
+        return None
+    return list(schemas.pop())
+
+
+def _dated_table(sources: list[Any], columns: list[str], *, title: str) -> dict[str, Any] | None:
+    column_names = [_normalized(column) for column in columns]
+    dept_idx = column_names.index("departamento")
+    day_idx = column_names.index("fecha")
+    dedup: dict[tuple[str, str], list[Any]] = {}
+    for execution in sources:
+        for row in execution.result.presentation.get("rows") or []:
+            if not isinstance(row, (list, tuple)) or len(row) != len(columns):
+                return None
+            key = (str(row[dept_idx]), str(row[day_idx]))
+            if key in dedup and list(row) != dedup[key]:
+                return None  # Inconsistencia entre consultas; no exportar números ambiguos.
+            dedup[key] = list(row)
+    ordered = [dedup[key] for key in sorted(dedup)]
+    result: dict[str, Any] = {"type": "table", "title": title[:160], "columns": columns, "rows": ordered}
+    if notes := _quality_notes(sources):
+        result["__summary__"] = notes
+    return result
+
+
+def _department_table(sources: list[Any], columns: list[str], *, title: str) -> tuple[bool, dict[str, Any] | None]:
+    column_names = [_normalized(column) for column in columns]
+    dept_idx = column_names.index("departamento")
+    dedup_by_dept: dict[str, list[Any]] = {}
+    for execution in sources:
+        for row in execution.result.presentation.get("rows") or []:
+            if not isinstance(row, (list, tuple)) or len(row) != len(columns):
+                return False, None
+            dept_value = str(row[dept_idx])
+            if _normalized(dept_value).startswith("total"):
+                continue
+            if dept_value in dedup_by_dept and list(row) != dedup_by_dept[dept_value]:
+                return False, None  # Inconsistencia entre consultas; no exportar números ambiguos.
+            dedup_by_dept[dept_value] = list(row)
+    if len(dedup_by_dept) > 1:
+        ordered = [dedup_by_dept[key] for key in sorted(dedup_by_dept)]
+        result: dict[str, Any] = {"type": "table", "title": title[:160], "columns": columns, "rows": ordered}
+        if notes := _quality_notes(sources):
+            result["__summary__"] = notes
+        return True, result
+    return True, None
+
+
+def _source_dashboard(sources: list[Any], *, title: str) -> dict[str, Any] | None:
+    tables = []
+    for execution in sources:
+        p = execution.result.presentation
+        tables.append(
+            {
+                "title": p.get("title") or "Resultados",
+                "columns": p.get("columns", []),
+                "rows": p.get("rows", []),
+            }
+        )
+    # Sin departamento en las filas, los títulos deben diferenciar la
+    # procedencia. Ocho tablas indistinguibles NO son un desglose válido.
+    if len({t["title"] for t in tables}) != len(tables):
+        return None
+    result = {"type": "dashboard", "title": title[:160], "kpis": {}, "tables": tables}
+    if notes := _quality_notes(sources):
+        result["__summary__"] = notes
+    return result
 
 
 def merge_report_sources(executions: list[Any], *, title: str) -> dict[str, Any] | None:
@@ -123,77 +198,16 @@ def merge_report_sources(executions: list[Any], *, title: str) -> dict[str, Any]
         if notes := _quality_notes(sources):
             result["__summary__"] = {**(result.get("__summary__") or {}), **notes}
         return result
-    if len(sources) < 2 or len({e.call.name for e in sources}) != 1:
+    columns = _mergeable_schema(sources)
+    if columns is None:
         return None
-    if not all(e.result.presentation.get("type") == "table" for e in sources):
-        return None
-    schemas = {tuple(map(str, e.result.presentation.get("columns") or [])) for e in sources}
-    if len(schemas) != 1:
-        return None
-    # Si cada fila identifica inequívocamente su departamento y día,
-    # podemos formar una sola tabla sin duplicar cruces de llamadas del LLM.
-    columns = list(schemas.pop())
-    column_names = [_normalized(c) for c in columns]
+    column_names = [_normalized(column) for column in columns]
     if "departamento" in column_names and "fecha" in column_names:
-        dept_idx = column_names.index("departamento")
-        day_idx = column_names.index("fecha")
-        dedup: dict[tuple[str, str], list[Any]] = {}
-        for execution in sources:
-            for row in execution.result.presentation.get("rows") or []:
-                if not isinstance(row, (list, tuple)) or len(row) != len(columns):
-                    return None
-                key = (str(row[dept_idx]), str(row[day_idx]))
-                if key in dedup and list(row) != dedup[key]:
-                    return None  # Inconsistencia entre consultas; no exportar números ambiguos.
-                dedup[key] = list(row)
-        ordered = [dedup[key] for key in sorted(dedup)]
-        result = {"type": "table", "title": title[:160], "columns": columns, "rows": ordered}
-        if notes := _quality_notes(sources):
-            result["__summary__"] = notes
-        return result
-    # Sin columna "fecha" (p. ej. analisis_economico_nominas: el periodo va en la cabecera de
-    # columna, no en una celda), pero con "departamento": cada llamada filtrada a un departamento
-    # concreto repite el MISMO título ("Gasto salarial por departamento · <periodo>"), así que el
-    # camino de "dashboard" de más abajo (que exige títulos distintos) también falla y el informe
-    # se exportaba con un solo departamento (incidencia real en preprod 2026-10-27: "comparativo
-    # de Cocina y Restaurante" exportaba solo Restaurante). Unimos por departamento, descartando
-    # la fila "TOTAL"/"TOTAL (autorizado)" de cada llamada (es el total de ESE departamento solo,
-    # no el conjunto -- combinarlas chocaría como "inconsistencia" o, peor, parecería un total
-    # real sin serlo): nunca se recalcula aquí, solo se descarta lo que ya no es correcto.
+        return _dated_table(sources, columns, title=title)
     if "departamento" in column_names:
-        dept_idx = column_names.index("departamento")
-        dedup_by_dept: dict[str, list[Any]] = {}
-        for execution in sources:
-            for row in execution.result.presentation.get("rows") or []:
-                if not isinstance(row, (list, tuple)) or len(row) != len(columns):
-                    return None
-                dept_value = str(row[dept_idx])
-                if _normalized(dept_value).startswith("total"):
-                    continue
-                if dept_value in dedup_by_dept and list(row) != dedup_by_dept[dept_value]:
-                    return None  # Inconsistencia entre consultas; no exportar números ambiguos.
-                dedup_by_dept[dept_value] = list(row)
-        if len(dedup_by_dept) > 1:
-            ordered = [dedup_by_dept[key] for key in sorted(dedup_by_dept)]
-            result = {"type": "table", "title": title[:160], "columns": columns, "rows": ordered}
-            if notes := _quality_notes(sources):
-                result["__summary__"] = notes
-            return result
-    tables = []
-    for execution in sources:
-        p = execution.result.presentation
-        tables.append(
-            {
-                "title": p.get("title") or "Resultados",
-                "columns": p.get("columns", []),
-                "rows": p.get("rows", []),
-            }
-        )
-    # Sin departamento en las filas, los títulos deben diferenciar la
-    # procedencia. Ocho tablas indistinguibles NO son un desglose válido.
-    if len({t["title"] for t in tables}) != len(tables):
-        return None
-    result = {"type": "dashboard", "title": title[:160], "kpis": {}, "tables": tables}
-    if notes := _quality_notes(sources):
-        result["__summary__"] = notes
-    return result
+        consistent, merged = _department_table(sources, columns, title=title)
+        if not consistent:
+            return None
+        if merged is not None:
+            return merged
+    return _source_dashboard(sources, title=title)

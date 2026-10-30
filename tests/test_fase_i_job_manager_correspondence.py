@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import io
 import json
+import time
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -26,6 +28,7 @@ from pypdf import PdfReader
 from sqlalchemy import select
 
 from mia.auth import UserContext
+from mia.auth.context import ROLE_PERMISSIONS, Permission
 from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
 from mia.conversation import ToolContext, ToolStatus
 from mia.conversation.tools import remember_table
@@ -33,6 +36,7 @@ from mia.data import Payslip, Report
 from mia.llm import ToolCall
 from mia.modules.registry import build_registry
 from mia.modules.rrhh.informes.jobs import JOB_KIND_INFORME_ECONOMICO, run_informe_economico_nominas
+from mia.modules.rrhh.nominas.estadisticas import format_eur
 from mia.reporting import job_manager
 from mia.reporting.worker import ReportJobWorker
 from tests.conftest import make_settings
@@ -103,7 +107,6 @@ async def _run_direct_path(services, *, periodo: str, concepto: str, formato: st
     """Camino directo: `analisis_economico_nominas` → `generar_informe`, en el MISMO turno, exactamente
     como lo ejecutaría `ConversationEngine` para una petición normal (sin "en segundo plano"). Devuelve
     el resumen real de la herramienta (periodo/departamentos/advertencias) y el documento descargable."""
-    from datetime import UTC, datetime
 
     ctx = ToolContext(user=ADMIN, request_id=None, now=datetime.now(UTC), session_state={}, user_message="")
     eco_execution = await services.registry.execute(
@@ -197,7 +200,6 @@ async def test_job_path_document_matches_the_direct_path_document_exactly(compar
     # ["total"]`, un float ya calculado por el motor — nunca recalculado aquí) y se formatea con la
     # MISMA función de producción (`format_eur`) que usa la tabla, para comprobar que la cifra exacta
     # aparece en AMBOS documentos.
-    from mia.modules.rrhh.nominas.estadisticas import format_eur
 
     por_departamento = direct_summary["por_departamento"]
     assert {"Cocina", "Recepción"} <= set(por_departamento)
@@ -281,8 +283,6 @@ async def test_a_role_permission_revoked_while_a_job_is_queued_is_caught_at_exec
        directorio de usuarios en vivo (no existe tal directorio en este sistema) — ese caso queda
        genuinamente sin control verificable con la arquitectura actual."""
     services = comparison_services
-    from mia.auth.context import ROLE_PERMISSIONS, Permission
-    from mia.modules.rrhh.informes.jobs import JOB_KIND_INFORME_ECONOMICO
 
     role_name = "mia._test_fase_i_role_revoked"
     original = dict(ROLE_PERMISSIONS)
@@ -370,7 +370,6 @@ _LARGE_VOLUME_DEPARTMENTS: dict[str, dict[str, float]] = {
 async def test_job_manager_handles_a_larger_volume_through_the_real_worker_without_silent_truncation(
     comparison_services,
 ) -> None:
-    import time
 
     services = comparison_services
     started = time.perf_counter()

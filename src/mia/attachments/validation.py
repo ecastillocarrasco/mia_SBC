@@ -122,6 +122,17 @@ def sanitize_filename(name: str) -> str:
     return name[:_MAX_FILENAME_LEN]
 
 
+def _validate_size(content: bytes, max_bytes: int) -> ValidationResult | None:
+    if not content:
+        return ValidationResult(ok=False, detected_mime="", error="El archivo está vacío.")
+
+    if len(content) > max_bytes:
+        mb = max_bytes // (1024 * 1024)
+        return ValidationResult(ok=False, detected_mime="", error=f"El archivo supera el tamaño máximo de {mb} MB.")
+
+    return None
+
+
 def validate(
     content: bytes,
     filename: str,
@@ -129,12 +140,9 @@ def validate(
     max_bytes: int,
 ) -> ValidationResult:
     """Valida un archivo adjunto. Devuelve ValidationResult con ok=False si no pasa."""
-    if not content:
-        return ValidationResult(ok=False, detected_mime="", error="El archivo está vacío.")
-
-    if len(content) > max_bytes:
-        mb = max_bytes // (1024 * 1024)
-        return ValidationResult(ok=False, detected_mime="", error=f"El archivo supera el tamaño máximo de {mb} MB.")
+    size_problem = _validate_size(content, max_bytes)
+    if size_problem is not None:
+        return size_problem
 
     safe_name = sanitize_filename(filename)
     ext = PurePosixPath(safe_name).suffix.lower()

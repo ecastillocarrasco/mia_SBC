@@ -25,15 +25,19 @@ import json
 import httpx
 
 import mia.diagnostics as diag
+from mia.api.services import Services
 from mia.connectors.sharepoint import SharePointClient, StaticTokenProvider
+from mia.conversation import ConversationEngine, Persona
 from mia.data import Payslip
 from mia.diagnostics import EventStage
 from mia.llm.base import LLMCompleted, LLMRequest, ToolCall, ToolCallRequested
 from mia.llm.fake import FakeLLMProvider, final_answer, tool_call
 from mia.main import create_app
+from mia.modules.registry import build_registry
 from tests.conftest import make_settings
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp
+from tests.planning_script import planned_script
 from tests.test_phase4b import _pdf
 from tests.test_report_routing_semantic_validation import _AUG_DEPARTMENTS, _payslip_text_with_ss
 
@@ -73,10 +77,6 @@ async def _build_repro_app(tmp_path, scripted):
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'incident_repro.db'}",
         diagnostics={"enabled": True, "admin_users": ["admin@test.local"], "admin_password": "test-password"},
     )
-
-    from mia.api.services import Services
-    from mia.conversation import ConversationEngine, Persona
-    from mia.modules.registry import build_registry
 
     services = Services.build(settings, llm=llm, db=db)
     registry = build_registry(
@@ -130,7 +130,12 @@ async def test_turn1_via_executive_redirect_then_turn2_export_delivers_the_real_
             return tool_call("generar_informe", {"formato": "pdf", "incluir_detalle": True, "incluir_grafico": True})
         return final_answer("Aquí tienes el informe.", "Listo.")
 
-    app, sp, db = await _build_repro_app(tmp_path, scripted)
+    app, sp, db = await _build_repro_app(
+        tmp_path,
+        planned_script(
+            scripted, lambda _: ("generar_informe_ejecutivo",) if turn_counter["n"] == 0 else ("generar_informe",)
+        ),
+    )
     try:
         async with app.router.lifespan_context(app):
             transport = httpx.ASGITransport(app=app)
@@ -161,7 +166,7 @@ async def test_turn1_via_executive_redirect_then_turn2_export_delivers_the_real_
                 # nunca el informe ejecutivo genérico ni un documento vacío.
                 assert "Gasto salarial por departamento" in second_body["presentations"][0]["title"]
 
-            traces = diag._store.list()
+            traces = diag._state.store.list()
             statuses = [
                 ev.data.get("status")
                 for rec in traces

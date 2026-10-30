@@ -20,10 +20,14 @@ from mia.attachments.service import AttachmentService
 from mia.attachments.storage import LocalStorage
 from mia.auth import UserContext
 from mia.conversation import ToolContext, ToolRegistry, ToolStatus
-from mia.data import ClockMark, ShiftTypeCatalog
+from mia.data import ClockMark, Employee, ShiftTypeCatalog
 from mia.ingestion.mappers.hr import ShiftKind
 from mia.llm import ToolCall
 from mia.modules.registry import build_registry
+from mia.modules.rrhh.fichajes.comparison import DayComparison, ShiftExpectation
+from mia.modules.rrhh.fichajes.hours import compute_day_hours
+from mia.modules.rrhh.fichajes.informe import _build_document, _PersonHours, _shift_label
+from mia.modules.rrhh.fichajes.pairing import ClockSession
 from tests.dbutil import fresh_database
 from tests.hr_seed import _emp, _shift
 
@@ -268,23 +272,18 @@ async def test_imports_fichajes_from_an_uploaded_attachment_before_comparing(tmp
 def test_shift_label_includes_the_area_and_schedule() -> None:
     """Pedido explícito del usuario: el detalle diario debe mostrar qué turno concreto hizo la
     persona ese día, p. ej. "Piscina 10:00-18:00", no solo el estado (correcto/desviado/…)."""
-    from mia.modules.rrhh.fichajes.comparison import ShiftExpectation
-    from mia.modules.rrhh.fichajes.informe import _shift_label
 
     shift = ShiftExpectation(DAY, "10:00", "18:00", hours=8.0, declared_night_hours=0.0, area="Piscina")
     assert _shift_label(shift) == "Piscina 10:00-18:00"
 
 
 def test_shift_label_without_an_area_omits_it() -> None:
-    from mia.modules.rrhh.fichajes.comparison import ShiftExpectation
-    from mia.modules.rrhh.fichajes.informe import _shift_label
 
     shift = ShiftExpectation(DAY, "08:00", "16:00")
     assert _shift_label(shift) == "08:00-16:00"
 
 
 def test_shift_label_with_no_scheduled_shift_is_a_dash() -> None:
-    from mia.modules.rrhh.fichajes.informe import _shift_label
 
     assert _shift_label(None) == "—"
 
@@ -292,11 +291,6 @@ def test_shift_label_with_no_scheduled_shift_is_a_dash() -> None:
 def test_detail_table_includes_a_turno_column_with_the_real_shift(registry: ToolRegistry) -> None:
     """``_build_document`` (llamado por el handler real) debe incluir una columna "Turno" en el
     detalle diario, con la etiqueta área+horario del turno programado ese día."""
-    from mia.data import Employee
-    from mia.modules.rrhh.fichajes.comparison import DayComparison, ShiftExpectation
-    from mia.modules.rrhh.fichajes.hours import compute_day_hours
-    from mia.modules.rrhh.fichajes.informe import _build_document, _PersonHours
-    from mia.modules.rrhh.fichajes.pairing import ClockSession
 
     employee = Employee(
         sp_id=1, name="Melania Rosello Diaz", name_key="melania rosello diaz", department_key="restaurante"
@@ -307,7 +301,7 @@ def test_detail_table_includes_a_turno_column_with_the_real_shift(registry: Tool
     day_hours = compute_day_hours(shift, session)
     person = _PersonHours(employee, [result], [day_hours], [], {DAY: shift})
 
-    document = _build_document("Restaurante", DAY, DAY, DAY, [person], [], None)
+    document = _build_document("Restaurante", DAY, DAY, DAY, [person], warnings=[], import_summary=None)
     detail = next(b for b in document.blocks if b.kind == "table" and b.title == employee.name)
     assert "Turno" in detail.data["columns"]
     turno_idx = detail.data["columns"].index("Turno")
@@ -318,11 +312,6 @@ def test_each_employee_gets_a_single_block_not_a_separate_summary_and_detail(reg
     """Antes se generaban DOS bloques por empleado (uno "section" solo con Departamento/Periodo y
     otro "table" de detalle), que en Excel y PowerPoint se convertían en dos pestañas/diapositivas
     por persona. Debe quedar uno solo, nombrado con el nombre del empleado."""
-    from mia.data import Employee
-    from mia.modules.rrhh.fichajes.comparison import DayComparison, ShiftExpectation
-    from mia.modules.rrhh.fichajes.hours import compute_day_hours
-    from mia.modules.rrhh.fichajes.informe import _build_document, _PersonHours
-    from mia.modules.rrhh.fichajes.pairing import ClockSession
 
     employee = Employee(
         sp_id=1, name="Melania Rosello Diaz", name_key="melania rosello diaz", department_key="restaurante"
@@ -333,7 +322,7 @@ def test_each_employee_gets_a_single_block_not_a_separate_summary_and_detail(reg
     day_hours = compute_day_hours(shift, session)
     person = _PersonHours(employee, [result], [day_hours], [], {DAY: shift})
 
-    document = _build_document("Restaurante", DAY, DAY, DAY, [person], [], None)
+    document = _build_document("Restaurante", DAY, DAY, DAY, [person], warnings=[], import_summary=None)
     employee_blocks = [b for b in document.blocks if b.title == employee.name]
     assert len(employee_blocks) == 1
     assert employee_blocks[0].kind == "table"

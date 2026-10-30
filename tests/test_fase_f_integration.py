@@ -13,25 +13,39 @@
 
 from __future__ import annotations
 
+import json as _json
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from sqlalchemy import select
 
 from mia.auth import UserContext
+from mia.conversation import ToolContext
+from mia.conversation import ToolStatus as TS
 from mia.conversation.engine import _REPORT_DOMAIN_HINTS, _report_hint
+from mia.conversation.tools import remember_table
+from mia.data import Report, TtTimesheet
+from mia.llm import ToolCall as TC
 from mia.llm.base import LLMCompleted, LLMEvent, LLMRequest, Message, TextDelta
 from mia.llm.fake import FakeLLMProvider, tool_call
 from mia.llm.tiers import model_for_tier
+from mia.modules.registry import build_registry
+from mia.modules.rrhh.common import Deps
+from mia.modules.rrhh.informes.tools import InformeParams, generar
 from mia.privacy_gateway.context_manager import set_operation_context
 from mia.privacy_gateway.gateway import PrivacyGateway
 from mia.privacy_gateway.presidio_engine import DetectedEntity
 from mia.reporting.narrative_generation import generate_narrative_block
 from mia.reporting.narrative_guard import enforce_narrative_privacy
 from mia.settings import LLMSettings, ModelTier, PrivacyGatewaySettings
+from tests.dbutil import fresh_database
 from tests.hr_seed import seed
-from tests.test_analisis_economico import Q3_NOW, q3_registry  # noqa: F401 — fixture reutilizada
+from tests.test_analisis_economico import Q3_NOW, q3_registry
+
+__all__ = ["q3_registry"]
 
 ADMIN = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
 TODAY = date(2026, 10, 12)
@@ -263,12 +277,6 @@ async def test_generar_informe_rejects_a_payroll_request_exported_from_an_unrela
     `analisis_economico_nominas` (``__source_tool__``, puesto por ``remember_table`` junto a ESA tabla
     concreta) pero la petición original pide coste salarial, `generar_informe` debe rechazar la
     exportación — nunca exportar una tabla que no coincide con lo pedido."""
-    import json as _json
-
-    from mia.conversation import ToolContext
-    from mia.conversation import ToolStatus as TS
-    from mia.conversation.tools import remember_table
-    from mia.llm import ToolCall as TC
 
     ctx = ToolContext(
         user=ADMIN,
@@ -292,12 +300,6 @@ async def test_generar_informe_rejects_bare_gastos_phrasing_exported_from_ficha_
     siendo la última tabla de la sesión (de una consulta anterior, no relacionada), con un título nuevo
     que sonaba a lo pedido pero un contenido que no tenía nada que ver. Corregido ampliando los
     sinónimos de `coste_empresa` en mia.query.fields."""
-    import json as _json
-
-    from mia.conversation import ToolContext
-    from mia.conversation import ToolStatus as TS
-    from mia.conversation.tools import remember_table
-    from mia.llm import ToolCall as TC
 
     ctx = ToolContext(
         user=ADMIN,
@@ -319,7 +321,7 @@ async def test_generar_informe_rejects_bare_gastos_phrasing_exported_from_ficha_
 
 
 async def test_generar_informe_does_not_misfire_the_payroll_guard_for_trabajo_temporal_requests(
-    q3_registry,
+    tmp_path,
 ) -> None:
     """Incidencia real (2026-10-28): "gastos en boletines trabajo temporal... detalla totales y
     porcentajes por departamento" rechazaba la exportación de 'boletines_tt' (la tabla correcta, ya en
@@ -327,13 +329,27 @@ async def test_generar_informe_does_not_misfire_the_payroll_guard_for_trabajo_te
     "gastos" a secas (sinónimo amplio de coste_empresa, dominio "payroll") también aparece en una
     petición de trabajo temporal que no tiene nada que ver con nóminas. La petición también menciona un
     campo del dominio "timesheet" ("trabajo temporal"), más específico: no debe bloquearse."""
-    import json as _json
 
-    from mia.conversation import ToolContext
-    from mia.conversation import ToolStatus as TS
-    from mia.conversation.tools import remember_table
-    from mia.llm import ToolCall as TC
-
+    db = await fresh_database(tmp_path, "comparacion-ett.db")
+    async with db.session() as session:
+        session.add_all(
+            [
+                TtTimesheet(
+                    sp_id=year,
+                    day=date(year, 1, 2),
+                    worker_name="Persona sintética",
+                    company="ETT Prueba",
+                    department="Mantenimiento",
+                    department_key="mantenimiento",
+                    hours_total=8,
+                    hours_night=0,
+                    amount=amount,
+                    status="Validado",
+                )
+                for year, amount in ((2025, 100.0), (2026, 145.72))
+            ]
+        )
+    q3_registry = build_registry(db)
     ctx = ToolContext(
         user=ADMIN,
         request_id=None,
@@ -345,13 +361,17 @@ async def test_generar_informe_does_not_misfire_the_payroll_guard_for_trabajo_te
         ),
     )
     boletines_presentation = {
-        "type": "table", "title": "Boletines de trabajo temporal",
+        "type": "table",
+        "title": "Boletines de trabajo temporal",
         "columns": ["Fecha", "Trabajador", "Empresa", "Departamento", "Importe"],
         "rows": [["02/01/2026", "Robles Saura, Jose", "Randstad", "Mantenimiento", 145.72]],
     }
     remember_table(ctx.session_state, boletines_presentation, 5000, {}, source_tool="boletines_tt")
-    execution = await q3_registry.execute(TC("c", "generar_informe", _json.dumps({"formato": "pdf"})), ctx)
-    assert execution.result.status is TS.OK
+    try:
+        execution = await q3_registry.execute(TC("c", "generar_informe", _json.dumps({"formato": "pdf"})), ctx)
+        assert execution.result.status is TS.OK
+    finally:
+        await db.dispose()
 
 
 async def test_generar_informe_still_exports_normally_when_the_source_tool_matches_the_request(
@@ -359,12 +379,6 @@ async def test_generar_informe_still_exports_normally_when_the_source_tool_match
 ) -> None:
     """Control negativo: si la tabla SÍ viene de `analisis_economico_nominas` y su periodo coincide,
     la exportación debe seguir funcionando exactamente igual que antes de esta validación."""
-    import json as _json
-
-    from mia.conversation import ToolContext
-    from mia.conversation import ToolStatus as TS
-    from mia.conversation.tools import remember_table
-    from mia.llm import ToolCall as TC
 
     ctx = ToolContext(
         user=ADMIN,
@@ -385,12 +399,6 @@ async def test_generar_informe_rejects_a_source_tool_result_from_a_different_per
     `analisis_economico_nominas` (herramienta correcta), pero para un periodo DISTINTO del pedido ahora
     —p. ej. una tabla de julio que seguía siendo la última de la sesión cuando llega una petición nueva
     sobre agosto— debe rechazarse igual, nunca exportarse como si fuera la respuesta a la nueva petición."""
-    import json as _json
-
-    from mia.conversation import ToolContext
-    from mia.conversation import ToolStatus as TS
-    from mia.conversation.tools import remember_table
-    from mia.llm import ToolCall as TC
 
     ctx = ToolContext(
         user=ADMIN,
@@ -413,12 +421,6 @@ async def test_generar_informe_is_not_fooled_by_an_auxiliary_tool_called_afterwa
     (correcto, produce la tabla) y DESPUÉS una herramienta auxiliar que NO devuelve presentación (p. ej.
     una consulta de capacidades) — la tabla de la economía sigue siendo ``LAST_TABLE`` con su
     ``__source_tool__`` intacto, así que la exportación debe seguir permitida."""
-    import json as _json
-
-    from mia.conversation import ToolContext
-    from mia.conversation import ToolStatus as TS
-    from mia.conversation.tools import remember_table
-    from mia.llm import ToolCall as TC
 
     ctx = ToolContext(
         user=ADMIN,
@@ -588,15 +590,6 @@ async def test_generar_informe_authorizes_the_narrative_subject_of_an_individual
     ``__summary__['nombre']`` (el mismo patrón ya usado por herramientas de ficha individual, p. ej.
     ``ficha_empleado``) y lo propaga a ``generate_narrative_block`` — sin este cableado, cualquier
     informe individual con narrativa activada bloquearía la mención de su propio sujeto."""
-    import json as _json
-    from types import SimpleNamespace
-
-    from mia.conversation import ToolContext
-    from mia.conversation import ToolStatus as TS
-    from mia.conversation.tools import remember_table
-    from mia.modules.rrhh.common import Deps
-    from mia.modules.rrhh.informes.tools import InformeParams, generar
-    from tests.dbutil import fresh_database
 
     def script(req: LLMRequest) -> list[LLMEvent]:
         payload = _json.dumps(
@@ -633,9 +626,6 @@ async def test_generar_informe_authorizes_the_narrative_subject_of_an_individual
     )
     assert result.status is TS.OK
     report_id = result.summary["enlace"].rsplit("/", 1)[-1]
-    from sqlalchemy import select
-
-    from mia.data import Report
 
     async with db.session() as session:
         report = (await session.scalars(select(Report).where(Report.id == report_id))).one()
@@ -660,8 +650,18 @@ async def test_shift_domain_end_to_end_through_chat_to_a_real_document(
 
         tool_rounds = [m for m in req.messages if m.role == "tool"]
         if not tool_rounds:
-            return tool_call("ausencias", {"nombre": "Eva Sol", "desde": "2026-08-03", "hasta": "2026-08-06"})
+            return tool_call(
+                "planificar_tarea",
+                {
+                    "pasos": [
+                        {"objetivo": "Consultar ausencias", "herramientas": ["ausencias"]},
+                        {"objetivo": "Exportar PDF", "herramientas": ["generar_informe"], "depende_de": [0]},
+                    ]
+                },
+            )
         if len(tool_rounds) == 1:
+            return tool_call("ausencias", {"nombre": "Eva Sol", "desde": "2026-08-03", "hasta": "2026-08-06"})
+        if len(tool_rounds) == 2:
             return tool_call("generar_informe", {"formato": "pdf"})
         return final_answer("Aquí tienes el informe de ausencias.", "Listo.")
 
@@ -685,8 +685,18 @@ async def test_vacation_domain_end_to_end_through_chat_to_a_real_document(
 
         tool_rounds = [m for m in req.messages if m.role == "tool"]
         if not tool_rounds:
-            return tool_call("vacaciones", {"desde": "2026-08-01", "hasta": "2026-08-31"})
+            return tool_call(
+                "planificar_tarea",
+                {
+                    "pasos": [
+                        {"objetivo": "Consultar vacaciones", "herramientas": ["vacaciones"]},
+                        {"objetivo": "Exportar PDF", "herramientas": ["generar_informe"], "depende_de": [0]},
+                    ]
+                },
+            )
         if len(tool_rounds) == 1:
+            return tool_call("vacaciones", {"desde": "2026-08-01", "hasta": "2026-08-31"})
+        if len(tool_rounds) == 2:
             return tool_call("generar_informe", {"formato": "pdf"})
         return final_answer("Aquí tienes el informe de vacaciones.", "Listo.")
 
@@ -708,8 +718,18 @@ async def test_employee_domain_end_to_end_through_chat_to_a_real_document(
 
         tool_rounds = [m for m in req.messages if m.role == "tool"]
         if not tool_rounds:
-            return tool_call("plantilla", {})
+            return tool_call(
+                "planificar_tarea",
+                {
+                    "pasos": [
+                        {"objetivo": "Consultar plantilla", "herramientas": ["plantilla"]},
+                        {"objetivo": "Exportar PDF", "herramientas": ["generar_informe"], "depende_de": [0]},
+                    ]
+                },
+            )
         if len(tool_rounds) == 1:
+            return tool_call("plantilla", {})
+        if len(tool_rounds) == 2:
             return tool_call("generar_informe", {"formato": "pdf"})
         return final_answer("Aquí tienes el informe de plantilla.", "Listo.")
 

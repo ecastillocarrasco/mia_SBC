@@ -26,10 +26,10 @@ DEFAULT_PATH = Path("data/fichajes_conectia")
 async def _main(path: Path) -> int:
     settings = get_settings()
     configure_logging(settings.observability.log_level, settings.observability.log_json)
-    if not path.is_dir():
+    if not await asyncio.to_thread(path.is_dir):
         print(f"No existe el directorio {path}", file=sys.stderr)
         return 2
-    files = sorted(path.glob("*.xlsx"))
+    files = await asyncio.to_thread(lambda: sorted(path.glob("*.xlsx")))
     if not files:
         print(f"No hay ningún .xlsx en {path}", file=sys.stderr)
         return 2

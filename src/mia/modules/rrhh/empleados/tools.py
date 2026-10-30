@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections import Counter, defaultdict
 from datetime import date, timedelta
 from typing import Any, Literal
@@ -36,6 +37,8 @@ from mia.modules.rrhh.common import (
 )
 from mia.modules.rrhh.turnos.periods import AbsencePeriod, absence_periods
 from mia.text import normalize_key
+
+log = logging.getLogger(__name__)
 
 ACCEPTED = "aceptada"
 PENDING = "pendiente"
@@ -587,7 +590,9 @@ def cumpleanos(deps: Deps) -> Tool:
 
         upcoming: list[tuple[Any, ...]] = []
         for e in staff:
-            bd = e.birth_date  # type: ignore[assignment]
+            bd = e.birth_date
+            if bd is None:
+                continue
             for yr in (today.year, today.year + 1):
                 try:
                     candidate = bd.replace(year=yr)
@@ -633,44 +638,48 @@ class ResponsablesParams(BaseModel):
     departamento: str | None = Field(default=None, description="Ver estructura de responsables de un departamento")
 
 
+async def _person_manager(db: AsyncSession, p: ResponsablesParams, ctx: ToolContext) -> ToolResult:
+    match = await resolve_person(db, PersonaParams(empleado_id=p.empleado_id, nombre=p.nombre), ctx=ctx)
+    if match.employee is None:
+        return person_problem(match, p.nombre)
+    e = match.employee
+    if not e.manager_name:
+        return ToolResult(
+            ToolStatus.OK,
+            {"persona": e.name, "responsable": None, "nota": "No tiene responsable registrado."},
+        )
+    # Equipo completo del mismo responsable
+    team = list(
+        (
+            await db.scalars(
+                select(Employee).where(
+                    Employee.active.is_(True),
+                    Employee.manager_name == e.manager_name,
+                )
+            )
+        ).all()
+    )
+    rows = [[t.name, t.department or "—", t.position or "—"] for t in sorted(team, key=lambda x: x.name)]
+    return ToolResult(
+        ToolStatus.OK,
+        {
+            "persona": e.name,
+            "departamento": e.department,
+            "responsable": e.manager_name,
+            "email_responsable": e.manager_email,
+            "personas_a_cargo_del_responsable": len(team),
+        },
+        table(f"Equipo de {e.manager_name}", ["Nombre", "Departamento", "Puesto"], rows),
+        focus_person(e),
+    )
+
+
 def responsables(deps: Deps) -> Tool:
     async def handler(p: ResponsablesParams, ctx: ToolContext) -> ToolResult:
         async with deps.db.session() as db:
             # ── Consulta de responsable de una persona ─────────────────────────
             if p.empleado_id or (p.nombre or "").strip():
-                match = await resolve_person(db, PersonaParams(empleado_id=p.empleado_id, nombre=p.nombre), ctx=ctx)
-                if match.employee is None:
-                    return person_problem(match, p.nombre)
-                e = match.employee
-                if not e.manager_name:
-                    return ToolResult(
-                        ToolStatus.OK,
-                        {"persona": e.name, "responsable": None, "nota": "No tiene responsable registrado."},
-                    )
-                # Equipo completo del mismo responsable
-                team = list(
-                    (
-                        await db.scalars(
-                            select(Employee).where(
-                                Employee.active.is_(True),
-                                Employee.manager_name == e.manager_name,
-                            )
-                        )
-                    ).all()
-                )
-                rows = [[t.name, t.department or "—", t.position or "—"] for t in sorted(team, key=lambda x: x.name)]
-                return ToolResult(
-                    ToolStatus.OK,
-                    {
-                        "persona": e.name,
-                        "departamento": e.department,
-                        "responsable": e.manager_name,
-                        "email_responsable": e.manager_email,
-                        "personas_a_cargo_del_responsable": len(team),
-                    },
-                    table(f"Equipo de {e.manager_name}", ["Nombre", "Departamento", "Puesto"], rows),
-                    focus_person(e),
-                )
+                return await _person_manager(db, p, ctx)
 
             # ── Equipo de un manager por nombre ────────────────────────────────
             if p.manager:
@@ -706,7 +715,7 @@ def responsables(deps: Deps) -> Tool:
 
             by_mgr: _C[str] = _C(e.manager_name for e in all_staff if e.manager_name)
             without = sum(1 for e in all_staff if not e.manager_name)
-            rows = [[name, cnt] for name, cnt in by_mgr.most_common()]
+            manager_rows = [[name, cnt] for name, cnt in by_mgr.most_common()]
             return ToolResult(
                 ToolStatus.OK,
                 {
@@ -714,7 +723,7 @@ def responsables(deps: Deps) -> Tool:
                     "empleados_sin_responsable": without,
                     "por_responsable": dict(by_mgr.most_common()),
                 },
-                table("Personas a cargo por responsable", ["Responsable", "Personas a cargo"], rows),
+                table("Personas a cargo por responsable", ["Responsable", "Personas a cargo"], manager_rows),
             )
 
     return Tool(
@@ -754,7 +763,7 @@ def contactos_organizacion(deps: Deps) -> Tool:
                     mgr_list = u.managers if isinstance(u.managers, list) else []
                     mgr_names = [m.get("Title") or m.get("name") or str(m) for m in mgr_list if m]
                 except Exception:
-                    pass
+                    log.warning("tools.handler.failed")
             rows.append(
                 [
                     u.department or "—",
