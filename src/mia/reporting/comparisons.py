@@ -84,6 +84,30 @@ def explicit_month_comparison(request: str) -> tuple[str, str] | None:
     return tuple(sorted(f"{y.group()}-{_MONTHS[month.group(1)]:02d}" for y in years))
 
 
+_THIS_YEAR_HINTS = ("este ano", "el ano actual", "ano actual", "ano en curso")
+_LAST_YEAR_HINTS = ("ano pasado", "el ano anterior", "ano anterior", "ultimo ano", "el ultimo ano")
+
+
+def relative_year_comparison(request: str) -> tuple[str, str] | None:
+    """"Este año y el año pasado", "año actual comparado con el anterior"... — a diferencia de
+    ``explicit_month_comparison`` (un mes concreto en dos años, p. ej. "agosto 2025 y 2026"), esto
+    compara los DOS AÑOS COMPLETOS (el actual, hasta hoy; el pasado, completo).
+
+    Devuelve las expresiones literales ("año pasado", "este año") que ``period_engine.resolve()``
+    YA sabe interpretar (ver mia/query/period.py) — nunca fechas calculadas aquí, para no duplicar
+    esa resolución en dos sitios y arriesgar que diverjan.
+
+    Exige que AMBAS referencias (este año Y el año pasado) aparezcan explícitas en la petición,
+    igual de estricto que ``explicit_month_comparison``: no interpreta una mención suelta de "el
+    año pasado" (sin comparar con nada) como si pidiera una comparativa."""
+    text = normalize_key(request)
+    has_this_year = any(re.search(rf"\b{re.escape(hint)}\b", text) for hint in _THIS_YEAR_HINTS)
+    has_last_year = any(re.search(rf"\b{re.escape(hint)}\b", text) for hint in _LAST_YEAR_HINTS)
+    if has_this_year and has_last_year:
+        return ("año pasado", "este año")
+    return None
+
+
 LAST_PAYROLL_COMPARISON = "ultima_comparativa_nominas_solicitada"
 
 
@@ -166,11 +190,22 @@ def merge_payroll_comparison(
         raise ValueError("Los dos periodos deben calcular el mismo concepto económico")
     if a.get("poblacion") != b.get("poblacion"):
         raise ValueError("Las dos consultas deben usar el mismo filtro de población")
+    single_month = re.compile(r"^20\d{2}-(?:0[1-9]|1[0-2])$")
     for summary, period in ((a, periods[0]), (b, periods[1])):
-        if summary.get("meses_analizados") != [period]:
-            raise ValueError(f"El análisis no corresponde exactamente al mes {period}")
-        if summary.get("meses_sin_datos") or summary.get("meses_con_datos") != [period]:
-            raise ValueError(f"Faltan datos para el periodo {period}; no se fabrica una comparación")
+        analyzed = summary.get("meses_analizados")
+        if single_month.fullmatch(period):
+            # Comportamiento original, sin tocar: un mes concreto ("2026-08") debe analizar
+            # EXACTAMENTE ese mes, ni uno distinto ni un rango -- si no coincide, el resultado no
+            # corresponde a lo pedido (p. ej. una ejecución de julio reutilizada para "agosto").
+            if analyzed != [period]:
+                raise ValueError(f"El análisis no corresponde exactamente al mes {period}")
+        elif not isinstance(analyzed, list) or not analyzed:
+            # Periodo multi-mes ("año pasado"/"este año", vía period_engine): no hay un único mes
+            # literal contra el que comparar el string del periodo, así que no se repite esa
+            # comprobación -- solo que de verdad se haya analizado algo.
+            raise ValueError(f"El análisis no corresponde al periodo {period}")
+        if summary.get("meses_sin_datos") or summary.get("meses_con_datos") != analyzed:
+            raise ValueError(f"Faltan datos para completar el periodo {period}; no se fabrica una comparación")
     da = a.get("por_departamento") or {}
     db = b.get("por_departamento") or {}
     names = sorted(set(da) | set(db))
@@ -279,3 +314,114 @@ def merge_payroll_comparison(
         "advertencias": warnings,
     }
     return presentation, summary
+
+
+def _eur(value: float) -> str:
+    return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " €"
+
+
+def _merge_bucket_comparison(
+    a_bucket: dict[str, dict[str, Any]],
+    b_bucket: dict[str, dict[str, Any]],
+    label_a: str,
+    label_b: str,
+    row_label: str,
+) -> tuple[dict[str, Any], list[tuple[str, float, float]], list[str]] | None:
+    """Fusiona un desglose (por departamento o por empresa) de dos periodos en una tabla
+    comparativa; ``None`` si no hay ningún nombre con importe en ambos periodos (nunca se compara
+    una lista vacía). Devuelve (tabla, [(nombre, importe_a, importe_b)...], avisos)."""
+    names = sorted(set(a_bucket) | set(b_bucket))
+    included: list[tuple[str, float, float, float, float]] = []
+    excluded: list[str] = []
+    for name in names:
+        left = a_bucket.get(name, {})
+        right = b_bucket.get(name, {})
+        lv, rv = left.get("importe"), right.get("importe")
+        if not isinstance(lv, int | float) or not isinstance(rv, int | float):
+            excluded.append(name)
+            continue
+        included.append((name, float(lv), float(rv), float(left.get("horas") or 0), float(right.get("horas") or 0)))
+    if not included:
+        return None
+    included.sort(key=lambda r: -r[2])
+    rows = [
+        [
+            name, round(lv, 2), round(rv, 2), round(rv - lv, 2),
+            round((rv - lv) / lv * 100, 2) if lv else None, round(lh, 2), round(rh, 2),
+        ]
+        for name, lv, rv, lh, rh in included
+    ]
+    table = {
+        "type": "table",
+        "title": f"Comparativa de trabajo temporal por {row_label.lower()} · {label_a} / {label_b}",
+        "columns": [
+            row_label, label_a + " (€)", label_b + " (€)", "Variación (€)", "Variación (%)",
+            "Horas " + label_a, "Horas " + label_b,
+        ],
+        "rows": rows,
+    }
+    warnings = (
+        [f"{len(excluded)} {row_label.lower()}(s) sin datos comparables en ambos periodos."] if excluded else []
+    )
+    return table, [(name, lv, rv) for name, lv, rv, *_ in included], warnings
+
+
+def merge_trabajo_temporal_comparison(
+    first: dict[str, Any],
+    second: dict[str, Any],
+    periods: tuple[str, str],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Comparación interanual de gasto en trabajo temporal (boletines_tt), mismo patrón que
+    ``merge_payroll_comparison`` pero sin controles NOM-005 (trabajo temporal no agrega por grupos
+    protegidos: cada boletín ya es un importe individual visible, no hay umbral que proteger)."""
+    a, b = first, second
+    label_a, label_b = periods
+    dept = _merge_bucket_comparison(a.get("por_departamento") or {}, b.get("por_departamento") or {}, label_a, label_b, "Departamento")
+    company = _merge_bucket_comparison(a.get("por_empresa") or {}, b.get("por_empresa") or {}, label_a, label_b, "Empresa")
+    if dept is None and company is None:
+        raise ValueError("No hay departamentos ni empresas con datos comparables en ambos periodos")
+    warnings: list[str] = []
+    tables: list[dict[str, Any]] = []
+    charts: list[dict[str, Any]] = []
+    main_table: dict[str, Any] | None = None
+    total_a = total_b = 0.0
+    for merged in (dept, company):
+        if merged is None:
+            continue
+        table, rows_pairs, table_warnings = merged
+        warnings.extend(table_warnings)
+        if main_table is None:
+            main_table = table
+            total_a = round(sum(r[1] for r in rows_pairs), 2)
+            total_b = round(sum(r[2] for r in rows_pairs), 2)
+        else:
+            tables.append(table)
+        charts.append({
+            "type": "grouped_bar",
+            "title": table["title"],
+            "labels": [r[0] for r in rows_pairs],
+            "series": [
+                {"name": label_a, "values": [r[1] for r in rows_pairs]},
+                {"name": label_b, "values": [r[2] for r in rows_pairs]},
+            ],
+        })
+    assert main_table is not None  # noqa: S101 — garantizado por el `if dept is None and company is None` de arriba
+    difference = round(total_b - total_a, 2)
+    pct = round(difference / total_a * 100, 2) if total_a else None
+    main_table["kpis"] = [
+        {"label": f"Importe total {label_a}", "value": _eur(total_a)},
+        {"label": f"Importe total {label_b}", "value": _eur(total_b)},
+        {"label": "Variación (€)", "value": _eur(difference)},
+        {"label": "Variación (%)", "value": f"{pct:.2f}%".replace(".", ",") if pct is not None else "No calculable"},
+    ]
+    main_table["tables"] = tables
+    main_table["charts"] = charts
+    summary = {
+        "periodo_interpretado": f"{label_a} vs {label_b}",
+        "importe_total_anterior": total_a,
+        "importe_total_actual": total_b,
+        "variacion_eur": difference,
+        "variacion_pct": pct,
+        "advertencias": warnings or None,
+    }
+    return main_table, summary

@@ -206,12 +206,13 @@ async function submit() {
       lastResult = { question, answer: reply.answer || '', presentation: reply.presentation || null, reportPending:!!reply.reportPending };
       if(reply.reportPending)addMessage('El backend no ha entregado un enlace de descarga verificable. El texto «PDF listo» no permite recuperar el archivo. Consulta la sección Documento generado de Resultados.','mia');
       const hasTables = !!reply.presentation?.tables?.length;
+      const hasCalendars = !!reply.presentation?.calendars?.length;
       const hasCards = !!reply.presentation?.cards?.length;
       const hasReport = !!reply.report?.available;
       const wantsVisual = /\b(lista|listado|relaci[oó]n|tabla|todos|todas|empleados|personas|puestos|gr[aá]fic[ao]s?|informe|kpi|estad[ií]sticas|ficha|expediente|perfil)\b/i.test(question);
-      if (hasTables || hasCards || hasReport || wantsVisual) {
+      if (hasTables || hasCards || hasCalendars || hasReport || wantsVisual) {
         bridge.openResults(lastResult);
-        if (!hasTables && !hasCards && !hasReport && !reply.reportPending) {
+        if (!hasTables && !hasCards && !hasCalendars && !hasReport && !reply.reportPending) {
           addMessage('Aviso: el servidor ha enviado texto, pero no los registros estructurados del listado. He abierto Resultados para que puedas comprobarlo.', 'mia');
         }
       }
@@ -311,3 +312,5 @@ for (const grip of document.querySelectorAll('[data-resize]')) {
 
 window.addEventListener('error',()=>window.miaDesktop.reportRendererError('WINDOW_ERROR'));
 window.addEventListener('unhandledrejection',()=>window.miaDesktop.reportRendererError('UNHANDLED_REJECTION'));
+
+bridge.onCalendarConfirmation(prompt => {if(!/^confirma cambio [1-9]\d*$/.test(prompt||''))return;input.value=prompt;autoResizeInput();if(!answering)void submit();else stateText('Confirmación preparada: envíala al terminar la consulta actual.');});

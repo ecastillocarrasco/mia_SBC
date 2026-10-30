@@ -24,7 +24,7 @@ def build_graph_client(settings: Settings) -> GraphClient | None:
     """Graph para el correo: misma aplicación y certificado que SharePoint."""
     if (
         "correo" not in settings.domains.enabled
-        or not mailbox_available(settings.mail)
+        or (not mailbox_available(settings.mail) and not settings.mail.calendar.enabled)
         or not settings.sharepoint.app_credentials_configured
     ):
         return None

@@ -640,6 +640,8 @@ function renderAnalyticsWorkspace(data,r,wrap){
 }
 function renderData(r,msg){
  const data=r.data||{};
+ const calendars=window.MiaCalendarView?.presentations(r)||[];
+ if(calendars.length&&window.MiaCalendarView){const calendarWrap=document.createElement('div');calendarWrap.className='results results--calendar';calendarWrap.innerHTML=calendars.map(window.MiaCalendarView.render).join('');window.MiaCalendarView.bind(calendarWrap,ask);msg.appendChild(calendarWrap);if(!data.table&&!data.cards?.length&&!data.documents?.length){applyResultKind(msg,'calendar');convo.scrollTop=convo.scrollHeight;return}}
  const kind=detectResultKind(r,data);applyResultKind(msg,kind);
  const nativeEmployeePresentation=(data.presentation&&typeof data.presentation==='object'&&data.presentation.schema==='mia.employee360.presentation')?data.presentation:null;
  const employee360Root=(data.employee360&&typeof data.employee360==='object')?data.employee360:null;

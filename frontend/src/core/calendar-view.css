@@ -1,0 +1,17 @@
+
+.mia-calendar{color:inherit;font:inherit;text-align:left;padding:16px;border:1px solid #8899aa55;border-radius:16px;margin:12px 0;overflow:hidden;background:color-mix(in srgb,currentColor 3%,transparent)}
+.mia-calendar *{box-sizing:border-box}.mia-calendar header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}.mia-calendar h3{font-size:1.15rem;margin:0}.mia-calendar header span{font-size:.8rem;opacity:.8}
+.mia-calendar-week{display:grid;gap:1px;min-width:min-content;border:1px solid #8899aa55;border-radius:10px;overflow:hidden;margin-bottom:12px;background:#8899aa33}
+.mia-calendar-scroll{overflow-x:auto}.mia-calendar-day{min-height:220px;padding:10px;background:color-mix(in srgb,Canvas 94%,transparent);color:CanvasText}.mia-calendar-day h4{margin:0 0 12px;font-size:.85rem;text-transform:capitalize;padding-bottom:8px;border-bottom:1px solid #8899aa55}
+.mia-calendar-event{margin:0 0 10px;padding:10px;border-radius:7px;border-left:4px solid #1496a0;background:color-mix(in srgb,#1496a0 11%,Canvas);font-size:.85rem;overflow-wrap:anywhere}.mia-calendar-time{display:block;font-weight:750;color:#087781;margin-bottom:5px}.mia-calendar-event summary{cursor:pointer;font-weight:600}.mia-calendar-event p{margin:7px 0;font-size:.8rem}.mia-calendar-event small{display:block;opacity:.85;margin-top:6px}.mia-calendar-event a{color:inherit;text-decoration:underline}.mia-calendar-empty{font-size:.8rem;opacity:.65}.mia-calendar-empty-range{margin:0 0 12px}.mia-calendar-event dl{font-size:.75rem;margin:9px 0}.mia-calendar-event dt{font-weight:700}.mia-calendar-event dd{margin:0 0 7px}
+@media(max-width:600px){.mia-calendar{padding:10px}.mia-calendar-week{grid-auto-columns:minmax(180px,1fr)}}
+
+.mia-calendar-week--1{grid-template-columns:repeat(1,minmax(155px,1fr))}
+.mia-calendar-week--2{grid-template-columns:repeat(2,minmax(155px,1fr))}
+.mia-calendar-week--3{grid-template-columns:repeat(3,minmax(155px,1fr))}
+.mia-calendar-week--4{grid-template-columns:repeat(4,minmax(155px,1fr))}
+.mia-calendar-week--5{grid-template-columns:repeat(5,minmax(155px,1fr))}
+.mia-calendar-week--6{grid-template-columns:repeat(6,minmax(155px,1fr))}
+.mia-calendar-week--7{grid-template-columns:repeat(7,minmax(155px,1fr))}
+
+.mia-calendar-confirm{cursor:pointer;border:0;border-radius:8px;padding:12px 18px;background:#087781;color:white;font:inherit;font-weight:650}.mia-calendar-confirm:disabled{opacity:.6;cursor:default}.mia-calendar>dl{font-size:.85rem}.mia-calendar>dl dt{font-weight:650;text-transform:capitalize}.mia-calendar>dl dd{margin:0 0 8px;overflow-wrap:anywhere}.mia-calendar-confirm-status{font-size:.85rem}

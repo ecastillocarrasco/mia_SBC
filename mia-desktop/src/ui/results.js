@@ -1,4 +1,5 @@
 'use strict';
+import { mountCalendar, bindCalendarConfirmations } from '../../../frontend/src/core/calendar-view.js';
 const $ = id => document.getElementById(id);
 const bridge = window.miaDesktop;
 const PAGE_SIZE = 50;
@@ -174,12 +175,17 @@ function render(payload){
   const presentation=payload.presentation||{};
   const tables=Array.isArray(presentation.tables)?presentation.tables:[];
   const cards=Array.isArray(presentation.cards)?presentation.cards:[];
+  const calendars=Array.isArray(presentation.calendars)?presentation.calendars:[];
+  const calendarOnly=calendars.length&&!tables.length&&!cards.length;
+  $('calendarSection').hidden=!calendars.length;
+  $('calendarSection').replaceChildren();calendars.forEach(calendar=>mountCalendar($('calendarSection'),calendar));
+  $('resultStats').hidden=!!calendarOnly;
   const notices=Array.isArray(presentation.notices)?[...presentation.notices]:[];
   const rows=tables.reduce((sum,t)=>sum+(Array.isArray(t.rows)?t.rows.length:0),0);
   $('statRows').textContent=fmt.format(rows);
   $('statTables').textContent=fmt.format(tables.length);
   $('statKpis').textContent=fmt.format(cards.length);
-  const structured=!!(tables.length||cards.length);
+  const structured=!!(tables.length||cards.length||calendars.length);
   if(!structured && !report?.available && !pending)notices.push('El backend no ha enviado tablas ni indicadores estructurados. El texto de la respuesta no equivale a registros recibidos.');
   $('state').textContent=report?.available?'● Documento disponible':pending?'◌ Documento no entregado':structured?'● Respuesta con datos':'◌ Sin datos estructurados';
   $('notices').replaceChildren();
@@ -196,7 +202,7 @@ function render(payload){
     $('cards').append(box);
   });
   $('cards').hidden=!cards.length;$('cardsEmpty').hidden=!!cards.length || !!report || pending;
-  $('dashboard').hidden=!cards.length && (!!report || pending);
+  $('dashboard').hidden=!!calendarOnly||(!cards.length && (!!report || pending));
   $('tables').replaceChildren();tables.forEach((table,i)=>$('tables').append(makeTable(table,i)));
   $('empty').hidden=structured || !!report || pending;
   $('details').hidden=!tables.length;
@@ -211,3 +217,5 @@ bridge.onResultsData(render);
 
 window.addEventListener('error',()=>window.miaDesktop.reportRendererError('WINDOW_ERROR'));
 window.addEventListener('unhandledrejection',()=>window.miaDesktop.reportRendererError('UNHANDLED_REJECTION'));
+
+bindCalendarConfirmations($('calendarSection'), prompt => bridge.confirmCalendar(prompt));

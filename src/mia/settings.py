@@ -196,6 +196,24 @@ class NoticiasSettings(BaseModel):
     enabled: bool = True
 
 
+class CalendarSettings(BaseModel):
+    """Agenda opcional dentro de Correo; no habilita permisos en Entra."""
+
+    enabled: bool = False
+    default_provider: str = "microsoft365"
+    confirm_mutations: bool = True
+    proposal_ttl_seconds: int = Field(default=900, ge=60, le=3600)
+    user_timezones: dict[str, str] = Field(default_factory=dict)
+    """Zona IANA por oid de usuario; sin preferencia se usa Settings.timezone."""
+
+    @field_validator("confirm_mutations")
+    @classmethod
+    def _confirmation_is_required(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError("Las operaciones de calendario requieren confirmación")
+        return value
+
+
 class MailSettings(BaseModel):
     """Acceso a Correo con buzón por usuario en producción."""
 
@@ -206,6 +224,7 @@ class MailSettings(BaseModel):
     max_messages: int = 50
     drafts_enabled: bool = True
     send_enabled: bool = False
+    calendar: CalendarSettings = Field(default_factory=CalendarSettings)
     """Enviar exige además confirmación explícita del usuario en la conversación."""
 
 

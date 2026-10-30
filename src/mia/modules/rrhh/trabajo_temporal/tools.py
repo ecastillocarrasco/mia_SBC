@@ -133,6 +133,11 @@ def boletines(deps: Deps) -> Tool:
             "horas_nocturnas": round(sum(r.hours_night or 0 for r in rows), 2),
             "importe_total": importe_total,
             "desglose": {k: {kk: round(vv, 2) for kk, vv in v.items()} for k, v in totals.items()},
+            # Igual que "desglose" pero sin mezclar empresa/departamento en una sola clave con
+            # prefijo: lo necesita merge_trabajo_temporal_comparison() (comparativa interanual,
+            # ver informes/tools.py) para fusionar dos periodos por nombre real, no por texto.
+            "por_departamento": {k: {kk: round(vv, 2) for kk, vv in v.items()} for k, v in by_department.items()},
+            "por_empresa": {k: {kk: round(vv, 2) for kk, vv in v.items()} for k, v in by_company.items()},
             **fresh,
         }
         if len(rows) <= MAX_ROWS_FOR_MODEL:

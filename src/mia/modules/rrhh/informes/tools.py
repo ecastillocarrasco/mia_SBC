@@ -22,9 +22,12 @@ from mia.diagnostics import EventStage
 from mia.diagnostics import emit as diag_emit
 from mia.modules.rrhh.common import Deps, department_problem, resolve_department
 from mia.modules.rrhh.informes.persist import ReportFormats, normalize_formats, persist_document_report
+from mia.query.period import period_engine
 from mia.reporting.comparisons import (
     explicit_month_comparison,
     merge_payroll_comparison,
+    merge_trabajo_temporal_comparison,
+    relative_year_comparison,
     remembered_comparison,
 )
 from mia.reporting.content_composer import MissingReportEvidence, compose_for_request
@@ -355,7 +358,22 @@ def generar(deps: Deps) -> Tool:
         if ctx.user_message:
             request_plan = planner.plan(ctx.user_message, user=ctx.user, today=ctx.now.date())
             has_payroll = any(m.field.domain == "payroll" for m in request_plan.metrics)
-            comparison = explicit_month_comparison(ctx.user_message)
+            has_timesheet = any(m.field.domain == "timesheet" for m in request_plan.metrics)
+            comparison = explicit_month_comparison(ctx.user_message) or relative_year_comparison(ctx.user_message)
+            # Trabajo temporal: mismo problema que nóminas (abajo), ningún dato económico que
+            # proteger con NOM-005, así que no hace falta "remembered"/concepto, solo las dos
+            # consultas reales. Se mira ANTES del bloque de nóminas para no competir con él.
+            if has_timesheet and not has_payroll and comparison:
+                return await _run_trabajo_temporal_comparison(
+                    deps,
+                    ctx,
+                    comparison,
+                    formato=p.formato,
+                    titulo=p.titulo,
+                    incluir_detalle=p.incluir_detalle,
+                    incluir_grafico=p.incluir_grafico,
+                    incluir_narrativa=p.incluir_narrativa,
+                )
             remembered = None
             if comparison is None and not any(m.field.domain != "payroll" for m in request_plan.metrics):
                 remembered = remembered_comparison(ctx.session_state, ctx.user_message)
@@ -611,6 +629,76 @@ async def _run_economic_comparison(
     )
 
 
+async def _run_trabajo_temporal_comparison(
+    deps: Deps,
+    ctx: ToolContext,
+    periods: tuple[str, str],
+    *,
+    formato: str | Sequence[str],
+    titulo: str | None,
+    incluir_detalle: bool,
+    incluir_grafico: bool,
+    incluir_narrativa: bool,
+) -> ToolResult:
+    """Mismo patrón que ``_run_economic_comparison`` (comparativa real, no un mensaje de error):
+    resuelve cada periodo ("año pasado"/"este año"...) con el MISMO motor de periodos que usa
+    nóminas, consulta ``boletines_tt`` dos veces por el ToolRegistry (su propio permiso y
+    auditoría, nunca una fuente SQL paralela) y fusiona los dos resultados en un solo informe. Sin
+    protección NOM-005 que aplicar: trabajo temporal no tiene umbral de grupo mínimo."""
+    from mia.llm import ToolCall  # noqa: PLC0415
+
+    registry: ToolRegistry | None = deps.services.get("registry")
+    if registry is None:
+        return ToolResult(ToolStatus.ERROR, "El registro de herramientas no está disponible.")
+    today = ctx.now.date()
+    results = []
+    for index, period in enumerate(periods):
+        resolved = period_engine.resolve(period, today=today)
+        if resolved is None:
+            return ToolResult(
+                ToolStatus.INVALID_ARGUMENTS, {"mensaje": f"No he podido interpretar el periodo «{period}»."}
+            )
+        call = ToolCall(
+            f"reporte-comparativo-tt-{index}",
+            "boletines_tt",
+            json.dumps({"desde": resolved.start.isoformat(), "hasta": resolved.end.isoformat()}),
+        )
+        execution = await registry.execute(call, ctx)
+        if execution.result.status is not ToolStatus.OK:
+            return execution.result
+        if not isinstance(execution.result.summary, dict):
+            return ToolResult(ToolStatus.ERROR, "La consulta de trabajo temporal no devolvió un resumen verificable.")
+        results.append(execution.result)
+    try:
+        presentation, summary = merge_trabajo_temporal_comparison(
+            results[0].summary,
+            results[1].summary,
+            periods,
+        )
+    except ValueError as exc:
+        return ToolResult(ToolStatus.INVALID_ARGUMENTS, {"mensaje": str(exc)})
+    presentation["__source_tool__"] = "boletines_tt"
+    presentation["__summary__"] = summary
+    remember_table(
+        ctx.session_state,
+        presentation,
+        getattr(getattr(deps.settings, "reports", None), "max_rows", 5000),
+        summary,
+        source_tool="boletines_tt",
+    )
+    return await _build_report_result(
+        deps,
+        ctx,
+        presentation,
+        formato=formato,
+        titulo=titulo,
+        incluir_detalle=incluir_detalle,
+        incluir_grafico=incluir_grafico,
+        incluir_narrativa=incluir_narrativa,
+        tool_name="generar_informe->boletines_tt_comparativa",
+    )
+
+
 async def _redirect_to_economic_analysis(
     deps: Deps, ctx: ToolContext, p: InformeEjecutivoParams, lo: date, hi: date, concepto: str
 ) -> ToolResult:
@@ -627,7 +715,10 @@ async def _redirect_to_economic_analysis(
             "No se puede redirigir al análisis económico: el registro de herramientas no está disponible.",
         )
     request_plan = planner.plan(ctx.user_message, user=ctx.user, today=ctx.now.date()) if ctx.user_message else None
-    comparison = explicit_month_comparison(ctx.user_message) if request_plan else None
+    comparison = (
+        (explicit_month_comparison(ctx.user_message) or relative_year_comparison(ctx.user_message))
+        if request_plan else None
+    )
     remembered = None
     if (
         comparison is None

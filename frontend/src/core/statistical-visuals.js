@@ -646,6 +646,7 @@ function renderMetricOverview(presentations, compact = false) {
 }
 
 export function buildStatisticalPresentation(presentations = [], { query = "", answer = "", compact = false } = {}) {
+  if (presentations.some(p => p?.type === 'calendar')) return {html:'',dataFirst:false,summary:''};
   const metricOverview = renderMetricOverview(presentations, compact);
   if (metricOverview.dataFirst) return metricOverview;
 

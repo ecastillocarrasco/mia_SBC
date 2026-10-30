@@ -129,6 +129,7 @@ export function hasPresentationData(presentations) {
 }
 
 export function presentationType(presentations = []) {
+  if (presentations.some(p => p?.type === 'calendar')) return 'calendar';
   const text = presentations.map((p) => `${p?.type || ''} ${p?.title || ''}`).join(' ').toLowerCase();
   if (/employee360|emplead|ficha|persona/.test(text)) return 'person';
   if (/informe|report|download|pdf|excel|document|archivo|n[oó]mina/.test(text)) return 'document';

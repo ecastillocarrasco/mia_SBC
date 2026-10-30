@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const url=new URL('../src/worlds/hologram/hologram-results-v521.js',import.meta.url);
 const source=await fs.readFile(url,'utf8');
-const {adaptHologramResult:adapt}=await import('data:text/javascript;charset=utf-8,'+encodeURIComponent(source));
+const {adaptHologramResult:adapt}=await import(url.href);
 
 const sample = {
   type:'table',title:'Personal trabajando ahora',

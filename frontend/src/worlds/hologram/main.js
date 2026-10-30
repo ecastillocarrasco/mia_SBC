@@ -1,4 +1,6 @@
+import { bindCalendarConfirmations } from '../../core/calendar-view.js';
 import { MiaBootLoader } from "../../core/boot-loader-v43.js";
+import "../../core/calendar-view.css";
 import { getWelcomeText } from "../../core/identity-v45.js";
 import { MiaWelcomeVoiceV45 } from "../../core/welcome-voice-v45.js";
 import * as THREE from "three";
@@ -954,3 +956,5 @@ window.addEventListener("pagehide", () => {
   premiumStage.speaking(false);
   hologramEffect?.dispose();
 });
+
+bindCalendarConfirmations(resultEl, prompt => submit(prompt));

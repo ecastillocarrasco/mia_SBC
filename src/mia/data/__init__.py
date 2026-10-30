@@ -1,3 +1,4 @@
+from mia.data.calendar import CalendarOperation
 from mia.data.community import NewsletterItem
 from mia.data.db import Database
 from mia.data.hr import (
@@ -53,6 +54,7 @@ __all__ = [
     "JOB_VALIDATING",
     "AuditEvent",
     "Base",
+    "CalendarOperation",
     "CalendarShift",
     "Candidate",
     "ClockMark",

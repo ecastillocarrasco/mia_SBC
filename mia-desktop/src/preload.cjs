@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('miaDesktop', Object.freeze({
   openDiagnostics: () => ipcRenderer.invoke('mia:open-diagnostics'),
   reportRendererError: code => ipcRenderer.send('mia:renderer-error',{code:typeof code==='string'?code:'UNEXPECTED_ERROR'}),
   saveSettings: (settings) => ipcRenderer.invoke('mia:save-settings', settings),
+  confirmCalendar: prompt => ipcRenderer.invoke('mia:confirm-calendar',prompt),
+  onCalendarConfirmation: cb => subscribe('mia:calendar-confirmation',cb),
   sendPrompt: (prompt) => ipcRenderer.invoke('mia:send-prompt', prompt),
   recognizeOnce: () => ipcRenderer.invoke('mia:recognize-once'),
   setChatMicMode: mode => ipcRenderer.invoke('mia:set-chat-mic-mode',mode),

@@ -68,6 +68,14 @@ async def _warm_voice(services: Services) -> None:
         log.warning("voice.warm_failed", error=str(exc))
 
 
+def _start_calendar_cleanup(services: Services, settings: Settings) -> asyncio.Task[None] | None:
+    if not settings.mail.calendar.enabled or "correo" not in settings.domains.enabled:
+        return None
+    from mia.modules.correo.calendar.store import run_retention_cleanup as run_calendar_cleanup  # noqa: PLC0415
+
+    return asyncio.create_task(run_calendar_cleanup(services.db, settings.conversation_retention_days))
+
+
 def create_app(settings: Settings | None = None, services: Services | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.observability.log_level, settings.observability.log_json)
@@ -77,6 +85,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.services = services or Services.build(settings)
         retention_cleanup, audit_cleanup, report_cleanup = _start_retention_tasks(app.state.services, settings)
+        calendar_cleanup = _start_calendar_cleanup(app.state.services, settings)
 
         # Diagnóstico — solo si está habilitado
         diag_store: DiagnosticsStore | None = None
@@ -104,11 +113,18 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
 
         warm = asyncio.create_task(_warm_voice(app.state.services))
         log.info("app.started", version=__version__, environment=settings.environment.value)
-        if problem := await schema_problem(app.state.services.db):
+        if problem := await schema_problem(
+            app.state.services.db,
+            calendar_enabled=settings.mail.calendar.enabled and "correo" in settings.domains.enabled,
+        ):
             log.error("app.migrations_pending", detail=problem)
         try:
             yield
         finally:
+            if calendar_cleanup is not None:
+                calendar_cleanup.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await calendar_cleanup
             if report_cleanup is not None:
                 report_cleanup.cancel()
                 with contextlib.suppress(asyncio.CancelledError):

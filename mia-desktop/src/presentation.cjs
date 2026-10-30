@@ -20,6 +20,15 @@ const cleanColumn = x => {
 function extractPresentation(reply) {
   const data = isObj(reply?.data) ? reply.data : {};
   const result = { tables:[], cards:[], notices:[], hasStructuredData:false };
+  const nativeCalendars = Array.isArray(reply?.presentations) ? reply.presentations.filter(p=>p?.type==='calendar') : [];
+  const calendars = nativeCalendars.length ? nativeCalendars : (Array.isArray(data.calendars)?data.calendars:[]);
+  if(calendars.length){result.calendars=calendars.filter(isObj).map(p=>({
+    type:'calendar',title:String(p.title||'Agenda'),timezone:String(p.timezone||''),
+    ...(isObj(p.confirmation)?{confirmation:{prompt:String(p.confirmation.prompt||''),label:String(p.confirmation.label||'Sí, confirmo'),reference:String(p.confirmation.reference||''),review:p.confirmation.review}}:{}),
+    days:(Array.isArray(p.days)?p.days:[]).filter(isObj).map(d=>({date:safeValue(d.date),label:safeValue(d.label)})),
+    events:(Array.isArray(p.events)?p.events:[]).filter(isObj).map(e=>Object.fromEntries(
+      ['id','ref','subject','start','end','start_day','end_day','start_time','end_time','start_label','end_label','location','online_url','all_day','status'].map(key=>[key,safeValue(e[key])])
+    ))}));result.hasStructuredData=true;}
   const seen = new WeakSet();
   function addTable(raw, name='Listado') {
     if (result.tables.length >= MAX_TABLES || !raw) return;
@@ -89,7 +98,7 @@ function extractPresentation(reply) {
     for (const [key,child] of Object.entries(value)) {
       if (result.tables.length>=MAX_TABLES) break;
       if (/^(sources|fuentes|web_sources|permissions|permisos|actions|alerts|alertas|insights|logs|metadata|meta|quality|calidad|charts|visualizations|documents|documentos|messages|mensajes|context|provenance)$/i.test(key)) continue;
-      if (['cards','kpis'].includes(key.toLowerCase())) continue;
+      if (['cards','kpis','calendars'].includes(key.toLowerCase())) continue;
       if (child && typeof child === 'object') visit(child,key,depth+1);
     }
   }

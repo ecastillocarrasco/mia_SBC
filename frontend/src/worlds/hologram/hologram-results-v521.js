@@ -4,6 +4,8 @@
  * Never invent KPIs, comparison values or employee data.
  */
 
+import { renderCalendar } from '../../core/calendar-view.js';
+
 const limit = (n, low, high) => Math.max(low, Math.min(high, n));
 const asObj = (v) => v && typeof v === 'object' && !Array.isArray(v) ? v : null;
 const str = (value) => String(value ?? '').trim();
@@ -227,6 +229,11 @@ function safeHref(url) {
 
 export function adaptHologramResult(response, presentations = [], { type = 'analytics', fan = false } = {}) {
   const items = Array.isArray(presentations) ? presentations.filter(asObj) : [];
+  const calendars = items.filter(p => p.type === 'calendar');
+  if (calendars.length && calendars.length === items.length) return {
+    html: fan ? '<p class="hg-fan-feedback">Agenda disponible en el panel privado</p>' : calendars.map(renderCalendar).join(''),
+    visible:true, hasPayload:true, counts:{metrics:0,rows:0,docs:0},
+  };
   const metrics = extractMetrics(items);
   const mail = extractMail(items);
   const news = extractNews(items);
@@ -283,5 +290,5 @@ export function adaptHologramResult(response, presentations = [], { type = 'anal
     : newsHTML
     ? newsHTML
     : `<section class="hg-brief" aria-label="${escapeHTML(heading)}"><header class="hg-brief-head"><span>mIA · INSIGHTS</span><h2>${escapeHTML(heading)}</h2></header>${kpisHTML}${screenTable}${fanChart}${status}${docsHTML ? `<div class="hg-documents">${docsHTML}</div>` : ''}${fanFallback}</section>`;
-  return {html, visible:true, hasPayload:true, counts:{ metrics:metrics.length, rows:table?.count || 0, docs:docs.length }};
+  return {html:html + (!fan ? calendars.map(renderCalendar).join('') : ''), visible:true, hasPayload:true, counts:{ metrics:metrics.length, rows:table?.count || 0, docs:docs.length }};
 }

@@ -2,6 +2,8 @@
  * Sin clasificación por tipo todavía (llegará en la fase de mejoras funcionales): aquí
  * basta con que cualquier resultado se pueda leer, sin perder datos. */
 
+import { renderCalendar } from './calendar-view.js';
+
 function escapeHtml(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 }
@@ -366,6 +368,7 @@ function renderNewsList(rows) {
 
 export function renderPresentation(presentation) {
   if (!presentation || typeof presentation !== "object") return "";
+    if (presentation.type === 'calendar') return renderCalendar(presentation);
   const { type, title, ...rest } = presentation;
   const heading = title ? `<h3 class="mia-presentation-title">${escapeHtml(title)}</h3>` : "";
   if ((type === "document" || type === "download") && rest.url && !safeDocumentUrl(rest.url)) return "";

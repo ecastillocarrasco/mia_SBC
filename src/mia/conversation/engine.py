@@ -20,7 +20,7 @@ from functools import lru_cache
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
-from mia.auth import UserContext
+from mia.auth import Permission, UserContext
 from mia.conversation import guard
 from mia.conversation.events import (
     AvatarEvent,
@@ -71,6 +71,7 @@ from mia.reporting.comparisons import (
 from mia.reporting.delivery import download_formats, merge_report_sources, resolve_export_request
 from mia.reporting.planner import planner
 from mia.rules import rules_for_prompt
+from mia.text import normalize_key
 
 log = get_logger(__name__)
 
@@ -428,6 +429,18 @@ class ConversationEngine:
                 trace.record.now_local = now.isoformat()
             mailbox = self._mailbox_for(user) or "" if self._mailbox_for else ""
             selected_modules = select_modules(message, _module_keywords())
+            if "consulta_agenda" in self._tools.names() and user.has(Permission.CORREO_LEER):
+                from mia.modules.correo.calendar.tools import INSTRUCTIONS  # noqa: PLC0415
+                from mia.modules.correo.calendar.tools import KEYWORDS as calendar_keywords  # noqa: PLC0415
+
+                calendar_modules = dict(_module_keywords())
+                calendar_modules["correo"] = (*calendar_modules["correo"], *calendar_keywords)
+                selected_modules = select_modules(message, calendar_modules)
+                if any(
+                    re.search(r"\b" + re.escape(keyword) + r"\b", normalize_key(message))
+                    for keyword in calendar_keywords
+                ):
+                    selected_modules = selected_modules - {"it", "finanzas"}
             qa = classify_query(message)
 
             diag_emit(EventStage.DOMAIN_DETECTION, data={"modules": list(selected_modules)})
@@ -447,6 +460,8 @@ class ConversationEngine:
             system = self.persona.system_prompt(
                 business_rules=rules_for_prompt(), capabilities=self._tools.capabilities_for(user)
             )
+            if "consulta_agenda" in self._tools.names() and user.has(Permission.CORREO_LEER):
+                system += INSTRUCTIONS
             _pres_hint = build_presentation_hint(qa)
             context = self.persona.turn_context(
                 user_name=user.display_name,
@@ -718,6 +733,22 @@ class ConversationEngine:
     ) -> AsyncIterator[TurnEvent | FinalAnswer]:
         tools = self._tools.schemas_for(ctx.user, modules=modules)
         diag_emit(EventStage.TOOL_SELECTION, data={"available": [t.name for t in tools]})
+        # An explicit agenda request must refresh data and produce a calendar on every turn,
+        # even when the LLM could answer from conversation history without calling a tool.
+        if any(tool.name == "consulta_agenda" for tool in tools):
+            from mia.modules.correo.calendar.agenda import direct_agenda_period  # noqa: PLC0415
+
+            period = direct_agenda_period(ctx.user_message)
+            if period is not None:
+                call = ToolCall("agenda_" + uuid.uuid4().hex, "consulta_agenda", json.dumps({"periodo": period}))
+                yield ProgressEvent(stage="tools", message="Actualizando tu agenda")
+                execution = await self._tools.execute(call, ctx)
+                turn.executions.append(execution)
+                turn.state.update(execution.result.state_updates)
+                remember_last_call(turn.state, execution)
+                messages.append(Message(role="assistant", content="", tool_calls=(call,)))
+                messages.append(Message(role="tool", content=execution.as_llm_output(), tool_call_id=call.call_id))
+                yield ToolEvent(name=call.name, status=execution.result.status.value, elapsed_ms=execution.elapsed_ms)
         filler_sent = False
         for round_index in range(self._max_tool_rounds + 1):
             over_budget = (time.perf_counter() - turn.started) > self._turn_budget

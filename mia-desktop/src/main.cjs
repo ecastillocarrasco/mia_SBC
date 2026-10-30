@@ -553,6 +553,14 @@ function setupIPC() {
     try { const out=await backend.speak(config.backendBase,text); diagnostics.record('backend_tts',{mode:'tts',code:out.error?'REQUEST_FAILED':'OK',httpStatus:out.code,durationMs:Date.now()-started});return out; }
     catch(e){diagnostics.record('backend_tts',{mode:'tts',code:'UNHANDLED_ERROR'});throw e;}
   });
+  ipcMain.handle('mia:confirm-calendar', (event,prompt) => {
+    const choices=lastResultsPayload?.presentation?.calendars || [];
+    if(!ownSender(event,[resultsWin]) || typeof prompt!=='string' || !/^confirma cambio [1-9]\d*$/.test(prompt) || !choices.some(p=>p.confirmation?.prompt===prompt))throw new Error('Confirmación no disponible.');
+    openBubble();
+    const send=()=>{if(bubbleWin&&!bubbleWin.isDestroyed())bubbleWin.webContents.send('mia:calendar-confirmation',prompt);};
+    if(bubbleWin.webContents.isLoading())bubbleWin.webContents.once('did-finish-load',send);else send();
+    return true;
+  });
   ipcMain.handle('mia:send-prompt', async (event, text) => {
     if (!ownSender(event, [bubbleWin]) || typeof text !== 'string' || text.trim().length > 2000) return { error: 'Entrada no válida.' };
     if (!text.trim()) return { error: 'Escribe o dicta una consulta.' };

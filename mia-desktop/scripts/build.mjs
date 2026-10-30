@@ -1,6 +1,7 @@
 import { build } from 'esbuild';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, copyFile } from 'node:fs/promises';
 await mkdir('dist', { recursive: true });
+await copyFile('../frontend/src/core/calendar-view.css', 'dist/calendar-view.css');
 for (const name of ['avatar', 'bubble', 'settings', 'results']) {
   await build({
     entryPoints: [`src/ui/${name}.js`],

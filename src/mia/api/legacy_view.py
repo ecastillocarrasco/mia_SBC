@@ -396,6 +396,8 @@ def _absorb(
         data["presentation"] = employee360_view(p)
     elif kind == "table" and p.get("mail_rows") is not None:
         data.update(mail_rows_view(p["mail_rows"]))
+    elif kind == "calendar":
+        data.setdefault("calendars", []).append(p)
     elif kind == "mail":
         data["mail_message"] = mail_message_view(p)
     elif kind == "mail_thread":
@@ -494,7 +496,13 @@ def legacy_view(
     cards: list[dict[str, Any]] = []
     tables: list[dict[str, Any]] = []
     native_charts: list[dict[str, Any]] = []
-    extra = summary_view(summaries or [], suppress_comparison=suppress_comparison)
+    calendar_tools = {"consulta_agenda", "detalle_reunion", "disponibilidad_agenda", "calendarios_disponibles",
+                      "proponer_reunion", "ejecutar_propuesta_agenda", "preparar_reunion"}
+    # Calendar counts/timestamps are not business KPI. Other domains retain their summaries.
+    extra = summary_view(
+        [item for item in summaries or [] if item.get("tool") not in calendar_tools],
+        suppress_comparison=suppress_comparison,
+    )
     for p in presentations:
         _absorb(p, data, actions, cards, tables, native_charts)
     tables = _merge_same_schema_tables(tables)

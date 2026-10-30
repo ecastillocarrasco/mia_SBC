@@ -1,3 +1,4 @@
+import { bindCalendarConfirmations } from '../../core/calendar-view.js';
 import './sbc-logo-assembly-v2.css';
 import './sbc-logo-assembly-v3.css';
 import { SbcIntroDirectorV2 } from './sbc-intro-director-v2.js';
@@ -14,6 +15,7 @@ import { MiaVoiceV4 } from "../../core/voice-v4.js";
 import { MiaWaitingV4 } from "../../core/waiting-v4.js";
 import { MiaNarrativeV42 } from "../../core/narrative-v42.js";
 import { renderPresentation } from "../../core/present.js";
+import "../../core/calendar-view.css";
 import { buildStatisticalPresentation } from "../../core/statistical-visuals.js";
 import { MiaScene } from "../../core/scene.js";
 import { PresentationStage } from "../../core/presentation-stage.js";
@@ -417,7 +419,7 @@ async function revealData(result, answer, query, presentations, kind) {
   // Recuentos derivados exclusivamente del payload recibido. Nunca inferir
   // que todos los departamentos están incluidos si el backend filtró datos.
   if (import.meta.env.DEV) console.info('[mIA V4.5] Estructura recibida del backend', coverage);
-  const coverageHtml = `<div class="mia45-coverage">${escapeHtml(presentationCoverageLabel(coverage))}</div>`;
+  const coverageHtml = kind === 'calendar' ? '' : `<div class="mia45-coverage">${escapeHtml(presentationCoverageLabel(coverage))}</div>`;
   const summary = statistical.dataFirst ? statistical.summary || answer : answer;
   const details = statistical.dataFirst && html
     ? `<details class="presentation-detail" open><summary>Consultar información detallada</summary><div class="presentation-stack">${html}</div></details>`
@@ -425,7 +427,7 @@ async function revealData(result, answer, query, presentations, kind) {
 
   const humanKind = {
     person: "FICHA", document: "INFORME", analytics: "ANÁLISIS",
-    comparison: "COMPARATIVA", data: "DATOS",
+    comparison: "COMPARATIVA", data: "DATOS", calendar: "CALENDARIO",
   }[kind] || "RESULTADO";
   conversation.innerHTML = `<article class="mia-results-full" aria-label="Resultado de mIA">
     <div class="mia-results-kicker">SUNSET BEACH CLUB <span>·</span> mIA INTELLIGENCE</div>
@@ -690,3 +692,5 @@ window.addEventListener("pagehide", () => {
   behavior?.destroy();
   narrative.clear();
 });
+
+bindCalendarConfirmations(conversation, prompt => { if(busy)throw new Error("Espera a que termine la consulta actual.");return submit(prompt); });
