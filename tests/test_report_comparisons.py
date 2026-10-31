@@ -4,7 +4,11 @@ from datetime import date
 
 import pytest
 
-from mia.reporting.comparisons import explicit_month_comparison, merge_payroll_comparison
+from mia.reporting.comparisons import (
+    explicit_month_comparison,
+    explicit_year_list_comparison,
+    merge_payroll_comparison,
+)
 
 
 def fixture_summary(period, departments):
@@ -33,7 +37,7 @@ def test_protect_hidden_departments_and_matched_population():
         "2026-08",
         {"Sistemas": {"total": 125, "personas_con_nomina": 4}, "Protegido": {"total": 75, "personas_con_nomina": 3}},
     )
-    p, summary = merge_payroll_comparison(old, new, ("2025-08", "2026-08"))
+    p, summary = merge_payroll_comparison([old, new], ("2025-08", "2026-08"))
     assert p["rows"][0][:5] == ["Sistemas", 100.0, 125.0, 25.0, 25.0]
     assert len(p["rows"]) == 2
     assert summary["total_comparable_actual"] == 125
@@ -47,21 +51,45 @@ def test_mismatched_period_rejected():
     old = fixture_summary("2025-07", {"Sistemas": {"total": 100}})
     new = fixture_summary("2026-08", {"Sistemas": {"total": 125}})
     with pytest.raises(ValueError):
-        merge_payroll_comparison(old, new, ("2025-08", "2026-08"))
+        merge_payroll_comparison([old, new], ("2025-08", "2026-08"))
 
 
 def test_no_total_from_protected_groups():
     old = fixture_summary("2025-08", {"Protegido": {"personas_con_nomina": 2}})
     new = fixture_summary("2026-08", {"Protegido": {"total": 120, "personas_con_nomina": 3}})
     with pytest.raises(ValueError, match="No hay departamentos"):
-        merge_payroll_comparison(old, new, ("2025-08", "2026-08"))
+        merge_payroll_comparison([old, new], ("2025-08", "2026-08"))
 
 
 def test_annual_comparison_rejects_a_single_month_disguised_as_a_year():
     old = fixture_summary("2025-08", {"Sistemas": {"total": 100}})
     new = fixture_summary("2026-08", {"Sistemas": {"total": 125}})
     with pytest.raises(ValueError, match="meses analizados"):
-        merge_payroll_comparison(old, new, ("año pasado", "este año"), today=date(2026, 10, 30))
+        merge_payroll_comparison([old, new], ("año pasado", "este año"), today=date(2026, 10, 30))
+
+
+def test_three_way_year_comparison():
+    """Generalización a N (>2) periodos: "compara 2024, 2025 y 2026" -- misma mecánica que 2
+    periodos, con una columna más por cada año y la variación calculada PRIMER periodo -> ÚLTIMO."""
+    assert explicit_year_list_comparison("compara 2024, 2025 y 2026") == ("2024", "2025", "2026")
+    y2024 = fixture_summary("2024-01", {"Sistemas": {"total": 90, "personas_con_nomina": 4}})
+    y2024["meses_analizados"] = [f"2024-{m:02d}" for m in range(1, 13)]
+    y2024["meses_con_datos"] = y2024["meses_analizados"]
+    y2025 = fixture_summary("2025-01", {"Sistemas": {"total": 100, "personas_con_nomina": 4}})
+    y2025["meses_analizados"] = [f"2025-{m:02d}" for m in range(1, 13)]
+    y2025["meses_con_datos"] = y2025["meses_analizados"]
+    y2026 = fixture_summary("2026-01", {"Sistemas": {"total": 125, "personas_con_nomina": 4}})
+    y2026["meses_analizados"] = [f"2026-{m:02d}" for m in range(1, 11)]  # hasta octubre, "este año"
+    y2026["meses_con_datos"] = y2026["meses_analizados"]
+    p, summary = merge_payroll_comparison(
+        [y2024, y2025, y2026], ("2024", "2025", "2026"), today=date(2026, 10, 30)
+    )
+    assert p["columns"][:5] == ["Departamento", "2024 (€)", "2025 (€)", "2026 (€)", "Variación (€)"]
+    assert p["rows"][0][:6] == ["Sistemas", 90.0, 100.0, 125.0, 35.0, 38.89]  # 2024 -> 2026, no 2024->2025
+    assert summary["totales_por_periodo"] == {"2024": 90.0, "2025": 100.0, "2026": 125.0}
+    assert summary["total_comparable_anterior"] == 90.0
+    assert summary["total_comparable_actual"] == 125.0
+    assert len(p["charts"][0]["series"]) == 3
 
 
 @pytest.mark.parametrize(

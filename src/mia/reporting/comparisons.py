@@ -36,11 +36,39 @@ _MONTHS = {
 }
 
 
-def explicit_month_comparison(request: str) -> tuple[str, str] | None:
-    """Resuelve dos meses explícitos o un mes común con dos ejercicios.
+_YEAR_CONNECTOR_WORDS = r"(?:y|e|vs\.?|versus|contra|con|frente a|respecto a)"
+_YEAR_CONNECTOR = re.compile(
+    rf"^(?:[/\-]|,|{_YEAR_CONNECTOR_WORDS}|,\s*{_YEAR_CONNECTOR_WORDS})(?:\s+de(?:l)?)?$", re.IGNORECASE
+)
 
-    Admite «agosto de 2025 y agosto de 2026» y «agosto de 2025 y 2026».
-    No inventa un mes si solo se mencionan años. No interpreta dos meses
+
+def _years_well_connected(request: str, years_in_order: list[str]) -> bool:
+    """Para N (≥2) años EN ORDEN DE APARICIÓN: cada par consecutivo debe estar unido por una coma,
+    una barra/guion o un conector válido («2024, 2025 y 2026», «2025/2026») — generalizado del
+    caso de 2 años, no relajado: años sueltos sin ningún separador real siguen sin ser una
+    comparativa. Opera sobre ``request`` SIN normalizar: ``normalize_key`` colapsa la coma a un
+    espacio, con lo que "2024, 2025" y "2024 2025" (dos años sueltos, sin relación) dejarían de
+    poder distinguirse si se buscara aquí sobre el texto ya normalizado."""
+    found = list(re.finditer(r"\b20\d{2}\b", request))
+    if [m.group() for m in found] != years_in_order:
+        return False  # el orden/los valores no cuadran con lo ya detectado sobre el texto normalizado
+    for left, right in zip(found, found[1:]):  # noqa: B905 — pares consecutivos, longitudes distintas a propósito
+        connector = request[left.end() : right.start()].strip()
+        if not connector or not _YEAR_CONNECTOR.fullmatch(connector):
+            return False
+    return True
+
+
+def explicit_month_comparison(request: str) -> tuple[str, ...] | None:
+    """Resuelve dos meses explícitos (posiblemente distintos) o un mes común con N (≥2) ejercicios.
+
+    Admite «agosto de 2025 y agosto de 2026», «agosto de 2025 y 2026» y, generalizado a más de
+    dos años con el MISMO mes, «agosto de 2024, 2025 y 2026». Deliberadamente NO generaliza a 3+
+    pares "mes año" explícitos con meses distintos entre sí (p. ej. "agosto 2025, septiembre 2026
+    y octubre 2026"): mezclar meses Y años distintos a la vez es intrínsecamente ambiguo (¿es una
+    comparativa real o una narración secuencial de varios meses seguidos?) — solo el caso de
+    EXACTAMENTE 2 pares con meses distintos es lo bastante inequívoco para aceptarse sin preguntar.
+    No inventa un mes si solo se mencionan años. No interpreta meses
     distintos con un año ausente, ni fechas inconexas como una comparativa.
     """
     text = normalize_key(request)
@@ -51,38 +79,48 @@ def explicit_month_comparison(request: str) -> tuple[str, str] | None:
         iso = f"{match.group(2)}-{_MONTHS[match.group(1)]:02d}"
         if iso not in full:
             full.append(iso)
-    if len(full) == 2 and len(list(re.finditer(rf"\b({month_names})\b", text))) == 2:
-        return min(full), max(full)
+    all_month_mentions = list(re.finditer(rf"\b({month_names})\b", text))
+    if len(full) == 2 and len(all_month_mentions) == 2:
+        return tuple(sorted(full))
     if len(full) > 2:
         return None
 
-    # Una misma referencia mensual puede regir dos años consecutivos:
-    # «agosto de 2025 y 2026», «agosto 2025/2026», «agosto de los años 2025 y 2026».
-    all_months = list(re.finditer(rf"\b({month_names})\b", text))
+    # Una misma referencia mensual puede regir varios ejercicios:
+    # «agosto de 2025 y 2026», «agosto 2025/2026», «agosto de los años 2024, 2025 y 2026».
     years = list(re.finditer(r"\b20\d{2}\b", text))
-    if len(all_months) != 1 or len(years) != 2 or years[0].group() == years[1].group():
+    distinct_years = {y.group() for y in years}
+    if len(all_month_mentions) != 1 or len(distinct_years) < 2 or len(distinct_years) != len(years):
         return None
-    connector = text[years[0].end() : years[1].start()]
-    valid_connector = bool(
-        re.fullmatch(r"\s*(?:y|e|vs|versus|contra|con|frente a|respecto a)\s*(?:de(?:l)?\s+)?", connector)
-    )
-    # normalize_key quita «/» y «-»; distinguir "2025/2026" de dos años
-    # meramente yuxtapuestos para no deducir una comparativa inexistente.
-    if not valid_connector and not connector.strip():
-        valid_connector = bool(re.search(r"\b20\d{2}\s*[/\-]\s*20\d{2}\b", str(request)))
-    if not valid_connector:
+    if not _years_well_connected(str(request), [y.group() for y in years]):
         return None
-    month = all_months[0]
-    # Dos años deben estar vinculados al mes; si el mes está lejos o
+    month = all_month_mentions[0]
+    # Los años deben estar vinculados al mes; si el mes está lejos o
     # acompañado de otra referencia temporal, no extrapolamos.
     before = text[month.end() : years[0].start()] if month.end() <= years[0].start() else ""
-    after = text[years[1].end() : month.start()] if years[1].end() <= month.start() else ""
+    after = text[years[-1].end() : month.start()] if years[-1].end() <= month.start() else ""
     before_ok = bool(re.fullmatch(r"\s*(?:de(?:l)?\s+)?(?:(?:los\s+)?anos\s+)?", before))
     after_ok = bool(re.fullmatch(r"\s*(?:en|de(?:l)?|para(?:\s+el\s+mes\s+de)?)\s+", after))
     if not before_ok and not after_ok:
         return None
-    periods = sorted(f"{y.group()}-{_MONTHS[month.group(1)]:02d}" for y in years)
-    return periods[0], periods[1]
+    return tuple(sorted(f"{y.group()}-{_MONTHS[month.group(1)]:02d}" for y in years))
+
+
+def explicit_year_list_comparison(request: str) -> tuple[str, ...] | None:
+    """"Compara 2024, 2025 y 2026" / "gastos entre 2023 y 2026" — dos o más AÑOS COMPLETOS
+    explícitos, sin ningún mes de por medio (eso es ``explicit_month_comparison``). Cada año se
+    resuelve igual que "este año"/"año pasado" vía ``period_engine`` (el actual, hasta hoy; los
+    demás, completos) — nunca fechas calculadas aquí."""
+    text = normalize_key(request)
+    month_names = "|".join(_MONTHS)
+    if re.search(rf"\b({month_names})\b", text):
+        return None  # un mes de por medio es terreno de explicit_month_comparison
+    years = list(re.finditer(r"\b20\d{2}\b", text))
+    distinct_years = {y.group() for y in years}
+    if len(distinct_years) < 2 or len(distinct_years) != len(years):
+        return None
+    if not _years_well_connected(str(request), [y.group() for y in years]):
+        return None
+    return tuple(sorted(distinct_years))
 
 
 _THIS_YEAR_HINTS = ("este ano", "el ano actual", "ano actual", "ano en curso")
@@ -181,10 +219,10 @@ def remembered_comparison(state: dict[str, Any], message: str) -> tuple[tuple[st
 
 
 def _validate_comparison_periods(
-    a: dict[str, Any], b: dict[str, Any], periods: tuple[str, str], *, today: date | None
+    results: list[dict[str, Any]], periods: tuple[str, ...], *, today: date | None
 ) -> None:
     single_month = re.compile(r"^20\d{2}-(?:0[1-9]|1[0-2])$")
-    for summary, period in ((a, periods[0]), (b, periods[1])):
+    for summary, period in zip(results, periods, strict=True):
         analyzed = summary.get("meses_analizados")
         if single_month.fullmatch(period):
             # Comportamiento original, sin tocar: un mes concreto ("2026-08") debe analizar
@@ -206,99 +244,91 @@ def _validate_comparison_periods(
 
 
 def merge_payroll_comparison(
-    first: dict[str, Any],
-    second: dict[str, Any],
-    periods: tuple[str, str],
+    results: list[dict[str, Any]],
+    periods: tuple[str, ...],
     *,
     today: date | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Une resultados ya autorizados sin reconstruir datos de empleados.
+    """Une N (≥2) resultados ya autorizados sin reconstruir datos de empleados: "2024, 2025 y
+    2026" se trata igual que "este año y el año pasado", solo con más columnas. La variación
+    mostrada es siempre PRIMER periodo → ÚLTIMO (no la suma de variaciones intermedias).
 
     No inventa ceros para departamentos ausentes ni compara periodos con
     importes ocultos; la variación se calcula solo sobre intersección visible.
     """
-    a, b = first, second
-    if a.get("concepto_economico") != b.get("concepto_economico"):
-        raise ValueError("Los dos periodos deben calcular el mismo concepto económico")
-    if a.get("poblacion") != b.get("poblacion"):
-        raise ValueError("Las dos consultas deben usar el mismo filtro de población")
-    _validate_comparison_periods(a, b, periods, today=today)
-    da = a.get("por_departamento") or {}
-    db = b.get("por_departamento") or {}
-    names = sorted(set(da) | set(db))
-    included, excluded = [], []
+    if len(periods) < 2 or len(results) != len(periods):
+        raise ValueError("Hacen falta al menos dos periodos, uno por cada resultado a comparar")
+    concepts = {r.get("concepto_economico") for r in results}
+    if len(concepts) != 1:
+        raise ValueError("Todos los periodos deben calcular el mismo concepto económico")
+    poblaciones = {r.get("poblacion") for r in results}
+    if len(poblaciones) != 1:
+        raise ValueError("Todas las consultas deben usar el mismo filtro de población")
+    _validate_comparison_periods(results, periods, today=today)
+    buckets = [r.get("por_departamento") or {} for r in results]
+    names = sorted(set().union(*buckets))
+    included: list[tuple[str, list[float], list[Any]]] = []
+    excluded: list[str] = []
     for name in names:
-        left = da.get(name, {})
-        right = db.get(name, {})
-        lv = left.get("total")
-        rv = right.get("total")
-        if not isinstance(lv, int | float) or not isinstance(rv, int | float):
+        entries = [b.get(name, {}) for b in buckets]
+        values = [e.get("total") for e in entries]
+        if not all(isinstance(v, int | float) for v in values):
             excluded.append(name)
             continue
-        included.append((name, float(lv), float(rv), left.get("personas_con_nomina"), right.get("personas_con_nomina")))
+        included.append((name, [float(v) for v in values], [e.get("personas_con_nomina") for e in entries]))
     if not included:
-        raise ValueError("No hay departamentos con datos visibles en ambos periodos")
-    included.sort(key=lambda r: -r[2])
-    left_sum = round(sum(item[1] for item in included), 2)
-    right_sum = round(sum(item[2] for item in included), 2)
-    difference = round(right_sum - left_sum, 2)
-    pct = round(difference / left_sum * 100, 2) if left_sum else None
+        raise ValueError("No hay departamentos con datos visibles en todos los periodos")
+    included.sort(key=lambda r: -r[1][-1])
+    totals = [round(sum(item[1][i] for item in included), 2) for i in range(len(periods))]
+    difference = round(totals[-1] - totals[0], 2)
+    pct = round(difference / totals[0] * 100, 2) if totals[0] else None
     rows = []
-    for name, lv, rv, left_people, right_people in included:
-        rows.append(
-            [
-                name,
-                round(lv, 2),
-                round(rv, 2),
-                round(rv - lv, 2),
-                round((rv - lv) / lv * 100, 2) if lv else None,
-                left_people,
-                right_people,
-            ]
-        )
-    rows.append(["TOTAL comparable", left_sum, right_sum, difference, pct, None, None])
+    for name, values, people in included:
+        row_diff = round(values[-1] - values[0], 2)
+        row_pct = round((values[-1] - values[0]) / values[0] * 100, 2) if values[0] else None
+        rows.append([name, *(round(v, 2) for v in values), row_diff, row_pct, *people])
+    rows.append(["TOTAL comparable", *totals, difference, pct, *([None] * len(periods))])
     warnings = [
-        "La comparación considera exclusivamente departamentos con importes visibles en AMBOS periodos; "
-        "no representa necesariamente el gasto total de toda la empresa (protección NOM-005).",
+        f"La comparación considera exclusivamente departamentos con importes visibles en los {len(periods)} "
+        "periodos; no representa necesariamente el gasto total de toda la empresa (protección NOM-005).",
         "Departamento asignado según la ficha disponible actualmente; no se ha verificado un histórico "
         "de adscripciones. La composición de plantilla puede variar entre periodos.",
     ]
     if excluded:
         warnings.append(
-            f"{len(excluded)} departamentos sin datos comparables en ambos periodos "
+            f"{len(excluded)} departamentos sin datos comparables en todos los periodos "
             "(ausentes, incompletos u ocultos por privacidad): no se calculan diferencias para ellos."
         )
-    if any(x[3] != x[4] for x in included):
+    if any(len({p for p in people if p is not None}) > 1 for _, _, people in included):
         warnings.append(
-            "El número de personas con nómina difiere en uno o más departamentos; "
+            "El número de personas con nómina difiere entre periodos en uno o más departamentos; "
             "la variación mezcla cambios de coste y de tamaño de plantilla."
         )
-    for source in (a, b):
+    for source in results:
         for warning in source.get("advertencias") or []:
             if isinstance(warning, str) and warning not in warnings:
                 warnings.append(warning)
-    label_a, label_b = periods
-    source_name = a["concepto_economico"]
+    source_name = results[0]["concepto_economico"]
 
     def euro(value: float) -> str:
         return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " €"
 
     presentation = {
         "type": "table",
-        "title": f"Comparativa {source_name} por departamento · {label_a} / {label_b}",
+        "title": f"Comparativa {source_name} por departamento · {' / '.join(periods)}",
         "columns": [
             "Departamento",
-            label_a + " (€)",
-            label_b + " (€)",
+            *(label + " (€)" for label in periods),
             "Variación (€)",
             "Variación (%)",
-            "Personas " + label_a,
-            "Personas " + label_b,
+            *("Personas " + label for label in periods),
         ],
         "rows": rows,
         "kpis": [
-            {"label": f"Total comparable {label_a}", "value": euro(left_sum)},
-            {"label": f"Total comparable {label_b}", "value": euro(right_sum)},
+            *(
+                {"label": f"Total comparable {label}", "value": euro(totals[i])}
+                for i, label in enumerate(periods)
+            ),
             {"label": "Variación (€)", "value": euro(difference)},
             {
                 "label": "Variación (%)",
@@ -311,21 +341,21 @@ def merge_payroll_comparison(
                 "title": "Comparativa por departamento",
                 "labels": [x[0] for x in included],
                 "series": [
-                    {"name": label_a, "values": [x[1] for x in included]},
-                    {"name": label_b, "values": [x[2] for x in included]},
+                    {"name": label, "values": [x[1][i] for x in included]} for i, label in enumerate(periods)
                 ],
             },
         ],
     }
     summary = {
-        "periodo_interpretado": f"{label_a} vs {label_b}",
+        "periodo_interpretado": " vs ".join(periods),
         "concepto_economico": source_name,
-        "poblacion": a.get("poblacion"),
+        "poblacion": results[0].get("poblacion"),
         "meses_analizados": list(periods),
         "comparacion_homogenea_en_concepto": True,
         "departamentos_comparables": len(included),
-        "total_comparable_anterior": left_sum,
-        "total_comparable_actual": right_sum,
+        "totales_por_periodo": dict(zip(periods, totals, strict=True)),
+        "total_comparable_anterior": totals[0],
+        "total_comparable_actual": totals[-1],
         "variacion_eur": difference,
         "variacion_pct": pct,
         "advertencias": warnings,
@@ -338,82 +368,74 @@ def _eur(value: float) -> str:
 
 
 def _merge_bucket_comparison(
-    a_bucket: dict[str, dict[str, Any]],
-    b_bucket: dict[str, dict[str, Any]],
-    label_a: str,
-    label_b: str,
+    buckets: list[dict[str, dict[str, Any]]],
+    periods: tuple[str, ...],
     row_label: str,
-) -> tuple[dict[str, Any], list[tuple[str, float, float]], list[str]] | None:
-    """Fusiona un desglose (por departamento o por empresa) de dos periodos en una tabla
-    comparativa; ``None`` si no hay ningún nombre con importe en ambos periodos (nunca se compara
-    una lista vacía). Devuelve (tabla, [(nombre, importe_a, importe_b)...], avisos)."""
-    names = sorted(set(a_bucket) | set(b_bucket))
-    included: list[tuple[str, float, float, float, float]] = []
+) -> tuple[dict[str, Any], list[tuple[str, list[float]]], list[str]] | None:
+    """Fusiona un desglose (por departamento o por empresa) de N (≥2) periodos en una tabla
+    comparativa; ``None`` si no hay ningún nombre con importe en TODOS los periodos (nunca se
+    compara una lista vacía). Devuelve (tabla, [(nombre, [importe_periodo_1, ...])...], avisos)."""
+    names = sorted(set().union(*buckets))
+    included: list[tuple[str, list[float], list[float]]] = []
     excluded: list[str] = []
     for name in names:
-        left = a_bucket.get(name, {})
-        right = b_bucket.get(name, {})
-        lv, rv = left.get("importe"), right.get("importe")
-        if not isinstance(lv, int | float) or not isinstance(rv, int | float):
+        entries = [b.get(name, {}) for b in buckets]
+        importes = [e.get("importe") for e in entries]
+        if not all(isinstance(v, int | float) for v in importes):
             excluded.append(name)
             continue
-        included.append((name, float(lv), float(rv), float(left.get("horas") or 0), float(right.get("horas") or 0)))
+        horas = [float(e.get("horas") or 0) for e in entries]
+        included.append((name, [float(v) for v in importes], horas))
     if not included:
         return None
-    included.sort(key=lambda r: -r[2])
+    included.sort(key=lambda r: -r[1][-1])
     rows = [
         [
             name,
-            round(lv, 2),
-            round(rv, 2),
-            round(rv - lv, 2),
-            round((rv - lv) / lv * 100, 2) if lv else None,
-            round(lh, 2),
-            round(rh, 2),
+            *(round(v, 2) for v in importes),
+            round(importes[-1] - importes[0], 2),
+            round((importes[-1] - importes[0]) / importes[0] * 100, 2) if importes[0] else None,
+            *(round(h, 2) for h in horas),
         ]
-        for name, lv, rv, lh, rh in included
+        for name, importes, horas in included
     ]
     table = {
         "type": "table",
-        "title": f"Comparativa de trabajo temporal por {row_label.lower()} · {label_a} / {label_b}",
+        "title": f"Comparativa de trabajo temporal por {row_label.lower()} · {' / '.join(periods)}",
         "columns": [
             row_label,
-            label_a + " (€)",
-            label_b + " (€)",
+            *(label + " (€)" for label in periods),
             "Variación (€)",
             "Variación (%)",
-            "Horas " + label_a,
-            "Horas " + label_b,
+            *("Horas " + label for label in periods),
         ],
         "rows": rows,
     }
-    warnings = [f"{len(excluded)} {row_label.lower()}(s) sin datos comparables en ambos periodos."] if excluded else []
-    return table, [(name, lv, rv) for name, lv, rv, *_ in included], warnings
+    warnings = (
+        [f"{len(excluded)} {row_label.lower()}(s) sin datos comparables en todos los periodos."] if excluded else []
+    )
+    return table, [(name, importes) for name, importes, _ in included], warnings
 
 
 def merge_trabajo_temporal_comparison(
-    first: dict[str, Any],
-    second: dict[str, Any],
-    periods: tuple[str, str],
+    results: list[dict[str, Any]],
+    periods: tuple[str, ...],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Comparación interanual de gasto en trabajo temporal (boletines_tt), mismo patrón que
-    ``merge_payroll_comparison`` pero sin controles NOM-005 (trabajo temporal no agrega por grupos
-    protegidos: cada boletín ya es un importe individual visible, no hay umbral que proteger)."""
-    a, b = first, second
-    label_a, label_b = periods
-    dept = _merge_bucket_comparison(
-        a.get("por_departamento") or {}, b.get("por_departamento") or {}, label_a, label_b, "Departamento"
-    )
-    company = _merge_bucket_comparison(
-        a.get("por_empresa") or {}, b.get("por_empresa") or {}, label_a, label_b, "Empresa"
-    )
+    """Comparación de gasto en trabajo temporal (boletines_tt) entre N (≥2) periodos, mismo patrón
+    que ``merge_payroll_comparison`` pero sin controles NOM-005 (trabajo temporal no agrega por
+    grupos protegidos: cada boletín ya es un importe individual visible, no hay umbral que
+    proteger). La variación mostrada es siempre PRIMER periodo → ÚLTIMO."""
+    if len(periods) < 2 or len(results) != len(periods):
+        raise ValueError("Hacen falta al menos dos periodos, uno por cada resultado a comparar")
+    dept = _merge_bucket_comparison([r.get("por_departamento") or {} for r in results], periods, "Departamento")
+    company = _merge_bucket_comparison([r.get("por_empresa") or {} for r in results], periods, "Empresa")
     if dept is None and company is None:
-        raise ValueError("No hay departamentos ni empresas con datos comparables en ambos periodos")
+        raise ValueError("No hay departamentos ni empresas con datos comparables en todos los periodos")
     warnings: list[str] = []
     tables: list[dict[str, Any]] = []
     charts: list[dict[str, Any]] = []
     main_table: dict[str, Any] | None = None
-    total_a = total_b = 0.0
+    totals = [0.0] * len(periods)
     for merged in (dept, company):
         if merged is None:
             continue
@@ -421,8 +443,7 @@ def merge_trabajo_temporal_comparison(
         warnings.extend(table_warnings)
         if main_table is None:
             main_table = table
-            total_a = round(sum(r[1] for r in rows_pairs), 2)
-            total_b = round(sum(r[2] for r in rows_pairs), 2)
+            totals = [round(sum(r[1][i] for r in rows_pairs), 2) for i in range(len(periods))]
         else:
             tables.append(table)
         charts.append(
@@ -431,26 +452,28 @@ def merge_trabajo_temporal_comparison(
                 "title": table["title"],
                 "labels": [r[0] for r in rows_pairs],
                 "series": [
-                    {"name": label_a, "values": [r[1] for r in rows_pairs]},
-                    {"name": label_b, "values": [r[2] for r in rows_pairs]},
+                    {"name": label, "values": [r[1][i] for r in rows_pairs]} for i, label in enumerate(periods)
                 ],
             }
         )
     assert main_table is not None  # noqa: S101 — garantizado por el `if dept is None and company is None` de arriba
-    difference = round(total_b - total_a, 2)
-    pct = round(difference / total_a * 100, 2) if total_a else None
+    difference = round(totals[-1] - totals[0], 2)
+    pct = round(difference / totals[0] * 100, 2) if totals[0] else None
     main_table["kpis"] = [
-        {"label": f"Importe total {label_a}", "value": _eur(total_a)},
-        {"label": f"Importe total {label_b}", "value": _eur(total_b)},
+        *(
+            {"label": f"Importe total {label}", "value": _eur(totals[i])}
+            for i, label in enumerate(periods)
+        ),
         {"label": "Variación (€)", "value": _eur(difference)},
         {"label": "Variación (%)", "value": f"{pct:.2f}%".replace(".", ",") if pct is not None else "No calculable"},
     ]
     main_table["tables"] = tables
     main_table["charts"] = charts
     summary = {
-        "periodo_interpretado": f"{label_a} vs {label_b}",
-        "importe_total_anterior": total_a,
-        "importe_total_actual": total_b,
+        "periodo_interpretado": " vs ".join(periods),
+        "totales_por_periodo": dict(zip(periods, totals, strict=True)),
+        "importe_total_anterior": totals[0],
+        "importe_total_actual": totals[-1],
         "variacion_eur": difference,
         "variacion_pct": pct,
         "advertencias": warnings or None,

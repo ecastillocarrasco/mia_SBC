@@ -26,6 +26,7 @@ from mia.modules.rrhh.informes.persist import ReportFormats, normalize_formats, 
 from mia.query.period import period_engine
 from mia.reporting.comparisons import (
     explicit_month_comparison,
+    explicit_year_list_comparison,
     merge_payroll_comparison,
     merge_trabajo_temporal_comparison,
     relative_year_comparison,
@@ -361,7 +362,11 @@ async def _comparison_report_request(deps: Deps, p: InformeParams, ctx: ToolCont
         request_plan = planner.plan(ctx.user_message, user=ctx.user, today=ctx.now.date())
         has_payroll = any(m.field.domain == "payroll" for m in request_plan.metrics)
         has_timesheet = any(m.field.domain == "timesheet" for m in request_plan.metrics)
-        comparison = explicit_month_comparison(ctx.user_message) or relative_year_comparison(ctx.user_message)
+        comparison = (
+            explicit_month_comparison(ctx.user_message)
+            or explicit_year_list_comparison(ctx.user_message)
+            or relative_year_comparison(ctx.user_message)
+        )
         # Trabajo temporal: mismo problema que nóminas (abajo), ningún dato económico que
         # proteger con NOM-005, así que no hace falta "remembered"/concepto, solo las dos
         # consultas reales. Se mira ANTES del bloque de nóminas para no competir con él.
@@ -620,8 +625,7 @@ async def _run_economic_comparison(
         results.append(execution.result)
     try:
         presentation, summary = merge_payroll_comparison(
-            results[0].summary,
-            results[1].summary,
+            [r.summary for r in results],
             periods,
             today=ctx.now.date(),
         )
@@ -691,8 +695,7 @@ async def _run_trabajo_temporal_comparison(
         results.append(execution.result)
     try:
         presentation, summary = merge_trabajo_temporal_comparison(
-            results[0].summary,
-            results[1].summary,
+            [r.summary for r in results],
             periods,
         )
     except ValueError as exc:
@@ -736,7 +739,11 @@ async def _redirect_to_economic_analysis(
         )
     request_plan = planner.plan(ctx.user_message, user=ctx.user, today=ctx.now.date()) if ctx.user_message else None
     comparison = (
-        (explicit_month_comparison(ctx.user_message) or relative_year_comparison(ctx.user_message))
+        (
+            explicit_month_comparison(ctx.user_message)
+            or explicit_year_list_comparison(ctx.user_message)
+            or relative_year_comparison(ctx.user_message)
+        )
         if request_plan
         else None
     )
