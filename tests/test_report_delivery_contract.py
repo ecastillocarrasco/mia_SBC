@@ -305,7 +305,9 @@ async def test_pedir_el_pdf_en_un_turno_posterior_reutiliza_la_ultima_tabla(tmp_
     engine = ConversationEngine(llm=FakeLLMProvider(script), tools=registry, db=db, persona=Persona())
     user = UserContext("u1", "Enrique", roles=frozenset({"mia.admin"}))
 
-    first = await engine.complete(message="gastos en boletines TT 2026, ranking por departamento", user=user, session_id=None)
+    first = await engine.complete(
+        message="gastos en boletines TT 2026, ranking por departamento", user=user, session_id=None
+    )
     assert first.presentations[0]["type"] == "table"
 
     second = await engine.complete(message="quiero el pdf", user=user, session_id=first.session_id)
