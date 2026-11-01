@@ -10,7 +10,8 @@
  */
 export class MiaWelcomeAutostartV47 {
   constructor({ voice, canSpeak = () => true, eventTarget = window,
-    retryDelayMs = 180, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+    retryDelayMs = 180, setTimer = (fn, ms) => setTimeout(fn, ms),
+    clearTimer = (id) => clearTimeout(id) } = {}) {
     if (!voice) throw new TypeError('MiaWelcomeAutostartV47 requiere voice');
     this.voice = voice;
     this.canSpeak = canSpeak;
@@ -140,7 +141,7 @@ export class MiaWelcomeAutostartV47 {
         ['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return;
     // No solapar la voz de bienvenida con el reconocimiento del microfono,
     // una consulta enviada o el gesto de silenciar la voz.
-    if (event?.target?.closest?.('#miaMicLauncher, #mic, #voiceToggle, #send, #miaTextLauncher, #miaInteractionDock')) return;
+    if (event?.target?.closest?.('#miaMicLauncher, #mic, #voiceToggle, #send, #miaTextLauncher, #miaInteractionDock, #composer')) return;
     if (event?.type === 'keydown' &&
         (event.target?.isContentEditable ||
          ['INPUT', 'TEXTAREA'].includes(event.target?.tagName))) return;

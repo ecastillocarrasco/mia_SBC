@@ -32,6 +32,12 @@ function playPersonalized2DWelcome() {
   // Respeta el silencio elegido con soundToggle (mia-2d.js) antes de que ese
   // script clásico llegue a ejecutarse: misma clave que core/voice-mute.js.
   const autostart = new MiaWelcomeAutostartV47({ voice, canSpeak: () => !document.hidden && !isVoiceMuted() });
+  // _handleResult() en MiaWelcomeAutostartV47 deja el estado 'browser-speaking' sin resolver
+  // a propósito, a la espera de que este onStart confirme que la voz realmente arrancó (ver su
+  // propio comentario: "SpeechSynthesis triggers onStart asynchronously"). Sin conectarlo aquí,
+  // _active nunca pasa a false y CUALQUIER clic posterior en cualquier parte de la página
+  // reintenta reproducir el saludo indefinidamente (incidencia real encontrada en vivo).
+  voice.onStart = () => autostart.markPlaying();
   void autostart.start(text);
 }
 
