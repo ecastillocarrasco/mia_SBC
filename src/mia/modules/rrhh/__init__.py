@@ -30,6 +30,7 @@ from mia.modules.rrhh import (
     vacaciones,
 )
 from mia.modules.rrhh.common import Deps
+from mia.modules.rrhh.vacaciones.turnos import cruce_vacaciones_turnos
 
 MANIFEST = ModuleManifest(
     name="rrhh",
@@ -113,4 +114,6 @@ def build_rrhh_registry(
     for domain in active:
         with registry.using_module(domain):
             DOMAINS[domain][1](registry, deps)
+    if {"empleados", "turnos", "vacaciones"}.issubset(active):
+        registry.register(cruce_vacaciones_turnos(deps), module="vacaciones")
     return registry

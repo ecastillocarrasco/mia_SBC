@@ -29,6 +29,7 @@ from mia.data import Database, Employee, Payslip
 from mia.llm.base import LLMRequest
 from mia.llm.fake import FakeLLMProvider, final_answer, tool_call
 from mia.modules.registry import build_registry
+from mia.privacy_gateway.exceptions import UnsafeContentBlockedError
 from mia.privacy_gateway.gateway import PrivacyGateway
 from mia.settings import PrivacyGatewaySettings
 from tests.dbutil import fresh_database
@@ -38,6 +39,24 @@ from tests.test_phase4b import _pdf
 ADMIN = UserContext("u", "Enrique", roles=frozenset({"mia.admin"}))
 
 Script = Callable[[LLMRequest], list[object]]
+
+
+async def test_privacy_failure_returns_a_controlled_incomplete_result_without_exposing_error_details(tmp_path):
+    def blocked(request):
+        raise UnsafeContentBlockedError("SYNTHETIC_PRIVATE_DETAIL_984")
+
+    db = await fresh_database(tmp_path, "privacy_blocked.db")
+    provider = FakeLLMProvider(blocked)
+    try:
+        engine = ConversationEngine(llm=provider, tools=ToolRegistry(), db=db)
+        result = await engine.complete(message="Consulta la plantilla", user=ADMIN, session_id=None)
+        assert result.status == "error"
+        assert "privacidad" in result.answer
+        assert "SYNTHETIC_PRIVATE_DETAIL_984" not in result.answer
+        assert len(provider.requests) == 1
+        assert result.tools == []
+    finally:
+        await db.dispose()
 
 
 def _echo_tool_result_script(first_call_name: str, first_call_args: dict[str, object]) -> Script:
@@ -207,18 +226,17 @@ async def test_nominas_domain_individual_names_and_amounts_are_protected(tmp_pat
 
     assert result.status == "ok"
     outgoing = _all_outgoing_text(fake)
-    # El nombre, que es lo que permite ATRIBUIR el importe a una persona concreta, no debe viajar en
-    # claro. El importe en sí (1700.0) sí puede seguir viajando desacoplado del nombre real: una vez
-    # sustituido por [PERSON_NNN], nadie fuera del backend puede unir esa cifra con "Marta Ruiz" — es
-    # el límite real de esta implementación (pseudonimización del identificador, no cifrado
-    # homomórfico de la cifra), documentado como tal en PRIVACY_GATEWAY_PROGRESS.md.
+    # Individual amounts remain local even under the standard policy.
     assert "Marta Ruiz" not in outgoing
     assert "Carlos López" not in outgoing
     assert "Sofía Pérez" not in outgoing
     assert "[PERSON_" in outgoing
 
     assert "Marta Ruiz" in result.answer
-    assert "1700" in result.answer or "1.700" in result.answer
+    assert "1700" not in outgoing and "1.700" not in outgoing
+    assert "1600" not in outgoing and "1500" not in outgoing
+    local_view = json.dumps(result.presentations, ensure_ascii=False)
+    assert "Marta Ruiz" in local_view and ("1700" in local_view or "1.700" in local_view)
 
 
 async def test_nominas_domain_individual_amounts_redacted_under_strict_policy(tmp_path: Path) -> None:

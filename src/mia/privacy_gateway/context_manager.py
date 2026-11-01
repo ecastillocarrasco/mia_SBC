@@ -14,8 +14,11 @@ y forzar un reset al cerrar un generador async es precisamente lo que causó el 
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +28,22 @@ class OperationContext:
 
 
 _current: ContextVar[OperationContext | None] = ContextVar("_mia_privacy_operation", default=None)
+EmbeddingPurpose = Literal["query", "minimized_source", "private_source"]
+_embedding_purpose: ContextVar[EmbeddingPurpose | None] = ContextVar("_mia_embedding_purpose", default=None)
+
+
+@contextmanager
+def embedding_scope(purpose: EmbeddingPurpose) -> Iterator[None]:
+    """Trusted caller declares payload origin; external embeddings fail closed by default."""
+    token = _embedding_purpose.set(purpose)
+    try:
+        yield
+    finally:
+        _embedding_purpose.reset(token)
+
+
+def current_embedding_purpose() -> EmbeddingPurpose | None:
+    return _embedding_purpose.get()
 
 
 def set_operation_context(*, user_id: str, operation_id: str) -> None:

@@ -24,12 +24,16 @@ from typing import Any
 
 from mia.llm.base import LLMProvider, LLMRequest, Message, TextDelta
 from mia.llm.tiers import model_for_tier
+from mia.privacy_gateway.economic_minimization import redact_individual_amounts
+from mia.privacy_gateway.policy_engine import Policy
 from mia.reporting.document import Block, narrative_block, narrative_statement
 from mia.reporting.narrative_guard import (
     enforce_narrative_integrity,
     enforce_narrative_period_coherence,
     enforce_narrative_privacy,
 )
+from mia.reporting.narrative_requirements import usable_statement
+from mia.reporting.payroll_narrative import payroll_context, payroll_facts, payroll_prose
 from mia.settings import LLMSettings, ModelTier
 
 MAX_REGENERATION_ATTEMPTS = 2
@@ -47,20 +51,20 @@ NARRATIVE_RESPONSE_SCHEMA: dict[str, Any] = {
                     "kind": {"type": "string", "enum": ["fact", "interpretation", "hypothesis", "recommendation"]},
                     "text": {"type": "string", "description": "Frase en español, breve y concreta."},
                     "metric": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": "Para kind='fact': la clave EXACTA del resumen que respalda la afirmación.",
                     },
-                    "value": {"type": "number", "description": "Para kind='fact': el valor numérico citado."},
+                    "value": {"type": ["number", "null"], "description": "Para kind='fact': el valor numérico citado."},
                     "period": {
-                        "type": "string",
+                        "type": ["string", "null"],
                         "description": (
                             "Para kind='fact': el periodo EXACTO al que corresponde el valor citado (tal como "
                             "se indica en 'Periodo del informe' más abajo). Si el hecho no depende de ningún "
-                            "periodo concreto, omite este campo — nunca inventes uno."
+                            "periodo concreto, usa null — nunca inventes uno."
                         ),
                     },
                 },
-                "required": ["kind", "text"],
+                "required": ["kind", "text", "metric", "value", "period"],
                 "additionalProperties": False,
             },
         },
@@ -112,6 +116,12 @@ def _parse_statements(raw_text: str) -> list[dict[str, Any]] | None:
     for item in raw_statements:
         if not isinstance(item, dict) or "kind" not in item or "text" not in item:
             continue
+        if item["kind"] == "fact" and (
+            not isinstance(item.get("metric"), str)
+            or not isinstance(item.get("value"), (int, float))
+            or isinstance(item.get("value"), bool)
+        ):
+            continue
         evidence = (
             {"metric": item["metric"], "value": item["value"], "period": item.get("period")}
             if item.get("metric") is not None
@@ -134,22 +144,43 @@ async def _ask_llm_once(
     model: str | None,
     authorized_subjects: frozenset[str],
     expected_period: str | None,
+    required_kinds: frozenset[str] = frozenset(),
+    semantic_context: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]] | None:
     subject_line = ""
     if authorized_subjects:
         names = ", ".join(sorted(authorized_subjects))
         subject_line = (
-            f"\nEste informe es sobre: {names}. Puedes citar ese nombre si es relevante, pero NUNCA "
+            f"\nEste informe es sobre: {names}. Puedes citar ese nombre si es relevante, pero nunca "
             "menciones el nombre de ninguna otra persona."
         )
     else:
-        subject_line = "\nEste es un informe agregado: NO menciones el nombre de ninguna persona concreta."
+        subject_line = (
+            "\nEste es un informe agregado: usa únicamente la expresión grupo analizado. "
+            "No menciones nombres de personas, departamentos, lugares ni organizaciones en el texto. "
+            "Conserva las claves exactas solo en el campo metric."
+        )
     period_line = f"\nPeriodo del informe: {expected_period}." if expected_period else ""
+    if semantic_context:
+        period_line += (
+            "\nContexto económico validado: "
+            + json.dumps(semantic_context, ensure_ascii=False)
+            + ". Los hechos se generan localmente. Redacta solo interpretación, hipótesis o recomendaciones; "
+            "no incluyas cifras ni fechas en la prosa. No confundas costes, netos, brutos e ingresos. "
+            "Las causas son hipótesis no confirmadas, nunca hechos comprobados."
+        )
     user_message = (
-        f"Informe: {title}\nResumen de datos (claves reales, no las inventes ni las cambies):\n"
+        "Informe agregado\nResumen de datos (claves reales, no las inventes ni las cambies):\n"
         + json.dumps(backend_values, ensure_ascii=False)
         + subject_line
         + period_line
+        + (
+            "\nIncluye al menos una afirmación de cada tipo solicitado: "
+            + ", ".join(sorted(required_kinds))
+            + ". Las hipótesis se etiquetan como no confirmadas, sin afirmar causalidad."
+            if required_kinds
+            else ""
+        )
     )
     request = LLMRequest(
         system=_SYSTEM_PROMPT,
@@ -174,6 +205,7 @@ async def generate_narrative_block(
     tier: ModelTier = ModelTier.BALANCED,
     authorized_subjects: frozenset[str] = frozenset(),
     expected_period: str | None = None,
+    required_kinds: frozenset[str] = frozenset(),
 ) -> Block | None:
     """Genera (y verifica) un ``Block(kind="narrative")`` para un informe, o ``None`` si no hay
     proveedor LLM disponible, si no se pudo interpretar su respuesta tras los reintentos permitidos, o
@@ -204,24 +236,64 @@ async def generate_narrative_block(
     if llm is None:
         return None
     model = model_for_tier(llm_settings, tier) if llm_settings is not None else None
-    backend_values = _flatten_numeric(backend_summary)
+    minimized = json.loads(
+        redact_individual_amounts(json.dumps(backend_summary, default=str), policy=Policy.AGGREGATED)
+    )
+    backend_values = _flatten_numeric(minimized)
+    context = payroll_context(minimized)
+    local_facts = payroll_facts(minimized, backend_values, expected_period)
+    if context and context.get("tendencia") == "insuficiente":
+        verified = _verify_statements(
+            local_facts + payroll_prose([], minimized),
+            backend_values=backend_values,
+            expected_period=expected_period,
+            llm=llm,
+            authorized_subjects=authorized_subjects,
+        )
+        usable_kinds = {item.get("kind") for item in verified if usable_statement(item)}
+        if verified and required_kinds.issubset(usable_kinds):
+            return narrative_block(f"Análisis · {title}", verified)
+        return None
     statements: list[dict[str, Any]] | None = None
     for _attempt in range(MAX_REGENERATION_ATTEMPTS):
         try:
             statements = await _ask_llm_once(
                 llm,
                 title=title,
-                backend_values=backend_values,
+                backend_values={} if context else backend_values,
                 model=model,
                 authorized_subjects=authorized_subjects,
                 expected_period=expected_period,
+                required_kinds=required_kinds - {"fact"} if context else required_kinds,
+                semantic_context=context,
             )
         except Exception:  # pragma: no cover — fallo de red/proveedor: nunca rompe el informe
             statements = None
-        if statements:
-            break
-    if not statements:
-        return None
+        if not statements:
+            continue
+        if context:
+            statements = local_facts + payroll_prose(statements, minimized)
+        verified = _verify_statements(
+            statements,
+            backend_values=backend_values,
+            expected_period=expected_period,
+            llm=llm,
+            authorized_subjects=authorized_subjects,
+        )
+        usable_kinds = {item.get("kind") for item in verified if usable_statement(item)}
+        if verified and required_kinds.issubset(usable_kinds):
+            return narrative_block(f"Análisis · {title}", verified)
+    return None
+
+
+def _verify_statements(
+    statements: list[dict[str, Any]],
+    *,
+    backend_values: dict[str, float],
+    expected_period: str | None,
+    llm: LLMProvider,
+    authorized_subjects: frozenset[str],
+) -> list[dict[str, Any]]:
     # Una métrica desconocida no prueba que la afirmación sea falsa, pero
     # tampoco permite publicarla como un hecho verificado.
     statements = [
@@ -230,7 +302,7 @@ async def generate_narrative_block(
         if statement.get("kind") != "fact" or (statement.get("evidence") or {}).get("metric") in backend_values
     ]
     if not statements:
-        return None
+        return []
     verified = enforce_narrative_integrity(statements, backend_values=backend_values)
     # Fase F, "coherencia temporal": verifica el campo ESTRUCTURADO `period` de cada afirmación contra
     # el periodo real del informe — nunca analiza la prosa libre con expresiones regulares.
@@ -246,4 +318,4 @@ async def generate_narrative_block(
         pii_scan=getattr(llm, "scan_text_for_pii", None),
         authorized_subjects=authorized_subjects,
     )
-    return narrative_block(f"Análisis · {title}", verified)
+    return verified

@@ -47,4 +47,5 @@ async def auth_me(user: UserDep) -> dict[str, object]:
         "display_name": user.display_name,
         "email": user.email,
         "has_access": bool(user.permissions),
+        "permissions": sorted(permission.value for permission in user.permissions),
     }

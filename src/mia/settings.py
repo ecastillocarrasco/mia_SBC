@@ -316,7 +316,7 @@ class DiagnosticsSettings(BaseModel):
     """Horas que se conservan las trazas en memoria (``MIA_DIAGNOSTICS__RETENTION_HOURS``)."""
     max_traces: int = 5000
     """Máximo de trazas en memoria (``MIA_DIAGNOSTICS__MAX_TRACES``)."""
-    mask_pii: bool = False
+    mask_pii: bool = True
     """Enmascara nombres/IDs/correos en las trazas (``MIA_DIAGNOSTICS__MASK_PII``)."""
     admin_users: list[str] = Field(default_factory=list)
     """Emails autorizados a entrar al panel (``MIA_DIAGNOSTICS__ADMIN_USERS``). Se usan como

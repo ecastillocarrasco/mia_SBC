@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -142,6 +143,20 @@ async def test_comparativa_lists_everyone_in_the_group_by_name(registry: ToolReg
     assert by_name == {f"Cocinero {n}": net for n, net in NETS.items()}
 
 
+async def test_comparison_preserves_unreadable_members_without_inventing_amounts(registry, monkeypatch):
+    async def amounts(deps, slip_id, gate):
+        return None if slip_id == 101 else {"liquido": NETS[slip_id]}
+
+    monkeypatch.setattr("mia.modules.rrhh.nominas.estadisticas._amounts", amounts)
+    ctx = ToolContext(user=ADMIN, request_id=None, now=NOW, session_state={})
+    result = (await registry.execute(ToolCall("c", "comparativa_salarial", '{"puesto":"cocinero"}'), ctx)).result
+    assert result.status is ToolStatus.OK
+    assert result.summary["sin_nomina_o_ilegible"] == 1
+    assert len(result.presentation["rows"]) == 6
+    assert result.presentation["rows"][0] == ["Cocinero 101", "Cocinero", "Sin nómina legible"]
+    assert "6 personas" in result.verified_answer and "importes de 5" in result.verified_answer
+
+
 async def test_comparativa_refuses_small_groups_and_needs_the_permission(registry: ToolRegistry) -> None:
     ctx = ToolContext(user=ADMIN, request_id=None, now=NOW, session_state={})
     small = (
@@ -201,3 +216,24 @@ async def test_salary_comparison_keeps_exact_selection_without_model_flag(regist
     result = (await registry.execute(ToolCall("c", "comparativa_salarial", '{"periodo":"2026-08"}'), ctx)).result
     assert result.status is ToolStatus.OK
     assert {row["persona"] for row in result.summary["comparativa"]} == {"Cocinero 101", "Cocinero 103", "Cocinero 105"}
+
+
+async def test_simple_selected_salary_comparison_has_a_typed_authorized_direct_read(registry):
+    selected = {"etiqueta": "selección", "total": 3, "empleado_ids": [101, 103, 105]}
+    ctx = ToolContext(
+        user=ADMIN,
+        request_id=None,
+        now=NOW,
+        session_state={"ultima_poblacion": selected},
+        user_message="Compara el salario de esas personas en agosto de 2026.",
+    )
+    calls = registry.direct_read_calls(ctx)
+    assert len(calls) == 1 and calls[0].name == "comparativa_salarial"
+    assert json.loads(calls[0].arguments) == {"periodo": "2026-08", "sobre_resultado_anterior": True}
+    result = (await registry.execute(calls[0], ctx)).result
+    assert result.status is ToolStatus.OK and result.verified_answer
+    assert {row[0] for row in result.presentation["rows"]} == {"Cocinero 101", "Cocinero 103", "Cocinero 105"}
+    assert not registry.direct_read_calls(replace(ctx, user=MANAGER))
+    assert not registry.direct_read_calls(
+        replace(ctx, user_message="Compara el salario de esas personas en agosto de 2026 y envía el informe.")
+    )

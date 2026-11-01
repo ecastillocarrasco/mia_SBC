@@ -138,6 +138,7 @@ async def test_generated_xlsx_report_contains_real_data_while_llm_only_saw_pseud
     assert "Marta Ruiz" not in outgoing
     assert "Carlos López" not in outgoing
     assert "[PERSON_" in outgoing
+    assert "1700" not in outgoing and "1.700" not in outgoing
 
     # 2) El archivo .xlsx generado de verdad por el backend SÍ contiene el dato real: el informe no
     # depende de que el LLM lo "recuerde" ni lo repita.

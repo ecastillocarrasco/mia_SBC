@@ -21,6 +21,37 @@ _PII_KEYS = re.compile(
 _REDACTED = "***REDACTED***"
 _PII_MASK = "***"
 
+# Only operational counters and backend-owned symbols belong in protected traces.
+# Arbitrary payloads may contain personal data under any key, including free text.
+_COUNTERS = frozenset(
+    {
+        "duration_ms",
+        "elapsed_ms",
+        "elapsed_s",
+        "query_chars",
+        "input_tokens",
+        "output_tokens",
+        "cached_tokens",
+        "round",
+        "round_index",
+    }
+)
+_SYMBOLS = frozenset({"tool", "status", "type", "kind"})
+_SYMBOL = re.compile(r"[a-z_][a-z0-9_]{0,79}\Z", re.I)
+
+
+def operational_data(data: dict[str, Any]) -> dict[str, Any]:
+    """Drop business payloads entirely; do not rely on detecting personal names."""
+    result: dict[str, Any] = {}
+    for key, value in data.items():
+        if (key in _COUNTERS and isinstance(value, (int, float))) or (
+            key in _SYMBOLS and isinstance(value, str) and _SYMBOL.fullmatch(value)
+        ):
+            result[key] = value
+        elif key == "modules" and isinstance(value, list):
+            result[key] = [item for item in value if isinstance(item, str) and _SYMBOL.fullmatch(item)]
+    return result
+
 
 def redact(data: Any, *, mask_pii: bool = False) -> Any:
     """Redacta recursivamente secretos (siempre) y PII (si mask_pii=True)."""

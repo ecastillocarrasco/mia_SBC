@@ -18,6 +18,10 @@ _EXPORT_ACTION = re.compile(
 _FOLLOWUP = frozenset({"si", "vale", "adelante", "hazlo", "confirmo", "de acuerdo", "ok"})
 
 
+def requests_complete_table(message: str) -> bool:
+    return bool(re.search(r"\b(?:mismo informe completo|tabla completa|listado completo)\b", _normalized(message)))
+
+
 def _normalized(value: str) -> str:
     plain = unicodedata.normalize("NFKD", value.lower())
     return "".join(c for c in plain if not unicodedata.combining(c))
@@ -195,6 +199,9 @@ def merge_report_sources(executions: list[Any], *, title: str) -> dict[str, Any]
     ]
     if len(sources) == 1:
         result = dict(sources[0].result.presentation)
+        summary = getattr(sources[0].result, "summary", None)
+        if isinstance(summary, dict):
+            result["__summary__"] = {**(result.get("__summary__") or {}), **summary}
         if notes := _quality_notes(sources):
             result["__summary__"] = {**(result.get("__summary__") or {}), **notes}
         return result

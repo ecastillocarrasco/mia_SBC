@@ -10,10 +10,58 @@ from tools.eval_acceptance import (
     check_result,
     downloads,
     missing_bindings,
+    profile_matches,
     question_list,
     run_case,
     stream_turn,
+    verification_table,
+    verify_profiles,
 )
+
+from mia.auth import Permission
+
+
+def test_same_turn_export_verification_uses_the_source_and_rejects_missing_or_ambiguous_sources():
+    source = {"type": "table", "columns": ["Nombre"], "rows": [["Persona ficticia"]]}
+    spec = {"verify_current_table": True}
+    assert verification_table({"presentations": [source]}, spec, None) == {
+        "columns": source["columns"],
+        "rows": source["rows"],
+    }
+    assert verification_table({"presentations": []}, spec, source) is None
+    assert verification_table({"presentations": [source, source]}, spec, None) is None
+
+
+def test_global_profile_requires_all_effective_permissions_not_account_name():
+    assert not profile_matches(
+        {"display_name": "Admin", "permissions": ["empleados:leer", "nominas:importes"]}, "global"
+    )
+    assert profile_matches({"permissions": [permission.value for permission in Permission]}, "global")
+    assert not profile_matches({"has_access": True}, "global")
+
+
+def test_negative_security_profiles_cannot_accidentally_use_an_admin_identity():
+    identity = {"permissions": [permission.value for permission in Permission]}
+    for profile in ("rrhh_no_nominas", "legal", "sin_rol"):
+        assert not profile_matches(identity, profile)
+    assert profile_matches({"permissions": []}, "sin_rol")
+
+
+async def test_profile_preflight_rejects_wrong_identity_before_business_calls(monkeypatch):
+    requested = []
+
+    def respond(request):
+        requested.append(request.url.path)
+        return httpx.Response(200, json={"permissions": ["empleados:leer", "nominas:importes"]})
+
+    original = httpx.AsyncClient
+    transport = httpx.MockTransport(respond)
+    monkeypatch.setattr(
+        "tools.eval_acceptance.httpx.AsyncClient", lambda **kwargs: original(transport=transport, **kwargs)
+    )
+    with pytest.raises(ValueError, match="perfil_no_coincide"):
+        await verify_profiles([{"profile": "global"}], "http://dev.test", {"global": "synthetic-token"})
+    assert requested == ["/api/auth/me"]
 
 
 def test_suite_has_unique_cases_and_every_case_has_acceptance_criteria():
@@ -43,6 +91,45 @@ def test_authorization_failure_is_not_counted_as_a_successful_tool():
     assert check_result(result, set(), {"forbidden_tools": ["nominas"]}, {}) == []
     result["tools"][0]["status"] = "ok"
     assert "herramienta_no_autorizada" in check_result(result, set(), {"forbidden_tools": ["nominas"]}, {})
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "Ninguna nómina está registrada para ese periodo.",
+        "Ninguna nomina registrada para ese periodo.",
+        "Faltan datos para calcularlo.",
+    ],
+)
+def test_missing_data_wording_is_recognized_without_claiming_business_correctness(answer):
+    assert check_result({"status": "ok", "answer": answer}, set(), {"refusal": True}, {}) == []
+
+
+def test_positive_claim_is_not_accepted_as_missing_data():
+    assert check_result({"status": "ok", "answer": "El total del periodo es 2000."}, set(), {"refusal": True}, {}) == [
+        "sin_limitacion_explicita"
+    ]
+
+
+def test_cross_domain_case_requires_same_day_cross_not_only_a_person_shift_source():
+    case = next(case for case in json.loads(SUITE.read_text(encoding="utf-8"))["cases"] if case["id"] == "E11")
+    references = {"periodo_turnos_desde": "2026-10-26", "periodo_turnos_hasta": "2026-11-01"}
+    result = {"status": "ok", "tools": [{"name": "turnos_persona", "status": "ok"}]}
+    assert "herramientas_requeridas" in check_result(result, {"planning"}, case["turns"][0], references)
+    result["tools"].append({"name": "cruce_vacaciones_turnos", "status": "ok"})
+    result["summaries"] = [
+        {
+            "tool": "cruce_vacaciones_turnos",
+            "summary": {
+                "desde": "2026-10-26",
+                "hasta": "2026-11-01",
+            },
+        }
+    ]
+    assert check_result(result, {"planning"}, case["turns"][0], references) == []
+    result["summaries"][0]["summary"]["desde"] = "2026-11-01"
+    assert "dato_no_coincide_con_referencia" in check_result(result, {"planning"}, case["turns"][0], references)
+    assert case["review_required"] is True
 
 
 def test_downloads_cannot_redirect_to_another_host_or_arbitrary_endpoint():

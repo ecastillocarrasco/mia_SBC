@@ -10,12 +10,16 @@ from types import SimpleNamespace
 
 import pytest
 
+import mia.modules.rrhh.curriculums.indexer as cv_indexing
 import mia.modules.rrhh.document_indexing as indexing
+from mia.modules.rrhh.curriculums.indexer import CvIndexer
 from mia.modules.rrhh.document_indexing import DocumentIndexer
 from mia.modules.rrhh.payroll_embedding_privacy import (
     PAYROLL_EMBEDDING_POLICY_VERSION,
     project_payroll_embedding,
 )
+from mia.privacy_gateway.gateway import PrivacyGateway
+from mia.settings import PrivacyGatewaySettings
 
 SYNTHETIC = (
     "NOMINA FICTICIA - Nombre: Maria Garcia Lopez. DNI: 12345678Z. "
@@ -43,6 +47,9 @@ class _CapturedProvider:
 
 class _FakeClient:
     async def download_item_file(self, *_args):
+        return b"ignored"
+
+    async def download(self, *_args):
         return b"ignored"
 
 
@@ -130,7 +137,7 @@ async def test_nominas_embed_minimized_but_stored_local_full(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_other_domain_unchanged(monkeypatch):
+async def test_other_domain_without_gateway_retains_its_local_processing_contract(monkeypatch):
 
     monkeypatch.setattr(indexing, "extract_document_text_local", lambda *_: ("ok", SYNTHETIC, None))
     provider = _CapturedProvider()
@@ -142,6 +149,38 @@ async def test_other_domain_unchanged(monkeypatch):
     indexer._persist = persist
     assert await indexer._index_one(SimpleNamespace(sp_id=-18, file_name="synthetic.pdf")) == "ok"
     assert provider.payloads[0] == SYNTHETIC  # no cambios respecto a la ruta previa
+
+
+@pytest.mark.parametrize("domain", ["nominas", "documentos_firmados", "curriculums"])
+async def test_actual_indexer_gateway_boundary_blocks_raw_sources_and_preserves_existing_data(monkeypatch, domain):
+    class NoDetections:
+        def analyze(self, text):
+            return []
+
+    monkeypatch.setattr("mia.privacy_gateway.gateway.get_presidio_engine", lambda model: NoDetections())
+    for module in (indexing, cv_indexing):
+        monkeypatch.setattr(module, "extract_document_text_local", lambda *_: ("ok", SYNTHETIC, None))
+    provider = _CapturedProvider()
+    gateway = PrivacyGateway(
+        provider, PrivacyGatewaySettings(enabled=True, vault_key="test-key"), provider_name="test", model="test"
+    )
+    indexer = (
+        CvIndexer(db=None, client=_FakeClient(), llm=gateway, embedding_model="fake")
+        if domain == "curriculums"
+        else _indexer(domain, gateway)
+    )
+    saved = []
+
+    async def persist(_document, **kwargs):
+        saved.append(kwargs)
+
+    indexer._persist = persist
+    result = await indexer._index_one(SimpleNamespace(sp_id=-984, file_name="synthetic.pdf", file_ref="/synthetic.pdf"))
+    if domain == "nominas":
+        assert result == "ok" and saved[0]["text"] == SYNTHETIC
+        assert provider.payloads == [project_payroll_embedding(SYNTHETIC)]
+    else:
+        assert result == "error" and saved == [] and provider.payloads == []
 
 
 @pytest.mark.asyncio

@@ -103,6 +103,8 @@ async def test_me_reports_access_for_a_role_with_permissions(client: httpx.Async
     body = response.json()
     assert body["has_access"] is True
     assert body["user_id"] and body["display_name"]
+    assert body["permissions"] == sorted(body["permissions"])
+    assert "sistema:administrar" in body["permissions"]
 
 
 async def test_me_reports_no_access_for_an_unrecognized_role(client: httpx.AsyncClient, services: Services) -> None:
@@ -112,3 +114,4 @@ async def test_me_reports_no_access_for_an_unrecognized_role(client: httpx.Async
     response = await client.get("/api/auth/me")
     assert response.status_code == 200
     assert response.json()["has_access"] is False
+    assert response.json()["permissions"] == []

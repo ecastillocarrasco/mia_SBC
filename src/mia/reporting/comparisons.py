@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
+from itertools import pairwise
 from typing import Any
 
 from mia.query.period import period_engine
@@ -52,7 +53,7 @@ def _years_well_connected(request: str, years_in_order: list[str]) -> bool:
     found = list(re.finditer(r"\b20\d{2}\b", request))
     if [m.group() for m in found] != years_in_order:
         return False  # el orden/los valores no cuadran con lo ya detectado sobre el texto normalizado
-    for left, right in zip(found, found[1:]):  # noqa: B905 — pares consecutivos, longitudes distintas a propósito
+    for left, right in pairwise(found):
         connector = request[left.end() : right.start()].strip()
         if not connector or not _YEAR_CONNECTOR.fullmatch(connector):
             return False
@@ -380,8 +381,8 @@ def _merge_bucket_comparison(
     excluded: list[str] = []
     for name in names:
         entries = [b.get(name, {}) for b in buckets]
-        importes = [e.get("importe") for e in entries]
-        if not all(isinstance(v, int | float) for v in importes):
+        importes = [v for v in (e.get("importe") for e in entries) if isinstance(v, int | float)]
+        if len(importes) != len(entries):
             excluded.append(name)
             continue
         horas = [float(e.get("horas") or 0) for e in entries]

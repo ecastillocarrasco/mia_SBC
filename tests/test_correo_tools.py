@@ -7,6 +7,7 @@ endpoint real que sirve esos adjuntos.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,8 +20,10 @@ from mia.api.routes.mail import mail_attachment, mail_unread
 from mia.auth import Permission, UserContext
 from mia.connectors.graph import GraphClient
 from mia.connectors.sharepoint import StaticTokenProvider
-from mia.conversation.tools import ToolContext, ToolStatus
+from mia.conversation.tools import ToolContext, ToolRegistry, ToolStatus
+from mia.llm import ToolCall
 from mia.modules.correo.tools import enviados, hilo, leer, pendientes, recientes
+from mia.modules.correo.tools import register as register_mail
 from mia.modules.registry import build_registry
 from mia.modules.rrhh.common import Deps
 from mia.settings import Environment, MailSettings, Settings
@@ -40,6 +43,32 @@ def _deps(graph: GraphClient) -> Deps:
 
 def _graph(handler) -> GraphClient:
     return GraphClient(tokens=StaticTokenProvider(), transport=httpx.MockTransport(handler))
+
+
+async def test_same_batch_mail_open_waits_for_real_listing_references():
+    async def handler(request):
+        await asyncio.sleep(0)
+        if request.url.path.endswith("/messages"):
+            return httpx.Response(200, json={"value": [_message("m1", read=True)]})
+        return httpx.Response(
+            200, json={**_message("m1", read=True), "body": {"contentType": "text", "content": "Synthetic body"}}
+        )
+
+    graph = _graph(handler)
+    registry = ToolRegistry()
+    register_mail(registry, _deps(graph))
+    try:
+        results = await registry.execute_all(
+            [
+                ToolCall("list", "correos_recientes", '{"limite":1}'),
+                ToolCall("open", "leer_correo", '{"ref":"c1"}'),
+            ],
+            _ctx(),
+        )
+        assert all(result.result.status is ToolStatus.OK for result in results)
+        assert results[1].result.summary["texto"] == "Synthetic body"
+    finally:
+        await graph.aclose()
 
 
 # ------------------------------------------------------------------ correos_recientes (el bug reportado)

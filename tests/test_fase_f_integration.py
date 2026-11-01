@@ -388,7 +388,7 @@ async def test_generar_informe_still_exports_normally_when_the_source_tool_match
         user_message="comparativa de costes en nóminas por departamento en agosto de 2026",
     )
     presentation = {"type": "table", "title": "Gasto salarial", "columns": ["Departamento"], "rows": [["Cocina"]]}
-    summary = {"periodo_interpretado": "Agosto 2026"}
+    summary = {"periodo_interpretado": "Agosto 2026", "concepto_economico": "Coste empresa"}
     remember_table(ctx.session_state, presentation, 5000, summary, source_tool="analisis_economico_nominas")
     execution = await q3_registry.execute(TC("c", "generar_informe", _json.dumps({"formato": "pdf"})), ctx)
     assert execution.result.status is TS.OK
@@ -430,7 +430,7 @@ async def test_generar_informe_is_not_fooled_by_an_auxiliary_tool_called_afterwa
         user_message="comparativa de costes en nóminas por departamento en agosto de 2026",
     )
     presentation = {"type": "table", "title": "Gasto salarial", "columns": ["Departamento"], "rows": [["Cocina"]]}
-    summary = {"periodo_interpretado": "Agosto 2026"}
+    summary = {"periodo_interpretado": "Agosto 2026", "concepto_economico": "Coste empresa"}
     remember_table(ctx.session_state, presentation, 5000, summary, source_tool="analisis_economico_nominas")
     # Herramienta auxiliar posterior SIN presentación propia (p. ej. type=None/"download"): remember_table
     # la ignora por diseño — LAST_TABLE no cambia, a diferencia de lo que haría LAST_CALL.

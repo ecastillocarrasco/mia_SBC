@@ -14,6 +14,7 @@ import re
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from functools import lru_cache
@@ -35,7 +36,15 @@ from mia.conversation.events import (
 )
 from mia.conversation.orchestrator import select_modules
 from mia.conversation.persona import AvatarState, Persona
-from mia.conversation.planning import PLAN_TOOL, TaskPlan, population_context_question, recovery_tools
+from mia.conversation.planning import (
+    PLAN_TOOL,
+    TaskPlan,
+    TaskSteps,
+    compose_incomplete_message,
+    incomplete_detail_lines,
+    population_context_question,
+    recovery_tools,
+)
 from mia.conversation.speech import SpeechExtractor
 from mia.conversation.tools import (
     LAST_CALL,
@@ -68,6 +77,9 @@ from mia.llm import (
 from mia.observability import current_request_id, get_logger
 from mia.presentation.intent import QueryAnalysis, build_presentation_hint, classify_query
 from mia.privacy_gateway.context_manager import set_operation_context
+from mia.privacy_gateway.exceptions import PrivacyGatewayError
+from mia.query.week import requested_week
+from mia.reporting.comparison_guard import incomplete_payroll_comparison, unavailable_payroll_sources
 from mia.reporting.comparisons import (
     LAST_PAYROLL_COMPARISON,
     explicit_month_comparison,
@@ -84,6 +96,24 @@ log = get_logger(__name__)
 MAX_MESSAGE_CHARS = 4000
 NEUTRAL_SPEECH = "Te lo dejo en pantalla."
 MAX_WEB_SOURCES = 12
+
+
+def _direct_read_failure_detail(result: ToolResult) -> str:
+    """El propio ``summary`` de la herramienta ya trae un mensaje específico y comprensible
+    (p. ej. "El grupo tiene menos de 3 personas: no se muestran importes individuales") en
+    cualquiera de sus dos formas reales en el catálogo — texto plano (``modules/correo``) o
+    ``dict`` con clave ``mensaje`` (``modules/rrhh``). El recorrido de lectura directa lo
+    descartaba y mostraba siempre el mismo texto genérico sin importar la causa real (fuente
+    caída, permiso denegado, dato insuficiente...) — jerga ausente, pero igual de incomprensible
+    por indiferenciada."""
+    summary = result.summary
+    if isinstance(summary, str) and summary.strip():
+        return summary
+    if isinstance(summary, dict):
+        mensaje = summary.get("mensaje")
+        if isinstance(mensaje, str) and mensaje.strip():
+            return mensaje
+    return "No se ha completado la lectura autorizada."
 
 
 @lru_cache(maxsize=1)
@@ -131,6 +161,17 @@ def _module_hint(selected: set[str]) -> str:
     return ""
 
 
+def _calendar_scope_hint(message: str, today: date) -> str:
+    week = requested_week(message, today)
+    if week is None:
+        return ""
+    start, end = week
+    return (
+        f"\n\nLa semana solicitada abarca del {start.isoformat()} al {end.isoformat()}, "
+        "lunes a domingo completos. Conserva esas fechas en el plan y en las consultas."
+    )
+
+
 _REPORT_DOMAIN_HINTS: dict[str, str] = {
     "payroll": "coste salarial / importes de nómina (usa analisis_economico_nominas, NUNCA el informe "
     "ejecutivo genérico para esto)",
@@ -161,8 +202,24 @@ def _report_hint(message: str, user: UserContext, today: date) -> str:
     if not described:
         return ""
     period_note = f" Periodo detectado: {plan.period.label}." if plan.period else ""
+    if plan.period:
+        start, end = requested_week(message, today) or (plan.period.start, plan.period.end)
+        period_note += f" Fechas: {start.isoformat()} a {end.isoformat()}."
     explicit_pair = explicit_month_comparison(message)
     payroll_request = any(m.field.domain == "payroll" for m in plan.metrics)
+    if payroll_request:
+        fields = sorted({m.field.name for m in plan.metrics if m.field.domain == "payroll"})
+        period_note += (
+            f" Conceptos económicos solicitados del catálogo: {', '.join(fields)}. "
+            "Elige el concepto correspondiente de la herramienta; su valor por defecto no sustituye lo pedido."
+        )
+    if payroll_request and plan.period and plan.period.start != plan.period.end:
+        period_note += (
+            " analisis_economico_nominas admite el intervalo completo en una sola consulta: "
+            f"periodo='{plan.period.start.isoformat()} a {plan.period.end.isoformat()}'. "
+            "Para analizar una evolución, planifica y consulta ese intervalo completo; "
+            "exportar solo el último mes de consultas separadas no satisface la petición."
+        )
     if explicit_pair and payroll_request:
         compare_note = (
             f" Comparativa de nóminas entre {explicit_pair[0]} y {explicit_pair[1]}: "
@@ -201,6 +258,10 @@ class _TurnState:
     spoken: list[str] = field(default_factory=list)
     web_sources: list[dict[str, str]] = field(default_factory=list)
     verification_pending: list[str] = field(default_factory=list)
+    read_wait_seconds: float = 0.0
+
+    def reasoning_elapsed(self) -> float:
+        return max(0.0, time.perf_counter() - self.started - self.read_wait_seconds)
 
     def add_web_sources(self, sources: tuple[dict[str, str], ...]) -> None:
         known = {s["url"] for s in self.web_sources}
@@ -412,22 +473,23 @@ class ConversationEngine:
                 assert final is not None  # noqa: S101
                 if turn.verification_pending:
                     status = "error"
-            except LLMError as exc:
-                log.error("conversation.llm_failed", error=str(exc))
-                diag_emit(EventStage.LLM_ERROR, status=EventStatus.ERROR, data={"error": str(exc)})
+            except (LLMError, PrivacyGatewayError) as exc:
                 status = "error"
-                final = FinalAnswer(self.persona.error_phrase, AvatarState.CONFUNDIDA.value, self.persona.error_phrase)
+                final = self._model_failure(exc)
                 yield SpeechEvent(text=final.speech)
 
             # Contrato de entrega: el texto del LLM NUNCA demuestra que existan
             # archivos. Si se pidieron varios formatos, intentar exportarlos desde
             # los mismos resultados y exigir una presentación download por formato.
             if export_request:
+                plan_was_incomplete = bool(turn.verification_pending)
                 async for delivery in self._deliver_exports(export_request, final, ctx, turn):
                     if isinstance(delivery, tuple):
                         final, failed = delivery
                         if failed:
                             status = "error"
+                        elif plan_was_incomplete and not turn.verification_pending:
+                            status = "ok"
                     else:
                         yield delivery
 
@@ -472,11 +534,42 @@ class ConversationEngine:
             events.append(SpeechEvent(text=sentence))
         return events
 
+    def _model_failure(self, error: LLMError | PrivacyGatewayError) -> FinalAnswer:
+        if isinstance(error, PrivacyGatewayError):
+            diag_emit(EventStage.PRIVACY_GATEWAY_BLOCKED, data={"reason": "protection_failed"})
+            return FinalAnswer(
+                "La consulta se ha detenido por protección de datos.",
+                AvatarState.CONFUNDIDA.value,
+                "La tarea se ha detenido al fallar un control de privacidad. "
+                "No se ha repetido el envío sin protección ni se confirma la tarea como completada.",
+            )
+        log.error("conversation.llm_failed", error_type=type(error).__name__)
+        diag_emit(EventStage.LLM_ERROR, status=EventStatus.ERROR, data={"error_type": type(error).__name__})
+        return FinalAnswer(self.persona.error_phrase, AvatarState.CONFUNDIDA.value, self.persona.error_phrase)
+
     async def _reason(
         self, system: str, messages: list[Message], ctx: ToolContext, turn: _TurnState, *, modules: set[str]
     ) -> AsyncIterator[TurnEvent | FinalAnswer]:
         if question := population_context_question(ctx):
             final = FinalAnswer("Necesito que indiques el grupo de personas.", AvatarState.CONFUNDIDA.value, question)
+            for event in self._speak([final.speech], turn):
+                yield event
+            yield final
+            return
+        reviewed = {tool.name for tool in recovery_tools(self._tools.schemas_for(ctx.user))}
+        direct = [call for call in self._tools.direct_read_calls(ctx) if call.name in reviewed]
+        if len(direct) == 1:
+            yield ProgressEvent(stage="tools", message="Consultando la fuente autorizada")
+            executions = await self._tools.execute_all(direct, ctx, allowed_names=reviewed)
+            for event in self._record_executions(executions, turn, messages, raw=[]):
+                yield event
+            result = executions[0].result
+            if result.status is ToolStatus.OK and result.verified_answer:
+                final = FinalAnswer(NEUTRAL_SPEECH, AvatarState.REPOSO.value, result.verified_answer)
+            else:
+                detail = _direct_read_failure_detail(result)
+                turn.verification_pending = [detail]
+                final = FinalAnswer("No he podido consultar la fuente.", AvatarState.CONFUNDIDA.value, detail)
             for event in self._speak([final.speech], turn):
                 yield event
             yield final
@@ -488,15 +581,14 @@ class ConversationEngine:
         self, system: str, messages: list[Message], ctx: ToolContext, turn: _TurnState, *, modules: set[str]
     ) -> AsyncIterator[TurnEvent | FinalAnswer]:
         tools, plan, planning_registry, planned = self._planning_context(ctx, modules)
-        if planned:
-            system += plan.instructions()
+        system += plan.instructions() if planned else ""
         recovered = False
         diag_emit(EventStage.TOOL_SELECTION, data={"available": [t.name for t in tools]})
         async for agenda_event in self._refresh_agenda(tools, ctx, turn, messages):
             yield agenda_event
         filler_sent = False
         for round_index in range(self._max_tool_rounds + 1):
-            over_budget = (time.perf_counter() - turn.started) > self._turn_budget
+            over_budget = turn.reasoning_elapsed() > self._turn_budget
             allow_tools = bool(tools) and round_index < self._max_tool_rounds and not over_budget
             self._warn_turn_budget(turn, over_budget=over_budget, round_index=round_index)
             request = LLMRequest(
@@ -514,12 +606,19 @@ class ConversationEngine:
             ):
                 yield speech_event
 
-            # Model latency consumes the same turn budget as tool execution.
-            # Recheck after streaming before accepting calls or recovery attempts.
-            allow_tools = allow_tools and (time.perf_counter() - turn.started) <= self._turn_budget
+            # Model latency always consumes the reasoning budget. Reviewed reads
+            # have separate finite tool timeouts and must not prevent the next year/source.
+            allow_tools = allow_tools and turn.reasoning_elapsed() <= self._turn_budget
 
             if not calls:
-                candidate, missing, pending_steps = self._final_candidate(raw, plan, turn, planned=planned)
+                before_verification = len(turn.executions)
+                async for verification_event in self._complete_native_verifiers(
+                    ctx, turn, messages, plan=plan, tools=tools, allow_tools=allow_tools, complete_plan=recovered
+                ):
+                    yield verification_event
+                candidate, missing, pending_steps = self._final_candidate(
+                    raw, plan, turn, planned=planned, native_completed=len(turn.executions) > before_verification
+                )
                 if pending_steps and allow_tools and not recovered:
                     recovered = True
                     tools = recovery_tools(self._tools.schemas_for(ctx.user) + planning_registry.schemas_for(ctx.user))
@@ -577,7 +676,7 @@ class ConversationEngine:
             # guardar sus resultados en la sesión ANTES de llamar al exportador.
             # No se cambia el orden de las respuestas al LLM ni sus call_id.
             executions = await self._execute_round(calls, ctx, turn, plan=plan, tools=tools)
-            for tool_event in self._record_executions(executions, turn, messages, raw=raw, calls=calls):
+            for tool_event in self._record_executions(executions, turn, messages, raw=raw):
                 yield tool_event
 
             # Varias llamadas a la MISMA herramienta de tabla en el TURNO (p. ej. un "comparativo"
@@ -639,6 +738,7 @@ class ConversationEngine:
     async def _execute_round(
         self, calls: list[ToolCall], ctx: ToolContext, turn: _TurnState, *, plan: TaskPlan, tools: list[ToolSchema]
     ) -> list[ToolExecution]:
+        wait_started = time.perf_counter()
         report_names = {"generar_informe", "generar_informe_ejecutivo"}
         sources = [c for c in calls if c.name not in report_names]
         exports = [c for c in calls if c.name in report_names]
@@ -673,6 +773,10 @@ class ConversationEngine:
             executions = [by_id[c.call_id] for c in calls]
         else:
             executions = await plan.execute(self._tools, calls, ctx, turn.executions, offered_names)
+        if calls and {call.name for call in calls}.issubset({schema.name for schema in recovery_tools(tools)}):
+            # Measure the batch wall time once: concurrent calls must not earn duplicate credit.
+            # Writes, unreviewed tools and mixed batches receive no credit.
+            turn.read_wait_seconds += time.perf_counter() - wait_started
         return executions
 
     def _merge_turn_tables(self, turn: _TurnState, ctx: ToolContext) -> None:
@@ -727,6 +831,49 @@ class ConversationEngine:
             messages.append(Message(role="tool", content=execution.as_llm_output(), tool_call_id=call.call_id))
         return tools
 
+    async def _complete_native_verifiers(
+        self,
+        ctx: ToolContext,
+        turn: _TurnState,
+        messages: list[Message],
+        *,
+        plan: TaskPlan,
+        tools: list[ToolSchema],
+        allow_tools: bool,
+        complete_plan: bool = False,
+    ) -> AsyncIterator[TurnEvent]:
+        if not plan.steps or not allow_tools:
+            return
+        reviewed = {schema.name for schema in recovery_tools(self._tools.schemas_for(ctx.user))}
+        attempted = {execution.call.name for execution in turn.executions}
+        calls = [
+            call
+            for call in self._tools.verification_calls(ctx)
+            if call.name in plan.required_verifiers and call.name in reviewed and call.name not in attempted
+        ]
+        if calls:
+            yield ProgressEvent(stage="verification", message="Consultando la fuente obligatoria pendiente")
+            executions = await self._execute_round(calls, ctx, turn, plan=plan, tools=tools)
+            for event in self._record_executions(executions, turn, messages, raw=[]):
+                yield event
+
+        # Complete only typed, authorized, read-only calls already declared in the
+        # accepted plan. One native attempt per signature; no write/source-error retry.
+        if not complete_plan:
+            return
+        native_attempts: set[str] = set()
+        for _ in range(len(plan.steps)):
+            pending = plan.pending_reads(
+                turn.executions, reviewed - {"generar_informe", "generar_informe_ejecutivo"}, native_attempts
+            )
+            if not pending:
+                break
+            native_attempts.update(call.name + call.arguments for call in pending)
+            yield ProgressEvent(stage="verification", message="Completando las consultas previstas")
+            executions = await self._execute_round(pending, ctx, turn, plan=plan, tools=tools)
+            for event in self._record_executions(executions, turn, messages, raw=[]):
+                yield event
+
     async def _refresh_agenda(
         self, tools: list[ToolSchema], ctx: ToolContext, turn: _TurnState, messages: list[Message]
     ) -> AsyncIterator[TurnEvent]:
@@ -748,7 +895,7 @@ class ConversationEngine:
                 yield ToolEvent(name=call.name, status=execution.result.status.value, elapsed_ms=execution.elapsed_ms)
 
     def _final_candidate(
-        self, raw: list[str], plan: TaskPlan, turn: _TurnState, *, planned: bool
+        self, raw: list[str], plan: TaskPlan, turn: _TurnState, *, planned: bool, native_completed: bool = False
     ) -> tuple[FinalAnswer, list[str], list[str]]:
         candidate = parse_final_answer("".join(raw))
         missing = plan.missing(turn.executions) if planned else []
@@ -758,6 +905,12 @@ class ConversationEngine:
         if planned and not plan.steps:
             pending_steps.insert(0, "Plan explícito pendiente; no se ha verificado la tarea.")
             missing = [*pending_steps, *missing]
+        if native_completed and not pending_steps:
+            candidate = FinalAnswer(
+                NEUTRAL_SPEECH,
+                AvatarState.REPOSO.value,
+                "He completado las lecturas previstas. Revisa los resultados y sus limitaciones en pantalla.",
+            )
         return candidate, missing, pending_steps
 
     def _verify_candidate(
@@ -771,10 +924,34 @@ class ConversationEngine:
         pending_steps: list[str],
     ) -> FinalAnswer:
         if pending_steps:
-            text = "No he podido completar todos los pasos con evidencia verificable: " + "; ".join(pending_steps)
+            details = plan.incomplete_steps(turn.executions)
+            text = (
+                compose_incomplete_message(details)
+                if details
+                else "La tarea quedó incompleta: no se declararon pasos verificables en el plan."
+            )
             candidate = FinalAnswer(
                 "La tarea está incompleta. Consulta el detalle en pantalla.", candidate.avatar_state, text
             )
+        else:
+            verified = list(
+                dict.fromkeys(
+                    e.result.verified_answer
+                    for e in turn.executions
+                    if e.result.status is ToolStatus.OK and e.result.verified_answer
+                )
+            )
+            coverage_limit = incomplete_payroll_comparison(turn.executions)
+            if coverage_limit:
+                verified.append(coverage_limit)
+            if source_limit := unavailable_payroll_sources(turn.executions):
+                verified.append(source_limit)
+            if verified:
+                candidate = FinalAnswer(
+                    "Consulta el resultado verificado y sus limitaciones en pantalla.",
+                    candidate.avatar_state,
+                    "\n\n".join(verified),
+                )
         turn.verification_pending = pending_steps
         if planned:
             turn.state["plan_ejecucion"] = {
@@ -791,10 +968,9 @@ class ConversationEngine:
         messages: list[Message],
         *,
         raw: list[str],
-        calls: list[ToolCall],
     ) -> Iterator[TurnEvent]:
         turn.executions.extend(executions)
-        messages.append(Message(role="assistant", content="".join(raw), tool_calls=tuple(calls)))
+        messages.append(Message(role="assistant", content="".join(raw), tool_calls=tuple(e.call for e in executions)))
         for execution in executions:
             turn.state.update(execution.result.state_updates)
             remember_table(
@@ -817,10 +993,10 @@ class ConversationEngine:
 
     def _warn_turn_budget(self, turn: _TurnState, *, over_budget: bool, round_index: int) -> None:
         if over_budget and round_index:
-            log.warning("conversation.turn_budget_exceeded", elapsed_s=round(time.perf_counter() - turn.started, 1))
+            log.warning("conversation.turn_budget_exceeded", elapsed_s=round(turn.reasoning_elapsed(), 1))
             diag_emit(
                 EventStage.WARNING,
-                data={"reason": "turn_budget_exceeded", "elapsed_s": round(time.perf_counter() - turn.started, 1)},
+                data={"reason": "turn_budget_exceeded", "elapsed_s": round(turn.reasoning_elapsed(), 1)},
             )
 
     def _require_plan(self, calls: list[ToolCall], messages: list[Message]) -> None:
@@ -843,6 +1019,7 @@ class ConversationEngine:
         message = ctx.user_message
         failed = False
         original_request, formats = export_request
+        plan = self._pending_delivery_plan(ctx, turn)
         verified = download_formats(turn.executions)
         missing = [fmt for fmt in formats if fmt not in verified]
         if missing:
@@ -866,14 +1043,14 @@ class ConversationEngine:
                 # informes los genera todos de una vez, ver persist_document_report) en vez
                 # de una llamada por formato — ya no hace falta "uno a uno".
                 export_ctx = replace(ctx, user_message=original_request)
-                execution = await self._tools.execute(
-                    ToolCall(
-                        f"delivery:{uuid.uuid4().hex}",
-                        "generar_informe",
-                        json.dumps({"formato": missing}, ensure_ascii=False),
-                    ),
-                    export_ctx,
+                call = ToolCall(
+                    f"delivery:{uuid.uuid4().hex}",
+                    "generar_informe",
+                    json.dumps({"formato": missing}, ensure_ascii=False),
                 )
+                if plan is not None:
+                    call = plan._bind_export_call(call)
+                execution = await self._tools.execute(call, export_ctx)
                 turn.executions.append(execution)
                 yield ToolEvent(
                     name=execution.call.name,
@@ -883,6 +1060,12 @@ class ConversationEngine:
         verified = download_formats(turn.executions)
         successes = [(fmt, verified[fmt]) for fmt in formats if fmt in verified]
         missing = [fmt for fmt in formats if fmt not in verified]
+        if saved_plan := turn.state.get("plan_ejecucion"):
+            resolved_files = {f"archivo {fmt} pendiente" for fmt in verified}
+            saved_plan["pendientes"] = [item for item in saved_plan.get("pendientes", []) if item not in resolved_files]
+            if plan is not None:
+                turn.verification_pending = plan.missing(turn.executions)
+                saved_plan["pendientes"] = list(turn.verification_pending)
         labels = {"pdf": "PDF", "pptx": "PowerPoint", "xlsx": "Excel", "docx": "Word", "html": "HTML"}
         lines = [f"- [{labels[fmt]}]({presentation['url']})" for fmt, presentation in successes]
         if missing:
@@ -904,7 +1087,8 @@ class ConversationEngine:
                 lines.append("No hay datos verificables y completos para exportar desde esta ejecución.")
         elif turn.verification_pending:
             lines.insert(0, "Hay archivos disponibles, pero la tarea no está completamente verificada:")
-            lines.extend(turn.verification_pending)
+            detail = plan.incomplete_steps(turn.executions) if plan is not None else []
+            lines.extend(incomplete_detail_lines(detail) if detail else turn.verification_pending)
         else:
             lines.insert(0, "Archivos generados y disponibles para descargar:")
         confirmed = "\n".join(lines)
@@ -914,11 +1098,27 @@ class ConversationEngine:
             else "No se han podido entregar todos los documentos solicitados. Consulta el detalle en pantalla."
         )
         final = FinalAnswer(spoken, final.avatar_state, confirmed)
-        if missing and not successes:
-            failed = True
+        failed = failed or bool(missing or turn.verification_pending)
         yield SpeechEvent(text=spoken)
 
         yield final, failed
+
+    def _pending_delivery_plan(self, ctx: ToolContext, turn: _TurnState) -> TaskPlan | None:
+        saved = turn.state.get("plan_ejecucion")
+        if not turn.verification_pending or not isinstance(saved, dict):
+            return None
+        try:
+            steps = TaskSteps.model_validate({"pasos": saved.get("pasos")}).pasos
+        except ValueError:
+            return None
+        return TaskPlan(
+            ctx.user_message,
+            frozenset(schema.name for schema in self._tools.schemas_for(ctx.user)),
+            steps=steps,
+            parameter_models=self._tools.parameter_models_for(ctx.user),
+            required_verifiers=self._tools.required_verifiers_for(ctx.user, ctx.user_message),
+            today=ctx.now.date(),
+        )
 
     def _restore_comparison(
         self, message: str, user: UserContext, turn: _TurnState, history: list[ConversationTurn]
@@ -1039,6 +1239,7 @@ class ConversationEngine:
                 self.persona.hint_for(message, mailbox)
                 + _module_hint(selected_modules)
                 + _report_hint(message, user, now.date())
+                + _calendar_scope_hint(message, now.date())
                 + (
                     "\n\n## Continuación de comparativa salarial\n"
                     "El usuario pide exportar la comparativa previa de nóminas. Ejecuta "
@@ -1096,6 +1297,13 @@ class ConversationEngine:
             now=now,
             session_state=turn.state,
             user_message=message,
+            population_reference=deepcopy(
+                {
+                    str(key): turn.state[key]
+                    for key in ("ultima_poblacion", "historial_poblaciones")
+                    if key in turn.state
+                }
+            ),
             attachment_service=attachment_service,
         )
 
@@ -1106,12 +1314,20 @@ class ConversationEngine:
     ) -> tuple[list[ToolSchema], TaskPlan, ToolRegistry, bool]:
         tools = self._tools.schemas_for(ctx.user, modules=modules)
         analysis = classify_query(ctx.user_message)
+        required_verifiers = self._tools.required_verifiers_for(ctx.user, ctx.user_message)
         planned = (
-            analysis.comparison_requested
+            bool(required_verifiers)
+            or analysis.comparison_requested
             or analysis.analytics_requested
             or analysis.presentation_intent.value in {"report", "executive_analysis"}
         )
-        plan = TaskPlan(ctx.user_message, frozenset(t.name for t in self._tools.schemas_for(ctx.user)))
+        plan = TaskPlan(
+            ctx.user_message,
+            frozenset(t.name for t in self._tools.schemas_for(ctx.user)),
+            parameter_models=self._tools.parameter_models_for(ctx.user),
+            required_verifiers=required_verifiers,
+            today=ctx.now.date(),
+        )
         planning_registry = ToolRegistry()
         planning_registry.register(plan.tool())
         tools += planning_registry.schemas_for(ctx.user)

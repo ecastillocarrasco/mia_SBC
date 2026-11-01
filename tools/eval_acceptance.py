@@ -16,9 +16,49 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from mia.auth import Permission
+
 SUITE = Path(__file__).resolve().parents[1] / "tests/evals/acceptance_orchestration.json"
 MONEY = re.compile(r"\d[\d.,]*\s*(?:€|euros?\b)", re.IGNORECASE)
 REPORT_URL = re.compile(r"/api/reports/[a-fA-F0-9]{32}\Z")
+
+
+def profile_matches(identity: dict[str, Any], profile: str) -> bool:
+    """Check server-verified effective permissions; never infer roles from an unverified JWT."""
+    permissions = set(identity.get("permissions", []))
+    required = {
+        "global": {permission.value for permission in Permission},
+        "rrhh": {"empleados:leer", "turnos:leer", "vacaciones:leer", "nominas:importes"},
+        "rrhh_no_nominas": {"empleados:leer", "turnos:leer", "vacaciones:leer"},
+        "legal": {"documentos:leer", "documentos:contenido"},
+        "sin_rol": set(),
+    }
+    if profile not in required or "permissions" not in identity:
+        return False
+    if not required[profile].issubset(permissions):
+        return False
+    if profile == "rrhh_no_nominas" and permissions.intersection({"nominas:leer", "nominas:importes"}):
+        return False
+    if profile == "legal" and "documentos:contenido_medico" in permissions:
+        return False
+    return profile != "sin_rol" or not permissions
+
+
+async def verify_profiles(cases: list[dict[str, Any]], url: str, tokens: dict[str, str]) -> list[str]:
+    verified = []
+    for profile in {case.get("profile", "global") for case in cases}:
+        token = tokens.get(profile) or os.environ.get(f"MIA_EVAL_TOKEN_{profile.upper()}")
+        if not token:
+            continue  # Missing identity remains pending, never passed.
+        async with httpx.AsyncClient(
+            base_url=url, headers={"Authorization": f"Bearer {token}"}, timeout=30, follow_redirects=False
+        ) as client:
+            response = await client.get("/api/auth/me")
+            response.raise_for_status()
+            if not profile_matches(response.json(), profile):
+                raise ValueError("perfil_no_coincide_con_permisos_verificados")
+            verified.append(profile)
+    return sorted(verified)
 
 
 def successful_tools(result: dict[str, Any]) -> set[str]:
@@ -54,7 +94,8 @@ def check_result(result: dict[str, Any], stages: set[str], spec: dict[str, Any],
         problems.append("importe_en_voz")
     if spec.get("refusal") and not re.search(
         r"no (?:puedo|tengo|tienes|dispongo|hay|est[aá]|se puede|se ha encontrado)"
-        r"|sin (?:acceso|permiso)|no disponible|pendiente",
+        r"|sin (?:acceso|permiso)|no disponible|pendiente"
+        r"|ninguna n[oó]mina (?:est[aá] registrada|registrada)|faltan datos",
         result.get("answer", ""),
         re.I,
     ):
@@ -140,6 +181,15 @@ def missing_bindings(case: dict[str, Any], bindings: dict[str, Any]) -> set[str]
     return required - bindings.keys()
 
 
+def verification_table(
+    result: dict[str, Any], spec: dict[str, Any], previous: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    if spec.get("verify_current_table"):
+        tables = [item for item in result.get("presentations", []) if item.get("type") == "table"]
+        return {key: tables[0][key] for key in ("columns", "rows")} if len(tables) == 1 else None
+    return previous if spec.get("verify_previous_table") else None
+
+
 async def run_case(
     case: dict[str, Any], url: str, bindings: dict[str, Any], tokens: dict[str, str] | None = None
 ) -> dict[str, Any]:
@@ -152,20 +202,24 @@ async def run_case(
     previous_table = None
     try:
         async with httpx.AsyncClient(
-            base_url=url, headers={"Authorization": f"Bearer {token}"}, timeout=180, follow_redirects=False
+            base_url=url,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=httpx.Timeout(30, read=660),
+            follow_redirects=False,
         ) as client:
             for index, spec in enumerate(case["turns"]):
                 prompt = Template(spec["prompt"]).substitute(bindings)
                 result, stages = await stream_turn(client, prompt, session)
                 session = result["session_id"]
                 issues = check_result(result, stages, spec, bindings)
-                if spec.get("verify_previous_table") and previous_table is None:
+                expected_table = verification_table(result, spec, previous_table)
+                if (spec.get("verify_previous_table") or spec.get("verify_current_table")) and expected_table is None:
                     issues.append("sin_tabla_origen_para_verificar")
                 issues += await check_downloads(
                     client,
                     result,
                     spec.get("formats", []),
-                    previous_table if spec.get("verify_previous_table") else None,
+                    expected_table,
                 )
                 tables = [item for item in result.get("presentations", []) if item.get("type") == "table"]
                 if len(tables) == 1:
@@ -208,6 +262,26 @@ def interactive_token() -> str:
     if not isinstance(token, str) or not token:
         raise ValueError("login_no_completado")
     return token
+
+
+async def execute_cases(
+    *,
+    cases: list[dict[str, Any]],
+    url: str,
+    bindings: dict[str, Any],
+    tokens: dict[str, str],
+    report: dict[str, Any],
+    output: Path,
+) -> list[dict[str, Any]]:
+    report["profiles_verified"] = await verify_profiles(cases, url, tokens)
+    results = []
+    for case in cases:
+        result = await run_case(case, url, bindings, tokens)
+        results.append(result)
+        report["results"] = results
+        await asyncio.to_thread(output.write_text, json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"{result['id']}: {result['status']}", flush=True)
+    return results
 
 
 def main() -> int:
@@ -267,17 +341,22 @@ def main() -> int:
         "results": [],
     }
 
-    async def execute() -> list[dict[str, Any]]:
-        results = []
-        for case in cases:
-            result = await run_case(case, args.url, bindings, tokens)
-            results.append(result)
-            report["results"] = results
-            args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-            print(f"{result['id']}: {result['status']}", flush=True)
-        return results
-
-    results = asyncio.run(execute())
+    try:
+        results = asyncio.run(
+            execute_cases(
+                cases=cases,
+                url=args.url,
+                bindings=bindings,
+                tokens=tokens,
+                report=report,
+                output=args.output,
+            )
+        )
+    except (httpx.HTTPError, ValueError) as exc:
+        report["preflight_error"] = type(exc).__name__
+        args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        print("No se han ejecutado casos: comprueba acceso y permisos efectivos del perfil seleccionado.")
+        return 2
     report["execution_complete"] = True
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0 if all(item["status"] == "passed" for item in results) else 1

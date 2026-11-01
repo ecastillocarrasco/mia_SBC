@@ -168,6 +168,8 @@ class PeriodEngine:
         """Devuelve (start, end) o None si la expresión no se reconoce."""
         ref = today or date.today()
         norm = _spell_digits(_normalize(expression))
+        if re.fullmatch(r"\d{4}-\d{2}(?:-\d{2})?\s+(?:a|hasta|–|—)\s+\d{4}-\d{2}(?:-\d{2})?", norm):
+            return self._iso_range(norm, ref)
         return (
             self._exact(norm, ref)
             or self._relative_days(norm, ref)
@@ -183,6 +185,26 @@ class PeriodEngine:
         )
 
     # ------------------------------------------------------------------ patrones
+
+    def _iso_range(self, n: str, ref: date) -> ResolvedPeriod | None:
+        match = re.fullmatch(r"(\d{4}-\d{2}(?:-\d{2})?)\s+(?:a|hasta|–|—)\s+(\d{4}-\d{2}(?:-\d{2})?)", n)
+        if not match:
+            return None
+        first, last = match.groups()
+        try:
+            start = date.fromisoformat(first + "-01" if len(first) == 7 else first)
+            end = _month_end(*map(int, last.split("-"))) if len(last) == 7 else date.fromisoformat(last)
+        except ValueError:
+            return None
+        if start > end:
+            return None
+        label = (
+            f"{start:%Y-%m} – {end:%Y-%m}"
+            if start.day == 1 and end == _month_end(end.year, end.month)
+            else f"{start.isoformat()} a {end.isoformat()}"
+        )
+        return ResolvedPeriod(start, end, label)
+
     def _exact(self, n: str, ref: date) -> ResolvedPeriod | None:
         return self._exact_day(n, ref) or self._exact_week_month(n, ref) or self._exact_year(n, ref)
 

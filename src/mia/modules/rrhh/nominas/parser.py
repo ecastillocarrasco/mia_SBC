@@ -54,7 +54,7 @@ _SS_LINE = re.compile(
     r"([A-Za-záéíóúÁÉÍÓÚñÑüÜ][^0-9\n\r%]{3,60})\s+"
     r"(-?[0-9][0-9.]*,[0-9]{2})\s+"
     r"([0-9]{1,3}[,.]?[0-9]*)\s*%\s+"
-    r"(-?[0-9][0-9.]*,[0-9]{2})\s*(?:\n|\r|$)",
+    r"(-?[0-9][0-9.]*,[0-9]{2})\s*(?:\n|\r|$|(?=\s*[A-Za-záéíóúÁÉÍÓÚñÑüÜ]))",
     re.MULTILINE | re.IGNORECASE,
 )
 
@@ -117,12 +117,44 @@ def parse_employer_ss(text: str) -> dict[str, Any]:
     return {"desglose": lines, "total_aportacion_empresa": total}
 
 
+def _inline_summary(line: str, liquid: float | None = None) -> dict[str, float | None]:
+    header = HEADER.search(line)
+    if header is None:
+        return {}
+    tail = line[header.end() :]
+    values = []
+    cursor = 0
+    for match in AMOUNT.finditer(tail):
+        if tail[cursor : match.start()].strip():
+            break
+        values.append(amount_es(match.group()))
+        cursor = match.end()
+    if len(values) >= 7:
+        return dict(zip(SUMMARY, values[:7], strict=True))
+    # El índice normaliza espacios y pierde las columnas vacías de las bases.
+    # Solo recuperamos los dos totales finales si un líquido explícito confirma
+    # su aritmética; no inventamos las bases ni aceptamos resúmenes ambiguos.
+    if 3 <= len(values) <= 6 and liquid is not None:
+        gross, deductions = values[-2:]
+        if gross is not None and deductions is not None and abs(gross - deductions - liquid) <= 0.02:
+            return {"total_devengado": gross, "total_deducciones": deductions}
+    return {}
+
+
+def _liquid_amount(text: str) -> float | None:
+    for pattern in LIQUID:
+        if match := pattern.search(text):
+            return amount_es(match.group(1))
+    return None
+
+
 def parse_payslip(text: str) -> dict[str, Any]:
     lines = [" ".join(x.split()) for x in text.splitlines() if x.strip()]
     is_extra = any(re.search(r"\bExtra\s*-\s*", line, re.IGNORECASE) for line in lines)
     out: dict[str, Any] = dict.fromkeys((*SUMMARY, "liquido", "irpf_importe", "irpf_porcentaje"))
     header = next((i for i, line in enumerate(lines) if HEADER.search(line)), None)
     if header is not None:
+        out.update(_inline_summary(lines[header]))
         for line in lines[header + 1 : header + 4]:
             values = AMOUNT.findall(line)
             fields = SUMMARY if len(values) == 7 else EXTRA_SUMMARY if is_extra and len(values) == 3 else None
@@ -130,10 +162,9 @@ def parse_payslip(text: str) -> dict[str, Any]:
                 out.update({f: amount_es(v) for f, v in zip(fields, values, strict=True)})
                 break
     joined = "\n".join(lines)
-    for pattern in LIQUID:
-        if match := pattern.search(joined):
-            out["liquido"] = amount_es(match.group(1))
-            break
+    out["liquido"] = _liquid_amount(joined)
+    if header is not None and out["total_devengado"] is None:
+        out.update(_inline_summary(lines[header], liquid=out["liquido"]))
     irpf_line = next((line for line in lines if re.search(r"Tributaci[oó]n\s+I\.?R\.?P\.?F\.?", line, re.I)), None)
     if irpf_line:
         if pct := re.search(r"\(\s*([0-9]{1,2}(?:[.,][0-9]{1,2})?)\s*%\s*\)", irpf_line):

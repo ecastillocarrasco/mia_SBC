@@ -38,6 +38,7 @@ from mia.modules.rrhh.payroll_embedding_privacy import (
     project_payroll_embedding,
 )
 from mia.observability import get_logger
+from mia.privacy_gateway.context_manager import embedding_scope
 
 log = get_logger(__name__)
 logging.getLogger("pypdf").setLevel(logging.ERROR)  # PDF mal formados: el estado ya lo refleja
@@ -400,7 +401,10 @@ class DocumentIndexer:
                 [project_payroll_embedding(chunk) for chunk in chunks] if self._domain == "nominas" else chunks
             )
             for start in range(0, len(embedding_texts), EMBED_BATCH):
-                vectors.extend(await self._llm.embed(embedding_texts[start : start + EMBED_BATCH], self._model_name))
+                with embedding_scope("minimized_source" if self._domain == "nominas" else "private_source"):
+                    vectors.extend(
+                        await self._llm.embed(embedding_texts[start : start + EMBED_BATCH], self._model_name)
+                    )
         except Exception as exc:
             log.warning("document_index.embed_failed", domain=self._domain, document=document.sp_id, error=str(exc))
             return "error"  # se reintentará en la siguiente ejecución (no se guarda el texto)

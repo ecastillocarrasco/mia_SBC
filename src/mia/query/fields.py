@@ -433,6 +433,8 @@ def _build_default() -> SemanticFieldRegistry:
                 "costes en nominas",
                 "coste de nomina",
                 "costes de nomina",
+                "coste de nominas",
+                "costes de nominas",
                 "gasto en nominas",
                 "gastos en nominas",
                 # Sin "en nominas"/"de personal": hoy no hay ninguna otra fuente de gasto conectada

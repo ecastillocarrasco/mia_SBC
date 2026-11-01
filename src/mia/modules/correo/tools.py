@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import html
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote
@@ -25,6 +26,7 @@ from mia.data import Employee
 from mia.modules.correo.deps import MailDeps
 from mia.modules.correo.mailbox import resolve_mailbox
 from mia.modules.correo.signature import SIGNATURE_BANNER_CID, MailSignature, build_mail_signature
+from mia.modules.correo.summary import direct_summary_arguments, local_summary
 from mia.observability import get_logger
 from mia.text import plain_text
 
@@ -346,6 +348,9 @@ def recientes(deps: MailDeps) -> Tool:
     async def handler(p: RecientesParams, ctx: ToolContext) -> ToolResult:
         if problem := _unavailable(deps, ctx):
             return problem
+        local_request = direct_summary_arguments(ctx)
+        include_body = p.incluir_texto or local_request is not None
+        limit = local_request["limite"] if local_request else p.limite
         try:
             payload = await _graph_request(
                 deps,
@@ -353,9 +358,9 @@ def recientes(deps: MailDeps) -> Tool:
                 "GET",
                 f"{_mailbox(deps, ctx, p.buzon)}/mailFolders/inbox/messages",
                 params={
-                    "$top": min(p.limite, 10) if p.incluir_texto else p.limite,
+                    "$top": min(limit, 10) if include_body else limit,
                     "$orderby": "receivedDateTime desc",
-                    "$select": f"{SELECT},body" if p.incluir_texto else SELECT,
+                    "$select": f"{SELECT},body" if include_body else SELECT,
                     # Nombre/tipo de los adjuntos en la misma llamada (sin descargar contenido):
                     # el aviso de correo nuevo (mail-watch.js) los anuncia explícitamente.
                     "$expand": "attachments($select=name,contentType)",
@@ -365,6 +370,13 @@ def recientes(deps: MailDeps) -> Tool:
             return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, f"No he podido leer el buzón: {exc}")
         messages = payload.get("value", [])
         items = _remember(ctx, messages, _mailbox_address(deps, ctx, p.buzon))
+        if local_request:
+            return ToolResult(
+                ToolStatus.OK,
+                {"correos_mostrados": len(items), "resumen_preparado": True},
+                _mail_table("Correos recientes", items),
+                verified_answer=local_summary(items, [_plain(message.get("body")) for message in messages]),
+            )
         if p.incluir_texto:
             for item, message in zip(items, messages, strict=True):
                 item["texto"] = _plain(message.get("body"))[:1200]
@@ -386,6 +398,7 @@ def recientes(deps: MailDeps) -> Tool:
         handler,
         permission=Permission.CORREO_LEER,
         audit_resource="correo",
+        direct_read_arguments=direct_summary_arguments,
     )
 
 
@@ -1008,4 +1021,9 @@ def register(registry: ToolRegistry, deps: MailDeps) -> None:
         descartar,
         guardados,
     ):
-        registry.register(factory(deps))
+        tool = factory(deps)
+        if factory in (pendientes, recientes, enviados, buscar):
+            tool = replace(tool, produces_context=frozenset({"correo_referencias"}))
+        if factory in (hilo, leer):
+            tool = replace(tool, requires_context=frozenset({"correo_referencias"}))
+        registry.register(tool)

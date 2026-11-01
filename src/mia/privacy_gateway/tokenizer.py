@@ -58,6 +58,12 @@ class Tokenizer:
         self._vault.store(token.strip("[]"), value, user_id=user_id, operation_id=operation_id)
         return token
 
+    def tokenize_identifier(self, value: str, entity_type: str, *, user_id: str, operation_id: str) -> str:
+        """Protect a schema-declared identifier even if statistical NER misses it."""
+        if entity_type not in all_tokenizable_entities():
+            raise ValueError("Tipo de identificador no admitido")
+        return self._token_for_value(entity_type, value, user_id=user_id, operation_id=operation_id)
+
     def _sweep_stale(self) -> None:
         cutoff = time.monotonic() - self._ttl
         with self._lock:

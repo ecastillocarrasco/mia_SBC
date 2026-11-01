@@ -33,8 +33,10 @@ from mia.reporting.comparisons import (
     remembered_comparison,
 )
 from mia.reporting.content_composer import MissingReportEvidence, compose_for_request
+from mia.reporting.delivery import requests_complete_table
 from mia.reporting.document import Document, to_document
 from mia.reporting.narrative_generation import generate_narrative_block
+from mia.reporting.narrative_requirements import requested_narrative_kinds, usable_statement
 from mia.reporting.planner import planner
 from mia.reporting.render import RENDERERS
 from mia.reporting.verification import verify_artifact
@@ -126,11 +128,16 @@ async def _build_report_result(
     redirección interna de ``generar_informe_ejecutivo`` — nunca dos copias del mismo renderizado."""
     settings = deps.settings.reports if deps.settings else None
     ttl = timedelta(hours=settings.ttl_hours if settings else 24)
+    if concept_problem := _payroll_concept_problem(presentation, ctx):
+        return concept_problem
+    if series_problem := _payroll_evolution_problem(presentation, ctx):
+        return series_problem
     document = to_document(presentation, include_detail=incluir_detalle, include_chart=incluir_grafico)
     if titulo:
         document.title = titulo
     title = document.title
-    if incluir_narrativa:
+    required_kinds = requested_narrative_kinds(ctx.user_message)
+    if incluir_narrativa or required_kinds:
         # Fase F (integración LLM): se usa deps.llm, el MISMO proveedor que ya usa el resto de mIA
         # (ya envuelto por el Privacy Gateway en build_llm_provider() — nunca un segundo camino
         # hacia el proveedor), y se verifica contra los datos reales antes de añadirse — nunca una
@@ -156,6 +163,7 @@ async def _build_report_result(
             authorized_subjects=authorized_subjects,
             expected_period=expected_period if isinstance(expected_period, str) else None,
             llm_settings=getattr(deps.settings, "llm", None),
+            required_kinds=required_kinds,
         )
         if narrative is not None:
             document.blocks.append(narrative)
@@ -175,6 +183,17 @@ async def _build_report_result(
                 ),
                 "requisitos_pendientes": exc.missing,
             },
+        )
+    selected_kinds = {
+        s.get("kind")
+        for block in document.blocks
+        if block.kind == "narrative"
+        for s in block.data.get("statements", [])
+        if usable_statement(s)
+    }
+    if not required_kinds.issubset(selected_kinds):
+        return ToolResult(
+            ToolStatus.INVALID_ARGUMENTS, {"mensaje": "La composición omite secciones narrativas solicitadas."}
         )
     logo_path = settings.logo_path if settings else None
     safe = re.sub(r"[^\w\- ]+", "", title).strip()[:60] or "informe"
@@ -425,7 +444,55 @@ async def _comparison_report_request(deps: Deps, p: InformeParams, ctx: ToolCont
     return None
 
 
+def _payroll_evolution_problem(presentation: dict[str, Any], ctx: ToolContext) -> ToolResult | None:
+    if presentation.get("__source_tool__") not in _PAYROLL_SOURCE_TOOLS:
+        return None
+    months = (presentation.get("__summary__") or {}).get("meses_con_datos")
+    request = planner.plan(ctx.user_message, user=ctx.user, today=ctx.now.date())
+    single_requested_month = bool(
+        request.period
+        and (request.period.start.year, request.period.start.month)
+        == (request.period.end.year, request.period.end.month)
+    )
+    if re.search(r"\b(?:evolucion|tendencia)\b", normalize_key(ctx.user_message)) and (
+        single_requested_month or (isinstance(months, list) and len(set(months)) < 2)
+    ):
+        return ToolResult(
+            ToolStatus.INVALID_ARGUMENTS,
+            {
+                "mensaje": "Para analizar una evolución hacen falta al menos dos meses con datos. "
+                "El periodo consultado no contiene una serie suficiente; indica un intervalo más amplio."
+            },
+        )
+    return None
+
+
+def _payroll_concept_problem(presentation: dict[str, Any], ctx: ToolContext) -> ToolResult | None:
+    if presentation.get("__source_tool__") not in _PAYROLL_SOURCE_TOOLS or not ctx.user_message:
+        return None
+    request = planner.plan(ctx.user_message, user=ctx.user, today=ctx.now.date())
+    names = {m.field.name for m in request.metrics if m.field.domain == "payroll"}
+    if not names or any(m.field.domain == "timesheet" for m in request.metrics):
+        return None
+    expected = _infer_concepto(names)
+    actual = _contextual_payroll_concept({LAST_TABLE: presentation})
+    if actual != expected:
+        return ToolResult(
+            ToolStatus.INVALID_ARGUMENTS,
+            {
+                "mensaje": f"El concepto económico de la fuente no coincide con lo solicitado ({expected}). "
+                f"Vuelve a ejecutar analisis_economico_nominas con concepto='{expected}' y el mismo periodo "
+                "y población antes de exportar. No se sustituye coste por líquido o devengado."
+            },
+        )
+    return None
+
+
 def _payroll_export_problem(presentation: dict[str, Any], ctx: ToolContext) -> ToolResult | None:
+    if concept_problem := _payroll_concept_problem(presentation, ctx):
+        return concept_problem
+    if series_problem := _payroll_evolution_problem(presentation, ctx):
+        return series_problem
     if ctx.user_message:
         plan = planner.plan(ctx.user_message, user=ctx.user, today=ctx.now.date())
         payroll_names = {m.field.name for m in plan.metrics if m.field.domain == "payroll"}
@@ -477,7 +544,7 @@ def _payroll_export_problem(presentation: dict[str, Any], ctx: ToolContext) -> T
                         )
                     },
                 )
-    return None
+    return _payroll_evolution_problem(presentation, ctx)
 
 
 def generar(deps: Deps) -> Tool:
@@ -588,7 +655,7 @@ def _infer_concepto(payroll_field_names: set[str]) -> str:
 async def _run_economic_comparison(
     deps: Deps,
     ctx: ToolContext,
-    periods: tuple[str, str],
+    periods: tuple[str, ...],
     *,
     formato: str | Sequence[str],
     titulo: str | None,
@@ -656,7 +723,7 @@ async def _run_economic_comparison(
 async def _run_trabajo_temporal_comparison(
     deps: Deps,
     ctx: ToolContext,
-    periods: tuple[str, str],
+    periods: tuple[str, ...],
     *,
     formato: str | Sequence[str],
     titulo: str | None,
@@ -831,8 +898,37 @@ async def _redirect_to_economic_analysis(
     )
 
 
+async def _complete_table_export(deps: Deps, p: InformeEjecutivoParams, ctx: ToolContext) -> ToolResult | None:
+    if requests_complete_table(ctx.user_message):
+        source = ctx.session_state.get(LAST_TABLE) or {}
+        source_department = (source.get("__summary__") or {}).get("departamento")
+        if p.departamento and normalize_key(source_department) != normalize_key(p.departamento):
+            return ToolResult(
+                ToolStatus.INVALID_ARGUMENTS,
+                {
+                    "mensaje": "La tabla no acredita el departamento solicitado. Consulta primero su población."
+                },
+            )
+        if source.get("type") == "table":
+            return await generar(deps).handler(
+                InformeParams(
+                    formato=p.formato,
+                    titulo=p.titulo,
+                    incluir_detalle=True,
+                    incluir_grafico=True,
+                    incluir_narrativa=False,
+                ),
+                ctx,
+            )
+        return ToolResult(
+            ToolStatus.INVALID_ARGUMENTS,
+            {"mensaje": "Para exportar el mismo informe completo, consulta primero su tabla de origen."},
+        )
+    return None
+
+
 def generar_ejecutivo(deps: Deps) -> Tool:
-    async def handler(p: InformeEjecutivoParams, ctx: ToolContext) -> ToolResult:
+    async def executive(p: InformeEjecutivoParams, ctx: ToolContext) -> ToolResult:
         from mia.modules.rrhh.informes.executive import build_executive_report  # noqa: PLC0415
 
         today = ctx.now.date()
@@ -920,9 +1016,15 @@ def generar_ejecutivo(deps: Deps) -> Tool:
             },
         )
 
+    async def handler(p: InformeEjecutivoParams, ctx: ToolContext) -> ToolResult:
+        if full_export := await _complete_table_export(deps, p, ctx):
+            return full_export
+        return await executive(p, ctx)
+
     return Tool(
         "generar_informe_ejecutivo",
-        "Genera un informe ejecutivo de RRHH completo para presentar a dirección: KPIs de plantilla, "
+        "Genera un informe ejecutivo agregado de RRHH para dirección. La exportación íntegra de tablas "
+        "y listados corresponde a generar_informe. Incluye KPIs de plantilla, "
         "distribución por departamento y puesto, análisis detallado de absentismo, tendencia mensual, "
         "saldos de vacaciones y trabajo temporal. Admite un periodo personalizado (desde/hasta) para "
         "informes históricos o comparativos (p. ej. los últimos 12 meses). Produce el documento "

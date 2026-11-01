@@ -27,6 +27,7 @@ from mia.modules.rrhh.curriculums.requirements import (
     terms_for,
 )
 from mia.modules.rrhh.curriculums.search import CvSearchIndex
+from mia.privacy_gateway.context_manager import embedding_scope
 from mia.text import normalize_key
 
 RULE = "SEL-001: resultados por coincidencia con la búsqueda, no un ranking de idoneidad. No descartes a nadie."
@@ -77,7 +78,8 @@ def parecidos(deps: Deps) -> Tool:
         if deps.llm is None:
             return ToolResult(ToolStatus.SOURCE_UNAVAILABLE, "La búsqueda de CVs no está configurada")
         model = deps.settings.curriculums.embedding_model if deps.settings else "text-embedding-3-small"
-        vector = (await deps.llm.embed([p.consulta], model))[0]
+        with embedding_scope("query"):
+            vector = (await deps.llm.embed([p.consulta], model))[0]
         async with deps.db.session() as db:
             stmt = select(Candidate)
             if p.departamento:
@@ -472,7 +474,8 @@ async def _semantic_pass(
         pending = {k: m for k, m in pending.items() if all(e.where != "no" for j, e in enumerate(m.evidence) if j != i)}
         if not pending:
             continue
-        vector = (await deps.llm.embed([" ".join([r.termino, *r.equivalentes])], model))[0]
+        with embedding_scope("query"):
+            vector = (await deps.llm.embed([" ".join([r.termino, *r.equivalentes])], model))[0]
         for candidate_id, (score, text) in (await index.best_per_candidate(db, vector, set(pending))).items():
             if score >= SEMANTIC_THRESHOLD:
                 pending[candidate_id].evidence[i] = Evidence(r.termino, "posible", " ".join(text.split())[:220])

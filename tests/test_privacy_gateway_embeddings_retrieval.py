@@ -1,27 +1,15 @@
-"""Ajuste 2 de la aprobación condicionada del Bloque I: prueba comparativa de calidad de recuperación
-semántica antes y después de anonimizar texto para embeddings (ver ``PrivacyGateway._anonymize_for_embedding``
-en ``mia/privacy_gateway/gateway.py``).
+"""Retrieval experiment using a synthetic corpus and four reviewed fixed projections.
 
-Se usa el embedding determinista de bolsa de palabras de ``FakeLLMProvider.embed`` (ver ``mia/llm/fake.py``):
-es el único mecanismo de embedding real y reproducible disponible en este entorno (no se simula una
-API externa de verdad; no se inventan métricas). Corpus y consultas son sintéticos, con una respuesta
-esperada conocida de antemano (ground truth), tal y como pide el ajuste.
-
-Resultado documentado (ver también PRIVACY_GATEWAY_PROGRESS.md):
-  * Recuperación por TEMA/CONTENIDO (lo único que el motor de informes/conocimiento necesita en la
-    práctica): sin degradación. El vocabulario que decide la coincidencia no es el dato personal que
-    se tokeniza.
-  * Recuperación buscando el NOMBRE LITERAL de una persona: se degrada, A PROPÓSITO — es justo lo que
-    protege la anonimización. No es un defecto a mitigar en el embedding: la localización de una
-    persona concreta ya se resuelve en mIA con búsqueda estructurada por clave (``name_key``/
-    ``person_key``, p. ej. en ``buscar_empleado``), no con recuperación semántica por vector. Por eso
-    no se propone ninguna "estrategia alternativa" distinta de la que ya existe en el dominio.
+The fake provider uses deterministic word vectors. The approved texts retain topic words
+and omit identities. These two examples test topic/name retrieval on that toy corpus;
+they do not certify production CV projection quality or authorize sending raw CVs.
+Raw private-source embeddings are tested separately and are blocked by the gateway.
 """
 
 from __future__ import annotations
 
 from mia.llm.fake import FakeLLMProvider
-from mia.privacy_gateway.context_manager import set_operation_context
+from mia.privacy_gateway.context_manager import embedding_scope, set_operation_context
 from mia.privacy_gateway.gateway import PrivacyGateway
 from mia.settings import PrivacyGatewaySettings
 
@@ -100,7 +88,16 @@ async def test_topic_retrieval_precision_is_preserved_after_anonymization() -> N
 
     gateway = PrivacyGateway(fake, _settings(), provider_name="test", model="test-model")
     set_operation_context(user_id="u-retrieval", operation_id="op-retrieval-topic")
-    anon_doc_vectors = await gateway.embed(raw_texts, model="test-embed")
+    # Synthetic reviewed projections, not raw CV/document text. This does not
+    # certify a production CV projection, which remains blocked until reviewed.
+    projections = [
+        "cocinero prepara mariscos y paellas cocina restaurante",
+        "tecnico revisa caldera aires acondicionados mantenimiento hotel",
+        "recepcionista gestiona check-in huespedes reservas habitaciones recepcion",
+        "animador organiza actividades infantiles espectaculos animacion",
+    ]
+    with embedding_scope("minimized_source"):
+        anon_doc_vectors = await gateway.embed(projections, model="test-embed")
 
     # Las consultas del usuario no llevan datos personales: se embeben igual en ambos escenarios.
     topic_query_vectors = await fake.embed([q for q, _ in _TOPIC_QUERIES], model="test-embed")
@@ -124,7 +121,14 @@ async def test_name_based_retrieval_degrades_after_anonymization_by_design() -> 
 
     gateway = PrivacyGateway(fake, _settings(), provider_name="test", model="test-model")
     set_operation_context(user_id="u-retrieval", operation_id="op-retrieval-name")
-    anon_doc_vectors = await gateway.embed(raw_texts, model="test-embed")
+    projections = [
+        "cocinero prepara mariscos y paellas cocina restaurante",
+        "tecnico revisa caldera aires acondicionados mantenimiento hotel",
+        "recepcionista gestiona check-in huespedes reservas habitaciones recepcion",
+        "animador organiza actividades infantiles espectaculos animacion",
+    ]
+    with embedding_scope("minimized_source"):
+        anon_doc_vectors = await gateway.embed(projections, model="test-embed")
 
     name_query_vectors = await fake.embed([q for q, _ in _NAME_QUERIES], model="test-embed")
 

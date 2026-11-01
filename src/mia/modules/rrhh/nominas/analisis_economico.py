@@ -24,13 +24,15 @@ Salvaguardas:
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from datetime import date
 from statistics import mean, median
 from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.analytics.insights import InsightEngine
 from mia.analytics.stats import TimePoint
@@ -40,14 +42,19 @@ from mia.data import Employee, Payslip
 from mia.diagnostics import EventStage, current_call_id, current_trace
 from mia.modules.rrhh.common import (
     ActivosParams,
+    CohortParams,
     Deps,
     department_problem,
+    no_population,
     population_label,
+    previous_population,
     resolve_department,
     table,
+    wants_previous,
 )
 from mia.modules.rrhh.content import content_unavailable
 from mia.modules.rrhh.nominas.estadisticas import MIN_GROUP, _amounts, format_eur
+from mia.modules.rrhh.nominas.local_amounts import indexed_amounts
 from mia.query.period import ResolvedPeriod, period_engine
 from mia.text import normalize_key
 
@@ -102,7 +109,29 @@ def _pct(part: float, total: float) -> float | None:
     return round(part / total * 100, 1)
 
 
-class AnalisisEconomicoParams(ActivosParams):
+class AnalisisEconomicoParams(CohortParams, ActivosParams):
+    agrupar_por: Literal["departamento"] = Field(
+        default="departamento",
+        description="Agrupación nativa del análisis económico; solo admite departamento, nunca personas individuales.",
+    )
+
+    @field_validator("periodo", check_fields=False)
+    @classmethod
+    def supported_period(cls, value: str) -> str:
+        if period_engine.resolve(value) is None:
+            raise ValueError(
+                "Indica un periodo por llamada, por ejemplo 2025-09. Compara meses separados con dos llamadas."
+            )
+        return value
+
+    @classmethod
+    def evidence_arguments(cls, arguments: dict[str, Any], today: date, _message: str = "") -> dict[str, Any]:
+        period = arguments.get("periodo")
+        resolved = period_engine.resolve(period, today=today) if isinstance(period, str) else None
+        return (
+            {**arguments, "periodo": (resolved.start.isoformat(), resolved.end.isoformat())} if resolved else arguments
+        )
+
     incluir_inactivos: bool = Field(
         default=True,
         description=(
@@ -157,13 +186,17 @@ async def _fetch_amounts_batch(
     deps: Deps,
     payslips: list[Payslip],
     gate: asyncio.Semaphore,
+    *,
+    required_key: str | None = None,
 ) -> dict[int, dict[str, float]]:
     """Descarga y parsea los PDFs de una lista de nóminas en paralelo."""
+    local = await indexed_amounts(deps, payslips, required_key=required_key)
+    missing = [slip for slip in payslips if slip.sp_id not in local]
     results = await asyncio.gather(
-        *(_amounts(deps, slip.sp_id, gate) for slip in payslips),
+        *(_amounts(deps, slip.sp_id, gate) for slip in missing),
         return_exceptions=False,
     )
-    return {slip.sp_id: r for slip, r in zip(payslips, results, strict=True) if r}
+    return {**local, **{slip.sp_id: r for slip, r in zip(missing, results, strict=True) if r}}
 
 
 def _group_stats(values: list[float], people_count: int, hidden: bool, min_group: int) -> dict[str, Any]:
@@ -307,12 +340,51 @@ def _economic_period(p: AnalisisEconomicoParams, ctx: ToolContext) -> ResolvedPe
     return resolved
 
 
+async def _request_department_scope(
+    db: AsyncSession, p: AnalisisEconomicoParams, user_message: str
+) -> AnalisisEconomicoParams | ToolResult:
+    # An omitted model argument must not broaden a plainly named department
+    # to the whole company. Resolve only against the current local catalogue.
+    message = normalize_key(user_message)
+    explicit = []
+    if message and not re.search(r"\b(?:toda la empresa|todos los departamentos|excepto|excluy|no de)\b", message):
+        departments = (await db.scalars(select(Employee.department).distinct())).all()
+        explicit = [
+            name for name in departments if name and re.search(r"\b" + re.escape(normalize_key(name)) + r"\b", message)
+        ]
+    if len(explicit) == 1 and re.search(
+        r"\b(?:de|del|para|en)\s+(?:el\s+departamento\s+(?:de\s+)?)?" + re.escape(normalize_key(explicit[0])) + r"\b",
+        message,
+    ):
+        requested = explicit[0]
+        supplied = p.departamentos or ([p.departamento] if p.departamento else [])
+        if supplied and {normalize_key(name) for name in supplied} != {normalize_key(requested)}:
+            return ToolResult(
+                ToolStatus.INVALID_ARGUMENTS,
+                {"mensaje": f"El alcance solicitado es {requested}; conserva ese departamento en la consulta."},
+            )
+        if not supplied:
+            p = p.model_copy(update={"departamento": requested})
+    return p
+
+
 async def _economic_population(
-    deps: Deps, p: AnalisisEconomicoParams, meses: list[str]
+    deps: Deps,
+    p: AnalisisEconomicoParams,
+    meses: list[str],
+    *,
+    cohort: dict[str, Any] | None = None,
+    user_message: str = "",
 ) -> ToolResult | tuple[list[Employee], list[Payslip], set[str] | None]:
     # 2. Obtener personas y nóminas del periodo completo en UNA sola transacción BD
     async with deps.db.session() as db:
+        scoped = await _request_department_scope(db, p, user_message)
+        if isinstance(scoped, ToolResult):
+            return scoped
+        p = scoped
         stmt = select(Employee).where(Employee.person_key.is_not(None))
+        if cohort is not None:
+            stmt = stmt.where(Employee.sp_id.in_(cohort["empleado_ids"]))
         if not p.incluir_inactivos:
             stmt = stmt.where(Employee.active.is_(True))
         if p.departamento:
@@ -389,7 +461,7 @@ async def _read_economic_values(
         )
 
     gate = asyncio.Semaphore(CONCURRENCY)
-    amounts_by_id = await _fetch_amounts_batch(deps, slips_to_fetch, gate)
+    amounts_by_id = await _fetch_amounts_batch(deps, slips_to_fetch, gate, required_key=concepto_key)
 
     # 4. Calcular estadísticas por departamento × mes
     # dept_key → display_name
@@ -794,6 +866,20 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
         if problem := content_unavailable(deps):
             return problem
 
+        cohort = previous_population(ctx, p.resultado) if wants_previous(p, ctx) else None
+        if wants_previous(p, ctx) and cohort is None:
+            return no_population()
+        if cohort is not None and (
+            p.departamentos or len(set(cohort.get("person_keys") or [])) != len(cohort["empleado_ids"])
+        ):
+            return ToolResult(
+                ToolStatus.INVALID_ARGUMENTS,
+                {
+                    "mensaje": "No se puede acreditar la selección salarial completa con esos identificadores o "
+                    "mezclarla con una comparación de departamentos sobre toda la empresa."
+                },
+            )
+
         resolved = _economic_period(p, ctx)
         if isinstance(resolved, ToolResult):
             return resolved
@@ -803,7 +889,7 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
         concepto_label = _CONCEPTO_LABEL[p.concepto]
         min_grp = 1 if p.incluir_grupos_pequenos else MIN_GROUP
 
-        population = await _economic_population(deps, p, meses)
+        population = await _economic_population(deps, p, meses, cohort=cohort, user_message=ctx.user_message)
         if isinstance(population, ToolResult):
             return population
         people, all_slips, requested_keys = population
@@ -852,6 +938,11 @@ def analisis_economico_nominas(deps: Deps) -> Tool:
 
         # 12. Summary para el LLM
         summary: dict[str, Any] = {
+            "departamento_unico": next(iter({e.department for e in people}))
+            if len({e.department for e in people}) == 1
+            else None,
+            "seleccion_previa_aplicada": cohort is not None,
+            "personas_seleccionadas": len(people),
             "periodo_interpretado": resolved.label,
             "meses_analizados": meses,
             "meses_con_datos": scope.meses_con_datos,

@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from mia.diagnostics.models import DiagnosticEvent, DiagnosticIssue, EventStage, EventStatus, TraceRecord, TraceStatus
-from mia.diagnostics.sanitizer import redact
+from mia.diagnostics.sanitizer import operational_data, redact
 
 log = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ class TraceContext:
     ) -> None:
         """Registra un evento en la traza. Nunca lanza excepciones."""
         try:
-            safe_data = redact(data or {}, mask_pii=self._mask_pii)
+            safe_data = operational_data(data or {}) if self._mask_pii else redact(data or {})
             event = DiagnosticEvent(
                 trace_id=self._record.trace_id,
                 timestamp=datetime.now(UTC),
@@ -85,12 +85,12 @@ class TraceContext:
                 status=str(status),
                 duration_ms=duration_ms,
                 data=safe_data,
-                metadata=metadata,
+                metadata={} if self._mask_pii else redact(metadata),
             )
             self._record.events.append(event)
 
             # Actualiza campos de resumen según la fase
-            self._update_summary(stage, data or {})
+            self._update_summary(stage, operational_data(data or {}))
 
             # Actualiza la traza en el store
             self._store.put(self._record)
@@ -130,12 +130,18 @@ class TraceContext:
                 self._record.presentations.append(p_type)
 
     def add_issue(self, issue_type: str, message: str, **details: Any) -> None:
-        self._record.issues.append(DiagnosticIssue(type=issue_type, message=message, details=details))
+        self._record.issues.append(
+            DiagnosticIssue(
+                type=issue_type,
+                message="[detalle omitido]" if self._mask_pii else message,
+                details={} if self._mask_pii else redact(details),
+            )
+        )
 
     def add_call_graph_node(self, node: dict[str, Any]) -> None:
         """Añade un nodo al grafo de ejecución de la traza. Nunca lanza excepciones."""
         try:
-            self._record.call_graph.append(node)
+            self._record.call_graph.append(operational_data(node) if self._mask_pii else redact(node))
         except Exception:  # pragma: no cover
             log.warning("trace.add_call_graph_node.failed")
 

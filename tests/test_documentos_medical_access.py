@@ -114,6 +114,8 @@ async def test_legal_can_still_read_a_contract(registry_env: ToolRegistry) -> No
 async def test_rrhh_can_read_medical_document_content(registry_env: ToolRegistry) -> None:
     result = await _call(registry_env, "leer_documento", RRHH, empleado_id=EMPLEADO_ID, tipo="reconocimiento medico")
     assert result.status is ToolStatus.OK
+    assert result.presentation["type"] == "table"
+    assert result.presentation["rows"][0][1] == result.summary["texto"]
 
 
 async def test_legal_document_viewer_omits_medical_entry_but_keeps_the_contract(

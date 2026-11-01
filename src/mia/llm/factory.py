@@ -20,6 +20,13 @@ def build_llm_provider(settings: LLMSettings, privacy_settings: PrivacyGatewaySe
     if settings.provider is LLMProviderName.FAKE:
         inner: LLMProvider = FakeLLMProvider()
     else:
+        if (
+            privacy_settings is None
+            or not privacy_settings.enabled
+            or privacy_settings.fail_open
+            or not privacy_settings.vault_key.get_secret_value()
+        ):
+            raise ValueError("Un proveedor externo exige Privacy Gateway activo, fallo cerrado y clave de vault.")
         if not settings.api_key.get_secret_value():
             raise ValueError(f"Falta MIA_LLM__API_KEY para el proveedor {settings.provider.value}")
         inner = OpenAIResponsesProvider(
@@ -28,7 +35,9 @@ def build_llm_provider(settings: LLMSettings, privacy_settings: PrivacyGatewaySe
             base_url=settings.base_url,
             timeout_seconds=settings.timeout_seconds,
             azure=settings.provider is LLMProviderName.AZURE_OPENAI,
-            web_search=settings.web_search,
+            # Corporate context must never become an implicit public web query.
+            # Public search requires a separate, explicitly minimized operation.
+            web_search=False,
         )
     return PrivacyGateway(
         inner,

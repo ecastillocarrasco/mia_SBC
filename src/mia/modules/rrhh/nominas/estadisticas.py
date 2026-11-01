@@ -15,6 +15,7 @@ Salvaguardas:
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from collections.abc import Callable
 from statistics import mean, median, quantiles
@@ -40,6 +41,7 @@ from mia.modules.rrhh.common import (
 )
 from mia.modules.rrhh.content import MAX_BYTES, content_unavailable, pdf_lines
 from mia.modules.rrhh.nominas.parser import parse_payslip
+from mia.query.period import PeriodEngine
 from mia.text import normalize_key
 
 MIN_GROUP = 3
@@ -95,6 +97,18 @@ def _clear_amounts_cache() -> None:
     _AMOUNTS_CACHE.clear()
 
 
+def amount_values(full: dict[str, Any]) -> dict[str, float] | None:
+    """Shared extraction for original PDFs and verified local text; no alternative concept definitions."""
+    parsed = full.get("importes") or {}
+    result = {k: parsed[k] for k in ("total_devengado", "liquido") if parsed.get(k)}
+    if ss_total := (full.get("coste_empresa") or {}).get("total_aportacion_empresa"):
+        devengado = parsed.get("total_devengado")
+        result["coste_empresa_ss"] = ss_total
+        if devengado:
+            result["coste_total_empresa"] = round(devengado + ss_total, 2)
+    return result or None
+
+
 async def _amounts(deps: Deps, slip_id: int, gate: asyncio.Semaphore) -> dict[str, float] | None:
     # Clave por (cliente SharePoint, slip_id): en producción hay un único cliente de larga vida, así que
     # equivale a cachear solo por slip_id; en pruebas, cada fixture crea su propio cliente, así que sus
@@ -109,17 +123,10 @@ async def _amounts(deps: Deps, slip_id: int, gate: asyncio.Semaphore) -> dict[st
         try:
             content = await deps.sharepoint.download_item_file("Nominas", slip_id, MAX_BYTES)
             full = parse_payslip(pdf_lines(content))
-            parsed = full.get("importes") or {}
         except Exception:  # un PDF ilegible no invalida el conjunto: se cuenta como no leído
             result = None
         else:
-            result = {k: parsed[k] for k in ("total_devengado", "liquido") if parsed.get(k)}
-            if ss_total := (full.get("coste_empresa") or {}).get("total_aportacion_empresa"):
-                devengado = parsed.get("total_devengado")
-                result["coste_empresa_ss"] = ss_total
-                if devengado:
-                    result["coste_total_empresa"] = round(devengado + ss_total, 2)
-            result = result or None
+            result = amount_values(full)
 
     if len(_AMOUNTS_CACHE) >= _AMOUNTS_CACHE_MAXSIZE:
         _AMOUNTS_CACHE.pop(next(iter(_AMOUNTS_CACHE)))  # descarta la entrada más antigua (FIFO simple)
@@ -282,6 +289,19 @@ class ComparativaSalarialParams(SalarialesParams):
     importe: Literal["liquido", "devengado"] = "liquido"
 
 
+def _direct_selected_salary(ctx: ToolContext) -> dict[str, Any] | None:
+    match = re.fullmatch(
+        r"compara (?:el salario|los salarios|el sueldo|los sueldos) de esas personas en "
+        r"(?P<period>\d{4}-\d{2}|(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|"
+        r"septiembre|octubre|noviembre|diciembre)(?: de)? \d{4})",
+        ctx.user_message.strip().strip("¿?!. ").lower(),
+    )
+    if match is None or previous_population(ctx) is None:
+        return None
+    period = PeriodEngine().resolve(match["period"], today=ctx.now.date())
+    return {"periodo": period.start.strftime("%Y-%m"), "sobre_resultado_anterior": True} if period else None
+
+
 def comparativa_salarial(deps: Deps) -> Tool:
     """Salario de CADA persona de un grupo, nombre a nombre, para un mes concreto.
 
@@ -340,7 +360,7 @@ def comparativa_salarial(deps: Deps) -> Tool:
             **(
                 {
                     "aviso": f"{len(people) - len(read)} personas del grupo no tienen nómina legible en ese "
-                    "periodo: la comparativa no las incluye. Dilo al presentarlo."
+                    "periodo: figuran sin importe en la comparativa. Dilo al presentarlo."
                 }
                 if len(people) - len(read)
                 else {}
@@ -348,11 +368,24 @@ def comparativa_salarial(deps: Deps) -> Tool:
             "comparativa": [{"persona": e.name, "puesto": e.position, "importe": amount} for e, amount in read],
             "regla": RULE + " Importes individuales solo en pantalla, con permiso y auditoría.",
         }
-        rows = [[e.name, e.position, format_eur(amount)] for e, amount in read]
+        by_person = {e.sp_id: amount for e, amount in read}
+        rows = [
+            [e.name, e.position, format_eur(by_person[e.sp_id]) if e.sp_id in by_person else "Sin nómina legible"]
+            for e in sorted(people, key=lambda person: person.name)
+        ]
         return ToolResult(
             ToolStatus.OK if read else ToolStatus.NOT_FOUND,
             summary,
             table(f"Comparativa de {p.importe}", ["Persona", "Puesto", "Importe"], rows),
+            verified_answer=(
+                f"La selección contiene {len(people)} personas: se han obtenido importes de {len(read)}. "
+                f"Las otras {len(people) - len(read)} figuran sin nómina legible; no se les atribuye ningún importe."
+            )
+            if len(read) != len(people)
+            else (
+                f"Comparativa de la selección: {len(people)} personas, todas con nómina legible. "
+                "Los importes están en la tabla."
+            ),
         )
 
     return Tool(
@@ -368,6 +401,7 @@ def comparativa_salarial(deps: Deps) -> Tool:
         permission=Permission.NOMINAS_IMPORTES,
         audit_resource="nominas_importes",
         timeout_seconds=120,
+        direct_read_arguments=_direct_selected_salary,
     )
 
 

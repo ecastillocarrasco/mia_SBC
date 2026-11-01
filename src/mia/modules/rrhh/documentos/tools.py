@@ -40,6 +40,7 @@ from mia.modules.rrhh.common import (
 )
 from mia.modules.rrhh.content import MAX_BYTES, content_unavailable, document_text
 from mia.modules.rrhh.document_search import DocumentSearchIndex
+from mia.privacy_gateway.context_manager import embedding_scope
 from mia.text import normalize_key
 
 RULE = (
@@ -408,7 +409,8 @@ def buscar_en_documentos(deps: Deps) -> Tool:
                 call_id=call_id,
             )
             try:
-                vector = (await deps.llm.embed([p.consulta], model))[0]
+                with embedding_scope("query"):
+                    vector = (await deps.llm.embed([p.consulta], model))[0]
             except Exception as exc:
                 diag_emit(
                     EventStage.RAG_SEARCH_ERROR,
@@ -549,7 +551,10 @@ def leer_documento(deps: Deps) -> Tool:
             "texto": text[:6000],
             "regla": "FIR-001: se lee el contenido del documento; las firmas no se analizan.",
         }
-        return ToolResult(ToolStatus.OK, view, None, focus_person(e))
+        local_view = table(
+            "Contenido del documento", ["Documento", "Contenido"], [[doc.file_name or doc.doc_type, text[:6000]]]
+        )
+        return ToolResult(ToolStatus.OK, view, local_view, focus_person(e))
 
     return Tool(
         "leer_documento",

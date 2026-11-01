@@ -630,3 +630,122 @@ async def test_rectificative_payslips_are_not_double_counted(tmp_path: Path, mon
     dept = result.summary["por_departamento"]["Rectificaciones"]
     assert dept["personas_con_nomina"] == 3  # no 4: la rectificativa de pk-rect-1 no se cuenta aparte
     assert dept["total"] == 3 * NET_PER_PERSON_SCALE
+
+
+async def test_selected_cohort_filters_payroll_by_exact_employee_ids(registry):
+    population = {
+        "etiqueta": "selección",
+        "total": 3,
+        "empleado_ids": [201, 202, 203],
+        "person_keys": ["pk-201", "pk-202", "pk-203"],
+        "emails": [],
+    }
+    ctx = ToolContext(
+        user=ADMIN,
+        request_id=None,
+        now=NOW,
+        session_state={"ultima_poblacion": population},
+        user_message="Compara el salario de esas personas en el trimestre pasado",
+    )
+    result = (
+        await registry.execute(
+            ToolCall(
+                "selection",
+                "analisis_economico_nominas",
+                json.dumps({"periodo": "trimestre pasado", "departamento": "Cocina"}),
+            ),
+            ctx,
+        )
+    ).result
+    assert result.status is ToolStatus.OK
+    assert result.summary["seleccion_previa_aplicada"] is True
+    assert result.summary["personas_seleccionadas"] == 3
+    assert result.summary["personas_del_grupo"] == 3
+    assert result.summary["total_periodo"] == 3 * 1500 * 3
+
+
+async def test_selected_small_group_keeps_the_confidentiality_threshold(registry):
+    population = {
+        "etiqueta": "selección",
+        "total": 2,
+        "empleado_ids": [201, 202],
+        "person_keys": ["pk-201", "pk-202"],
+        "emails": [],
+    }
+    ctx = ToolContext(
+        user=ADMIN,
+        request_id=None,
+        now=NOW,
+        session_state={"ultima_poblacion": population},
+        user_message="Compara el salario de esas personas en el trimestre pasado",
+    )
+    result = (
+        await registry.execute(
+            ToolCall(
+                "selection",
+                "analisis_economico_nominas",
+                json.dumps({"periodo": "trimestre pasado", "departamento": "Cocina"}),
+            ),
+            ctx,
+        )
+    ).result
+    assert result.summary["personas_seleccionadas"] == 2
+    assert result.summary["total_periodo"] == 0
+    assert "total" not in result.summary["por_departamento"]["Cocina"]
+
+
+async def test_missing_previous_cohort_does_not_silently_query_the_department(registry):
+    ctx = ToolContext(
+        user=ADMIN,
+        request_id=None,
+        now=NOW,
+        session_state={},
+        user_message="Compara el salario de esas personas en el trimestre pasado",
+    )
+    result = (
+        await registry.execute(
+            ToolCall(
+                "selection",
+                "analisis_economico_nominas",
+                json.dumps({"periodo": "trimestre pasado", "departamento": "Cocina"}),
+            ),
+            ctx,
+        )
+    ).result
+    assert result.status is ToolStatus.NOT_FOUND
+    assert result.presentation is None
+
+
+@pytest.mark.parametrize("supplied", [None, "Sala"])
+async def test_explicit_request_department_cannot_be_omitted_or_replaced(registry, supplied):
+    ctx = ToolContext(
+        user=ADMIN,
+        request_id=None,
+        now=NOW,
+        user_message="Analiza el coste de nóminas de Cocina en el trimestre pasado y genera un PDF",
+    )
+    args = {"periodo": "trimestre pasado"}
+    if supplied:
+        args["departamento"] = supplied
+    result = (await registry.execute(ToolCall("scope", "analisis_economico_nominas", json.dumps(args)), ctx)).result
+    if supplied:
+        assert result.status is ToolStatus.INVALID_ARGUMENTS
+        assert result.presentation is None
+    else:
+        assert result.status is ToolStatus.OK
+        assert result.summary["personas_seleccionadas"] == 4
+        assert set(result.summary["por_departamento"]) == {"Cocina"}
+
+
+async def test_explicit_company_scope_is_not_narrowed_by_an_example_department(registry):
+    ctx = ToolContext(
+        user=ADMIN,
+        request_id=None,
+        now=NOW,
+        user_message="Analiza las nóminas de toda la empresa, incluida Cocina, en el trimestre pasado",
+    )
+    result = (
+        await registry.execute(ToolCall("scope", "analisis_economico_nominas", '{"periodo":"trimestre pasado"}'), ctx)
+    ).result
+    assert result.status is ToolStatus.OK
+    assert result.summary["personas_seleccionadas"] == 6

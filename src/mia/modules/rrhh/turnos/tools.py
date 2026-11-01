@@ -311,6 +311,23 @@ def turnos_persona(deps: Deps) -> Tool:
 
 # ------------------------------------------------------------------ turnos de un día
 class TurnosDiaParams(CohortParams, ActivosParams):
+    @classmethod
+    def evidence_arguments(cls, arguments: dict[str, Any], today: date, message: str = "") -> dict[str, Any]:
+        result = {**arguments, "fecha": arguments.get("fecha") or today.isoformat()}
+        if general_now_request(message):
+            result.update(
+                fecha=today.isoformat(),
+                departamento=None,
+                franja=None,
+                empieza_a=None,
+                hora="hora_actual_del_contexto",
+                tipo="Trabajo",
+                sobre_resultado_anterior=False,
+                resultado=None,
+                incluir_inactivos=False,
+            )
+        return result
+
     fecha: date | None = Field(default=None, description="Día AAAA-MM-DD (por defecto hoy)")
     departamento: str | None = Field(default=None, description="Departamento (opcional; sin él, toda la plantilla)")
     franja: Franja | None = Field(
@@ -324,16 +341,22 @@ class TurnosDiaParams(CohortParams, ActivosParams):
     tipo: str | None = Field(default=None, description="Trabajo, Descanso, Vacaciones, Baja/IT… (por defecto todos)")
 
 
+def general_now_request(message: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"(?:que (?:empleados|personas|trabajadores)|quienes|quien) "
+            r"(?:(?:estan|esta) )?(?:trabajando|trabajan|trabaja) "
+            r"(?:ahora(?: mismo)?|en este momento)",
+            normalize_key(message),
+        )
+    )
+
+
 def _day_request(p: TurnosDiaParams, ctx: ToolContext) -> tuple[TurnosDiaParams, date, str | None, str | None]:
     # Una pregunta completa sobre TODA la plantilla ahora no puede heredar
     # filtros inventados por el modelo a partir de un turno anterior.
     # El patrón está anclado: una petición que nombra un departamento no entra.
-    if re.fullmatch(
-        r"(?:que (?:empleados|personas|trabajadores)|quienes|quien) "
-        r"(?:(?:estan|esta) )?(?:trabajando|trabajan|trabaja) "
-        r"(?:ahora(?: mismo)?|en este momento)",
-        normalize_key(ctx.user_message),
-    ):
+    if general_now_request(ctx.user_message):
         p = p.model_copy(
             update={
                 "fecha": ctx.now.date(),
@@ -457,6 +480,12 @@ def turnos_dia(deps: Deps) -> Tool:
                 table_rows,
             ),
             state,
+            verified_answer=(
+                f"A las {hora_efectiva} del {day.isoformat()} hay {len(selected)} personas trabajando "
+                "en toda la plantilla. El listado completo está en la tabla."
+            )
+            if general_now_request(ctx.user_message)
+            else None,
         )
 
     return Tool(
@@ -467,6 +496,9 @@ def turnos_dia(deps: Deps) -> Tool:
         handler,
         permission=Permission.TURNOS_LEER,
         audit_resource="turnos",
+        verifies_request=general_now_request,
+        verification_arguments=lambda _ctx: {},
+        direct_read_arguments=lambda ctx: {} if general_now_request(ctx.user_message) else None,
     )
 
 

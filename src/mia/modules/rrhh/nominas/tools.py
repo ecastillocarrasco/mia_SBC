@@ -44,6 +44,7 @@ from mia.modules.rrhh.common import (
 from mia.modules.rrhh.content import MAX_BYTES, content_unavailable, pdf_lines
 from mia.modules.rrhh.document_search import DocumentSearchIndex
 from mia.modules.rrhh.nominas.parser import parse_payslip
+from mia.privacy_gateway.context_manager import embedding_scope
 from mia.text import normalize_key
 
 RULE = "Metadatos (existencia, periodo, lectura). Para importes: nomina_importes o evolucion_nominas (NOM-002)."
@@ -611,7 +612,8 @@ def buscar_en_nominas(deps: Deps) -> Tool:
                 call_id=call_id,
             )
             try:
-                vector = (await deps.llm.embed([p.consulta], model))[0]
+                with embedding_scope("query"):
+                    vector = (await deps.llm.embed([p.consulta], model))[0]
             except Exception as exc:
                 diag_emit(
                     EventStage.RAG_SEARCH_ERROR,

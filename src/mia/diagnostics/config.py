@@ -13,9 +13,9 @@ class DiagnosticsSettings(BaseModel):
     """Horas que se conservan las trazas en memoria (``MIA_DIAGNOSTICS__RETENTION_HOURS``)."""
     max_traces: int = 5000
     """Máximo de trazas en memoria antes de descartar las más antiguas (``MIA_DIAGNOSTICS__MAX_TRACES``)."""
-    mask_pii: bool = False
+    mask_pii: bool = True
     """Enmascara nombres, IDs y correos en las trazas (``MIA_DIAGNOSTICS__MASK_PII``).
-    En desarrollo suele ser false para poder depurar; en preproducción/producción conviene true."""
+    Activado por defecto también en desarrollo: conserva solo metadatos operativos."""
     admin_users: list[str] = Field(default_factory=list)
     """Lista de user_id o email autorizados a ver el panel, además de los que tengan
     ``Permission.ADMINISTRAR`` (``MIA_DIAGNOSTICS__ADMIN_USERS=['user1@x.com']``)."""

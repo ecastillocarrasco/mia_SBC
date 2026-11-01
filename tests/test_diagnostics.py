@@ -19,6 +19,7 @@ Cobertura mínima del spec (punto 57):
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -204,6 +205,30 @@ def test_redact_no_pii_mask_when_disabled():
     data = {"nombre": "Juan García"}
     result = redact(data, mask_pii=False)
     assert result["nombre"] == "Juan García"
+
+
+def test_protected_trace_drops_business_payloads_in_every_capture_channel():
+    store = _make_store()
+    record = _make_trace()
+    broadcaster = _make_broadcaster()
+    queue = broadcaster.subscribe()
+    ctx = TraceContext(record, store, broadcaster, mask_pii=True)
+    sensitive = "PERSONA_SINTETICA_984"
+    ctx.emit(
+        EventStage.TOOL_CALL_START,
+        data={"tool": "plantilla", "args": {"busqueda": sensitive}, "coste": 12345},
+        custom=sensitive,
+    )
+    ctx.add_call_graph_node({"kind": "tool_call", "label": sensitive, "args": sensitive, "duration_ms": 42})
+    ctx.add_issue("TOOL_ERROR", sensitive, detail=sensitive)
+    ctx.finish(answer=sensitive)
+    stored = json.dumps(record.to_dict(), ensure_ascii=False)
+    assert sensitive not in stored
+    assert "12345" not in stored
+    assert record.tools_called == ["plantilla"]
+    assert record.call_graph == [{"kind": "tool_call", "duration_ms": 42}]
+    while not queue.empty():
+        assert sensitive not in json.dumps(queue.get_nowait(), ensure_ascii=False)
 
 
 # ── STORAGE ───────────────────────────────────────────────────────────────────

@@ -68,6 +68,12 @@ class Periodo(BaseModel):
     desde: date | None = Field(default=None, description="Fecha inicial AAAA-MM-DD (por defecto hoy)")
     hasta: date | None = Field(default=None, description="Fecha final AAAA-MM-DD (por defecto igual a desde)")
 
+    @classmethod
+    def validate_intent_arguments(cls, arguments: dict[str, Any], message: str, today: date) -> None:
+        from mia.query.week import validate_week_arguments  # noqa: PLC0415 — shared pure intent contract
+
+        validate_week_arguments(arguments, message, today)
+
     def resolve(self, today: date, default_days: int = 0) -> tuple[date, date]:
         start = self.desde or today
         end = self.hasta or (start + timedelta(days=default_days))
@@ -423,6 +429,9 @@ def population_state(label: str, employees: list[Employee]) -> dict[str, Any]:
             "empleado_ids": [e.sp_id for e in people],
             "person_keys": [e.person_key for e in people if e.person_key],
             "emails": [e.email for e in people if e.email],
+            "miembros": [
+                {"id": e.sp_id, "person_key": e.person_key, "email": e.email, "nombre": e.name} for e in people
+            ],
         }
     }
 
@@ -430,14 +439,16 @@ def population_state(label: str, employees: list[Employee]) -> dict[str, Any]:
 def previous_population(ctx: Any, label: str | None = None) -> dict[str, Any] | None:
     """El último resultado con personas o, si se indica una etiqueta, el más reciente que la contiene."""
     label = label or referred_label(getattr(ctx, "user_message", ""))
+    reference = getattr(ctx, "population_reference", None)
+    state = reference if reference is not None else ctx.session_state
     if label:
         wanted = normalize_key(label)
-        for population in reversed(ctx.session_state.get("historial_poblaciones") or []):
+        for population in reversed(state.get("historial_poblaciones") or []):
             if isinstance(population, dict) and wanted in normalize_key(population.get("etiqueta")):
                 return _complete_population(population)
         # Una referencia concreta nunca puede caer silenciosamente en OTRO grupo.
         return None
-    value = ctx.session_state.get(POPULATION)
+    value = state.get(POPULATION)
     return _complete_population(value)
 
 

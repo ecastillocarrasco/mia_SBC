@@ -21,6 +21,77 @@ def execution(name, status=ToolStatus.OK):
     return ToolExecution(ToolCall(name, name, "{}"), ToolResult(status, {}), 0, None)
 
 
+async def test_long_reviewed_reads_do_not_prevent_completing_both_planned_periods(tmp_path):
+    class Params(BaseModel):
+        periodo: str
+
+    queried = []
+
+    async def read(params, ctx):
+        await asyncio.sleep(0.25)
+        queried.append(params.periodo)
+        return ToolResult.ok({"periodo": params.periodo, "total": 30})
+
+    registry = ToolRegistry()
+    registry.register(Tool("analisis_economico_nominas", "Consultar periodo", Params, read))
+    actions = [
+        tool_call(
+            PLAN_TOOL,
+            {
+                "pasos": [
+                    {
+                        "objetivo": f"Consultar {year}",
+                        "herramientas": ["analisis_economico_nominas"],
+                        "argumentos": {"analisis_economico_nominas": {"periodo": year}},
+                    }
+                    for year in ("2025", "2026")
+                ]
+            },
+        ),
+        tool_call("analisis_economico_nominas", {"periodo": "2025"}, call_id="year_1"),
+        tool_call("analisis_economico_nominas", {"periodo": "2026"}, call_id="year_2"),
+        final_answer("Se consultaron ambos años.", "Consulta completada"),
+    ]
+    provider = FakeLLMProvider(lambda request: actions.pop(0))
+    db = await fresh_database(tmp_path)
+    try:
+        engine = ConversationEngine(llm=provider, tools=registry, db=db, turn_budget_seconds=0.2)
+        result = await engine.complete(
+            message="Compara los dos años", user=UserContext("u", "Usuario"), session_id=None
+        )
+        assert result.status == "ok"
+        assert queried == ["2025", "2026"]
+        assert result.elapsed_ms >= 500
+    finally:
+        await db.dispose()
+
+
+async def test_write_wait_does_not_extend_budget_or_allow_a_repeated_write(tmp_path):
+    class Params(BaseModel):
+        pass
+
+    writes = []
+
+    async def send(params, ctx):
+        writes.append(True)
+        await asyncio.sleep(0.25)
+        return ToolResult.ok({"enviado": True})
+
+    registry = ToolRegistry()
+    registry.register(Tool("enviar_correo", "Enviar", Params, send))
+    provider = FakeLLMProvider(lambda request: tool_call("enviar_correo", {}))
+    db = await fresh_database(tmp_path)
+    try:
+        engine = ConversationEngine(llm=provider, tools=registry, db=db, turn_budget_seconds=0.2)
+        result = await engine.complete(
+            message="Envía el correo confirmado", user=UserContext("u", "Usuario"), session_id=None
+        )
+        assert writes == [True]
+        assert result.status == "error"
+    finally:
+        await db.dispose()
+
+
 def test_plan_needs_real_successful_tools_in_dependency_order():
     plan = TaskPlan("Compara datos", frozenset({"leer", "analizar"}))
     plan.steps = TaskSteps.model_validate(

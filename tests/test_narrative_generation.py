@@ -103,6 +103,42 @@ async def test_no_llm_provider_returns_none_immediately() -> None:
     assert block is None
 
 
+async def test_individual_report_does_not_send_sensitive_figures_for_external_narration() -> None:
+    """``authorized_subjects`` autoriza CITAR un nombre en la narrativa publicada (ver
+    ``test_fase_f_integration.py::test_generate_narrative_block_does_not_block_the_subject_of_an_individual_report``),
+    nunca exime el resumen de la minimización incondicional que ya aplica
+    ``redact_individual_amounts`` al inicio de ``generate_narrative_block`` — la propiedad real de esta
+    prueba es que ninguna cifra individual (aquí, "salario") llega al proveedor externo, sea cual sea el
+    número de peticiones que se hagan."""
+    fake = FakeLLMProvider()
+    block = await generate_narrative_block(
+        fake,
+        title="Informe individual",
+        backend_summary={"nombre": "Persona sintética", "salario": 1234},
+        authorized_subjects=frozenset({"Persona sintética"}),
+    )
+    assert block is None
+    sent_text = " ".join(req.system + " ".join(m.content for m in req.messages) for req in fake.requests)
+    assert "1234" not in sent_text
+
+
+async def test_aggregate_narration_omits_nested_individual_values_before_flattening() -> None:
+    fake = FakeLLMProvider(script=_script_returning({"statements": []}))
+    await generate_narrative_block(
+        fake,
+        title="Informe agregado",
+        backend_summary={
+            "total_staff": 30,
+            "ranking": [
+                {"persona": "Persona sintética", "importe": 9876},
+            ],
+        },
+    )
+    outgoing = " ".join(message.content for request in fake.requests for message in request.messages)
+    assert "9876" not in outgoing and "Persona sintética" not in outgoing
+    assert '"total_staff": 30.0' in outgoing
+
+
 async def test_fact_without_metric_is_dropped_but_other_statements_survive() -> None:
     fake = FakeLLMProvider(
         script=_script_returning(

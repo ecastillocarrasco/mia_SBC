@@ -39,6 +39,7 @@ from mia.modules.rrhh.common import (
 )
 from mia.modules.rrhh.turnos import absence_periods
 from mia.modules.rrhh.turnos.tools import DAY_NAMES
+from mia.query.week import requested_week
 from mia.text import normalize_key
 
 ESTADOS = {"aceptadas": "aceptada", "pendientes": "pendiente", "rechazadas": "rechazada"}
@@ -105,7 +106,7 @@ def _people_and_overlaps(rows: list[Vacation], today: date) -> tuple[int, int]:
 
 
 def solicitudes(deps: Deps) -> Tool:
-    async def handler(p: VacacionesParams, ctx: ToolContext) -> ToolResult:
+    async def query(p: VacacionesParams, ctx: ToolContext) -> ToolResult:
         today = ctx.now.date()
         state: dict[str, Any] = {}
         async with deps.db.session() as db:
@@ -169,6 +170,8 @@ def solicitudes(deps: Deps) -> Tool:
             "personas_distintas": persons,
             "solicitudes": len(items),
             "solicitudes_solapadas": overlapping,
+            "desde": (state.get("foco_periodo") or {}).get("desde"),
+            "hasta": (state.get("foco_periodo") or {}).get("hasta"),
             "estado": p.estado,
             "nota": "Cuenta personas con «personas_distintas»; una persona puede tener varias solicitudes.",
             "sin_correspondencia_en_plantilla": sum(1 for v in rows if not directory.get(email=v.employee_email)),
@@ -186,6 +189,23 @@ def solicitudes(deps: Deps) -> Tool:
             ),
             state,
         )
+
+    async def handler(p: VacacionesParams, ctx: ToolContext) -> ToolResult:
+        today = ctx.now.date()
+        week = requested_week(ctx.user_message, today)
+        if week is not None:
+            start, end = week
+            if (p.desde is not None and p.desde != start) or (p.hasta is not None and p.hasta != end):
+                return ToolResult(
+                    ToolStatus.INVALID_ARGUMENTS,
+                    {
+                        "mensaje": "Las fechas no coinciden con la semana solicitada.",
+                        "desde_requerido": start.isoformat(),
+                        "hasta_requerido": end.isoformat(),
+                    },
+                )
+            p = p.model_copy(update={"desde": start, "hasta": end})
+        return await query(p, ctx)
 
     return Tool(
         "vacaciones",

@@ -71,6 +71,8 @@ class ToolContext:
     session_state: dict[str, Any] = field(default_factory=dict)
     user_message: str = ""
     """Mensaje del usuario en este turno (para acciones que exigen confirmación explícita)."""
+    population_reference: dict[str, Any] | None = None
+    """Population references at turn entry, unaffected by intermediate tool results."""
     attachment_service: Any | None = None
     """AttachmentService inyectado cuando la funcionalidad está activa."""
 
@@ -84,6 +86,8 @@ class ToolResult:
     """Lo que pinta la interfaz (tabla, ficha 360…). El LLM no lo reescribe."""
     state_updates: dict[str, Any] = field(default_factory=dict)
     """Cambios de foco conversacional (persona, departamento, periodo…)."""
+    verified_answer: str | None = None
+    """Conclusión local obligatoria cuando una fuente incompleta impide aceptar la conclusión libre."""
 
     @classmethod
     def ok(cls, summary: Any, presentation: dict[str, Any] | None = None, **state: Any) -> ToolResult:
@@ -103,6 +107,18 @@ class Tool:
     audit_resource: str | None = None
     """Si se indica, cada uso queda en el registro de auditoría (datos personales)."""
     timeout_seconds: float = 20.0
+    required_permissions: frozenset[Permission] = frozenset()
+    verifies_request: Callable[[str], bool] | None = None
+    """Read-only verifier required to substantiate a recognized business operation."""
+    verification_arguments: Callable[[ToolContext], dict[str, Any]] | None = None
+    """Native arguments for a mandatory read; never inferred from an earlier answer."""
+    produces_context: frozenset[str] = frozenset()
+    requires_context: frozenset[str] = frozenset()
+    direct_read_arguments: Callable[[ToolContext], dict[str, Any] | None] | None = None
+    """A domain may fully resolve a standalone read without sending its content to a model."""
+
+    def allowed_for(self, user: UserContext) -> bool:
+        return user.has(self.permission) and all(user.has(permission) for permission in self.required_permissions)
 
     def schema(self) -> ToolSchema:
         return ToolSchema(self.name, self.description, self.params.model_json_schema())
@@ -117,8 +133,17 @@ class ToolExecution:
     started_at: float = 0.0
 
     def as_llm_output(self) -> str:
+        population = self.result.state_updates.get("ultima_poblacion")
+        reference = {}
+        if isinstance(population, dict):
+            ids = population.get("empleado_ids", [])
+            reference["poblacion"] = {
+                "referencia_poblacion": population.get("etiqueta"),
+                "total": population.get("total"),
+                "completa": population.get("total") == len(set(ids)),
+            }
         return json.dumps(
-            {"estado": self.result.status.value, "resultado": self.result.summary},
+            {"estado": self.result.status.value, "resultado": self.result.summary, **reference},
             ensure_ascii=False,
             default=str,
         )
@@ -160,6 +185,33 @@ class ToolRegistry:
     def names(self) -> list[str]:
         return sorted(self._tools)
 
+    def required_verifiers_for(self, user: UserContext, message: str) -> frozenset[str]:
+        return frozenset(
+            tool.name
+            for tool in self._tools.values()
+            if tool.allowed_for(user) and tool.verifies_request is not None and tool.verifies_request(message)
+        )
+
+    def verification_calls(self, ctx: ToolContext) -> list[ToolCall]:
+        return [
+            ToolCall("verify_" + name, name, json.dumps(tool.verification_arguments(ctx)))
+            for name, tool in self._tools.items()
+            if tool.allowed_for(ctx.user)
+            and tool.verifies_request is not None
+            and tool.verifies_request(ctx.user_message)
+            and tool.verification_arguments is not None
+        ]
+
+    def direct_read_calls(self, ctx: ToolContext) -> list[ToolCall]:
+        calls = []
+        for name, tool in self._tools.items():
+            if not tool.allowed_for(ctx.user) or tool.direct_read_arguments is None:
+                continue
+            arguments = tool.direct_read_arguments(ctx)
+            if arguments is not None:
+                calls.append(ToolCall("direct_" + name, name, json.dumps(arguments)))
+        return calls
+
     def capabilities_for(self, user: UserContext) -> str:
         """Estado real de capacidades, calculado en código: el modelo no lo deduce.
 
@@ -167,7 +219,7 @@ class ToolRegistry:
         fijo entre preguntas para que la caché de prompt no se rompa (ver conversation/engine.py).
         El filtro por módulo vive en schemas_for(), que sí varía por turno.
         """
-        tools = [t for t in self._tools.values() if user.has(t.permission)]
+        tools = [t for t in self._tools.values() if t.allowed_for(user)]
         lines = ["Herramientas disponibles ahora (esta lista es completa):"]
         lines += [f"- {t.name}: {t.description.split('. ')[0]}" for t in tools] or ["- ninguna"]
         if self.pending_domains:
@@ -181,8 +233,12 @@ class ToolRegistry:
         return [
             tool.schema()
             for tool in self._tools.values()
-            if user.has(tool.permission) and (modules is None or self._module_of.get(tool.name) in modules)
+            if tool.allowed_for(user) and (modules is None or self._module_of.get(tool.name) in modules)
         ]
+
+    def parameter_models_for(self, user: UserContext) -> dict[str, type[BaseModel]]:
+        """Contratos del mismo catálogo autorizado; no ejecuta ni concede permisos."""
+        return {tool.name: tool.params for tool in self._tools.values() if tool.allowed_for(user)}
 
     async def execute(
         self, call: ToolCall, ctx: ToolContext, *, allowed_names: set[str] | None = None
@@ -273,13 +329,26 @@ class ToolRegistry:
     async def execute_all(
         self, calls: list[ToolCall], ctx: ToolContext, *, allowed_names: set[str] | None = None
     ) -> list[ToolExecution]:
-        return list(await asyncio.gather(*(self.execute(call, ctx, allowed_names=allowed_names) for call in calls)))
+        produced = frozenset().union(
+            *(self._tools[call.name].produces_context for call in calls if call.name in self._tools)
+        )
+        deferred = {
+            index
+            for index, call in enumerate(calls)
+            if call.name in self._tools and self._tools[call.name].requires_context & produced
+        }
+        completed: dict[int, ToolExecution] = {}
+        for phase in (False, True):
+            batch = [(index, call) for index, call in enumerate(calls) if (index in deferred) is phase]
+            results = await asyncio.gather(*(self.execute(call, ctx, allowed_names=allowed_names) for _, call in batch))
+            completed.update((index, result) for (index, _), result in zip(batch, results, strict=True))
+        return [completed[index] for index in range(len(calls))]
 
     @staticmethod
     async def _run(tool: Tool | None, call: ToolCall, ctx: ToolContext) -> ToolResult:
         if tool is None:
             return ToolResult(ToolStatus.ERROR, f"No existe la herramienta {call.name}")
-        if not ctx.user.has(tool.permission):
+        if not tool.allowed_for(ctx.user):
             return ToolResult(ToolStatus.PERMISSION_DENIED, "El usuario no tiene permiso para esta consulta")
         try:
             params = tool.params.model_validate_json(call.arguments or "{}")
@@ -324,7 +393,7 @@ def remember_table(
     produjo lo que se va a exportar, nunca a "la última herramienta llamada en el turno" (``LAST_CALL``),
     que puede haber cambiado por una herramienta auxiliar posterior sin presentación propia (sin tocar
     esta tabla) — eso rechazaría un informe legítimo por una causa ajena a sus datos."""
-    if not presentation or presentation.get("type") in {None, "download"}:
+    if not presentation or presentation.get("type") in {None, "download", "downloads"}:
         return
     stored = dict(presentation)
     truncated: list[dict[str, Any]] = []

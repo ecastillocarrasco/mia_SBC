@@ -55,7 +55,7 @@
         }
       ],
       "acceptance": "Solo aparecen las personas del departamento elegido.",
-      "manual": true
+      "review_required": true
     },
     {
       "id": "E04",
@@ -72,7 +72,7 @@
         }
       ],
       "acceptance": "Los tres turnos conservan exactamente los mismos identificadores.",
-      "manual": true
+      "review_required": true
     },
     {
       "id": "E05",
@@ -89,7 +89,7 @@
         }
       ],
       "acceptance": "La comparativa contiene exactamente la selección; no sustituye personas.",
-      "manual": true
+      "review_required": true
     },
     {
       "id": "E06",
@@ -103,7 +103,7 @@
         }
       ],
       "acceptance": "La segunda pregunta elimina filtros anteriores y coincide con la consulta global de referencia.",
-      "manual": true
+      "review_required": true
     },
     {
       "id": "E07",
@@ -161,10 +161,27 @@
         {
           "prompt": "Analiza la plantilla de $departamento, cruza sus vacaciones con sus turnos de $periodo_turnos y explica incompatibilidades.",
           "require_plan": true,
+          "tools_all": [
+            "cruce_vacaciones_turnos"
+          ],
+          "summary_references": [
+            {
+              "tool": "cruce_vacaciones_turnos",
+              "key": "desde",
+              "reference": "periodo_turnos_desde"
+            },
+            {
+              "tool": "cruce_vacaciones_turnos",
+              "key": "hasta",
+              "reference": "periodo_turnos_hasta"
+            }
+          ],
           "tools_any": [
+            "cruce_vacaciones_turnos",
             "consulta_cruzada",
             "datos_de_personas",
             "turnos_historico",
+            "turnos_persona",
             "turnos_dia"
           ]
         }
@@ -178,7 +195,19 @@
       "turns": [
         {
           "prompt": "Compara $departamento y $otro_departamento en plantilla y vacaciones de $periodo_turnos. Explica qué datos has usado.",
-          "require_plan": true
+          "require_plan": true,
+          "summary_references": [
+            {
+              "tool": "vacaciones",
+              "key": "desde",
+              "reference": "periodo_turnos_desde"
+            },
+            {
+              "tool": "vacaciones",
+              "key": "hasta",
+              "reference": "periodo_turnos_hasta"
+            }
+          ]
         }
       ],
       "acceptance": "Cubre ambos departamentos y ambos indicadores, con periodos homogéneos.",
@@ -376,7 +405,8 @@
             "xlsx",
             "docx"
           ],
-          "require_plan": true
+          "require_plan": true,
+          "verify_current_table": true
         }
       ],
       "acceptance": "Entrega todos los archivos pedidos y conserva la misma población y cifras.",
@@ -397,21 +427,39 @@
           "formats": [
             "pdf",
             "xlsx"
-          ]
+          ],
+          "verify_previous_table": true
         }
       ],
       "acceptance": "Exporta el resultado solicitado y no otra tabla de la sesión.",
-      "manual": true
+      "review_required": true
     },
     {
       "id": "E25",
       "title": "Conclusiones verificadas",
       "turns": [
         {
-          "prompt": "Analiza la evolución del coste de nóminas de $departamento en $periodo. Genera un PDF con hechos, hipótesis y recomendaciones separados.",
+          "prompt": "Analiza la evolución del coste de nóminas de $departamento en $periodo_evolucion. Genera un PDF con hechos, hipótesis y recomendaciones separados.",
           "require_plan": true,
           "formats": [
             "pdf"
+          ],
+          "summary_references": [
+            {
+              "tool": "analisis_economico_nominas",
+              "key": "concepto_economico",
+              "reference": "concepto_evolucion"
+            },
+            {
+              "tool": "analisis_economico_nominas",
+              "key": "periodo_interpretado",
+              "reference": "etiqueta_periodo_evolucion"
+            },
+            {
+              "tool": "analisis_economico_nominas",
+              "key": "departamento_unico",
+              "reference": "departamento"
+            }
           ]
         }
       ],
@@ -486,14 +534,12 @@
         {
           "prompt": "Resume mis últimos cinco correos recibidos.",
           "tools_any": [
-            "buscar_correos",
-            "ultimos_correos",
-            "listar_correos"
+            "correos_recientes"
           ]
         }
       ],
       "acceptance": "Consulta solo el buzón autorizado y fundamenta el resumen.",
-      "manual": true
+      "review_required": true
     },
     {
       "id": "E31",
@@ -575,6 +621,47 @@
       ],
       "acceptance": "Login, streaming, presentación, descarga y voz funcionan; no se locutan importes.",
       "manual": true
+    },
+    {
+      "id": "E37",
+      "title": "Evolución con un único mes",
+      "turns": [
+        {
+          "prompt": "Analiza la evolución del coste de nóminas de $departamento en $periodo. Genera un PDF con hechos, hipótesis y recomendaciones separados.",
+          "status": "error",
+          "must_match": "serie|dos meses|intervalo m[aá]s amplio|periodo.*insuficiente",
+          "forbidden_tools": [
+            "generar_informe",
+            "generar_informe_ejecutivo"
+          ]
+        }
+      ],
+      "acceptance": "Con un único mes no certifica una evolución ni entrega un informe presentado como completo; explica que se necesita una serie de al menos dos meses. Es un caso negativo, no una entrega completada."
+    },
+    {
+      "id": "E38",
+      "title": "Alcance del departamento en informe salarial",
+      "turns": [
+        {
+          "prompt": "Analiza el coste de nóminas de $departamento en $periodo y genera un informe PDF completo.",
+          "tools_all": [
+            "analisis_economico_nominas"
+          ],
+          "formats": [
+            "pdf"
+          ],
+          "require_plan": true,
+          "summary_references": [
+            {
+              "tool": "analisis_economico_nominas",
+              "key": "departamento_unico",
+              "reference": "departamento"
+            }
+          ]
+        }
+      ],
+      "acceptance": "Conserva el departamento solicitado aunque el modelo omita su filtro; no lo sustituye por toda la empresa. El PDF conserva población y cifras de la fuente.",
+      "review_required": true
     }
   ]
 }

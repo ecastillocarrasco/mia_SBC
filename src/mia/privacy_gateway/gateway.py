@@ -22,7 +22,7 @@ from typing import Any
 
 from mia.llm.base import LLMEvent, LLMProvider, LLMRequest, TextDelta, ToolCall, ToolCallRequested
 from mia.privacy_gateway import audit
-from mia.privacy_gateway.context_manager import current_operation
+from mia.privacy_gateway.context_manager import current_embedding_purpose, current_operation
 from mia.privacy_gateway.economic_minimization import redact_individual_amounts
 from mia.privacy_gateway.exceptions import UnsafeContentBlockedError
 from mia.privacy_gateway.inbound_inspector import sanitize_inbound
@@ -31,6 +31,7 @@ from mia.privacy_gateway.policy_engine import Action, Policy, action_for, resolv
 from mia.privacy_gateway.presidio_engine import DetectedEntity, PresidioEngine, drop_overlapping, get_presidio_engine
 from mia.privacy_gateway.prompt_injection_guard import scan as scan_injection
 from mia.privacy_gateway.prompt_injection_guard import wrap_untrusted
+from mia.privacy_gateway.structured_minimization import protect_structured
 from mia.privacy_gateway.token_vault import TokenVault
 from mia.privacy_gateway.tokenizer import _TOKEN_RE, Tokenizer
 from mia.settings import PrivacyGatewaySettings
@@ -87,7 +88,7 @@ class PrivacyGateway(LLMProvider):
         secrets_redacted = 0
         injection_hits = 0
 
-        def _process(text: str, *, untrusted: bool = False) -> str:
+        def _process(text: str, *, untrusted: bool = False, minimize_numbers: bool = True) -> str:
             nonlocal secrets_redacted, injection_hits
             if not text:
                 return text
@@ -95,21 +96,33 @@ class PrivacyGateway(LLMProvider):
                 injection_hits += len(scan_injection(text))
             redacted, n = redact_secrets(text)
             secrets_redacted += n
+
+            def _identifier(value: str, entity: str) -> str:
+                return self._tokenizer.tokenize_identifier(  # type: ignore[union-attr]
+                    value, entity, user_id=user_id, operation_id=operation_id
+                )
+
+            structured, structured_counts = protect_structured(redacted, _identifier, reserve_content=True)
+            detected.update(structured_counts)
             tokenized, counts = self._tokenizer.tokenize(  # type: ignore[union-attr]
-                redacted, policy=policy, user_id=user_id, operation_id=operation_id
+                structured, policy=policy, user_id=user_id, operation_id=operation_id
             )
             detected.update(counts)
+            minimized = redact_individual_amounts(tokenized, policy=policy) if minimize_numbers else tokenized
             if not untrusted:
-                return tokenized
+                return minimized
             # Los resultados de herramienta son JSON (ver ToolExecution.as_llm_output()): una vez
             # tokenizados los nombres, minimiza también los importes INDIVIDUALES que queden ligados a
             # una persona ya identificada (ajuste del punto 1 de la aprobación condicionada).
-            minimized = redact_individual_amounts(tokenized, policy=policy)
             return wrap_untrusted(minimized)
 
-        new_system = _process(request.system)
+        new_system = _process(request.system) + (
+            "\nPRIVACIDAD: las marcas CONTENIDO_RESERVADO_EN_MIA e IMPORTE_INDIVIDUAL_PROTEGIDO "
+            "representan datos que no has recibido. No los reconstruyas, no deduzcas su contenido ni afirmes "
+            "haberlos analizado. Explica la limitación; el usuario autorizado puede consultar la presentación local."
+        )
 
-        def _protect_call_arguments(arguments: str) -> str:
+        def _protect_call_arguments(arguments: str, tool_name: str) -> str:
             # Las llamadas a herramientas ejecutadas internamente contienen valores reales. La
             # siguiente ronda del LLM ve el historial de function_call: también hay que proteger
             # sus argumentos, NO solo Message.content. Conservar JSON válido y nombres de claves.
@@ -117,14 +130,21 @@ class PrivacyGateway(LLMProvider):
                 value = json.loads(arguments or "{}")
             except (ValueError, TypeError):
                 return _process(arguments)  # un JSON inválido seguirá inválido, pero no saldrá sin filtrar
-            return json.dumps(self._map_json_strings(value, _process), ensure_ascii=False)
+            if tool_name == "cruzar_resultados" and isinstance(value, dict):
+                for key in ("a", "b"):
+                    if isinstance(value.get(key), str):
+                        value[key] = self._tokenizer.tokenize_identifier(  # type: ignore[union-attr]
+                            value[key], "NRP", user_id=user_id, operation_id=operation_id
+                        )
+                        detected["NRP"] += 1
+            return _process(json.dumps(value, ensure_ascii=False), minimize_numbers=False)
 
         new_messages = [
             replace(
                 m,
                 content=_process(m.content, untrusted=m.role == "tool"),
                 tool_calls=tuple(
-                    replace(call, arguments=_protect_call_arguments(call.arguments)) for call in m.tool_calls
+                    replace(call, arguments=_protect_call_arguments(call.arguments, call.name)) for call in m.tool_calls
                 ),
             )
             for m in request.messages
@@ -270,6 +290,9 @@ class PrivacyGateway(LLMProvider):
         texto vectorizado no contenga el dato personal."""
         if not text:
             return text
+        # Las credenciales no son entidades personales: se eliminan antes de NER,
+        # incluso cuando Presidio no detecta ninguna entidad.
+        text, _ = redact_secrets(text)
         entities = self._engine.analyze(text)  # type: ignore[union-attr]
         threshold = score_threshold(policy)
         relevant = [
@@ -287,6 +310,10 @@ class PrivacyGateway(LLMProvider):
     async def embed(self, texts: list[str], model: str) -> list[list[float]]:
         if not self._settings.enabled or self._engine is None:
             return await self._inner.embed(texts, model)
+        if current_embedding_purpose() not in {"query", "minimized_source"}:
+            raise UnsafeContentBlockedError(
+                "Embeddings bloqueados: el documento privado necesita una proyección segura."
+            )
         policy = resolve_policy(None, default=self._settings.default_policy)
         try:
             safe_texts = [self._anonymize_for_embedding(t, policy=policy) for t in texts]

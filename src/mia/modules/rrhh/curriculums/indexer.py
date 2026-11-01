@@ -27,6 +27,7 @@ from mia.modules.rrhh.document_indexing import (
     render_pdf_pages,  # noqa: F401  (re-exportado: lo usa tests/test_mia_ocr_local.py)
 )
 from mia.observability import get_logger
+from mia.privacy_gateway.context_manager import embedding_scope
 
 log = get_logger(__name__)
 logging.getLogger("pypdf").setLevel(logging.ERROR)  # PDF mal formados: el estado ya lo refleja
@@ -123,7 +124,8 @@ class CvIndexer:
         vectors: list[list[float]] = []
         try:
             for start in range(0, len(chunks), EMBED_BATCH):
-                vectors.extend(await self._llm.embed(chunks[start : start + EMBED_BATCH], self._model))
+                with embedding_scope("private_source"):
+                    vectors.extend(await self._llm.embed(chunks[start : start + EMBED_BATCH], self._model))
         except Exception as exc:
             log.warning("cv_index.embed_failed", document=document.sp_id, error=str(exc))
             return "error"  # se reintentará en la siguiente ejecución (no se guarda el texto)
