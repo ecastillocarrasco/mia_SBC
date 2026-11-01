@@ -107,7 +107,7 @@ def explicit_month_comparison(request: str) -> tuple[str, ...] | None:
 
 
 def explicit_year_list_comparison(request: str) -> tuple[str, ...] | None:
-    """"Compara 2024, 2025 y 2026" / "gastos entre 2023 y 2026" — dos o más AÑOS COMPLETOS
+    """ "Compara 2024, 2025 y 2026" / "gastos entre 2023 y 2026" — dos o más AÑOS COMPLETOS
     explícitos, sin ningún mes de por medio (eso es ``explicit_month_comparison``). Cada año se
     resuelve igual que "este año"/"año pasado" vía ``period_engine`` (el actual, hasta hoy; los
     demás, completos) — nunca fechas calculadas aquí."""
@@ -326,10 +326,7 @@ def merge_payroll_comparison(
         ],
         "rows": rows,
         "kpis": [
-            *(
-                {"label": f"Total comparable {label}", "value": euro(totals[i])}
-                for i, label in enumerate(periods)
-            ),
+            *({"label": f"Total comparable {label}", "value": euro(totals[i])} for i, label in enumerate(periods)),
             {"label": "Variación (€)", "value": euro(difference)},
             {
                 "label": "Variación (%)",
@@ -341,9 +338,7 @@ def merge_payroll_comparison(
                 "type": "grouped_bar",
                 "title": "Comparativa por departamento",
                 "labels": [x[0] for x in included],
-                "series": [
-                    {"name": label, "values": [x[1][i] for x in included]} for i, label in enumerate(periods)
-                ],
+                "series": [{"name": label, "values": [x[1][i] for x in included]} for i, label in enumerate(periods)],
             },
         ],
     }
@@ -452,19 +447,14 @@ def merge_trabajo_temporal_comparison(
                 "type": "grouped_bar",
                 "title": table["title"],
                 "labels": [r[0] for r in rows_pairs],
-                "series": [
-                    {"name": label, "values": [r[1][i] for r in rows_pairs]} for i, label in enumerate(periods)
-                ],
+                "series": [{"name": label, "values": [r[1][i] for r in rows_pairs]} for i, label in enumerate(periods)],
             }
         )
     assert main_table is not None  # noqa: S101 — garantizado por el `if dept is None and company is None` de arriba
     difference = round(totals[-1] - totals[0], 2)
     pct = round(difference / totals[0] * 100, 2) if totals[0] else None
     main_table["kpis"] = [
-        *(
-            {"label": f"Importe total {label}", "value": _eur(totals[i])}
-            for i, label in enumerate(periods)
-        ),
+        *({"label": f"Importe total {label}", "value": _eur(totals[i])} for i, label in enumerate(periods)),
         {"label": "Variación (€)", "value": _eur(difference)},
         {"label": "Variación (%)", "value": f"{pct:.2f}%".replace(".", ",") if pct is not None else "No calculable"},
     ]

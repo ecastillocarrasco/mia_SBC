@@ -81,9 +81,7 @@ def test_three_way_year_comparison():
     y2026 = fixture_summary("2026-01", {"Sistemas": {"total": 125, "personas_con_nomina": 4}})
     y2026["meses_analizados"] = [f"2026-{m:02d}" for m in range(1, 11)]  # hasta octubre, "este año"
     y2026["meses_con_datos"] = y2026["meses_analizados"]
-    p, summary = merge_payroll_comparison(
-        [y2024, y2025, y2026], ("2024", "2025", "2026"), today=date(2026, 10, 30)
-    )
+    p, summary = merge_payroll_comparison([y2024, y2025, y2026], ("2024", "2025", "2026"), today=date(2026, 10, 30))
     assert p["columns"][:5] == ["Departamento", "2024 (€)", "2025 (€)", "2026 (€)", "Variación (€)"]
     assert p["rows"][0][:6] == ["Sistemas", 90.0, 100.0, 125.0, 35.0, 38.89]  # 2024 -> 2026, no 2024->2025
     assert summary["totales_por_periodo"] == {"2024": 90.0, "2025": 100.0, "2026": 125.0}

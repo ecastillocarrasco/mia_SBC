@@ -905,9 +905,7 @@ async def _complete_table_export(deps: Deps, p: InformeEjecutivoParams, ctx: Too
         if p.departamento and normalize_key(source_department) != normalize_key(p.departamento):
             return ToolResult(
                 ToolStatus.INVALID_ARGUMENTS,
-                {
-                    "mensaje": "La tabla no acredita el departamento solicitado. Consulta primero su población."
-                },
+                {"mensaje": "La tabla no acredita el departamento solicitado. Consulta primero su población."},
             )
         if source.get("type") == "table":
             return await generar(deps).handler(

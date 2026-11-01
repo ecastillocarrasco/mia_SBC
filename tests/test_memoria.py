@@ -188,7 +188,9 @@ def memory_settings_overrides() -> dict[str, object]:
     return {"memory": {"enabled": True}}
 
 
-async def test_memory_settings_endpoint_toggles_per_user(tmp_path: Path, memory_settings_overrides: dict[str, object]) -> None:
+async def test_memory_settings_endpoint_toggles_per_user(
+    tmp_path: Path, memory_settings_overrides: dict[str, object]
+) -> None:
     from mia.api.services import Services  # noqa: PLC0415
     from mia.llm.fake import FakeLLMProvider  # noqa: PLC0415
     from mia.voice import CachedVoice, NullVoiceProvider  # noqa: PLC0415
@@ -217,7 +219,11 @@ async def test_memory_settings_endpoint_toggles_per_user(tmp_path: Path, memory_
 
             listed = await client.get("/api/memory/items")
             assert listed.json()["items"] == [
-                {"id": memory_id, "content": "recuerdo de prueba", "created_at": listed.json()["items"][0]["created_at"]}
+                {
+                    "id": memory_id,
+                    "content": "recuerdo de prueba",
+                    "created_at": listed.json()["items"][0]["created_at"],
+                }
             ]
 
             deleted = await client.delete(f"/api/memory/items/{memory_id}")

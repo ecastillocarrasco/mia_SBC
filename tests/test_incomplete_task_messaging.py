@@ -231,7 +231,9 @@ async def test_direct_read_failure_shows_the_tools_own_specific_message_not_a_ge
 
 
 def test_direct_read_failure_detail_falls_back_to_a_plain_message_when_the_tool_gives_nothing_usable():
-    assert _direct_read_failure_detail(ToolResult(ToolStatus.ERROR, None)) == "No se ha completado la lectura autorizada."
+    assert (
+        _direct_read_failure_detail(ToolResult(ToolStatus.ERROR, None)) == "No se ha completado la lectura autorizada."
+    )
     assert _direct_read_failure_detail(ToolResult(ToolStatus.ERROR, {})) == "No se ha completado la lectura autorizada."
     assert _direct_read_failure_detail(ToolResult(ToolStatus.SOURCE_UNAVAILABLE, "El buzón no está configurado")) == (
         "El buzón no está configurado"

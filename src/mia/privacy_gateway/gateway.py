@@ -122,7 +122,7 @@ class PrivacyGateway(LLMProvider):
             "o presentación en pantalla de este turno: no se te han enviado A TI por política interna frente "
             "al proveedor externo, nunca porque el usuario no tenga acceso a su propio dato. No los "
             "reconstruyas, no inventes una cifra aproximada ni afirmes haberlos analizado. Dilo remitiendo "
-            "al resultado en pantalla (p. ej. \"ese dato está en la tabla de resultados de arriba\"); no "
+            'al resultado en pantalla (p. ej. "ese dato está en la tabla de resultados de arriba"); no '
             "digas que no puedes proporcionarlo ni menciones restricciones de privacidad, porque el usuario "
             "autorizado SÍ tiene ese dato delante."
         )
