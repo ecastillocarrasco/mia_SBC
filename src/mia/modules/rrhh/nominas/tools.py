@@ -415,8 +415,32 @@ async def _read_amounts(deps: Deps, slip: Payslip) -> dict[str, Any]:
 
 
 class ImportesParams(PersonaParams):
-    periodo: str | None = Field(default=None, description="AAAA-MM; por defecto, la última nómina ordinaria")
+    periodo: str | None = Field(
+        default=None, description="AAAA-MM, o AAAA para todo el año; por defecto, la última nómina ordinaria"
+    )
     incluir_pagas_especiales: bool = False
+
+
+_YEAR_ONLY = re.compile(r"^\d{4}$")
+MAX_SLIPS_PER_YEAR = 12
+
+
+def _presentation_rows(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Misma información que ``results`` (el resumen que ve el LLM, con ``importes`` anidado y ya
+    probado en ``test_payslip_amounts_are_read_on_demand``), aplanada SOLO para la tabla en pantalla.
+
+    ``legacy_view._list_table()`` construye una columna por cada clave de primer nivel de cada fila;
+    con ``importes`` anidado, esa columna llegaba como un objeto sin desglosar y los importes reales
+    (líquido, devengado, IRPF...) nunca se veían en pantalla, aunque sí estaban en el dato. No se toca
+    ``results``/el resumen: solo esta copia de presentación."""
+    rows = []
+    for item in results:
+        raw_importes = item.get("importes")
+        importes: dict[str, Any] = raw_importes if isinstance(raw_importes, dict) else {}
+        row = {k: v for k, v in item.items() if k not in ("importes", "comprobacion", "lectura_completa")}
+        row.update(importes)
+        rows.append(row)
+    return rows
 
 
 def nomina_importes(deps: Deps) -> Tool:
@@ -429,18 +453,26 @@ def nomina_importes(deps: Deps) -> Tool:
                 return person_problem(match, p.nombre)
             e = match.employee
             stmt = select(Payslip).where(_belongs(e))
-            if p.periodo:
+            whole_year = bool(p.periodo and _YEAR_ONLY.fullmatch(p.periodo))
+            if whole_year:
+                # Incidencia real: "salario 2026" se comparaba con igualdad exacta contra el periodo
+                # AAAA-MM real de cada nómina ("2026-09"...), sin coincidir nunca -- un año entero con
+                # nóminas reales se presentaba como "no hay ninguna nómina en todo el año".
+                stmt = stmt.where(Payslip.period.like(f"{p.periodo}-%"))
+            elif p.periodo:
                 stmt = stmt.where(Payslip.period == p.periodo)
             if not p.incluir_pagas_especiales:
                 stmt = stmt.where(Payslip.special.is_(False))
-            slips = list((await db.scalars(stmt.order_by(Payslip.period.desc()).limit(3 if p.periodo else 1))).all())
+            limit = MAX_SLIPS_PER_YEAR if whole_year else (3 if p.periodo else 1)
+            slips = list((await db.scalars(stmt.order_by(Payslip.period.desc()).limit(limit))).all())
         if not slips:
-            return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": f"No hay nómina de {e.name} para ese periodo."})
+            scope = f"en {p.periodo}" if p.periodo else "para ese periodo"
+            return ToolResult(ToolStatus.NOT_FOUND, {"mensaje": f"No hay nómina de {e.name} {scope}."})
         results = [await _read_amounts(deps, s) for s in slips]
         return ToolResult(
             ToolStatus.OK,
             {"persona": e.name, "nominas": results, "regla": AMOUNTS_RULE},
-            {"type": "payslip", "persona": e.name, "nominas": results},
+            {"type": "payslip", "persona": e.name, "nominas": _presentation_rows(results)},
             focus_person(e),
         )
 

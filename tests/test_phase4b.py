@@ -112,6 +112,35 @@ async def test_payslip_amounts_are_read_on_demand(env: Any) -> None:
     assert slip["periodo"] == "2026-07" and slip["importes"]["liquido"] == 1536.52
 
 
+async def test_payslip_lookup_with_a_bare_year_finds_that_years_payslips(env: Any) -> None:
+    """Incidencia real: "salario 2026 de X" comparaba el periodo pedido ('2026') por igualdad exacta
+    contra el periodo real de cada nómina ('2026-07'...), que nunca coincide -- una persona con
+    nóminas reales ese año se presentaba como "no hay ninguna nómina registrada en todo el año"."""
+    registry, _ = env
+    result = await call(registry, "nomina_importes", empleado_id=1, periodo="2026")
+    assert result.status is ToolStatus.OK
+    assert result.summary["nominas"][0]["periodo"] == "2026-07"
+    # Un periodo AAAA-MM concreto se sigue comparando por igualdad exacta, no por año.
+    other_year = await call(registry, "nomina_importes", empleado_id=1, periodo="2025")
+    assert other_year.status is ToolStatus.NOT_FOUND
+
+
+async def test_payslip_presentation_flattens_amounts_for_the_screen_table(env: Any) -> None:
+    """Incidencia real: legacy_view._list_table() construye una columna por cada clave de primer
+    nivel de cada fila de 'nominas'; con 'importes' anidado (la misma forma que summary, ya probada
+    arriba), esa columna llegaba como un objeto sin desglosar y el líquido/devengado/IRPF reales
+    nunca se veían en la tabla en pantalla, aunque sí estaban en el dato."""
+    registry, _ = env
+    result = await call(registry, "nomina_importes", empleado_id=1)
+    row = result.presentation["nominas"][0]
+    assert "importes" not in row
+    assert row["liquido"] == 1536.52
+    assert row["total_devengado"] == 1866.67
+    assert row["irpf_porcentaje"] == 11.5
+    # El resumen que ve el LLM (probado arriba, slip["importes"]["liquido"]) no cambia.
+    assert result.summary["nominas"][0]["importes"]["liquido"] == 1536.52
+
+
 async def test_payslip_amounts_need_their_own_permission(env: Any) -> None:
     registry, _ = env
     rrhh_reader = UserContext("r", "Lectura", roles=frozenset({"mia.responsable"}))

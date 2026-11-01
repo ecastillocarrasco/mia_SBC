@@ -376,7 +376,10 @@ function selectTableColumns(cfg,kind){
  const prefs={
   vacaciones:['Empleado','Nombre','FechaInicio','FechaFin','Dias','Días','Estado','Departamento'],
   ausencias:['Empleado','Nombre','Tipo','FechaInicio','FechaFin','Dias','Días','Estado','Departamento'],
-  nominas:['Empleado','Nombre','Periodo','periodo','Fecha','NombreArchivo','Documento','Estado'],
+  nominas:['Empleado','Nombre','Periodo','periodo','Fecha','NombreArchivo','Documento','Estado',
+   'Período','Concepto','Paga especial','Tipo','Liquido','Total devengado','Total deducciones',
+   'Irpf importe','Irpf porcentaje','Remuneracion total','Prorrata extras','Base cotizacion cc',
+   'Base at desempleo','Base irpf'],
   list:[]
  };
  const wanted=prefs[kind]||[];if(!wanted.length)return cfg;
