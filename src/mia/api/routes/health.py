@@ -24,6 +24,7 @@ async def ready(services: ServicesDep) -> JSONResponse:
         await schema_problem(
             services.db,
             calendar_enabled=services.settings.mail.calendar.enabled and "correo" in services.settings.domains.enabled,
+            memory_enabled=services.settings.memory.enabled,
         )
         if db_ok
         else None

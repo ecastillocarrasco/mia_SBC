@@ -22,6 +22,8 @@ from importlib import import_module
 from typing import Any, Literal, cast
 from zoneinfo import ZoneInfo
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from mia.auth import Permission, UserContext
 from mia.conversation import guard
 from mia.conversation.events import (
@@ -34,6 +36,7 @@ from mia.conversation.events import (
     TurnEvent,
     TurnResult,
 )
+from mia.conversation.memory_hint import memory_context_block
 from mia.conversation.orchestrator import select_modules
 from mia.conversation.persona import AvatarState, Persona
 from mia.conversation.planning import (
@@ -58,8 +61,8 @@ from mia.conversation.tools import (
     remember_table,
 )
 from mia.data import Database
-from mia.data.models import ConversationTurn
-from mia.data.repositories import AuditRepository, ConversationRepository
+from mia.data.models import ConversationTurn, UserMemory
+from mia.data.repositories import AuditRepository, ConversationRepository, MemoryRepository
 from mia.diagnostics import EventStage, EventStatus, begin_trace
 from mia.diagnostics import emit as diag_emit
 from mia.llm import (
@@ -89,6 +92,7 @@ from mia.reporting.comparisons import (
 from mia.reporting.delivery import download_formats, merge_report_sources, resolve_export_request
 from mia.reporting.planner import planner
 from mia.rules import rules_for_prompt
+from mia.settings import MemorySettings
 from mia.text import normalize_key
 
 log = get_logger(__name__)
@@ -139,13 +143,15 @@ def _module_keywords() -> dict[str, tuple[str, ...]]:
         "correo": "mia.modules.correo",
         "analitica": "mia.modules.rrhh.analitica",
         "informes": "mia.modules.rrhh.informes",
+        "memoria": "mia.modules.memoria",
     }
     return {name: cast(tuple[str, ...], import_module(module).KEYWORDS) for name, module in modules.items()}
 
 
-def _module_hint(selected: set[str]) -> str:
-    """Si la pregunta suena a un módulo sin herramientas reales todavía, que lo diga con
-    naturalidad en vez de inventar datos (ningún Tool de ese módulo llegaría a ofrecerse)."""
+def _module_hint(selected: set[str], *, memory_enabled: bool = True) -> str:
+    """Si la pregunta suena a un módulo sin herramientas reales todavía (o, para memoria,
+    desactivado globalmente), que lo diga con naturalidad en vez de inventar datos o fingir que
+    ha guardado algo que ningún Tool llegaría a ofrecerse para guardar de verdad."""
     if "finanzas" in selected:
         return (
             "\n\n## Pista para este mensaje\nLa pregunta parece de Finanzas, que todavía no "
@@ -157,6 +163,12 @@ def _module_hint(selected: set[str]) -> str:
             "\n\n## Pista para este mensaje\nLa pregunta parece de IT/Sistemas, que todavía no "
             "está disponible (no hay fuente de datos conectada). Dilo con naturalidad, sin "
             "inventar incidencias, equipos ni tickets."
+        )
+    if "memoria" in selected and not memory_enabled:
+        return (
+            "\n\n## Pista para este mensaje\nLa pregunta parece pedir que recuerdes algo, pero "
+            "la Memoria Inteligente todavía no está activada en este despliegue. Dilo con "
+            "naturalidad: no digas que lo has guardado ni que lo recordarás, porque no es cierto."
         )
     return ""
 
@@ -377,6 +389,7 @@ class ConversationEngine:
         max_report_rows: int = 5000,
         mailbox_for: Callable[[UserContext], str | None] | None = None,
         turn_budget_seconds: float = 75.0,
+        memory_settings: MemorySettings | None = None,
     ) -> None:
         self._turn_budget = turn_budget_seconds
         self._mailbox_for = mailbox_for
@@ -389,6 +402,7 @@ class ConversationEngine:
         self._history_turns = history_turns
         self._max_tool_rounds = max_tool_rounds
         self._max_output_tokens = max_output_tokens
+        self._memory = memory_settings or MemorySettings()
 
     async def run(
         self,
@@ -421,6 +435,7 @@ class ConversationEngine:
                 history = await repo.recent_turns(session.id, self._history_turns)
                 await repo.add_turn(session_id=session.id, request_id=request_id, role="user", content=message)
                 turn = _TurnState(time.perf_counter(), session.id, dict(session.state or {}))
+                memory_items = await self._load_memory_items(db, user)
 
             self._restore_comparison(message, user, turn, history)
 
@@ -453,6 +468,7 @@ class ConversationEngine:
                 trace=trace,
                 attachment_ids=attachment_ids,
                 attachment_service=attachment_service,
+                memory_items=memory_items,
             )
 
             # Si se solicitan archivos, posponer cualquier afirmación hablada
@@ -1145,6 +1161,16 @@ class ConversationEngine:
                     turn.state[LAST_PAYROLL_COMPARISON] = latest
                 break
 
+    async def _load_memory_items(self, db: AsyncSession, user: UserContext) -> list[UserMemory]:
+        """Recuerdos activos del usuario para este turno (lista vacía con la memoria global o la
+        del propio usuario desactivada — ver ``mia.conversation.memory_hint``)."""
+        if not self._memory.enabled or not user.has(Permission.MEMORIA_USAR):
+            return []
+        memory_repo = MemoryRepository(db)
+        if not await memory_repo.is_enabled(user.user_id):
+            return []
+        return await memory_repo.list_memories(user.user_id)
+
     async def _save_turn(self, result: TurnResult, turn: _TurnState, user: UserContext, request_id: str | None) -> None:
         # 2) Transacción corta: respuesta, estado y auditoría.
         async with self._db.session() as db:
@@ -1185,6 +1211,7 @@ class ConversationEngine:
         trace: Any,
         attachment_ids: list[str] | None,
         attachment_service: Any,
+        memory_items: list[UserMemory],
     ) -> tuple[str, list[Message], ToolContext, set[str], QueryAnalysis]:
         messages = [
             Message(role="user" if t.role == "user" else "assistant", content=t.content)
@@ -1237,7 +1264,7 @@ class ConversationEngine:
             focus=describe_focus(turn.state),
             hint=(
                 self.persona.hint_for(message, mailbox)
-                + _module_hint(selected_modules)
+                + _module_hint(selected_modules, memory_enabled=self._memory.enabled)
                 + _report_hint(message, user, now.date())
                 + _calendar_scope_hint(message, now.date())
                 + (
@@ -1249,6 +1276,11 @@ class ConversationEngine:
                     else ""
                 )
                 + ("\n" + _pres_hint if _pres_hint else "")
+                + memory_context_block(
+                    memory_items,
+                    max_items=self._memory.max_items_in_context,
+                    max_chars=self._memory.max_content_chars * self._memory.max_items_in_context,
+                )
             ).strip(),
         )
         # Adjuntos: procesar IDs recibidos y actualizar session state

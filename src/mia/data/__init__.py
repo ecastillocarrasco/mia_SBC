@@ -39,7 +39,7 @@ from mia.data.jobs import (
     JOB_VALIDATING,
     ReportJob,
 )
-from mia.data.models import AuditEvent, Base, ConversationSession, ConversationTurn
+from mia.data.models import AuditEvent, Base, ConversationSession, ConversationTurn, MemoryPreference, UserMemory
 from mia.data.reports import Report
 from mia.data.sources import SourceItem, SourceSyncState
 
@@ -68,6 +68,7 @@ __all__ = [
     "Employee",
     "HrDocumentChunk",
     "HrDocumentText",
+    "MemoryPreference",
     "NewHire",
     "NewsletterItem",
     "OrgUnit",
@@ -85,6 +86,7 @@ __all__ = [
     "TtRate",
     "TtTimesheet",
     "TtWorker",
+    "UserMemory",
     "Vacation",
     "VacationBalance",
     "WeekComment",

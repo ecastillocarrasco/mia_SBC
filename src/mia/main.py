@@ -24,6 +24,7 @@ from mia.api.routes import (
     health,
     jobs,
     mail,
+    memory,
     reports,
     voice,
 )
@@ -123,6 +124,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
         if problem := await schema_problem(
             app.state.services.db,
             calendar_enabled=settings.mail.calendar.enabled and "correo" in settings.domains.enabled,
+            memory_enabled=settings.memory.enabled,
         ):
             log.error("app.migrations_pending", detail=problem)
         try:
@@ -159,6 +161,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
         compat.router,
         mail.router,
         attachments.router,
+        memory.router,
     ):
         app.include_router(router)
     mount_frontend(app, settings.frontend)

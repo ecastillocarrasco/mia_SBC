@@ -109,4 +109,31 @@ async function welcomeText(base, nameOverride) {
   try { const data = await res.json(); return { ok: true, text: String(data.text || '').slice(0, 400) }; }
   catch { return { error: 'El backend ha devuelto un saludo no válido.' }; }
 }
-module.exports = { sendPrompt, speak, welcomeText, endpoint };
+async function getMemorySettings(base) {
+  const bearer = await authHeaders();
+  let res;
+  try {
+    res = await requestWithTimeout(endpoint(base, '/api/memory/settings'), { headers: { Accept: 'application/json', ...bearer } }, 15000);
+  } catch { return { error: 'No se puede conectar con el backend mIA SBC para la memoria.' }; }
+  if ([401, 403].includes(res.status)) return { error: 'Sesión caducada o sin permiso: inicia sesión de nuevo.', unauthorized: true };
+  if (!res.ok) return { error: `No se ha podido consultar la memoria (HTTP ${res.status}).` };
+  try { const data = await res.json(); return { ok: true, available: Boolean(data.available), enabled: Boolean(data.enabled) }; }
+  catch { return { error: 'El backend ha devuelto una respuesta de memoria no válida.' }; }
+}
+async function setMemoryEnabled(base, enabled) {
+  const bearer = await authHeaders();
+  let res;
+  try {
+    res = await requestWithTimeout(endpoint(base, '/api/memory/settings'), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json; charset=utf-8', Accept: 'application/json', ...bearer },
+      body: JSON.stringify({ enabled: Boolean(enabled) }),
+    }, 15000);
+  } catch { return { error: 'No se puede conectar con el backend mIA SBC para cambiar la memoria.' }; }
+  if ([401, 403].includes(res.status)) return { error: 'Sesión caducada o sin permiso: inicia sesión de nuevo.', unauthorized: true };
+  if (res.status === 404) return { error: 'La Memoria Inteligente no está activada en este despliegue.', available: false };
+  if (!res.ok) return { error: `No se ha podido actualizar la memoria (HTTP ${res.status}).` };
+  try { const data = await res.json(); return { ok: true, available: Boolean(data.available), enabled: Boolean(data.enabled) }; }
+  catch { return { error: 'El backend ha devuelto una respuesta de memoria no válida.' }; }
+}
+module.exports = { sendPrompt, speak, welcomeText, endpoint, getMemorySettings, setMemoryEnabled };

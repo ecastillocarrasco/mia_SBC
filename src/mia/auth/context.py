@@ -49,6 +49,14 @@ class Permission(StrEnum):
     """Community: noticias corporativas/de grupo y newsletter interna. Ver ``_UNIVERSAL_CON_ROL``:
     se concede igual que ``CORREO_LEER``, a cualquier usuario con algún rol reconocido, nunca a
     quien no tiene ninguno."""
+    MEMORIA_USAR = "memoria:usar"
+    """Memoria Inteligente V1: guardar, listar, borrar y activar/desactivar los recuerdos
+    PROPIOS del usuario (nunca ajenos: cada herramienta filtra siempre por su ``user_id``). Es
+    un dato personal del propio usuario, no un dominio de negocio — se concede igual que
+    ``CORREO_LEER``/``NOTICIAS_LEER`` (``_UNIVERSAL_CON_ROL``), a cualquiera con algún rol
+    reconocido. Independiente del interruptor global ``MemorySettings.enabled``: con ese
+    interruptor en ``False`` no se registra ninguna herramienta ni endpoint, así que este
+    permiso no habilita nada por sí solo."""
     INFORMES_GENERAR = "informes:generar"
     PREDICCIONES_LEER = "predicciones:leer"
     ADMINISTRAR = "sistema:administrar"
@@ -97,10 +105,13 @@ ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
     "Legal": frozenset({Permission.DOCUMENTOS_LEER, Permission.DOCUMENTOS_CONTENIDO}),
 }
 
-_UNIVERSAL_CON_ROL = frozenset({Permission.CORREO_LEER, Permission.CORREO_ENVIAR, Permission.NOTICIAS_LEER})
-"""Correo (lectura y envío) y Community (noticias + newsletter): se conceden a CUALQUIER usuario
-con algún rol reconocido, sea el que sea — no son privilegios de un rol concreto, pero tampoco son
-públicos: sin ningún rol reconocido no se concede nada (ver ``UserContext.permissions``)."""
+_UNIVERSAL_CON_ROL = frozenset(
+    {Permission.CORREO_LEER, Permission.CORREO_ENVIAR, Permission.NOTICIAS_LEER, Permission.MEMORIA_USAR}
+)
+"""Correo (lectura y envío), Community (noticias + newsletter) y la Memoria Inteligente propia:
+se conceden a CUALQUIER usuario con algún rol reconocido, sea el que sea — no son privilegios de
+un rol concreto, pero tampoco son públicos: sin ningún rol reconocido no se concede nada (ver
+``UserContext.permissions``)."""
 
 
 class PermissionDeniedError(Exception):

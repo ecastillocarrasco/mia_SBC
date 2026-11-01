@@ -612,6 +612,16 @@ function setupIPC() {
       return {ok:false,error:String(e?.message||'No se pudo descargar el informe.').slice(0,250)};
     }
   });
+  ipcMain.handle('mia:get-memory-settings', async event => {
+    if (!ownSender(event, [settingsWin])) return { error: 'No autorizado.' };
+    try { return await backend.getMemorySettings(config.backendBase); }
+    catch { return { error: 'No se ha podido consultar la memoria.' }; }
+  });
+  ipcMain.handle('mia:set-memory-enabled', async (event, enabled) => {
+    if (!ownSender(event, [settingsWin]) || typeof enabled !== 'boolean') return { error: 'Solicitud no válida.' };
+    try { return await backend.setMemoryEnabled(config.backendBase, enabled); }
+    catch { return { error: 'No se ha podido actualizar la memoria.' }; }
+  });
   ipcMain.handle('mia:probe-voice', async event => {
     if(!ownSender(event,[settingsWin]))return {ok:false,error:'No autorizado.'};
     if(config.voiceMode==='off')return {ok:false,code:'MIC_OFF',error:'Activa temporalmente el micrófono para realizar el diagnóstico.'};

@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { normalizeBackendUrl, normalizeConfig } = require('../src/config.cjs');
-const { endpoint, sendPrompt, speak, welcomeText } = require('../src/backend.cjs');
+const { endpoint, sendPrompt, speak, welcomeText, getMemorySettings, setMemoryEnabled } = require('../src/backend.cjs');
 test('solo HTTPS o loopback HTTP en backend, bloquea usuario y URL arbitraria', () => {
   assert.equal(normalizeBackendUrl('http://evil.example'), 'http://127.0.0.1:5001');
   assert.equal(normalizeBackendUrl('http://localhost:5002'), 'http://localhost:5002');
@@ -75,4 +75,56 @@ test('si el backend de saludo falla, se informa el error sin lanzar excepción',
   global.fetch = async () => ({ ok: false, status: 500 });
   try { const res = await welcomeText('http://127.0.0.1:5001'); assert.match(res.error, /saludo/i); }
   finally { global.fetch = original; }
+});
+test('la memoria se consulta al endpoint real de ajustes, nunca a configuración local', async () => {
+  const original = global.fetch;
+  let invoked;
+  global.fetch = async (u, init) => { invoked = { u, init }; return { ok: true, status: 200, json: async () => ({ available: true, enabled: false }) }; };
+  try {
+    const res = await getMemorySettings('http://127.0.0.1:5001');
+    assert.deepEqual(res, { ok: true, available: true, enabled: false });
+    assert.equal(invoked.u, 'http://127.0.0.1:5001/api/memory/settings');
+    assert.equal(invoked.init.headers.Accept, 'application/json');
+  } finally { global.fetch = original; }
+});
+test('cambiar la memoria envía PUT con el valor booleano, nunca otro tipo', async () => {
+  const original = global.fetch;
+  let invoked;
+  global.fetch = async (u, init) => { invoked = { u, init }; return { ok: true, status: 200, json: async () => ({ available: true, enabled: true }) }; };
+  try {
+    const res = await setMemoryEnabled('http://127.0.0.1:5001', true);
+    assert.deepEqual(res, { ok: true, available: true, enabled: true });
+    assert.equal(invoked.u, 'http://127.0.0.1:5001/api/memory/settings');
+    assert.equal(invoked.init.method, 'PUT');
+    assert.deepEqual(JSON.parse(invoked.init.body), { enabled: true });
+  } finally { global.fetch = original; }
+});
+test('sesión caducada o sin permiso al consultar/cambiar la memoria se informa sin lanzar', async () => {
+  const original = global.fetch;
+  global.fetch = async () => ({ ok: false, status: 401 });
+  try {
+    const get = await getMemorySettings('http://127.0.0.1:5001');
+    assert.equal(get.unauthorized, true);
+    const set = await setMemoryEnabled('http://127.0.0.1:5001', true);
+    assert.equal(set.unauthorized, true);
+  } finally { global.fetch = original; }
+});
+test('con el interruptor global apagado, cambiar la memoria responde "no disponible" en vez de un error genérico', async () => {
+  const original = global.fetch;
+  global.fetch = async () => ({ ok: false, status: 404 });
+  try {
+    const res = await setMemoryEnabled('http://127.0.0.1:5001', true);
+    assert.equal(res.available, false);
+    assert.match(res.error, /no está activada/i);
+  } finally { global.fetch = original; }
+});
+test('un fallo de red al consultar o cambiar la memoria no lanza excepción', async () => {
+  const original = global.fetch;
+  global.fetch = async () => { throw new Error('ECONNREFUSED'); };
+  try {
+    const get = await getMemorySettings('http://127.0.0.1:5001');
+    assert.match(get.error, /no se puede conectar/i);
+    const set = await setMemoryEnabled('http://127.0.0.1:5001', false);
+    assert.match(set.error, /no se puede conectar/i);
+  } finally { global.fetch = original; }
 });

@@ -29,6 +29,7 @@ import {
 } from "../../core/employee360-presentation.js";
 import { ensureAuthenticated, ensureAuthorized, getAccessToken } from "../../core/auth-gate.js";
 import { isVoiceMuted, setVoiceMuted } from "../../core/voice-mute.js";
+import { mountMemoryWidget } from "../../core/memory-widget.js";
 import { start as startMailWatch, ensureNotificationPermission, announceNewMail, mailPromptQuery, consumeMailPrompt } from "../../core/mail-watch.js";
 
 // Si MIA_AUTH__MODE=entra exige login y ya hay sesión (p. ej. iniciada desde el portal), sigue
@@ -41,6 +42,7 @@ await ensureAuthenticated({ interactive: false });
 // Login correcto no es lo mismo que tener acceso: sin ningún permiso asignado, esto sustituye
 // la página entera por el aviso correspondiente y tampoco resuelve nunca.
 await ensureAuthorized();
+void mountMemoryWidget();
 // Aviso de correo nuevo (pedido del usuario, igual que mia-desktop y el mundo 2D): notificación
 // del navegador con un clic que abre el cajón de texto y deja la pregunta de resumen ya escrita.
 void ensureNotificationPermission();

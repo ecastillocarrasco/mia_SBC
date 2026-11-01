@@ -49,6 +49,11 @@
   <label class="row"><span>Si ElevenLabs falla, usar una voz local de Windows (identificada como respaldo)</span><input type="checkbox" id="voiceFallbackEnabled"></label>
   <small>El backend debe ofrecer /api/mia/voice. Un HTTP 503 es un error del servicio de voz: revisa los registros del backend o sus credenciales de ElevenLabs. El respaldo local no usa la voz original.</small>
  </section>
+ <section class="panel"><h2>Memoria inteligente</h2>
+  <p class="muted">Guarda solo lo que le pidas expresamente recordar («recuerda que…») y te lo recuerda entre conversaciones, en los cuatro mundos de mIA (2D, 3D, Holograma y Desktop). Activarla no hace que mIA guarde las conversaciones por su cuenta. Los recuerdos ya guardados se conservan hasta que los borres, aunque la desactives.</p>
+  <label class="row"><span>Memoria inteligente</span><input type="checkbox" id="memoryEnabled" disabled></label>
+  <small id="memoryStatus" class="status">Comprobando…</small>
+ </section>
  <section class="panel"><h2>Diagnóstico de voz y aplicación</h2>
   <p>Comprueba el motor Vosk + faster-whisper local. Instala los componentes con INSTALAR_VOZ_LOCAL.cmd desde la raíz de mIA Desktop. Ningún audio se envía a Internet.</p>
   <div class="diagnostic-buttons"><button class="btn-soft" id="probeVoice">Comprobar motor local</button><button class="btn-soft" id="openLogs">Abrir carpeta de diagnósticos</button></div>

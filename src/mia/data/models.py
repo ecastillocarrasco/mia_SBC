@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -64,6 +64,33 @@ class ConversationTurn(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     session: Mapped[ConversationSession] = relationship(back_populates="turns")
+
+
+class UserMemory(Base):
+    """Memoria Inteligente V1: un recuerdo guardado expresamente por el usuario (``mia.modules.memoria``).
+
+    Sin ``active``/``deleted_at``: en esta versión el borrado es real (lo pide
+    ``olvidar_recuerdo``/``olvidar_todo``), no un estado a conservar."""
+
+    __tablename__ = "user_memories"
+    __table_args__ = (Index("ix_user_memories_user_created", "user_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(128))
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class MemoryPreference(Base):
+    """Interruptor de Memoria Inteligente por usuario (desactivado por defecto). Sin fila: igual
+    que ``enabled=False`` (``MemoryRepository.is_enabled``) — se crea la primera vez que el
+    usuario la activa o desactiva explícitamente."""
+
+    __tablename__ = "memory_preferences"
+
+    user_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
 class AuditEvent(Base):

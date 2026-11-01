@@ -10,6 +10,7 @@ import { getWelcomeText } from '../../core/identity-v45.js';
 import { MiaWelcomeVoiceV45 } from '../../core/welcome-voice-v45.js';
 import { MiaWelcomeAutostartV47 } from '../../core/welcome-autostart-v47.js';
 import { isVoiceMuted } from '../../core/voice-mute.js';
+import { mountMemoryWidget } from '../../core/memory-widget.js';
 import './mia-entry-v530.css';
 
 // El saludo hablado, con el nombre real del usuario y la voz configurada en el backend
@@ -134,6 +135,7 @@ if (typeof document !== 'undefined') {
   // (levantando la misma cortina de pintura) y nunca resuelve — install2DEntry() nunca se llama.
   await ensureAuthorized();
   mountSignOutButton('#miaSignOut');
+  void mountMemoryWidget();
   playPersonalized2DWelcome();
   // El permiso controla la notificación del navegador, no el sondeo ni el aviso de voz.
   void ensureNotificationPermission();

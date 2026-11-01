@@ -196,6 +196,23 @@ class NoticiasSettings(BaseModel):
     enabled: bool = True
 
 
+class MemorySettings(BaseModel):
+    """Memoria Inteligente V1 (alcance reducido): recuerdos manuales por usuario, guardados solo
+    cuando el usuario lo pide expresamente («mIA, recuerda que...»). Interruptor global
+    independiente del resto de dominios: con ``enabled=False`` (por defecto) la funcionalidad
+    no existe en absoluto para nadie — ni herramientas, ni endpoint, ni control visual — sin
+    tocar ningún otro dominio (``MIA_MEMORY__ENABLED=true``). Cada usuario, además, tiene su
+    propio interruptor (desactivado por defecto), independiente de este."""
+
+    enabled: bool = False
+    max_items_per_user: int = Field(default=50, ge=1, le=500)
+    """Tope de recuerdos simultáneos por usuario en esta versión (sin resumen ni rotación automática)."""
+    max_content_chars: int = Field(default=500, ge=1, le=2000)
+    """Longitud máxima de un recuerdo individual."""
+    max_items_in_context: int = Field(default=20, ge=1, le=100)
+    """Cuántos recuerdos (los más recientes) se añaden al contexto de cada turno como mucho."""
+
+
 class CalendarSettings(BaseModel):
     """Agenda opcional dentro de Correo; no habilita permisos en Entra."""
 
@@ -381,6 +398,7 @@ class Settings(BaseSettings):
     domains: DomainSettings = Field(default_factory=DomainSettings)
     mail: MailSettings = Field(default_factory=MailSettings)
     noticias: NoticiasSettings = Field(default_factory=NoticiasSettings)
+    memory: MemorySettings = Field(default_factory=MemorySettings)
     curriculums: CurriculumSettings = Field(default_factory=CurriculumSettings)
     reports: ReportSettings = Field(default_factory=ReportSettings)
     attachments: AttachmentSettings = Field(default_factory=AttachmentSettings)

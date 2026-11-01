@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('miaDesktop', Object.freeze({
   pickModel: () => ipcRenderer.invoke('mia:pick-model'),
   pickMiaLogo: () => ipcRenderer.invoke('mia:pick-mia-logo'),
   probeVoice: () => ipcRenderer.invoke('mia:probe-voice'),
+  getMemorySettings: () => ipcRenderer.invoke('mia:get-memory-settings'),
+  setMemoryEnabled: enabled => ipcRenderer.invoke('mia:set-memory-enabled', Boolean(enabled)),
   openDiagnostics: () => ipcRenderer.invoke('mia:open-diagnostics'),
   reportRendererError: code => ipcRenderer.send('mia:renderer-error',{code:typeof code==='string'?code:'UNEXPECTED_ERROR'}),
   saveSettings: (settings) => ipcRenderer.invoke('mia:save-settings', settings),

@@ -26,6 +26,7 @@ import { extractHologramJob, pollHologramJob, reportDownloadHref, getJobStatusLa
 import { ensureAuthenticated, ensureAuthorized, getAccessToken } from "../../core/auth-gate.js";
 import { start as startMailWatch, ensureNotificationPermission, announceNewMail, mailPromptQuery, consumeMailPrompt } from "../../core/mail-watch.js";
 import { isVoiceMuted, setVoiceMuted } from "../../core/voice-mute.js";
+import { mountMemoryWidget } from "../../core/memory-widget.js";
 
 // Si MIA_AUTH__MODE=entra exige login y no hay sesión, `interactive: false` vuelve al portal (el
 // único punto con login real — ver auth-gate.js) en vez de iniciar aquí su propio redirect a
@@ -34,6 +35,7 @@ await ensureAuthenticated({ interactive: false });
 // Login correcto no es lo mismo que tener acceso: sin ningún permiso asignado, esto sustituye
 // la página entera por el aviso correspondiente y tampoco resuelve nunca.
 await ensureAuthorized();
+void mountMemoryWidget();
 // Aviso de correo nuevo (pedido del usuario, igual que mia-desktop y los mundos 2D/3D): notificación
 // del navegador con un clic que deja la pregunta de resumen ya escrita en el composer.
 void ensureNotificationPermission();

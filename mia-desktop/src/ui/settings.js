@@ -50,6 +50,42 @@ bridge.onVoiceStatus(status => {
 });
 refresh();
 
+// La memoria es una preferencia propia del backend (no de la configuración local de Electron):
+// se consulta y se aplica al vuelo, fuera del botón "Guardar configuración" y de `cfg`/`state.config`.
+function describeMemoryState(result) {
+  if (result.unauthorized) return 'Sesión caducada o sin permiso: inicia sesión de nuevo para gestionar la memoria.';
+  if (result.available === false) return 'La Memoria Inteligente no está activada en este despliegue.';
+  if (result.error) return result.error;
+  return result.enabled
+    ? 'Activada: mIA recordará lo que le pidas expresamente, en los cuatro mundos.'
+    : 'Desactivada: mIA no guardará ni usará ningún recuerdo nuevo (los que ya tenías se conservan).';
+}
+async function refreshMemory() {
+  const box = el('memoryEnabled');
+  const status = el('memoryStatus');
+  box.disabled = true;
+  let result;
+  try { result = await bridge.getMemorySettings(); }
+  catch { status.textContent = 'No se ha podido comprobar la memoria.'; return; }
+  status.textContent = describeMemoryState(result);
+  box.checked = Boolean(result.ok && result.available && result.enabled);
+  box.disabled = !(result.ok && result.available);
+}
+el('memoryEnabled').addEventListener('change', async () => {
+  const box = el('memoryEnabled');
+  const status = el('memoryStatus');
+  const next = box.checked;
+  box.disabled = true;
+  let result;
+  try { result = await bridge.setMemoryEnabled(next); }
+  catch { status.textContent = 'No se ha podido conectar para cambiar la memoria.'; box.checked = !next; box.disabled = false; return; }
+  status.textContent = describeMemoryState(result);
+  if (!result.ok) { box.checked = !next; box.disabled = result.available === false || !!result.unauthorized; return; }
+  box.checked = Boolean(result.enabled);
+  box.disabled = false;
+});
+refreshMemory();
+
 el('chooseMiaLogo').addEventListener('click',async()=>{
   const result=await bridge.pickMiaLogo();
   if(result.ok){el('feedback').textContent='Logotipo original de mIA instalado en la aplicación.';await refresh();}
