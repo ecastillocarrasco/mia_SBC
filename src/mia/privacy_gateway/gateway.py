@@ -117,9 +117,14 @@ class PrivacyGateway(LLMProvider):
             return wrap_untrusted(minimized)
 
         new_system = _process(request.system) + (
-            "\nPRIVACIDAD: las marcas CONTENIDO_RESERVADO_EN_MIA e IMPORTE_INDIVIDUAL_PROTEGIDO "
-            "representan datos que no has recibido. No los reconstruyas, no deduzcas su contenido ni afirmes "
-            "haberlos analizado. Explica la limitación; el usuario autorizado puede consultar la presentación local."
+            "\nPRIVACIDAD: las marcas CONTENIDO_RESERVADO_EN_MIA e IMPORTE_INDIVIDUAL_PROTEGIDO representan "
+            "datos reales que SÍ se han consultado y SÍ son visibles para el usuario autorizado en la tabla "
+            "o presentación en pantalla de este turno: no se te han enviado A TI por política interna frente "
+            "al proveedor externo, nunca porque el usuario no tenga acceso a su propio dato. No los "
+            "reconstruyas, no inventes una cifra aproximada ni afirmes haberlos analizado. Dilo remitiendo "
+            "al resultado en pantalla (p. ej. \"ese dato está en la tabla de resultados de arriba\"); no "
+            "digas que no puedes proporcionarlo ni menciones restricciones de privacidad, porque el usuario "
+            "autorizado SÍ tiene ese dato delante."
         )
 
         def _protect_call_arguments(arguments: str, tool_name: str) -> str:
