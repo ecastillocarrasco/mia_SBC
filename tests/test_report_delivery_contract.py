@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
+from pydantic import BaseModel
+
+from mia.auth import UserContext
+from mia.conversation import ConversationEngine, Persona, Tool, ToolContext, ToolRegistry, ToolResult, ToolStatus
+from mia.llm.fake import FakeLLMProvider, final_answer
 from mia.reporting.delivery import (
     download_formats,
     merge_report_sources,
     requested_formats,
     resolve_export_request,
 )
+from tests.dbutil import fresh_database
 
 PROMPT = (
     "Analiza los turnos del 12 al 18 de octubre por departamento. "
@@ -225,3 +233,86 @@ def test_una_sola_candidatura_sin_fecha_y_sin_segundo_departamento_no_fuerza_fus
         },
     )
     assert merge_report_sources([only_total, cocina], title="x") is None
+
+
+class _NoParams(BaseModel):
+    pass
+
+
+class _GenerarInformeParams(BaseModel):
+    formato: list[str] = []
+
+
+async def _table_handler(_: _NoParams, ctx: ToolContext) -> ToolResult:
+    del ctx
+    return ToolResult(
+        ToolStatus.OK,
+        {"departamentos": [{"nombre": "Pisos", "total": 25447.35}]},
+        {
+            "type": "table",
+            "title": "Ranking de gasto TT por departamento 2026",
+            "columns": ["Departamento", "Total"],
+            "rows": [["Pisos", 25447.35]],
+        },
+    )
+
+
+async def _generar_informe_handler(p: _GenerarInformeParams, ctx: ToolContext) -> ToolResult:
+    # Igual que el ``generar_informe`` real (mia.modules.rrhh.informes.tools): su propio
+    # fallback a LAST_TABLE/ultima_presentacion cuando no recibe una tabla explícita.
+    last = ctx.session_state.get("ultima_presentacion")
+    if last is None:
+        return ToolResult(ToolStatus.NOT_FOUND, "No hay ninguna tabla previa que exportar.")
+    fmt = (p.formato or ["pdf"])[0]
+    return ToolResult(
+        ToolStatus.OK,
+        {"mensaje": "Informe generado"},
+        {"type": "download", "format": fmt, "url": f"/api/reports/fake-{fmt}", "file_name": f"informe.{fmt}"},
+    )
+
+
+async def test_pedir_el_pdf_en_un_turno_posterior_reutiliza_la_ultima_tabla(tmp_path: Path) -> None:
+    """Incidencia real: tras un turno que muestra un ranking + desglose mensual (p. ej.
+    "boletines_tt"), pedir "genera el informe en pdf" en el SIGUIENTE turno (sin que el LLM
+    repita la llamada a la herramienta que produjo la tabla) respondía "no hay datos verificables
+    y completos para exportar" aunque la tabla seguía disponible en ``session.state`` —
+    ``_deliver_exports`` exigía ``message != original_request`` para reutilizar
+    ``ultima_presentacion``, pero ``resolve_export_request`` devuelve el propio mensaje actual
+    como ``original_request`` siempre que ese mensaje ya nombra el formato (el caso más común),
+    así que esa reutilización nunca se activaba salvo en una confirmación "sí" a secas."""
+    db = await fresh_database(tmp_path, "pdf_followup.db")
+    registry = ToolRegistry()
+    registry.register(Tool("ranking_tt", "Ranking de gasto TT.", _NoParams, _table_handler))
+    registry.register(
+        Tool("generar_informe", "Genera un informe descargable.", _GenerarInformeParams, _generar_informe_handler)
+    )
+
+    rounds: list[Any] = []
+
+    def script(request: Any) -> Any:
+        rounds.append(request)
+        n = len(rounds)
+        if n == 1:
+            from mia.llm.base import LLMCompleted, ToolCall, ToolCallRequested  # noqa: PLC0415
+
+            return [ToolCallRequested(ToolCall("c1", "ranking_tt", "{}")), LLMCompleted()]
+        if n == 2:
+            return final_answer("Ranking generado.", "Aquí tienes el ranking.", "sonriendo")
+        # Turno siguiente: el LLM no vuelve a llamar a ninguna herramienta, confía en que el
+        # backend verificará/generará el PDF a partir de lo que ya se mostró.
+        return final_answer("Aquí tienes el informe.", "Aquí tienes el informe en PDF.", "entusiasmada")
+
+    engine = ConversationEngine(llm=FakeLLMProvider(script), tools=registry, db=db, persona=Persona())
+    user = UserContext("u1", "Enrique", roles=frozenset({"mia.admin"}))
+
+    first = await engine.complete(message="gastos en boletines TT 2026, ranking por departamento", user=user, session_id=None)
+    assert first.presentations[0]["type"] == "table"
+
+    second = await engine.complete(message="quiero el pdf", user=user, session_id=first.session_id)
+    assert second.status == "ok"
+    assert second.presentations == [
+        {"type": "download", "format": "pdf", "url": "/api/reports/fake-pdf", "file_name": "informe.pdf"}
+    ]
+    assert "No se han generado" not in second.answer
+
+    await db.dispose()

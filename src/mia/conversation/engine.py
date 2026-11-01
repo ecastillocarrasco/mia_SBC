@@ -1032,7 +1032,6 @@ class ConversationEngine:
     async def _deliver_exports(
         self, export_request: tuple[str, tuple[str, ...]], final: FinalAnswer, ctx: ToolContext, turn: _TurnState
     ) -> AsyncIterator[TurnEvent | tuple[FinalAnswer, bool]]:
-        message = ctx.user_message
         failed = False
         original_request, formats = export_request
         plan = self._pending_delivery_plan(ctx, turn)
@@ -1053,7 +1052,15 @@ class ConversationEngine:
                     if e.result.presentation and e.result.presentation.get("type") in {"table", "dashboard"}
                 )
                 remember_table(turn.state, merged, self._max_report_rows, source_tool=source)
-            can_export = bool(merged) or (message != original_request and bool(turn.state.get("ultima_presentacion")))
+            # Incidencia real: pedir el PDF en el mismo mensaje que nombra el formato ("genera el
+            # informe en pdf") hacía que ``original_request`` fuera ese mismo mensaje (ver
+            # resolve_export_request), así que la comparación ``message != original_request`` de
+            # abajo era casi siempre falsa — y con ella, nunca se reutilizaba la última
+            # presentación recordada (``ultima_presentacion``) de un turno anterior. Solo
+            # funcionaba para la confirmación "sí" a secas, que SÍ difiere del pedido original.
+            # Si hay algo que exportar (de este turno o de uno anterior), se intenta: no hace
+            # falta que el mensaje actual sea literalmente distinto del pedido original.
+            can_export = bool(merged) or bool(turn.state.get("ultima_presentacion"))
             if can_export:
                 # Todos los formatos que faltan se piden en UNA sola llamada (el motor de
                 # informes los genera todos de una vez, ver persist_document_report) en vez
