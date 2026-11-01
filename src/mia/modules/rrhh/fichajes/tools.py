@@ -112,8 +112,14 @@ def _localize_marks(marks: list[datetime]) -> list[datetime]:
     aunque se escribió con la hora local correcta — relocaliza aquí, el único punto donde se leen
     las marcas, antes de que lleguen a ``pairing``/``comparison`` (que sí asumen hora local de
     Madrid). Función pura y separada a propósito para poder probarla sin depender de que SQLite
-    (solo tests) conserve o no el tzinfo al guardar/leer, a diferencia de PostgreSQL (real)."""
-    return [m.astimezone(MADRID) for m in marks]
+    (solo tests) conserve o no el tzinfo al guardar/leer, a diferencia de PostgreSQL (real).
+
+    SQLite (solo tests) devuelve ``at`` naive, pero conservando literalmente los números de hora
+    local con los que se escribió (nunca los convierte a UTC) — para esos valores hay que *asignar*
+    ``MADRID`` (``replace``), no convertir (``astimezone``): convertir un datetime naive asume que ya
+    está en la zona horaria *del sistema que ejecuta el test*, lo que hacía que esta función diera un
+    resultado distinto en CI (UTC) que en una máquina de desarrollo en hora de Madrid."""
+    return [m.astimezone(MADRID) if m.tzinfo is not None else m.replace(tzinfo=MADRID) for m in marks]
 
 
 async def _marks_for(db: AsyncSession, person_key: str, lo: date, hi: date) -> list[datetime]:

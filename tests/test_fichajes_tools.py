@@ -124,3 +124,14 @@ def test_localize_marks_converts_utc_to_local_madrid_time() -> None:
     marks = [datetime(2026, 10, 12, 12, 0, tzinfo=UTC), datetime(2026, 10, 12, 20, 0, tzinfo=UTC)]
     localized = _localize_marks(marks)
     assert [m.strftime("%H:%M") for m in localized] == ["14:00", "22:00"]
+
+
+def test_localize_marks_assigns_madrid_to_naive_values_without_converting() -> None:
+    """SQLite (solo tests) devuelve ``at`` naive conservando los números de hora local tal cual se
+    escribieron — a diferencia de PostgreSQL, nunca los convierte a UTC. Relocalizar esto con
+    ``astimezone`` (en vez de ``replace``) asumiría la zona horaria del sistema que ejecuta el test,
+    dando un resultado distinto en CI (UTC) que en una máquina de desarrollo en hora de Madrid."""
+    marks = [datetime(2026, 10, 12, 7, 5), datetime(2026, 10, 12, 15, 0)]
+    localized = _localize_marks(marks)
+    assert [m.strftime("%H:%M") for m in localized] == ["07:05", "15:00"]
+    assert all(m.tzinfo is not None for m in localized)
