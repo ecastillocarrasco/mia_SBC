@@ -1,6 +1,8 @@
 'use strict';
 // V0.3.5: Desktop SOLO distribuye los documentos del motor único mIA SBC.
 // Nunca genera informes, recalcula datos, ni inventa URL de descarga.
+const auth = require('./auth.cjs');
+const { withInsecureTls } = require('./insecure-tls.cjs');
 const FORMATS = Object.freeze({
   pdf: {mime:'application/pdf', maxBytes:40*1024*1024},
   xlsx: {mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',maxBytes:40*1024*1024},
@@ -101,7 +103,12 @@ async function fetchReportFile(base,report,fetchImpl=fetch){
  const url=validateDownloadUrl(base,report), max=FORMATS[report.format].maxBytes;
  const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),90000);
  try{
-  const res=await fetchImpl(url,{method:'GET',redirect:'error',signal:ctrl.signal,headers:{Accept:FORMATS[report.format].mime}});
+  // La descarga va al mismo backend autenticado que el resto de mIA Desktop (ver backend.cjs):
+  // sin el Bearer de la sesión Entra, el motor de informes responde 401/403 aunque el usuario
+  // sí tenga acceso, y sin el bypass TLS de pruebas la descarga falla igual que falló el chat
+  // antes de incorporarlo.
+  const token=await auth.getAccessToken();
+  const res=await withInsecureTls(()=>fetchImpl(url,{method:'GET',redirect:'error',signal:ctrl.signal,headers:{Accept:FORMATS[report.format].mime, ...(token?{Authorization:`Bearer ${token}`}:{})}}));
   if([401,403].includes(res.status))throw Error('No tienes autorización para descargar este informe.');
   if(!res.ok)throw Error('El backend no permite descargar el archivo (HTTP '+res.status+').');
   const declared=Number(res.headers.get('content-length'));
