@@ -7,6 +7,10 @@ from typing import Any
 
 from mia.diagnostics.models import DiagnosticIssue, DiagnosticIssueType, EventStage, TraceRecord
 
+# Los dos módulos siempre presentes (ALWAYS_ON en conversation/orchestrator.py): por sí solos
+# nunca bastan para decir que la pregunta declaró un dominio real con herramientas propias.
+_GENERIC_DOMAINS = frozenset({"rrhh", "empleados"})
+
 # Herramientas que interpretan presencia en tiempo real (requieren hora o franja para «ahora»)
 _TEMPORAL_NOW_TOOLS = frozenset({"turnos_dia", "turnos_historico", "metricas_turnos"})
 
@@ -66,8 +70,12 @@ def analyze(record: TraceRecord) -> None:
         )
 
     # Sin herramientas ejecutadas: posible routing o capability gap
+    # "ok" (nunca "completed", que es solo el valor por defecto de TraceStatus antes de
+    # finish()): engine.py llama a trace.finish(status=status) con el status real del turno
+    # ("ok"/"error"), así que comparar contra "completed" hacía que esta regla nunca se
+    # disparase con tráfico real -- ni un trace, por muchas herramientas que se saltara el LLM.
     if (
-        record.status == "completed"
+        record.status == "ok"
         and not record.tools_called
         and record.domain
         and DiagnosticIssueType.CAPABILITY_MISSING not in existing_types
@@ -80,6 +88,31 @@ def analyze(record: TraceRecord) -> None:
                 domain=record.domain,
             )
         )
+
+    # Se ejecutó alguna herramienta, pero ninguna del propio dominio detectado: posible "me quedé
+    # a medias" (caso real: preguntar por las vacaciones de alguien primero buscó a la persona con
+    # buscar_empleado y nunca llegó a llamar a vacaciones). Señal más ruidosa que la de arriba
+    # (record.domain puede incluir el catálogo completo de select_modules cuando no se reconoció
+    # nada específico — ver docstring de orchestrator.select_modules), así que el mensaje queda en
+    # condicional y solo se evalúa cuando la regla de arriba no disparó ya (son excluyentes: esa
+    # exige tools_called vacío, esta exige lo contrario).
+    if record.status == "ok" and record.tools_called and record.domain:
+        domain_words = {
+            word
+            for word in (part.strip().lower() for part in record.domain.split(","))
+            if word and word not in _GENERIC_DOMAINS
+        }
+        tools_lower = [tool.lower() for tool in record.tools_called]
+        if domain_words and not any(word in tool for tool in tools_lower for word in domain_words):
+            record.issues.append(
+                _issue(
+                    DiagnosticIssueType.TOOL_NOT_SELECTED,
+                    f"El LLM ejecutó herramientas, pero ninguna del dominio detectado ({record.domain}). "
+                    "Posible respuesta incompleta o sin verificar.",
+                    domain=record.domain,
+                    tools_called=record.tools_called,
+                )
+            )
 
     # Errores en herramientas
     if record.tool_errors > 0 and DiagnosticIssueType.TOOL_ERROR not in existing_types:

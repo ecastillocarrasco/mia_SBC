@@ -480,6 +480,15 @@ async def _mail_env(env: Any, recipient: str) -> tuple[ToolRegistry, dict[str, A
     return registry, state, fake, graph
 
 
+async def test_mail_send_confirmation_tolerates_an_unrelated_no(env: Any) -> None:
+    registry, state, fake, graph = await _mail_env(env, "ana@x.test")
+    ok = await call(
+        registry, "enviar_borrador", state, borrador="b1", message="Sí, envíalo, no hay problema", request_id="t2"
+    )
+    await graph.aclose()
+    assert ok.status is ToolStatus.OK and len(fake.sent) == 1
+
+
 async def test_mail_to_noreply_is_never_sent(env: Any) -> None:
     registry, state, fake, graph = await _mail_env(env, "no-reply@empresa.test")
     result = await call(registry, "enviar_borrador", state, borrador="b1", message="sí, envíalo", request_id="t2")

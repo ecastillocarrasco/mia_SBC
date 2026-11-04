@@ -28,7 +28,7 @@ from mia.modules.correo.mailbox import resolve_mailbox
 from mia.modules.correo.signature import SIGNATURE_BANNER_CID, MailSignature, build_mail_signature
 from mia.modules.correo.summary import direct_summary_arguments, local_summary
 from mia.observability import get_logger
-from mia.text import plain_text
+from mia.text import normalize_key, plain_text
 
 log = get_logger(__name__)
 
@@ -70,7 +70,7 @@ _CONFIRM = re.compile(r"\b(s[ií]|env[ií]a(lo)?|adelante|confirm[oa]|de acuerdo
 _NOREPLY = re.compile(
     r"no[-_.]?reply|do[-_.]?not[-_.]?reply|no[-_.]?responder|no[-_.]?contestar|no[-_.]?contestes", re.IGNORECASE
 )
-_DENY = re.compile(r"\b(no|espera|todav[ií]a no|cancela)\b", re.IGNORECASE)
+_DENY = re.compile(r"\b(espera|todav[ií]a no|a[uú]n no|cancela(r)?)\b", re.IGNORECASE)
 SELECT = "id,subject,from,receivedDateTime,bodyPreview,hasAttachments,isRead,conversationId"
 SELECT_SENT = "id,subject,from,toRecipients,sentDateTime,bodyPreview,hasAttachments,isRead,conversationId"
 
@@ -601,6 +601,27 @@ class LeerParams(BaseModel):
     ref: str = Field(description="Referencia del correo (c1, c2…) de una lista anterior")
 
 
+_OPEN_REQUEST = re.compile(
+    r"(?:por favor,?\s+)?(?:puedes\s+)?"
+    r"(?:abre|abrir|abreme|muestra|muestrame|ensename|lee|leer|ver)\s+"
+    r"(?:el\s+)?(?:correo|mensaje|email)\s+(?P<ref>c\d+)"
+    r"(?:\s*por favor)?"
+)
+
+
+def _open_request_ref(message: str) -> str | None:
+    """Referencia cN cuando el mensaje pide abrir ESE correo de forma inequívoca.
+
+    Con el correo ya abierto en un turno anterior, el modelo tiende a asumir que repetir
+    la petición ("abre el correo c1" otra vez) no requiere volver a llamar a la herramienta
+    -- y responde de memoria sin adjuntar presentación ese turno. Esta petición es tan
+    explícita que no necesita el juicio del LLM: se resuelve de forma determinista
+    (ver direct_read_arguments) igual que el resumen de correos o el salario directo.
+    """
+    match = _OPEN_REQUEST.fullmatch(normalize_key(message))
+    return match["ref"] if match else None
+
+
 async def _attachment_content(
     deps: MailDeps, ctx: ToolContext, mailbox: str, message_id: str, attachment_id: str
 ) -> dict[str, Any] | None:
@@ -687,7 +708,17 @@ def leer(deps: MailDeps) -> Tool:
             "texto": _plain(message.get("body"))[:8000],
             "adjuntos": adjuntos,
         }
-        return ToolResult(ToolStatus.OK, view, {"type": "mail", **view})
+        return ToolResult(
+            ToolStatus.OK,
+            view,
+            {"type": "mail", **view},
+            verified_answer=(
+                f"Correo de {view['de'] or 'remitente no indicado'} — {view['asunto'] or 'sin asunto'}. "
+                "El contenido completo se muestra arriba."
+            )
+            if _open_request_ref(ctx.user_message) == p.ref
+            else None,
+        )
 
     return Tool(
         "leer_correo",
@@ -700,6 +731,7 @@ def leer(deps: MailDeps) -> Tool:
         handler,
         permission=Permission.CORREO_LEER,
         audit_resource="correo",
+        direct_read_arguments=lambda ctx: {"ref": ref} if (ref := _open_request_ref(ctx.user_message)) else None,
     )
 
 

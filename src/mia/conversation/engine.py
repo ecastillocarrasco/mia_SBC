@@ -296,7 +296,18 @@ def describe_focus(state: dict[str, Any]) -> str:
     person = state.get("foco_persona")
     if isinstance(person, dict) and person.get("empleado_id"):
         extra = f", {person['departamento']}" if person.get("departamento") else ""
-        lines.append(f"- Persona: {person.get('nombre')} (empleado_id {person['empleado_id']}{extra})")
+        # Incidencia real: con esta persona ya en foco, una pregunta nueva que nombraba a OTRA
+        # persona explícitamente seguía respondiendo sobre esta -- el modelo trataba el foco como
+        # el sujeto por defecto en vez de "de qué se habló antes". Esta línea va al final del
+        # mensaje (ver turn_context), el texto que más peso tiene: sin el aviso explícito aquí
+        # mismo, CTX-001 (en las instrucciones fijas, más lejos) no bastaba para que se respetara.
+        lines.append(
+            f"- Persona: {person.get('nombre')} (empleado_id {person['empleado_id']}{extra}) "
+            "-- del turno anterior. Úsala SOLO si esta pregunta no nombra a nadie o se refiere a "
+            "ella sin ambigüedad (\"ella\", \"su\", \"esa persona\"). Si la pregunta nombra a otra "
+            "persona distinta, esa persona nueva manda: resuélvela a partir de su nombre, ignora "
+            "este foco por completo (CTX-001)."
+        )
     if state.get("foco_departamento"):
         lines.append(f"- Departamento: {state['foco_departamento']}")
     population = state.get("ultima_poblacion")
@@ -1090,7 +1101,12 @@ class ConversationEngine:
                 turn.verification_pending = plan.missing(turn.executions)
                 saved_plan["pendientes"] = list(turn.verification_pending)
         labels = {"pdf": "PDF", "pptx": "PowerPoint", "xlsx": "Excel", "docx": "Word", "html": "HTML"}
-        lines = [f"- [{labels[fmt]}]({presentation['url']})" for fmt, presentation in successes]
+        # El enlace muestra el título real del informe, no solo el formato: la ruta cruda
+        # (/api/reports/<id>) nunca debe quedar visible como texto ni locutarse (ver _MD_LINK
+        # más abajo en parse_final_answer, que ya reduce "[etiqueta](url)" a solo la etiqueta).
+        link_labels = {fmt: f"{presentation['title']} ({labels[fmt]})" if presentation.get("title") else labels[fmt]
+                       for fmt, presentation in successes}
+        lines = [f"- [{link_labels[fmt]}]({presentation['url']})" for fmt, presentation in successes]
         if missing:
             lines.append(
                 "No se han generado: "

@@ -23,16 +23,17 @@ from pydantic import BaseModel, Field
 
 from mia import __version__
 from mia.api.deps import ServicesDep, UserDep
+from mia.api.http_headers import content_disposition
 from mia.api.legacy_view import legacy_view
 from mia.api.routes.chat import prime
 from mia.api.routes.reports import MEDIA
 from mia.api.routes.voice import stream_speech
 from mia.api.sse import to_ndjson
-from mia.assets import resolve_logo
 from mia.conversation import TurnResult
 from mia.conversation.events import ProgressEvent, ResultEvent, ToolEvent
 from mia.conversation.tools import ToolContext, ToolStatus
 from mia.llm import ToolCall
+from mia.modules.rrhh.informes.persist import render_document
 from mia.observability import current_request_id
 from mia.reporting.document import to_document
 from mia.reporting.render import RENDERERS
@@ -182,12 +183,15 @@ async def legacy_report(body: dict[str, Any], services: ServicesDep, user: UserD
     if execution.result.status is not ToolStatus.OK or not execution.result.presentation:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No hay datos para ese informe")
     document = to_document(execution.result.presentation)
+    # render_document (mismo helper que usa el pipeline nuevo de jobs) verifica el artefacto real
+    # con verify_artifact antes de devolverlo: sin esto, esta ruta legacy servía igual un archivo
+    # con cifras/tablas/KPIs omitidos aunque el pipeline nuevo lo hubiera bloqueado.
     content = await asyncio.to_thread(
-        RENDERERS[fmt], document, ctx.now, resolve_logo(services.settings.reports.logo_path)
+        render_document, fmt, document, ctx.now, services.settings.reports.logo_path
     )
     name = re.sub(r"[^\w\- ]+", "", document.title).strip()[:60] or "informe"
     return Response(
         content,
         media_type=MEDIA.get(fmt, "application/octet-stream"),
-        headers={"Content-Disposition": f'attachment; filename="{name}.{fmt}"'},
+        headers={"Content-Disposition": content_disposition("attachment", f"{name}.{fmt}")},
     )

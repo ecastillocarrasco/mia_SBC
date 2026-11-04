@@ -211,9 +211,16 @@ export function promptForMail(correo, { onSummary, onDetails, onDismiss } = {}) 
 export function consumeMailPrompt(text) {
   if (!pendingMail || !String(text || '').trim()) return null;
   const value = String(text).toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  // "ahora no"/"continuemos"/"sigamos"/"dejalo" son frases propias de descartar el aviso y
+  // valen en cualquier frase. "no"/"luego"/"continua" sueltas son palabras demasiado comunes:
+  // solo cuentan como descarte si la respuesta es corta y aislada, para no tragarse una
+  // pregunta real m\u00e1s larga que las contenga de pasada ("no s\u00e9 si...", "\u00bfhay reservas o no?",
+  // "no, prefiero que lo repases luego").
+  const isShortReply = value.trim().split(/\s+/).filter(Boolean).length <= 3;
   let action = 'other';
-  if (/\b(no|ahora no|luego|continua|continuemos|sigamos|dejalo)\b/.test(value)) action = 'dismiss';
-  else if (/\b(detalle|muestr|mostrar|abre|abrir|ver correo)\b/.test(value)) action = 'details';
+  if (/\b(ahora no|continuemos|sigamos|dejalo)\b/.test(value) || (isShortReply && /\b(no|luego|continua)\b/.test(value))) {
+    action = 'dismiss';
+  } else if (/\b(detalle|muestr|mostrar|abre|abrir|ver correo)\b/.test(value)) action = 'details';
   else if (/\b(resum|resumen|cuentame|que dice|contenido)\b/.test(value)) action = 'summary';
   if (action === 'other') return { action, correo: pendingMail };
   const correo = pendingMail;

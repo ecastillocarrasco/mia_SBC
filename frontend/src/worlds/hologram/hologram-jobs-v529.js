@@ -36,7 +36,7 @@ function sleepAbort(ms, signal, setTimeoutFn = setTimeout) {
 export async function pollHologramJob(jobId, {
   fetchImpl=fetch, signal=null, onUpdate=()=>{}, pollMs=2500,
   maxMs=600000, maxConsecutiveFailures=4, requestTimeoutMs=15000,
-  now=Date.now, sleep=sleepAbort,
+  now=Date.now, sleep=sleepAbort, getAuthHeaders=async()=>({}),
 } = {}) {
   if (typeof jobId !== 'string' || !jobId.trim() || jobId.length>256)
     throw new HologramJobError('invalid-job');
@@ -51,8 +51,12 @@ export async function pollHologramJob(jobId, {
       signal?.addEventListener?.('abort',abort,{once:true});
       try {
         const operation = Promise.resolve().then(async() => {
+          // Sin el header de auth, con MIA_AUTH__MODE=entra el seguimiento del informe
+          // responde 401 en cada sondeo: el informe se genera bien pero el holograma nunca
+          // confirma su estado ni muestra el enlace de descarga.
+          const authHeaders = await getAuthHeaders();
           const response = await fetchImpl('/api/jobs/'+encodeURIComponent(jobId),{
-            method:'GET',headers:{'Accept':'application/json'},signal:controller.signal,cache:'no-store',
+            method:'GET',headers:{'Accept':'application/json',...authHeaders},signal:controller.signal,cache:'no-store',
           });
           if (!response.ok) throw new HologramJobError('status-http',`HTTP ${response.status}`);
           return response.json();

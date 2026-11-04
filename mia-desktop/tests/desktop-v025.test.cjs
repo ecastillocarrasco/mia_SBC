@@ -86,7 +86,8 @@ test('pantalla incluye modo conversación y botón para detenerlo',()=>{
 });
 test('el micrófono de comandos permanece disponible con el bocadillo abierto',()=>{
   const source=fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8');
-  const part=source.match(/function openBubble\(options = \{\}\) \{([\s\S]*?)\n\}\nfunction openSettings/);
+  // \r?\n: main.cjs tiene fin de línea CRLF (Windows); un \n literal nunca encaja con \r\n.
+  const part=source.match(/function openBubble\(options = \{\}\) \{([\s\S]*?)\r?\n\}\r?\nfunction openSettings/);
   assert(part,'No se encuentra openBubble');
   assert.match(part[1],/else if \(!wakeProcess && !microphoneInUse && !activePlaybackSenders\.size\) startWake\(\)/);
   assert.match(source,/if\(!wasHidden && bubbleWin\?\.isVisible\(\)\)return/);

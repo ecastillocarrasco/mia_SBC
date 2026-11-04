@@ -55,7 +55,7 @@ async def test_a_failed_job_with_the_same_idempotency_key_can_be_resubmitted(tmp
         job_id = await jm.submit(s, user_id="u1", kind="x", params={}, idempotency_key="k1", max_attempts=1)
     async with db.session() as s:
         await jm.claim_next(s, worker_id="w1")
-        await jm.fail(s, job_id, error="boom")
+        await jm.fail(s, job_id, worker_id="w1", error="boom")
     async with db.session() as s:
         snap = await jm.get(s, job_id)
     assert snap.status == JOB_FAILED
@@ -116,6 +116,39 @@ async def test_stale_lease_from_a_crashed_worker_is_reclaimable(tmp_path: Path) 
     assert claimed is not None and claimed.id == job_id
 
 
+async def test_a_zombie_workers_late_complete_cannot_overwrite_the_real_result(tmp_path: Path) -> None:
+    """Si worker-A se queda colgado (GC, I/O bloqueante...) más allá de su lease, su trabajo se
+    reclama como abandonado y lo retoma worker-B. Si worker-A finalmente "revive" y llama a
+    complete()/fail() con el resultado de su ejecución zombi, esa llamada debe rechazarse (ya no
+    tiene el lease) en vez de sobrescribir lo que worker-B ya dejó — sin esto, el job terminaría
+    apuntando al resultado equivocado según qué worker tardó más en escribir."""
+    db = await fresh_database(tmp_path, "jobs_zombie_worker.db")
+    async with db.session() as s:
+        job_id = await jm.submit(s, user_id="u1", kind="x", params={})
+    async with db.session() as s:
+        await jm.claim_next(s, worker_id="worker-A", lease_seconds=1)
+    future = datetime.now(UTC) + timedelta(seconds=5)
+    async with db.session() as s:
+        assert await jm.reap_stale_leases(s, now=future) == 1
+    async with db.session() as s:
+        claimed = await jm.claim_next(s, worker_id="worker-B")
+    assert claimed is not None and claimed.id == job_id
+    async with db.session() as s:
+        completed_by_b = await jm.complete(s, job_id, worker_id="worker-B", report_id="report-de-B")
+    assert completed_by_b is True
+
+    # worker-A, el "zombi", termina tarde y llama a complete()/fail() con su propio resultado.
+    async with db.session() as s:
+        completed_by_a = await jm.complete(s, job_id, worker_id="worker-A", report_id="report-de-A")
+        failed_by_a = await jm.fail(s, job_id, worker_id="worker-A", error="worker-A tardó demasiado")
+    assert completed_by_a is False
+    assert failed_by_a is False
+    async with db.session() as s:
+        snap = await jm.get(s, job_id)
+    assert snap.status == JOB_COMPLETED
+    assert snap.report_id == "report-de-B"  # nunca el de worker-A
+
+
 async def test_a_fresh_lease_is_not_reaped(tmp_path: Path) -> None:
     db = await fresh_database(tmp_path, "jobs_fresh_lease.db")
     async with db.session() as s:
@@ -132,14 +165,14 @@ async def test_progress_updates_persist_and_are_clamped_to_zero_one(tmp_path: Pa
     async with db.session() as s:
         job_id = await jm.submit(s, user_id="u1", kind="x", params={})
         await jm.claim_next(s, worker_id="w1")
-        await jm.update_progress(s, job_id, progress=0.4, message="procesando julio")
+        await jm.update_progress(s, job_id, worker_id="w1", progress=0.4, message="procesando julio")
     async with db.session() as s:
         snap = await jm.get(s, job_id)
     assert snap.progress == 0.4
     assert snap.progress_message == "procesando julio"
 
     async with db.session() as s:
-        await jm.update_progress(s, job_id, progress=5.0)  # fuera de rango: se acota
+        await jm.update_progress(s, job_id, worker_id="w1", progress=5.0)  # fuera de rango: se acota
     async with db.session() as s:
         assert (await jm.get(s, job_id)).progress == 1.0
 
@@ -161,7 +194,7 @@ async def test_completing_a_job_links_the_real_report_id(tmp_path: Path) -> None
     async with db.session() as s:
         job_id = await jm.submit(s, user_id="u1", kind="x", params={})
         await jm.claim_next(s, worker_id="w1")
-        await jm.complete(s, job_id, report_id="report-123")
+        await jm.complete(s, job_id, worker_id="w1", report_id="report-123")
     async with db.session() as s:
         snap = await jm.get(s, job_id)
     assert snap.status == JOB_COMPLETED
@@ -178,7 +211,7 @@ async def test_failed_job_retries_up_to_the_limit_then_gives_up(tmp_path: Path) 
         async with db.session() as s:
             claimed = await jm.claim_next(s, worker_id="w1")
             assert claimed is not None and claimed.status == JOB_RUNNING
-            await jm.fail(s, job_id, error="fallo transitorio")
+            await jm.fail(s, job_id, worker_id="w1", error="fallo transitorio")
         async with db.session() as s:
             snap = await jm.get(s, job_id)
         if snap.attempt_count < snap.max_attempts:
@@ -238,7 +271,7 @@ async def test_cannot_cancel_an_already_completed_job(tmp_path: Path) -> None:
     async with db.session() as s:
         job_id = await jm.submit(s, user_id="u1", kind="x", params={})
         await jm.claim_next(s, worker_id="w1")
-        await jm.complete(s, job_id, report_id="r1")
+        await jm.complete(s, job_id, worker_id="w1", report_id="r1")
     async with db.session() as s:
         cancelled = await jm.request_cancel(s, job_id)
     assert cancelled is False

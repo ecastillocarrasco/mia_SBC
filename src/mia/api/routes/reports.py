@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse, Response
 
 from mia.api.deps import ServicesDep, UserDep
+from mia.api.http_headers import content_disposition
 from mia.auth import Permission, PermissionDeniedError
 from mia.data import Report
 from mia.diagnostics import EventStage
@@ -72,5 +73,5 @@ async def download(report_id: str, services: ServicesDep, user: UserDep) -> Resp
     return Response(
         content,
         media_type=MEDIA.get(report.format),
-        headers={"Content-Disposition": f'attachment; filename="{report.file_name}"'},
+        headers={"Content-Disposition": content_disposition("attachment", report.file_name)},
     )

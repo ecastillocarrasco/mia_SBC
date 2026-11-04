@@ -90,3 +90,35 @@ test('consumeMailPrompt recognizes a natural-language dismissal after the balloo
   const result = consumeMailPrompt('ahora no, sigamos con lo de antes');
   assert.equal(result?.action, 'dismiss');
 });
+
+test('consumeMailPrompt does not swallow a real question that happens to contain "no"', () => {
+  storage.clear();
+  body.children = [];
+  announceNewMail([{ de: 'x@sbc.test', asunto: 'Asunto' }], { speak: () => {} });
+  const result = consumeMailPrompt('no sé si me ha llegado la factura');
+  assert.equal(result?.action, 'other');
+});
+
+test('consumeMailPrompt does not treat a short question ending in "no" as a dismissal', () => {
+  storage.clear();
+  body.children = [];
+  announceNewMail([{ de: 'x@sbc.test', asunto: 'Asunto' }], { speak: () => {} });
+  const result = consumeMailPrompt('¿hay reservas o no?');
+  assert.equal(result?.action, 'other');
+});
+
+test('consumeMailPrompt does not dismiss on a longer reply that merely contains "luego"', () => {
+  storage.clear();
+  body.children = [];
+  announceNewMail([{ de: 'x@sbc.test', asunto: 'Asunto' }], { speak: () => {} });
+  const result = consumeMailPrompt('no, prefiero que lo repases luego');
+  assert.equal(result?.action, 'other');
+});
+
+test('consumeMailPrompt still dismisses on a bare "no"', () => {
+  storage.clear();
+  body.children = [];
+  announceNewMail([{ de: 'x@sbc.test', asunto: 'Asunto' }], { speak: () => {} });
+  const result = consumeMailPrompt('no');
+  assert.equal(result?.action, 'dismiss');
+});

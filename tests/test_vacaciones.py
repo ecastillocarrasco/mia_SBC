@@ -99,6 +99,32 @@ async def test_pending_without_shift_still_appears_with_estado_todas(scenario: t
     assert names == {"Ana", "Beto", "Cris", "Dani"}
 
 
+async def test_person_without_upcoming_vacations_asks_for_a_period_instead_of_an_empty_table(
+    tmp_path: Path,
+) -> None:
+    """Sin periodo, el alcance por defecto de una persona es "en curso y próximas" (VAC-003): si todas
+    sus vacaciones quedaron en el pasado, el motivo real de la tabla vacía es la falta de periodo, no
+    que nunca haya tenido vacaciones — hay que decirlo, no devolver una tabla vacía sin más."""
+    db = await fresh_database(tmp_path, "vac_sin_periodo.db")
+    async with db.session() as s:
+        s.add_all([
+            _emp(1, "Elena", "Pisos", person_key="pk-elena", email="elena@x.test"),
+            _vac(1, "elena@x.test", "Elena", "Aceptada", -10, -8),  # ya pasada
+        ])
+    registry = build_registry(db)
+    try:
+        sin_periodo = await call(registry, "vacaciones", nombre="Elena")
+        assert sin_periodo.status.value == "not_found"
+        assert "periodo" in sin_periodo.summary["mensaje"].lower()
+
+        con_periodo = await call(
+            registry, "vacaciones", nombre="Elena", desde=d(-15).isoformat(), hasta=d(-5).isoformat()
+        )
+        assert [i["persona"] for i in con_periodo.summary["detalle"]] == ["Elena"]
+    finally:
+        await db.dispose()
+
+
 async def test_no_pending_requests_is_a_cheap_no_op() -> None:
     """Sin solicitudes pendientes de firma, no se lanza ninguna consulta de turnos."""
 

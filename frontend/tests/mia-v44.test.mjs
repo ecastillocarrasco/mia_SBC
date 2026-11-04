@@ -222,6 +222,11 @@ test('UI retains loading, premium 3D presentation, and two modes indicators', ()
   assert.match(main3d,/new MiaBootLoader/);
   assert.match(main3d,/enhancePremiumTables\(conversation, \{ pageSize: 20/);
   assert.match(main3d,/voice\?\.resume\(\)/);
+  // Regresión: descartar un aviso de correo ("dismiss") retorna antes del finally de
+  // submit() que reactiva el micrófono; si esa rama no llama a voice?.resume() por su cuenta,
+  // el modo continuo se queda mudo para siempre tras el primer aviso descartado por voz.
+  const dismissBranch = main3d.slice(main3d.indexOf("action === 'dismiss'"), main3d.indexOf("action === 'summary'"));
+  assert.match(dismissBranch, /voice\?\.resume\(\)/, 'la rama "dismiss" debe reactivar el micrófono continuo');
   const micClick = main3d.slice(main3d.indexOf('function micClick()'), main3d.indexOf('micLauncher.addEventListener("click", micClick)'));
   assert.doesNotMatch(micClick, /openDock\(/, 'microphone click must not move the floating button');
   assert.match(mainHg,/voice\?\.resume\(\)/);

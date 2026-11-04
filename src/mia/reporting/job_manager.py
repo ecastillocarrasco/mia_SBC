@@ -195,9 +195,13 @@ async def heartbeat(
     return cast(CursorResult[Any], result).rowcount == 1
 
 
-async def update_progress(db: AsyncSession, job_id: str, *, progress: float, message: str | None = None) -> None:
+async def update_progress(
+    db: AsyncSession, job_id: str, *, worker_id: str, progress: float, message: str | None = None
+) -> None:
     row = await db.get(ReportJob, job_id)
-    if row is None or row.status not in (JOB_RUNNING, JOB_VALIDATING):
+    # Sin comprobar el lease, un worker caído que revive tarde seguiría pudiendo escribir
+    # progreso sobre un trabajo que `reap_stale_leases` ya reasignó a otro worker.
+    if row is None or row.lease_owner != worker_id or row.status not in (JOB_RUNNING, JOB_VALIDATING):
         return
     row.progress = max(0.0, min(1.0, progress))
     if message is not None:
@@ -212,23 +216,29 @@ async def mark_validating(db: AsyncSession, job_id: str) -> None:
         await db.flush()
 
 
-async def complete(db: AsyncSession, job_id: str, *, report_id: str) -> None:
+async def complete(db: AsyncSession, job_id: str, *, worker_id: str, report_id: str) -> bool:
+    """Devuelve False si este worker ya no tiene el lease (otro lo reclamó entre medias, p. ej.
+    tras una pausa larga que ``reap_stale_leases`` interpretó como abandono): sin esta
+    comprobación, un worker "zombi" que termina tarde podría sobrescribir el resultado que ya
+    dejó el worker que de verdad tiene el trabajo ahora."""
     row = await db.get(ReportJob, job_id)
-    if row is None:
-        return
+    if row is None or row.lease_owner != worker_id or row.status not in (JOB_RUNNING, JOB_VALIDATING):
+        return False
     row.status = JOB_COMPLETED
     row.report_id = report_id
     row.progress = 1.0
     row.finished_at = _now()
     await db.flush()
+    return True
 
 
-async def fail(db: AsyncSession, job_id: str, *, error: str) -> None:
+async def fail(db: AsyncSession, job_id: str, *, worker_id: str, error: str) -> bool:
     """Si quedan reintentos, vuelve a QUEUED (sección 4: "reintentos controlados"); si no, FAILED con
-    el error visible — nunca un resultado incompleto disfrazado de completado."""
+    el error visible — nunca un resultado incompleto disfrazado de completado. Devuelve False si
+    este worker ya no tiene el lease (ver ``complete``)."""
     row = await db.get(ReportJob, job_id)
-    if row is None:
-        return
+    if row is None or row.lease_owner != worker_id or row.status not in (JOB_RUNNING, JOB_VALIDATING):
+        return False
     row.error_message = error
     if row.attempt_count < row.max_attempts:
         row.status = JOB_QUEUED
@@ -238,6 +248,7 @@ async def fail(db: AsyncSession, job_id: str, *, error: str) -> None:
         row.status = JOB_FAILED
         row.finished_at = _now()
     await db.flush()
+    return True
 
 
 async def request_cancel(db: AsyncSession, job_id: str) -> bool:

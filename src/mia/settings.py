@@ -308,6 +308,28 @@ class ObservabilitySettings(BaseModel):
     applicationinsights_connection_string: SecretStr | None = None
 
 
+class SmtpSettings(BaseModel):
+    """Transporte SMTP dedicado para avisos del sistema (p. ej. errores de diagnóstico).
+
+    Deliberadamente independiente de Correo/Graph: ese dominio solo puede enviar con el token
+    delegado (OBO) de quien esté hablando con mIA en ese turno (ver ``mia.connectors.graph``,
+    app-only reservado a desarrollo), y un aviso de error puede originarse en el turno de
+    cualquier usuario. Vacío por defecto: sin ``host`` configurado, no se envía nada.
+    """
+
+    host: str = ""
+    port: int = 587
+    username: str = ""
+    password: SecretStr = SecretStr("")
+    use_tls: bool = True
+    from_address: str = ""
+    """Remitente del aviso; si está vacío se usa ``username``."""
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.host and (self.from_address or self.username))
+
+
 class JobsSettings(BaseModel):
     enabled: bool = False
     """Activa el worker en segundo plano de informes masivos (``MIA_JOBS__ENABLED=true``)."""
@@ -345,6 +367,16 @@ class DiagnosticsSettings(BaseModel):
     """Contraseña compartida del Basic Auth del panel (``MIA_DIAGNOSTICS__ADMIN_PASSWORD``), igual
     para los usuarios de ``admin_users``. Vacía por defecto -- con diagnósticos activos, el panel
     debe quedar inaccesible hasta que se fije explícitamente."""
+    alert_email: str = ""
+    """Si no está vacío, se envía un correo (transporte ``MIA_SMTP__*``) cuando un turno ENTERO
+    termina con error (excepción no controlada, fallo del LLM, exportación incompleta...). Que una
+    herramienta concreta falle (p. ej. Graph 404 porque el usuario pidió un buzón que no existe) no
+    cuenta si el turno se recupera y responde con normalidad -- eso es manejar bien una entrada
+    inválida, no una incidencia. Tampoco cuenta un issue de calidad de respuesta (p. ej.
+    TOOL_NOT_SELECTED), que sigue siendo solo visible en el panel (``MIA_DIAGNOSTICS__ALERT_EMAIL``)."""
+    alert_cooldown_seconds: int = 60
+    """Tiempo mínimo entre dos avisos consecutivos, para no inundar el correo si varios turnos
+    fallan seguidos (``MIA_DIAGNOSTICS__ALERT_COOLDOWN_SECONDS``)."""
 
 
 class Settings(BaseSettings):
@@ -406,6 +438,7 @@ class Settings(BaseSettings):
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     diagnostics: DiagnosticsSettings = Field(default_factory=DiagnosticsSettings)
     jobs: JobsSettings = Field(default_factory=JobsSettings)
+    smtp: SmtpSettings = Field(default_factory=SmtpSettings)
 
     @model_validator(mode="after")
     def _fail_closed_in_production(self) -> Settings:

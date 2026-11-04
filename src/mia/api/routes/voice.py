@@ -24,11 +24,13 @@ async def stream_speech(voice: CachedVoice, text: str) -> StreamingResponse:
 
     async def body() -> AsyncIterator[bytes]:
         yield first
-        try:
-            async for chunk in chunks:
-                yield chunk
-        except VoiceError:
-            return
+        # Nunca atrapar aquí un VoiceError a mitad de stream: la respuesta ya empezó con 200,
+        # así que un `return` silencioso cierra el body como si el audio hubiera terminado bien
+        # y el cliente (que descarga el blob completo antes de reproducirlo) no se entera de que
+        # se cortó. Dejar que la excepción se propague rompe la conexión de forma anómala, que es
+        # justo la señal que distingue "terminó de hablar" de "la voz falló a mitad de camino".
+        async for chunk in chunks:
+            yield chunk
 
     return StreamingResponse(body(), media_type=voice.media_type, headers={"Cache-Control": "no-store"})
 

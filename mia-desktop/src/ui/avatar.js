@@ -37,14 +37,30 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 resize();
-function playAnimation(hint = 'IDLE') {
+// Espera activa (tramitando una consulta): igual que en 2D/3D/holograma (ver THINKING_CYCLE
+// en frontend/src/core/behavior-v4.js), no se queda congelada en "pensando" por larga que
+// dure la espera — alterna con "mirar alrededor", "consultando datos" y "escribiendo".
+const THINKING_CYCLE = ['THINK', 'LOOK_AROUND', 'SEQ_CONSULTANDO_DATOS', 'TYPING', 'LOOK_AROUND_ALT'];
+const THINKING_STEP_MS = 3400;
+let thinkCycleIndex = 0, thinkCycleTimer = null;
+function stopThinkCycle() { if (thinkCycleTimer) { clearTimeout(thinkCycleTimer); thinkCycleTimer = null; } }
+function runThinkCycle() {
+  if (avatarMode !== 'THINK' || !ready) return;
+  playAnimation(THINKING_CYCLE[thinkCycleIndex % THINKING_CYCLE.length], { loopHint: true });
+  thinkCycleIndex += 1;
+  thinkCycleTimer = setTimeout(runThinkCycle, THINKING_STEP_MS);
+}
+function playAnimation(hint = 'IDLE', { loopHint = false } = {}) {
   if (!mixer || !clips.length) return;
   const aliases = { LISTEN: 'IDLE_BREATHING', THINK: 'THINK', TALK: 'TALK', GREET: 'GREET', JOY_GREET:'SEQ_BIENVENIDA', FAREWELL:'SEQ_DESPEDIDA', BORED:'SEQ_ESPERA', WALK_CIRCLE:'WALK_CIRCLE' };
   const target = aliases[hint] || hint;
   const chosen = clips.find(c => c.name.toUpperCase() === `MIA_${target}`) ||
     clips.find(c => c.name.toUpperCase().includes(target)) || clips.find(c => c.name === 'mIA_IDLE') || clips[0];
   const next = mixer.clipAction(chosen);
-  const continuous = ['IDLE','LISTEN','TALK','THINK'].includes(hint);
+  // loopHint: los pasos del ciclo de "pensando" (THINKING_CYCLE) también se reproducen en
+  // bucle, igual que THINK — si no, el oyente 'finished' del mixer los interrumpiría con un
+  // salto a IDLE a mitad del ciclo, antes de que runThinkCycle() pase al siguiente gesto.
+  const continuous = loopHint || ['IDLE','LISTEN','TALK','THINK'].includes(hint);
   if (currentAction === next) return;
   next.reset().setEffectiveWeight(1).fadeIn(.3).play();
   next.setLoop(continuous ? THREE.LoopRepeat : THREE.LoopOnce, continuous ? Infinity : 1);
@@ -148,7 +164,11 @@ window.addEventListener('contextmenu', ev => {
   if (inCharacter(ev)) { ev.preventDefault(); bridge.avatarContextMenu(); }
 });
 bridge.onAvatarAction(action => {
-  if (typeof action === 'string') { avatarMode = action; lastInteraction = Date.now(); playAnimation(action); }
+  if (typeof action !== 'string') return;
+  avatarMode = action; lastInteraction = Date.now();
+  stopThinkCycle();
+  if (action === 'THINK') { thinkCycleIndex = 0; runThinkCycle(); }
+  else playAnimation(action);
 });
 bridge.onConfigChanged(cfg => { subtleMovement = !!cfg?.subtleMovement; idleWalkCircle=!!cfg?.idleWalkCircle;idleBored=!!cfg?.idleBored; });
 bridge.getState().then(state => { subtleMovement = !!state?.config?.subtleMovement; idleWalkCircle=!!state?.config?.idleWalkCircle; idleBored=!!state?.config?.idleBored; }).catch(()=>{});
@@ -170,7 +190,7 @@ function stopGreeting(){
   bridge.playbackState(false);
   if(greetingAudio){greetingAudio.pause();greetingAudio=null;}
   if(greetingUrl){URL.revokeObjectURL(greetingUrl);greetingUrl=null;}
-  welcomeRunning=false;avatarMode='IDLE';playAnimation('IDLE');
+  welcomeRunning=false;avatarMode='IDLE';stopThinkCycle();playAnimation('IDLE');
 }
 async function greetAtStartup(payload){
   if(!ready){if(Number.isInteger(payload?.id))bridge.ceremonyFinished(payload.id);return;}

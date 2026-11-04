@@ -582,9 +582,13 @@ def evolucion_nominas(deps: Deps) -> Tool:
 
     return Tool(
         "evolucion_nominas",
-        "Evolución de los importes de las nóminas de una persona en un año (y comparaciones entre meses). "
-        "Con comparar_con_anio_anterior=True incluye también el año anterior y la variación interanual: "
-        "úsalo para «¿cuánto ha subido el sueldo de X respecto al año pasado?».",
+        "Importes de las nóminas de UNA persona en un año, mes a mes, en una sola llamada: salario medio "
+        "(liquido_medio_ordinario), total anual y el desglose/ranking por meses. Úsala para «salario medio "
+        "de X en 2026», «ranking por meses de X» o «evolución del sueldo de X» -- NUNCA llames a "
+        "ranking_salarial mes a mes para esto, es para comparar varias personas de un grupo, no para una "
+        "persona concreta a lo largo del año, y una llamada por mes es lenta e innecesaria. Con "
+        "comparar_con_anio_anterior=True incluye también el año anterior y la variación interanual: úsalo "
+        "para «¿cuánto ha subido el sueldo de X respecto al año pasado?».",
         EvolucionParams,
         handler,
         permission=Permission.NOMINAS_IMPORTES,

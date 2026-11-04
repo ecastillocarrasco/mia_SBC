@@ -327,7 +327,7 @@ def test_analyzer_detects_performance_warning():
 
     record = _make_trace()
     record.elapsed_ms = 15_000
-    record.status = "completed"
+    record.status = "ok"  # valor real que pone engine.py; TraceStatus.COMPLETED nunca ocurre en producción
     analyze(record)
     types = [i.type for i in record.issues]
     assert "PERFORMANCE_WARNING" in types
@@ -337,7 +337,7 @@ def test_analyzer_detects_tool_error():
 
     record = _make_trace()
     record.tool_errors = 2
-    record.status = "completed"
+    record.status = "ok"
     analyze(record)
     types = [i.type for i in record.issues]
     assert "TOOL_ERROR" in types
@@ -347,9 +347,66 @@ def test_analyzer_no_false_positive_on_clean_trace():
 
     record = _make_trace()
     record.elapsed_ms = 1000
-    record.status = "completed"
+    record.status = "ok"
     record.tool_errors = 0
     record.tools_called = ["empleados"]
+    record.domain = "rrhh"
+    record.llm_rounds = 1
+    analyze(record)
+    assert record.issues == []
+
+
+def test_analyzer_detects_capability_gap_when_llm_answers_without_calling_any_tool():
+    """Regresión real: una traza en vivo (status "ok", sin ninguna herramienta ejecutada) donde
+    mIA respondió con cifras concretas inventadas nunca se marcaba como posible alucinación,
+    porque esta regla comparaba record.status contra "completed" -- un valor que engine.py
+    jamás produce (siempre pasa "ok" o "error")."""
+    record = _make_trace("vacaciones de Sandra Asencio en 2026")
+    record.status = "ok"
+    record.domain = "empleados, rrhh, vacaciones"
+    record.llm_rounds = 1
+    record.tools_called = []
+    analyze(record)
+    types = [i.type for i in record.issues]
+    assert "TOOL_NOT_SELECTED" in types
+
+    result = assess(record)
+    assert result["primary_issue"] == "TOOL_NOT_SELECTED"
+    assert any(issue["type"] == "TOOL_NOT_SELECTED" for issue in result["possible_issues"])
+
+
+def test_analyzer_detects_capability_gap_when_the_called_tool_does_not_match_the_domain():
+    """Caso real encontrado probando la misma pregunta con y sin segundo apellido: el LLM llamó a
+    buscar_empleado (localizar a la persona) y se quedó ahí, sin llegar a llamar a vacaciones --
+    la regla anterior no lo detecta porque tools_called no está vacío."""
+    record = _make_trace("vacaciones de Sandra Asencio Castillo en 2026")
+    record.status = "ok"
+    record.domain = "rrhh, empleados, vacaciones"
+    record.llm_rounds = 2
+    record.tools_called = ["buscar_empleado"]
+    analyze(record)
+    types = [i.type for i in record.issues]
+    assert "TOOL_NOT_SELECTED" in types
+
+
+def test_analyzer_no_false_positive_when_the_called_tool_matches_the_domain():
+    record = _make_trace("vacaciones de Sandra Asencio en 2026")
+    record.status = "ok"
+    record.domain = "rrhh, empleados, vacaciones"
+    record.llm_rounds = 1
+    record.tools_called = ["vacaciones"]
+    analyze(record)
+    assert record.issues == []
+
+
+def test_analyzer_no_false_positive_when_only_generic_domains_matched():
+    """"rrhh"/"empleados" son el baseline siempre presente (ALWAYS_ON): por sí solos no implican
+    que la pregunta necesitara una herramienta de dominio concreto."""
+    record = _make_trace("hola, ¿qué tal?")
+    record.status = "ok"
+    record.domain = "rrhh, empleados"
+    record.llm_rounds = 1
+    record.tools_called = ["buscar_empleado"]
     analyze(record)
     assert record.issues == []
 

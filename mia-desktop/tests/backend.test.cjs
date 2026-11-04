@@ -18,13 +18,34 @@ test('la consulta usa el endpoint V4 y responde con datos sin HTML inventado', a
   const original = global.fetch;
   let invoked;
   global.fetch = async (u, init) => { invoked = {u,init}; return {
-    status:200,ok:true,json:async()=>({answer:'Datos recibidos',speech_text:'Resumen',status:'ok'})
+    // "speech" es el campo real que devuelve el backend (legacy_payload en compat.py);
+    // "speech_text" nunca ha existido ahí -- regresión real que hacía que sendPrompt
+    // ignorase siempre este campo y cayera a `answer` para la voz.
+    status:200,ok:true,json:async()=>({answer:'Datos recibidos',speech:'Resumen',status:'ok'})
   }; };
   try {
     const res = await sendPrompt('http://127.0.0.1:5001','Hola mIA');
     assert.equal(res.answer,'Datos recibidos');
     assert.equal(res.speechText,'Resumen');
     assert.equal(invoked.u,'http://127.0.0.1:5001/api/mia/v4/chat');
+  } finally { global.fetch = original; }
+});
+test('la URL cruda de un informe nunca llega visible ni locutable: se usa "speech" y se recorta el Markdown', async () => {
+  const original = global.fetch;
+  global.fetch = async () => ({
+    status: 200, ok: true,
+    json: async () => ({
+      answer: 'Archivos generados y disponibles para descargar:\n- [Informe de nóminas (PDF)](/api/reports/250e9ca9de3e4210bfa83ea3c828eca2)',
+      speech: 'Los archivos solicitados están generados y disponibles para descargar.',
+      status: 'ok',
+    }),
+  });
+  try {
+    const res = await sendPrompt('http://127.0.0.1:5001', 'Genera el informe en PDF');
+    assert.doesNotMatch(res.answer, /\/api\/reports\//, 'la URL cruda no debe quedar visible en el texto mostrado');
+    assert.match(res.answer, /Informe de nóminas \(PDF\)/);
+    assert.equal(res.speechText, 'Los archivos solicitados están generados y disponibles para descargar.');
+    assert.doesNotMatch(res.speechText, /\/api\/reports\//);
   } finally { global.fetch = original; }
 });
 test('si no hay autorizacion no salta a otro endpoint', async () => {

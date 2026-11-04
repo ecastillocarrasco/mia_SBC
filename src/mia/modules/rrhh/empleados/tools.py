@@ -110,7 +110,12 @@ def buscar(deps: Deps) -> Tool:
 
     return Tool(
         "buscar_empleado",
-        "Busca personas por nombre. Úsala para localizar a alguien o resolver ambigüedades.",
+        "Busca personas por nombre. Úsala para localizar a alguien o resolver ambigüedades, o "
+        "cuando el usuario pida explícitamente una lista/búsqueda de personas. NO hace falta "
+        "como paso previo antes de pedir datos de una persona concreta (vacaciones, turnos, "
+        "nóminas, ficha...): esas herramientas ya aceptan el nombre directamente y resuelven a "
+        "la persona por sí solas. Si la pregunta es «vacaciones/turno/nómina/ficha de <nombre>», "
+        "llama directamente a esa herramienta con el nombre; no te quedes solo en la búsqueda.",
         BuscarParams,
         handler,
         permission=Permission.EMPLEADOS_LEER,

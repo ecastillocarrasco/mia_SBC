@@ -9,6 +9,12 @@ RATE = 16000
 FRAME_MS = 20
 FRAME_BYTES = RATE * FRAME_MS // 1000 * 2
 MAX_DURATION = 24.0
+# Silencio continuo exigido tras el habla para dar la frase por terminada (en modo "conversación"
+# este hueco se nota mucho más que en una sola consulta: el usuario no acaba de pulsar nada, así
+# que cualquier retraso aquí se percibe directamente como "mIA tarda en reaccionar"). 680 ms
+# (34 frames) era más margen del que hace falta para no cortar una pausa natural a media frase;
+# 440 ms sigue dejando ese margen sin alargar la espera de forma perceptible.
+SILENCE_END_FRAMES = 22
 
 def emit(kind, **fields):
     # Only stdout protocol contains content; Electron must never log these lines.
@@ -325,7 +331,7 @@ def run():
                 else:
                     dictation_frames.append(pcm)
                     speech_end_counter=0 if is_speech else speech_end_counter+1
-                    if speech_end_counter>=34 or (dictation_begin and time.monotonic()-dictation_begin>MAX_DURATION):
+                    if speech_end_counter>=SILENCE_END_FRAMES or (dictation_begin and time.monotonic()-dictation_begin>MAX_DURATION):
                         process_dictation()
                 if not speech_started and dictation_begin and time.monotonic()-dictation_begin>10:
                     emit('DICTATION_ERROR',code='NO_SPEECH');active_mode='idle';close_microphone()

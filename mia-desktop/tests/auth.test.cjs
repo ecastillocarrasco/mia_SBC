@@ -75,3 +75,48 @@ test('ensureAuthorized tras requires_login:false: ok:true, nunca llama a la red'
     assert.deepEqual(result, { ok: true });
   } finally { global.fetch = original; }
 });
+
+test('getAccessToken: llamadas concurrentes con refresco fallido comparten un único login interactivo', async () => {
+  const originalFetch = global.fetch;
+  const electronPath = require.resolve('electron');
+  const msalPath = require.resolve('@azure/msal-node');
+  const originalElectronEntry = require.cache[electronPath];
+  const originalMsalEntry = require.cache[msalPath];
+  let interactiveCalls = 0;
+  class FakePCA {
+    getTokenCache() { return { getAllAccounts: async () => [{ username: 'ana@sbc.test' }] }; }
+    async acquireTokenSilent() { throw new Error('token expirado'); }
+    async acquireTokenInteractive() {
+      interactiveCalls++;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return { accessToken: 'tok-interactivo', account: { username: 'ana@sbc.test' } };
+    }
+  }
+  require.cache[electronPath] = {
+    id: electronPath, filename: electronPath, loaded: true,
+    exports: { shell: { openExternal: async () => {} }, safeStorage: { isEncryptionAvailable: () => false } },
+  };
+  require.cache[msalPath] = {
+    id: msalPath, filename: msalPath, loaded: true,
+    exports: { PublicClientApplication: FakePCA },
+  };
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      mode: 'entra', requires_login: true,
+      entra: { desktop_client_id: 'cid', scope: 'api://mia/.default', tenant_id: 'tid' },
+    }),
+  });
+  try {
+    const auth = freshAuth();
+    await auth.ensureAuthenticated('/tmp/mia-desktop-test', 'http://127.0.0.1:5001');
+    const [t1, t2] = await Promise.all([auth.getAccessToken(), auth.getAccessToken()]);
+    assert.equal(t1, 'tok-interactivo');
+    assert.equal(t2, 'tok-interactivo');
+    assert.equal(interactiveCalls, 1, 'dos getAccessToken() en paralelo no deben abrir dos logins interactivos');
+  } finally {
+    global.fetch = originalFetch;
+    if (originalElectronEntry) require.cache[electronPath] = originalElectronEntry; else delete require.cache[electronPath];
+    if (originalMsalEntry) require.cache[msalPath] = originalMsalEntry; else delete require.cache[msalPath];
+  }
+});

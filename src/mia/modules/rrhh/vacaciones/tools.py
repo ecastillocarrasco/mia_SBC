@@ -129,7 +129,8 @@ def solicitudes(deps: Deps) -> Tool:
             if dept.status is not ToolStatus.OK:
                 return department_problem(dept, p.departamento)
             stmt = _scope(stmt, dept.key, group=employee is None and not p.incluir_inactivos)
-            if p.desde or p.hasta or employee is None:
+            period_given = bool(p.desde or p.hasta or employee is None)
+            if period_given:
                 start, end = p.resolve(today, default_days=30)
                 stmt = stmt.where(Vacation.start_date <= end, Vacation.end_date >= start)
                 state["foco_periodo"] = {"desde": start.isoformat(), "hasta": end.isoformat()}
@@ -164,6 +165,20 @@ def solicitudes(deps: Deps) -> Tool:
             }
             for v in rows
         ]
+        if employee is not None and not period_given and not items:
+            # Sin periodo, el alcance por defecto es "en curso y próximas" (línea de arriba): si no
+            # hay ninguna, el motivo real es la falta de periodo, no que la persona nunca haya
+            # tenido vacaciones — decirlo explícito en vez de devolver una tabla vacía sin más.
+            return ToolResult(
+                ToolStatus.NOT_FOUND,
+                {
+                    "mensaje": (
+                        f"{employee.name} no tiene vacaciones en curso ni próximas. "
+                        "Indica un año o un intervalo de fechas (por ejemplo «en 2026» o «de marzo a "
+                        "junio») para consultar un periodo concreto."
+                    ),
+                },
+            )
         persons, overlapping = _people_and_overlaps(rows, today)
         summary: dict[str, Any] = {
             "poblacion": population_label(p.incluir_inactivos) if not p.person() else "una persona",

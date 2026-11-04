@@ -84,6 +84,32 @@ async def test_voice_route_streams_audio(client: httpx.AsyncClient, services: Se
         assert response.content == b"abcd"
 
 
+class _FailsMidStreamVoice:
+    media_type = "audio/mpeg"
+    cache_key_prefix = "test"
+
+    async def stream(self, text: str) -> AsyncIterator[bytes]:
+        yield b"ab"
+        raise VoiceError("ElevenLabs se cayó a mitad de la respuesta")
+
+    async def aclose(self) -> None:
+        return None
+
+
+async def test_voice_route_breaks_the_connection_instead_of_faking_a_clean_ending(
+    client: httpx.AsyncClient, services: Services
+) -> None:
+    # Si el stream falla DESPUÉS del primer bloque (ya con 200 enviado), el cliente no puede
+    # distinguir "mIA terminó de hablar" de "la voz se cortó" a menos que la conexión se rompa
+    # de forma anómala en vez de terminar limpia con el audio incompleto.
+    # El transporte ASGI en memoria de httpx re-lanza la excepción del servidor tal cual (no hay
+    # un socket TCP real que simule el corte); en un despliegue real, esto mismo rompe la conexión
+    # en vez de servir un 200 con el audio incompleto como si hubiera terminado bien.
+    services.voice = CachedVoice(_FailsMidStreamVoice())
+    with pytest.raises(VoiceError):
+        await client.post("/api/voice/stream", json={"text": "Hola, una frase cualquiera"})
+
+
 async def test_welcome_route_greets_the_authenticated_user_by_name(client: httpx.AsyncClient) -> None:
     # El usuario de test (modo "dev") se llama "Usuario de desarrollo": el saludo debe
     # usar su nombre de pila, igual que 2D/3D/holograma (identity-v45.js) y mIA Desktop.

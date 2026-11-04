@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
 
 
 async def test_legacy_chat_shape(client: httpx.AsyncClient) -> None:
@@ -48,6 +49,26 @@ async def test_legacy_report_buttons_return_a_file(client: httpx.AsyncClient) ->
     assert "spreadsheetml" in response.headers["content-type"]
     bad = await client.post("/api/mia/informes/generar", json={"modulo": "inventado", "formato": "pdf"})
     assert bad.status_code == 400
+
+
+async def test_legacy_report_route_is_blocked_by_the_same_verification_as_the_new_pipeline(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Esta ruta legacy reutiliza ahora `render_document` (el mismo helper que el pipeline nuevo
+    de jobs): si el artefacto generado omite datos, debe bloquearse igual, nunca servirse como si
+    hubiera ido bien."""
+    from mia.modules.rrhh.informes import persist
+    from mia.reporting.verification import ReportVerificationError
+
+    def _always_fails(fmt: str, content: bytes, document: object) -> None:
+        raise ReportVerificationError("el informe omite un indicador")
+
+    monkeypatch.setattr(persist, "verify_artifact", _always_fails)
+    # El transporte ASGI en memoria de httpx re-lanza la excepción del servidor tal cual (ver el
+    # mismo comportamiento en test_voice.py); en un despliegue real, install_error_handlers() la
+    # convierte en un 500 en vez de servir el archivo incompleto como si hubiera ido bien.
+    with pytest.raises(ReportVerificationError):
+        await client.post("/api/mia/informes/generar", json={"modulo": "dashboard_rrhh", "formato": "excel"})
 
 
 async def test_web_sources_reach_the_2d_as_links(client: httpx.AsyncClient, script: list) -> None:

@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
 
 from mia.api.deps import ServicesDep, UserDep
+from mia.api.http_headers import content_disposition
 from mia.auth import Permission
 from mia.data import CvDocument, Payslip, SignedDocument
 from mia.data.repositories import AuditRepository
@@ -75,5 +76,5 @@ async def download(kind: str, item_id: int, services: ServicesDep, user: UserDep
     return Response(
         content,
         media_type=_media(content),
-        headers={"Content-Disposition": f'inline; filename="{name}"', "Cache-Control": "no-store"},
+        headers={"Content-Disposition": content_disposition("inline", name), "Cache-Control": "no-store"},
     )

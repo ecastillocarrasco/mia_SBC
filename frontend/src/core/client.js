@@ -129,6 +129,7 @@ export class MiaClient extends EventTarget {
       this._voiceAudio = audio;
       onStart?.();
       await new Promise((resolve) => {
+        this._resolveVoiceAudio = resolve;
         audio.addEventListener("ended", resolve, { once: true });
         audio.addEventListener("error", resolve, { once: true });
         audio.play().catch(resolve);
@@ -139,6 +140,7 @@ export class MiaClient extends EventTarget {
       onStart?.();
       await speakWithBrowser(spoken);
     } finally {
+      this._resolveVoiceAudio = null;
       if (this._voiceAudio) URL.revokeObjectURL(this._voiceAudio.src);
       this._voiceAudio = null;
     }
@@ -152,6 +154,11 @@ export class MiaClient extends EventTarget {
       } catch {
         /* noop */
       }
+    }
+    // pause() no dispara "ended"/"error": sin esto, el await de speak() nunca se resuelve.
+    if (this._resolveVoiceAudio) {
+      this._resolveVoiceAudio();
+      this._resolveVoiceAudio = null;
     }
   }
 

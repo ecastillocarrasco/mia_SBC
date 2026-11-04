@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
 
 from mia.api.deps import ServicesDep, UserDep
+from mia.api.http_headers import content_disposition
 from mia.api.mail_actions import ACTIONS, MailActionError, execute_mail_action
 from mia.auth import Permission
 from mia.connectors.graph import GraphClient, GraphError
@@ -164,5 +165,5 @@ async def mail_attachment(
         # "inline" (no "attachment"): igual que /api/documents/{kind}/{id} — permite VER el adjunto en
         # una pestaña (PDF, imagen) cuando el navegador puede, y el propio navegador sigue ofreciendo
         # "Guardar como" para descargarlo. Pedido explícito del usuario: "ver o descargar los adjuntos".
-        headers={"Content-Disposition": f'inline; filename="{name}"', "Cache-Control": "no-store"},
+        headers={"Content-Disposition": content_disposition("inline", name), "Cache-Control": "no-store"},
     )

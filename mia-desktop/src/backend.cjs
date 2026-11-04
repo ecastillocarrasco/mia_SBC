@@ -7,6 +7,12 @@ const { resolveEmployeeReply, selectedEmployeePresentation, getName, requestedEm
 const { planPrompt, safeConversationContext, normalized } = require('./conversation.cjs');
 const { view360 } = require('./employee360.cjs');
 const {extractReport,isReportQuestion,validateDownloadUrl} = require('./report.cjs');
+// La pantalla (bubble.js, results.js) siempre inserta este texto con textContent, nunca
+// renderizando Markdown: un enlace de descarga "[PDF](/api/reports/<id>)" se vería (y, sin el
+// fix de más abajo, se locutaría) tal cual, con la URL cruda incluida. El backend ya hace este
+// mismo recorte para la voz (ver parse_final_answer._MD_LINK); aquí hace falta también para lo
+// que se muestra en pantalla.
+function stripMarkdownLinks(text) { return String(text).replace(/\[([^\]]+)\]\([^)]*\)/g, '$1'); }
 async function requestWithTimeout(url, opts, timeoutMs = 35000) {
   const ctrl = new AbortController();
   const id = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -77,7 +83,14 @@ async function sendPrompt(base, prompt, session = null) {
         return {answer:notice,speechText:notice,status:'partial_verified',presentation:safe,identitySelection:checked.selection};
       }
       const answer = data.answer || data.natural_answer || data.response || (data.status === 'error' ? 'El backend no pudo completar la consulta.' : 'Consulta completada.');
-      return { answer: String(answer).slice(0, 12000), speechText: String(data.speech_text || answer).slice(0, 1400), status: data.status || 'ok', presentation, report, reportPending };
+      // "speech" (no "speech_text", que no existe en la respuesta): sin este campo correcto se
+      // caía siempre a `answer`, que puede incluir enlaces Markdown en bruto con la URL de
+      // descarga -- mIA terminaba leyendo literalmente "/api/reports/<id>".
+      return {
+        answer: stripMarkdownLinks(answer).slice(0, 12000),
+        speechText: String(data.speech || answer).slice(0, 1400),
+        status: data.status || 'ok', presentation, report, reportPending,
+      };
     } catch { return { error: 'El backend ha devuelto una respuesta no válida.' }; }
   }
   return { error: 'El backend no ofrece una ruta de conversación compatible.' };

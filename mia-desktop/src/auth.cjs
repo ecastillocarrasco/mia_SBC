@@ -19,6 +19,18 @@ const { withInsecureTls } = require('./insecure-tls.cjs');
 let pca = null;
 let authConfig = null;
 let cachePath = null;
+let interactiveLoginPromise = null;
+
+// getAccessToken() se llama de forma independiente desde el chat, la voz, la memoria y el
+// sondeo de correo (cada 60s); sin este candado, cada una relanzaría su propio
+// acquireTokenInteractive (y por tanto su propia pestaña del navegador) si el refresco en
+// silencio empieza a fallar de forma persistente. Todas comparten aquí el mismo intento.
+async function sharedInteractiveLogin() {
+  if (!interactiveLoginPromise) {
+    interactiveLoginPromise = interactiveLogin().finally(() => { interactiveLoginPromise = null; });
+  }
+  return interactiveLoginPromise;
+}
 
 function makeCachePlugin() {
   return {
@@ -118,7 +130,7 @@ async function getAccessToken() {
     return result.accessToken;
   } catch (error) {
     console.warn('[mIA Auth] No se pudo renovar el token en silencio, pidiendo login interactivo:', error);
-    const result = await interactiveLogin();
+    const result = await sharedInteractiveLogin();
     return result.accessToken;
   }
 }

@@ -100,7 +100,14 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
         if settings.diagnostics.enabled:
             diag_store = DiagnosticsStore(settings.diagnostics)
             broadcaster = LiveBroadcaster()
-            diagnostics.setup(diag_store, broadcaster, mask_pii=settings.diagnostics.mask_pii)
+            diagnostics.setup(
+                diag_store,
+                broadcaster,
+                mask_pii=settings.diagnostics.mask_pii,
+                alert_email=settings.diagnostics.alert_email,
+                smtp=settings.smtp,
+                alert_cooldown_seconds=settings.diagnostics.alert_cooldown_seconds,
+            )
             diag_store.start_cleanup()
             log.info("diagnostics.enabled", max_traces=settings.diagnostics.max_traces)
 

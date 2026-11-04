@@ -40,6 +40,19 @@ test('Informe asíncrono genera un GET por sondeo hasta completado; no POST adic
  assert.ok(received.every(c=>c.method==='GET' && c.url==='/api/jobs/safe%20report%201'));
 });
 
+test('El sondeo del informe adjunta el Bearer en cada GET',async()=>{
+ const received=[];
+ const final=await pollHologramJob('safe report 1',{pollMs:0,sleep:async()=>{},
+   getAuthHeaders:async()=>({Authorization:'Bearer tok-123'}),
+   fetchImpl:async(url,opts)=>{
+     received.push(opts.headers);
+     return json({job_id:'safe report 1',status:'completed',report_id:'R',progress:1});
+   }});
+ assert.equal(final.status,'completed');
+ assert.equal(received.length,1);
+ assert.equal(received[0].Authorization,'Bearer tok-123');
+});
+
 test('No se da enlace al informe antes de completarse',()=>{
  const queued=extractHologramJob({data:{job:{job_id:'X',status:'queued',report_id:'R'}}});
  assert.equal(reportDownloadHref(queued),'');

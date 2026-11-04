@@ -93,7 +93,7 @@ class ReportJobWorker:
         except Exception as exc:
             log.exception("jobs.execution_failed", job_id=job.id, kind=job.kind, worker_id=self._worker_id)
             async with self._services.db.session() as db:
-                await job_manager.fail(db, job.id, error=str(exc)[:500])
+                await job_manager.fail(db, job.id, worker_id=self._worker_id, error=str(exc)[:500])
             return
         finally:
             heartbeat_task.cancel()
@@ -101,7 +101,7 @@ class ReportJobWorker:
                 await heartbeat_task
 
         async with self._services.db.session() as db:
-            await job_manager.complete(db, job.id, report_id=report_id)
+            await job_manager.complete(db, job.id, worker_id=self._worker_id, report_id=report_id)
 
     async def _heartbeat_loop(self, job_id: str) -> None:
         """Mantiene viva la concesión (lease) de un trabajo que tarda más que ``lease_seconds`` —

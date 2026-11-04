@@ -44,6 +44,16 @@ RULES: tuple[BusinessRule, ...] = (
         ("conversacion",),
     ),
     BusinessRule(
+        "CTX-003",
+        "Una pregunta nueva y completa siempre vuelve a consultar la fuente",
+        "Una pregunta autocontenida que pide datos concretos (p. ej. las vacaciones, el turno o la "
+        "nómina de una persona) SIEMPRE invoca de nuevo la herramienta correspondiente, aunque esos "
+        "mismos datos ya aparecieran en un turno anterior de esta conversación. Nunca se contesta "
+        "solo de memoria del historial: los datos pueden haber cambiado desde entonces, y la "
+        "interfaz solo muestra una tabla/ficha nueva cuando hay una ejecución real en este turno.",
+        ("conversacion",),
+    ),
+    BusinessRule(
         "REI-001",
         "Reincorporación: siempre con su motivo",
         "Una reincorporación es la vuelta al trabajo tras una baja, un permiso, unas vacaciones o unos asuntos "

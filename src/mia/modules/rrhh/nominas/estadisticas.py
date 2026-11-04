@@ -272,11 +272,14 @@ def ranking_salarial(deps: Deps) -> Tool:
 
     return Tool(
         "ranking_salarial",
-        f"Quién cobra más o menos dentro de un grupo (departamento, puesto, o el resultado anterior con "
-        f"sobre_resultado_anterior), ordenado sobre TODAS las nóminas del grupo: «los 3 que más cobraron en agosto "
-        f"en Cocina». Máximo 10 y grupos de {MIN_GROUP}+ personas; solo en pantalla, con permiso y auditoría. Nunca "
-        f"ordenes salarios con una muestra parcial: usa esta herramienta. Para comparar TODOS los de un grupo "
-        f"nombre a nombre (no solo el top/bottom N) usa comparativa_salarial.",
+        f"Quién cobra más o menos dentro de un GRUPO de varias personas (departamento, puesto, o el "
+        f"resultado anterior con sobre_resultado_anterior), ordenado sobre TODAS las nóminas del grupo: «los "
+        f"3 que más cobraron en agosto en Cocina». Máximo 10 y grupos de {MIN_GROUP}+ personas; solo en "
+        f"pantalla, con permiso y auditoría. Nunca ordenes salarios con una muestra parcial: usa esta "
+        f"herramienta. Para comparar TODOS los de un grupo nombre a nombre (no solo el top/bottom N) usa "
+        f"comparativa_salarial. Para el salario medio o el desglose mes a mes de UNA sola persona concreta "
+        f"(«salario medio de X», «ranking por meses de X») usa evolucion_nominas en una única llamada: NUNCA "
+        f"llames a esta herramienta una vez por mes, es lenta y es para comparar personas, no meses.",
         RankingParams,
         handler,
         permission=Permission.NOMINAS_IMPORTES,

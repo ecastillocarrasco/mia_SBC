@@ -290,6 +290,95 @@ async def test_leer_correo_exposes_a_download_url_only_for_file_attachments() ->
     assert "$select" not in single_request.url.params
 
 
+# ------------------------------------------------------------------ leer_correo: apertura directa
+#
+# Regresión real: con el correo ya abierto en un turno anterior de la misma sesión, el LLM
+# respondía "ya está abierto, el contenido se muestra arriba" SIN volver a llamar a
+# leer_correo -- sin herramienta ejecutada no hay presentación ese turno y la interfaz no
+# muestra nada (solo ese texto). "Abre el correo cN" es inequívoco: se resuelve de forma
+# determinista (direct_read_arguments), igual que el resumen de correos o el salario directo.
+
+
+def test_leer_correo_direct_read_arguments_matches_an_explicit_open_request() -> None:
+    tool = leer(_deps(_graph(lambda request: httpx.Response(200, json={}))))
+    assert tool.direct_read_arguments(_ctx_with_message("Abre el correo c1")) == {"ref": "c1"}
+    assert tool.direct_read_arguments(_ctx_with_message("muéstrame el correo c2")) == {"ref": "c2"}
+    assert tool.direct_read_arguments(_ctx_with_message("lee el mensaje c3")) == {"ref": "c3"}
+    # Peticiones compuestas o ambiguas: el planner decide, no el matcher determinista.
+    assert tool.direct_read_arguments(_ctx_with_message("abre el correo c1 y resúmelo")) is None
+    assert tool.direct_read_arguments(_ctx_with_message("quién me ha escrito")) is None
+
+
+def _ctx_with_message(message: str) -> ToolContext:
+    return ToolContext(user=ADMIN, request_id="req-1", now=datetime(2026, 10, 20, 9, 0), session_state={}, user_message=message)
+
+
+async def test_leer_correo_returns_a_verified_answer_for_a_direct_open_request() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/attachments"):
+            return httpx.Response(200, json={"value": []})
+        return httpx.Response(
+            200,
+            json={
+                "subject": "Informe mensual",
+                "from": {"emailAddress": {"name": "Ana", "address": "ana@sbc.test"}},
+                "toRecipients": [],
+                "receivedDateTime": "2026-10-19T10:00:00Z",
+                "body": {"content": "Contenido del correo.", "contentType": "text"},
+                "hasAttachments": False,
+            },
+        )
+
+    graph = _graph(handler)
+    ctx = ToolContext(
+        user=ADMIN,
+        request_id="req-1",
+        now=datetime(2026, 10, 20, 9, 0),
+        session_state={"correos": {"c1": "msg-1"}},
+        user_message="Abre el correo c1",
+    )
+    tool = leer(_deps(graph))
+    result = await tool.handler(tool.params(ref="c1"), ctx)
+    await graph.aclose()
+
+    assert result.verified_answer is not None
+    assert "Ana" in result.verified_answer
+    assert result.presentation == {"type": "mail", **result.summary}
+
+
+async def test_leer_correo_has_no_verified_answer_when_the_llm_chose_to_call_it() -> None:
+    """Fuera del patrón de apertura directa, la narrativa la sigue construyendo el LLM."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/attachments"):
+            return httpx.Response(200, json={"value": []})
+        return httpx.Response(
+            200,
+            json={
+                "subject": "Informe mensual",
+                "from": {"emailAddress": {"name": "Ana", "address": "ana@sbc.test"}},
+                "toRecipients": [],
+                "receivedDateTime": "2026-10-19T10:00:00Z",
+                "body": {"content": "Contenido del correo.", "contentType": "text"},
+                "hasAttachments": False,
+            },
+        )
+
+    graph = _graph(handler)
+    ctx = ToolContext(
+        user=ADMIN,
+        request_id="req-1",
+        now=datetime(2026, 10, 20, 9, 0),
+        session_state={"correos": {"c1": "msg-1"}},
+        user_message="resume el correo c1 y dime si requiere respuesta",
+    )
+    tool = leer(_deps(graph))
+    result = await tool.handler(tool.params(ref="c1"), ctx)
+    await graph.aclose()
+
+    assert result.verified_answer is None
+
+
 # ------------------------------------------------------------------ buzon compartido (OBO delegado)
 
 MC_SALAS = UserContext(

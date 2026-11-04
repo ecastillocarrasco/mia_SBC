@@ -38,6 +38,11 @@ async function authHeaders() {
 async function checkOnce(base, onNewMail) {
   if (checking) return;
   checking = true;
+  // Si se llama sin haber pasado antes por start() (p. ej. una comprobación puntual),
+  // startedAt seguiría en 0 y el margen de arranque (startedAt - STARTUP_CATCHUP_MS) sería
+  // una fecha de 1970: cualquier correo real, por antiguo que sea, parecería "reciente" en
+  // esta primera pasada.
+  if (!primed && !startedAt) startedAt = Date.now();
   try {
     const response = await withInsecureTls(async () => fetch(`${base}/api/mail/notifications/poll?limite=10`, { headers: await authHeaders() }));
     if (!response.ok) { console.warn(`[mIA Mail] El sondeo respondio HTTP ${response.status}; se reintentara.`); return; }

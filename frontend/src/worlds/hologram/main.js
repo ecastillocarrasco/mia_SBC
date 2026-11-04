@@ -364,6 +364,10 @@ function startReportTracking(job, question) {
   reportWatcher = controller;
   void pollHologramJob(job.job_id,{
     signal:controller.signal,
+    getAuthHeaders: async () => {
+      const token = await getAccessToken();
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    },
     onUpdate:(nextJob,error)=>{
       if (currentView!==reportViewNonce || controller.signal.aborted) return;
       if (nextJob) {

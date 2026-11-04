@@ -495,7 +495,14 @@ async function submit(text) {
   let question = String(text || "").trim();
   if (busy || !question) return;
   const mailReply = consumeMailPrompt(question);
-  if (mailReply?.action === 'dismiss') { if (voiceEnabled) await client.speak('De acuerdo, seguimos con lo que estábamos.'); return; }
+  if (mailReply?.action === 'dismiss') {
+    if (voiceEnabled) await client.speak('De acuerdo, seguimos con lo que estábamos.');
+    // El resultado final del reconocimiento ya dejó el modo continuo en pausa (ver
+    // MiaVoiceV4.onresult); como esta rama nunca llega al finally de más abajo, hay que
+    // reactivarlo aquí o el micrófono se queda mudo hasta que el usuario lo toque a mano.
+    voice?.resume();
+    return;
+  }
   if (mailReply?.action === 'summary' || mailReply?.action === 'details') question = mailPromptQuery(mailReply.correo, mailReply.action);
   busy = true;
   welcomeAutostart.cancel(); // Impide el saludo tardio si ya hay una consulta.

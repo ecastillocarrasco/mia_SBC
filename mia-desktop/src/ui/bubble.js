@@ -110,9 +110,14 @@ function chooseMail(action, c = pendingMailPrompt) {
   if (action === 'dismiss') { void speakText('De acuerdo, seguimos con lo que estábamos.'); return; }
   input.value = mailQuery(c, action); autoResizeInput(); void submit();
 }
+const MAIL_PROMPT_TIMEOUT_MS = 10 * 60 * 1000;
 function showMailPrompt(c) {
   if (!mailPrompt || !c) return;
   hideMailPrompt(); pendingMailPrompt = c;
+  // Sin esto el aviso queda armado indefinidamente: cualquier frase posterior que case con
+  // "no"/"luego"/etc. (ver consumeMailResponse) se interpretaría como respuesta al aviso
+  // aunque hayan pasado horas y el usuario ya ni se acuerde de él.
+  mailPromptTimer = setTimeout(() => { hideMailPrompt(); bridge.resolveMailPrompt(); }, MAIL_PROMPT_TIMEOUT_MS);
   const title = document.createElement('strong'); title.textContent = `Correo nuevo · ${c.de || 'remitente desconocido'}`;
   const body = document.createElement('p'); body.textContent = `${c.asunto || '(sin asunto)'}\n¿Quieres un resumen, ver el detalle o seguir con lo que estabas haciendo?`;
   const actions = document.createElement('div'); actions.className = 'mail-prompt-actions';
@@ -125,9 +130,15 @@ function showMailPrompt(c) {
 function consumeMailResponse(text) {
   if (!pendingMailPrompt) return null;
   const value = String(text || '').toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  // "ahora no"/"continuemos"/"sigamos"/"dejalo" son frases propias de descartar el aviso y
+  // valen en cualquier frase. "no"/"luego"/"continua" sueltas son palabras demasiado comunes:
+  // solo cuentan como descarte si la respuesta es corta y aislada, para no tragarse una
+  // pregunta real m\u00e1s larga que las contenga de pasada ("no s\u00e9 si...", "\u00bfhay reservas o no?").
+  const isShortReply = value.trim().split(/\s+/).filter(Boolean).length <= 3;
   let action = 'other';
-  if (/\b(no|ahora no|luego|continua|continuemos|sigamos|dejalo)\b/.test(value)) action = 'dismiss';
-  else if (/\b(detalle|muestr|mostrar|abre|abrir|ver correo)\b/.test(value)) action = 'details';
+  if (/\b(ahora no|continuemos|sigamos|dejalo)\b/.test(value) || (isShortReply && /\b(no|luego|continua)\b/.test(value))) {
+    action = 'dismiss';
+  } else if (/\b(detalle|muestr|mostrar|abre|abrir|ver correo)\b/.test(value)) action = 'details';
   else if (/\b(resum|resumen|cuentame|que dice|contenido)\b/.test(value)) action = 'summary';
   const c = pendingMailPrompt;
   if (action === 'other') return { action, correo: c };
