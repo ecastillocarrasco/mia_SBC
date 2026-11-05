@@ -15,6 +15,7 @@ herramientas o no tenían herramienta específica.
 
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from datetime import date, timedelta
 from typing import Any, Literal
@@ -38,11 +39,28 @@ from mia.modules.rrhh.common import (
 )
 from mia.modules.rrhh.turnos.periods import AbsencePeriod, absence_periods
 from mia.query.period import PeriodEngine
+from mia.text import normalize_key
 
 _period_engine = PeriodEngine()
 _insight_engine = InsightEngine()
 
 ABSENT_KINDS = (ShiftKind.BAJA, ShiftKind.VACACIONES, ShiftKind.PERMISO, ShiftKind.ASUNTOS_PROPIOS)
+
+_ANALYZE_DEPARTMENT = re.compile(
+    r"(?:por favor,?\s+)?analiza(?:me)?\s+(?:en\s+\w+\s+)?"
+    r"(?:el\s+)?departamento(?:\s+de)?\s+(?P<dept>[a-z0-9 ]+?)"
+    r"(?:\s*por favor)?"
+)
+
+
+def _direct_department_analysis(ctx: ToolContext) -> dict[str, Any] | None:
+    """«Analiza el departamento X» (y variantes: «analízame», «el departamento DE X», «en
+    profundidad»...) siempre reconsulta la fuente, aunque el mismo departamento ya se
+    hubiera mencionado antes en la conversación (CTX-003) — incidencia real en la que el
+    modelo contestaba de memoria («sigue teniendo 63 empleados») sin ejecución ni panel
+    nuevos en este turno."""
+    match = _ANALYZE_DEPARTMENT.fullmatch(normalize_key(ctx.user_message))
+    return {"departamento": match["dept"].strip()} if match else None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -269,7 +287,21 @@ def analizar_departamento(deps: Deps) -> Tool:
         if chart:
             presentation["charts"] = [chart]
 
-        return ToolResult(ToolStatus.OK, summary, presentation, {"foco_departamento": dept.name})
+        return ToolResult(
+            ToolStatus.OK,
+            summary,
+            presentation,
+            {"foco_departamento": dept.name},
+            verified_answer=(
+                f"Plantilla activa de {dept.name}: {summary['plantilla_activa']} personas. "
+                f"Hoy trabajan {summary['kpis_hoy']['trabajando']}; ausentes {summary['kpis_hoy']['ausentes']}. "
+                f"Absentismo acumulado en el periodo: {summary['ausencias_en_periodo']['total_dias']} días, "
+                f"{summary['ausencias_en_periodo']['personas_distintas']} personas distintas afectadas. "
+                "El detalle completo está en el panel."
+            )
+            if _direct_department_analysis(ctx)
+            else None,
+        )
 
     return Tool(
         "analizar_departamento",
@@ -281,6 +313,7 @@ def analizar_departamento(deps: Deps) -> Tool:
         handler,
         permission=Permission.EMPLEADOS_LEER,
         timeout_seconds=30,
+        direct_read_arguments=_direct_department_analysis,
     )
 
 

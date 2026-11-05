@@ -991,3 +991,35 @@ async def test_who_is_on_vacation_counts_vacations_not_personal_days_by_default(
     await db.dispose()
     assert default.summary["personas_distintas"] == 1  # «Aprobada» cuenta como operativa; los asuntos propios, no
     assert everything.summary["personas_distintas"] == 2
+
+
+async def test_analyze_department_phrasing_has_a_typed_direct_read(registry: ToolRegistry) -> None:
+    """Incidencia real en PRE: "Analiza el departamento X" a veces no disparaba ninguna
+    llamada del modelo y la respuesta quedaba "La tarea quedó incompleta..." (CTX-003).
+    Disparo determinista: garantiza una ejecución real sin depender de que el modelo
+    decida volver a consultar la fuente."""
+    ctx = ToolContext(
+        user=ADMIN, request_id=None, now=NOW, session_state={}, user_message="Analízame el departamento de Cocina"
+    )
+    calls = registry.direct_read_calls(ctx)
+    assert len(calls) == 1 and calls[0].name == "analizar_departamento"
+    assert json.loads(calls[0].arguments) == {"departamento": "cocina"}
+
+
+async def test_analyze_department_direct_read_returns_a_verified_answer(registry: ToolRegistry) -> None:
+    result = await call(
+        registry, "analizar_departamento", departamento="Cocina", message="Analiza el departamento Cocina"
+    )
+    assert result.status is ToolStatus.OK
+    assert result.verified_answer and "Cocina" in result.verified_answer
+
+
+async def test_analyze_department_without_the_trigger_phrase_has_no_verified_answer(registry: ToolRegistry) -> None:
+    """Cuando es el modelo quien decide llamar a la herramienta (frase libre, p. ej. «qué está
+    pasando con Cocina»), la respuesta la sigue redactando el modelo — verified_answer solo
+    fuerza una conclusión local cuando la lectura fue determinista, no siempre."""
+    result = await call(
+        registry, "analizar_departamento", departamento="Cocina", message="¿Qué está pasando con Cocina?"
+    )
+    assert result.status is ToolStatus.OK
+    assert result.verified_answer is None
