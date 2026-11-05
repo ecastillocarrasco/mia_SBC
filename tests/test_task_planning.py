@@ -217,6 +217,20 @@ def test_recovery_never_offers_writes_or_unreviewed_tools():
     assert [tool.name for tool in recovery_tools(tools)] == ["consulta_agenda"]
 
 
+def test_recovery_offers_the_analitica_tools():
+    """Incidencia real: "Analiza el departamento X" (planned=True) sin ninguna llamada en la
+    primera ronda no podía recuperarse nunca, porque analizar_departamento no estaba en la
+    lista de recuperación aunque sea de solo lectura, igual que plantilla/estadisticas_salariales."""
+    names = (
+        "ficha_departamento", "panel_rrhh", "comparar_departamentos", "cobertura_semanal",
+        "analitica_vacaciones", "altas_empleados", "tendencia_ausencias", "ranking_absentismo",
+        "proximos_jubilacion", "analizar_departamento", "tendencia_metrica", "comparar_universal",
+        "distribucion_plantilla",
+    )
+    tools = [ToolSchema(name, "", {}) for name in names]
+    assert {tool.name for tool in recovery_tools(tools)} == set(names)
+
+
 async def test_real_conversation_replans_instead_of_speaking_false_completion(tmp_path):
     db = await fresh_database(tmp_path)
     registry = ToolRegistry()

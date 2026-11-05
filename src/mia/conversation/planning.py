@@ -526,6 +526,24 @@ def recovery_tools(schemas: list[ToolSchema]) -> list[ToolSchema]:
         "correos_recientes",
         "detalle_reunion",
         "disponibilidad_agenda",
+        # Resto de mia.modules.rrhh.analitica (todas de solo lectura, mismo perfil que
+        # "plantilla"/"estadisticas_salariales" ya en esta lista): sin ellas, si el modelo no
+        # llama a ninguna en la primera ronda para una pregunta claramente analítica
+        # (planned=True), la recuperación nunca puede completarse, aunque sea la herramienta
+        # obvia para la pregunta — incidencia real reproducida con "Analiza el departamento X".
+        "ficha_departamento",
+        "panel_rrhh",
+        "comparar_departamentos",
+        "cobertura_semanal",
+        "analitica_vacaciones",
+        "altas_empleados",
+        "tendencia_ausencias",
+        "ranking_absentismo",
+        "proximos_jubilacion",
+        "analizar_departamento",
+        "tendencia_metrica",
+        "comparar_universal",
+        "distribucion_plantilla",
     }
     return [schema for schema in schemas if schema.name in safe]
 
