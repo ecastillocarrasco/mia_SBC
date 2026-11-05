@@ -500,6 +500,167 @@ async def test_last_tool_call_reaches_the_next_turn(tmp_path: Path) -> None:
     assert "si la pregunta solo cambia un dato" in context.lower()
 
 
+async def test_explicit_new_period_clears_the_stale_period_focus(tmp_path: Path) -> None:
+    """«Y ayer» trae su propio periodo: el periodo de un turno anterior (5-9 enero) no debe
+    seguir apareciendo en el prompt como si aplicara a esta pregunta nueva (CTX-001)."""
+    from mia.conversation import ConversationEngine  # noqa: PLC0415
+    from mia.llm.base import LLMRequest  # noqa: PLC0415
+    from mia.llm.fake import FakeLLMProvider, final_answer, tool_call  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "period_focus.db")
+    await seed(db)
+    rounds: list[int] = []
+
+    def script(req: LLMRequest) -> list[Any]:
+        rounds.append(1)
+        if len(rounds) == 1:
+            return tool_call("turnos_persona", {"nombre": "Ana Ruiz", "desde": "2026-01-05", "hasta": "2026-01-09"})
+        return final_answer("Hecho.", "Hecho.")
+
+    llm = FakeLLMProvider(script)
+    engine = ConversationEngine(llm=llm, tools=build_registry(db), db=db)
+    first = await engine.complete(message="Turnos de Ana Ruiz del 5 al 9 de enero", user=ADMIN, session_id=None)
+    await engine.complete(message="Y ayer", user=ADMIN, session_id=first.session_id)
+    await db.dispose()
+    context = llm.requests[-1].messages[-1].content
+    # La línea de foco de periodo desaparece (quedó obsoleta); la de "última consulta" persiste
+    # a propósito (le sirve al modelo para repetir la consulta cambiando solo el periodo).
+    assert "- Periodo: 2026-01-05" not in context
+    assert "Persona: Ana Ruiz" in context  # el foco de persona sí viaja; solo el periodo quedó obsoleto
+
+
+async def test_pronoun_followup_without_its_own_period_keeps_the_period_focus(tmp_path: Path) -> None:
+    """«¿Y sus turnos?» no trae periodo propio: el periodo del turno anterior debe seguir viajando
+    (no limpiar por sospecha; solo cuando el mensaje trae su propio periodo explícito y distinto)."""
+    from mia.conversation import ConversationEngine  # noqa: PLC0415
+    from mia.llm.base import LLMRequest  # noqa: PLC0415
+    from mia.llm.fake import FakeLLMProvider, final_answer, tool_call  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "period_focus_keep.db")
+    await seed(db)
+    rounds: list[int] = []
+
+    def script(req: LLMRequest) -> list[Any]:
+        rounds.append(1)
+        if len(rounds) == 1:
+            return tool_call("turnos_persona", {"nombre": "Ana Ruiz", "desde": "2026-01-05", "hasta": "2026-01-09"})
+        return final_answer("Hecho.", "Hecho.")
+
+    llm = FakeLLMProvider(script)
+    engine = ConversationEngine(llm=llm, tools=build_registry(db), db=db)
+    first = await engine.complete(message="Turnos de Ana Ruiz del 5 al 9 de enero", user=ADMIN, session_id=None)
+    await engine.complete(message="¿Y sus turnos?", user=ADMIN, session_id=first.session_id)
+    await db.dispose()
+    context = llm.requests[-1].messages[-1].content
+    assert "- Periodo: 2026-01-05 a 2026-01-09" in context
+
+
+async def test_explicit_different_department_clears_the_stale_department_focus(tmp_path: Path) -> None:
+    """«Y en Cocina» nombra otro departamento: el departamento del turno anterior (Pisos) no debe
+    seguir apareciendo en el prompt como si aplicara a esta pregunta nueva (mismo mecanismo que
+    el periodo, ahora para departamento — ver ``mia.conversation.focus``)."""
+    from mia.conversation import ConversationEngine  # noqa: PLC0415
+    from mia.llm.base import LLMRequest  # noqa: PLC0415
+    from mia.llm.fake import FakeLLMProvider, final_answer, tool_call  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "department_focus.db")
+    await seed(db)
+    rounds: list[int] = []
+
+    def script(req: LLMRequest) -> list[Any]:
+        rounds.append(1)
+        if len(rounds) == 1:
+            return tool_call("plantilla", {"departamento": "Pisos"})
+        return final_answer("Hecho.", "Hecho.")
+
+    llm = FakeLLMProvider(script)
+    engine = ConversationEngine(llm=llm, tools=build_registry(db), db=db)
+    first = await engine.complete(message="Plantilla de Pisos", user=ADMIN, session_id=None)
+    await engine.complete(message="Y en Cocina", user=ADMIN, session_id=first.session_id)
+    await db.dispose()
+    context = llm.requests[-1].messages[-1].content
+    assert "- Departamento: Pisos" not in context
+
+
+async def test_pronoun_followup_without_a_department_keeps_the_department_focus(tmp_path: Path) -> None:
+    """«¿Cuántos hay?» no nombra ningún departamento: el departamento del turno anterior debe
+    seguir viajando (no limpiar por sospecha; solo cuando el mensaje nombra otro explícito)."""
+    from mia.conversation import ConversationEngine  # noqa: PLC0415
+    from mia.llm.base import LLMRequest  # noqa: PLC0415
+    from mia.llm.fake import FakeLLMProvider, final_answer, tool_call  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "department_focus_keep.db")
+    await seed(db)
+    rounds: list[int] = []
+
+    def script(req: LLMRequest) -> list[Any]:
+        rounds.append(1)
+        if len(rounds) == 1:
+            return tool_call("plantilla", {"departamento": "Pisos"})
+        return final_answer("Hecho.", "Hecho.")
+
+    llm = FakeLLMProvider(script)
+    engine = ConversationEngine(llm=llm, tools=build_registry(db), db=db)
+    first = await engine.complete(message="Plantilla de Pisos", user=ADMIN, session_id=None)
+    await engine.complete(message="¿Cuántos hay?", user=ADMIN, session_id=first.session_id)
+    await db.dispose()
+    context = llm.requests[-1].messages[-1].content
+    assert "- Departamento: Pisos" in context
+
+
+async def test_explicit_different_person_clears_the_stale_person_focus(tmp_path: Path) -> None:
+    """Nombrar a otra persona distinta (Ana Gómez, en foco Ana Ruiz) descarta el foco de persona
+    anterior antes de que el modelo responda, aunque este turno no llame a ninguna herramienta
+    (mismo mecanismo que periodo/departamento — ver ``mia.conversation.focus``)."""
+    from mia.conversation import ConversationEngine  # noqa: PLC0415
+    from mia.llm.base import LLMRequest  # noqa: PLC0415
+    from mia.llm.fake import FakeLLMProvider, final_answer, tool_call  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "person_focus.db")
+    await seed(db)
+    rounds: list[int] = []
+
+    def script(req: LLMRequest) -> list[Any]:
+        rounds.append(1)
+        if len(rounds) == 1:
+            return tool_call("ficha_empleado", {"nombre": "Ana Ruiz"})
+        return final_answer("Hecho.", "Hecho.")
+
+    llm = FakeLLMProvider(script)
+    engine = ConversationEngine(llm=llm, tools=build_registry(db), db=db)
+    first = await engine.complete(message="Enséñame la ficha de Ana Ruiz", user=ADMIN, session_id=None)
+    await engine.complete(message="¿Y el turno de Ana Gómez?", user=ADMIN, session_id=first.session_id)
+    await db.dispose()
+    context = llm.requests[-1].messages[-1].content
+    assert "Persona: Ana Ruiz" not in context
+
+
+async def test_pronoun_followup_without_a_name_keeps_the_person_focus(tmp_path: Path) -> None:
+    """«¿Y sus vacaciones?» no nombra a nadie: el foco de persona del turno anterior debe seguir
+    viajando (no limpiar por sospecha; solo cuando el mensaje nombra a otra persona explícita)."""
+    from mia.conversation import ConversationEngine  # noqa: PLC0415
+    from mia.llm.base import LLMRequest  # noqa: PLC0415
+    from mia.llm.fake import FakeLLMProvider, final_answer, tool_call  # noqa: PLC0415
+
+    db = await fresh_database(tmp_path, "person_focus_keep.db")
+    await seed(db)
+    rounds: list[int] = []
+
+    def script(req: LLMRequest) -> list[Any]:
+        rounds.append(1)
+        if len(rounds) == 1:
+            return tool_call("ficha_empleado", {"nombre": "Ana Ruiz"})
+        return final_answer("Hecho.", "Hecho.")
+
+    llm = FakeLLMProvider(script)
+    engine = ConversationEngine(llm=llm, tools=build_registry(db), db=db)
+    first = await engine.complete(message="Enséñame la ficha de Ana Ruiz", user=ADMIN, session_id=None)
+    await engine.complete(message="¿Y sus vacaciones?", user=ADMIN, session_id=first.session_id)
+    await db.dispose()
+    context = llm.requests[-1].messages[-1].content
+    assert "Persona: Ana Ruiz" in context
+
+
 async def test_search_with_several_matches_is_ambiguous_but_lists_them(registry: ToolRegistry) -> None:
     """Fallo real: con varias «Ana», mIA elegía una por su cuenta."""
     result = await call(registry, "buscar_empleado", nombre="Ana")

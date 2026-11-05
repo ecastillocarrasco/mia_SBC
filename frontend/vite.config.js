@@ -63,7 +63,7 @@ export default defineConfig(({ command }) => ({
     outDir: "dist",
     emptyOutDir: true,
     sourcemap: false,
-    chunkSizeWarningLimit: 800, // three.js: solo lo cargan el 3D y el holograma
+    chunkSizeWarningLimit: 850, // three.js: solo lo cargan el 3D y el holograma (chunk compartido ~801 kB)
     rollupOptions: {
       input: {
         main: resolve(__dirname, "index.html"),

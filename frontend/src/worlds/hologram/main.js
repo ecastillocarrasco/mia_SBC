@@ -13,6 +13,7 @@ import { MiaWaitingV4 } from "../../core/waiting-v4.js";
 import { hasPresentationData, presentationType } from "../../core/premium-tables.js";
 import { renderHologramBrief } from "../../core/hologram-brief.js";
 import { createHologramStage, enhanceHologramAvatar } from "./hologram-premium-v5.js";
+import { DataChart3D } from "../../core/data-chart-3d.js";
 import { installHologramStyle } from "./hologram-material-v51.js";
 import { adaptHologramResult } from "./hologram-results-v521.js";
 import { sendHologramVia2D, createHologramApiContext } from "./hologram-api-v525.js";
@@ -56,6 +57,9 @@ const scene = new MiaScene(document.getElementById("canvas-root"), {
   background: 0x01090d, shadows: false, fov: 34,
 });
 // Encuadre y materiales se afinan exclusivamente para el holograma tras cargar el GLB.
+const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+// scene.camera/scene.scene/scene.onFrame ya existen aquí: no hace falta esperar al GLB.
+const dataChart3D = new DataChart3D(scene, { reducedMotion });
 const client = new MiaClient();
 // El HG no lee nunca la antigua sesión compartida de localStorage.
 // Un traspaso requiere navegación real desde otro mundo, es de un solo uso
@@ -64,7 +68,7 @@ const hgSessionOrigin = readHologramWorldContext();
 const hgContext = createHologramApiContext(hgSessionOrigin.context);
 bindHologramWorldNavigation(document, () => hgContext.value);
 const hgIntegrity = createHologramReplyIntegrity();
-const premiumStage = createHologramStage();
+const premiumStage = createHologramStage({ chart3d: dataChart3D });
 const hologramVoice = new HologramVoiceV522({
   apiBase: client.apiBase,
   getAuthHeaders: async () => {
@@ -501,7 +505,10 @@ const waiting = new MiaWaitingV4({
 });
 
 // Sin rotación procedural: Mía vuelve a su frontal natural al terminar los gestos.
+// Encadenado (no sobrescribe): dataChart3D ya enganchó scene.onFrame antes que esto.
+const previousOnFrame = scene.onFrame;
 scene.onFrame = (time) => {
+  previousOnFrame?.call(scene, time);
   // Solo el holograma: anima las líneas y el brillo según tiempo real.
   // No añade rotación del personaje (conserva frontalidad de la V5).
   if (scene.model) scene.model.rotation.y = 0;
@@ -953,6 +960,7 @@ window.addEventListener("pagehide", () => {
   clearStatusClock();
   hologramVoice.stop();
   boot.dispose();
+  dataChart3D.dispose();
   window.clearTimeout(greetingTimer);
   waiting.stop();
   client.stopSpeaking();

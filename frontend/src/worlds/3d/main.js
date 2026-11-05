@@ -20,6 +20,8 @@ import { buildStatisticalPresentation } from "../../core/statistical-visuals.js"
 import { MiaScene } from "../../core/scene.js";
 import { PresentationStage } from "../../core/presentation-stage.js";
 import { HolographicResults3D } from "./holographic-results-v1.js";
+import { installSunGlow } from "./sun-glow.js";
+import { DataChart3D } from "../../core/data-chart-3d.js";
 import { MiaBehaviorV4 } from "../../core/behavior-v4.js";
 import { enhancePremiumTables, hasPresentationData, presentationType } from "../../core/premium-tables.js";
 import {
@@ -89,11 +91,16 @@ scene.configureFacePose({
   yawDeg: faceNumber('faceYaw', 4), strength: 0.7,
 });
 const client = new MiaClient();
-const miaAnimationLab = installMiaAnimationLab(scene); // mIA V5.3.0, temporal
+// Oculto por defecto: añade ?animLab=1 a la URL para volver a mostrarlo.
+const miaAnimationLab = new URLSearchParams(window.location.search).get('animLab') === '1'
+  ? installMiaAnimationLab(scene) : null; // mIA V5.3.0, temporal
 const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
 const introDirector = new SbcIntroDirectorV2(boot.node, { reducedMotion });
 const stage = new PresentationStage({ root: document.body, reducedMotion, mode: "3d" });
 const holographicResults = new HolographicResults3D({ scene, panel, reducedMotion });
+const sunGlow = installSunGlow({ reducedMotion });
+// Instanciado DESPUÉS de holographicResults para encadenar correctamente scene.onFrame.
+const dataChart3D = new DataChart3D(scene, { reducedMotion });
 
 // Silenciada/activada: persistida y compartida con los otros mundos (mismo
 // navegador). Por defecto mIA NO está silenciada.
@@ -368,6 +375,7 @@ function clearPresentation() {
   document.body.dataset.presentation = "conversation";
   stage.reset();
   holographicResults.reset();
+  dataChart3D.hide();
   conversation.replaceChildren();
   scene.setPresentationLayout(false);
   narrative.clear();
@@ -415,7 +423,7 @@ async function revealData(result, answer, query, presentations, kind) {
 
   const statistical = ["analytics", "comparison", "data"].includes(kind)
     ? buildStatisticalPresentation(presentations, { query, answer })
-    : { html: "", dataFirst: false, summary: "" };
+    : { html: "", dataFirst: false, summary: "", chart3d: null };
   const html = presentations.map((item) => renderPresentationItem(item, result, answer)).join("");
   const coverage = summarizeCoverage(presentations);
   // Recuentos derivados exclusivamente del payload recibido. Nunca inferir
@@ -441,6 +449,7 @@ async function revealData(result, answer, query, presentations, kind) {
   enhancePremiumTables(conversation, { pageSize: 20, search: true, download: true });
   stage.reveal();
   holographicResults.reveal();
+  dataChart3D.show(statistical.chart3d, { anchorRect: panel.getBoundingClientRect() });
   animateCounters(conversation);
   await sleep(180);
   conversation.scrollTop = 0;
@@ -534,6 +543,7 @@ async function submit(text) {
       clearPresentation();
       showCaption(answer);
     }
+    sunGlow.maybePulse(); // Sutil y ocasional: nunca en todas las respuestas.
 
     if (voiceEnabled) {
       await client.speak(result?.speech || answer, {
@@ -692,6 +702,7 @@ if (!voice.available) {
 window.addEventListener("pagehide", () => {
   introDirector.dispose();
   boot.dispose();
+  dataChart3D.dispose();
   window.clearTimeout(greetingTimer);
   waiting.stop();
   client.stopSpeaking();

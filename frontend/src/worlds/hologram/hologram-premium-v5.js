@@ -153,7 +153,7 @@ export function enhanceHologramAvatar(scene, THREE) {
   return { meshes, textures };
 }
 
-export function createHologramStage() {
+export function createHologramStage({ chart3d } = {}) {
   const eyebrow = byId("hgEyebrow");
   const headline = byId("hgHeadline");
   const narrative = byId("hgNarrative");
@@ -265,10 +265,16 @@ export function createHologramStage() {
       presentation.classList.toggle('hg-has-kpis', kpis > 0);
       presentation.classList.toggle('hg-has-bars', barCount > 0);
       presentation.classList.toggle('hg-has-gauge', hasGauge);
+
+      // Mismas filas EXACTAS que ya alimentan las barras CSS de arriba; nunca una fuente distinta.
+      const rows = extractBarRows([...resultEl.querySelectorAll(".hg-mini-table tbody tr")]);
+      chart3d?.show(rows.length >= 2 ? { type: "bars", title: "Comparativa", rows } : null,
+        { anchorRect: presentation.getBoundingClientRect() });
     } else {
       bars.replaceChildren();
       gauge.replaceChildren();
       presentation.classList.remove('hg-has-kpis','hg-has-bars','hg-has-gauge');
+      chart3d?.hide();
     }
   }
 

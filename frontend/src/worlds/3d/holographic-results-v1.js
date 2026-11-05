@@ -6,7 +6,10 @@
  * panel in depth, adds a breakout frame behind it and enhances existing KPI /
  * chart blocks so they feel like they emerge from the screen.
  *
- * Escape hatches: ?holo3d=0 (plain layout), ?breakout3d=0 (V1 spatial look).
+ * Escape hatches (ambas desactivadas por defecto): ?holo3d=1 (anillos, puntos
+ * y marco flotando sobre el panel), ?breakout3d=1 (además, el marco breakout
+ * con las barras de datos). Por defecto el panel queda siempre en el layout
+ * plano/blanco de toda la vida.
  */
 import * as THREE from 'three';
 
@@ -43,8 +46,8 @@ export class HolographicResults3D {
     this.root = root;
     this.reducedMotion = Boolean(reducedMotion);
     const query = new URLSearchParams(window.location.search);
-    this.enabled = query.get('holo3d') !== '0';
-    this.breakoutEnabled = query.get('breakout3d') !== '0';
+    this.enabled = query.get('holo3d') === '1';
+    this.breakoutEnabled = query.get('breakout3d') === '1';
     this.hasResult = false;
     this.reading = false;
     this._pendingPointerFrame = 0;

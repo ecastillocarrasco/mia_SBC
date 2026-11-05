@@ -71,6 +71,22 @@ export function install2DEntry({ root = document.body } = {}) {
   };
   document.addEventListener('keydown', keepFocus, true);
 
+  // Los recursos del 2D (DOM + un par de imágenes) suelen estar ya en caché
+  // y cargar casi al instante: sin este mínimo, la pantalla de carga apenas
+  // se ve. Este reloj avanza el % de forma visible durante ~2,4 s mientras
+  // la carga real (abajo) sigue su curso en paralelo; boot.progress() ya se
+  // queda con el valor más alto de los dos, así que nunca retrocede.
+  const MIN_LOAD_MS = 2400;
+  const loadStartedAt = performance.now();
+  let loadTicker = null;
+  const driveLoadTicker = () => {
+    if (!boot.active) return;
+    const elapsed = performance.now() - loadStartedAt;
+    boot.progress(Math.min(.99, (elapsed / MIN_LOAD_MS) * .99), { phase:'2d' });
+    if (elapsed < MIN_LOAD_MS) loadTicker = window.setTimeout(driveLoadTicker, 60);
+  };
+  driveLoadTicker();
+
   const done = async () => {
     // The page's classic scripts have already been executed before
     // DOMContentLoaded. Important images are tracked by real load events.
@@ -107,6 +123,9 @@ export function install2DEntry({ root = document.body } = {}) {
       watchdog = window.setTimeout(() => settle(false), 7500);
     })));
     if (!boot.active) return;
+    const remaining = MIN_LOAD_MS - (performance.now() - loadStartedAt);
+    if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));
+    window.clearTimeout(loadTicker);
     const result = await boot.complete({ onContinue: () => ({ status:'entered-2d' }) });
     document.removeEventListener('keydown', keepFocus, true);
     document.documentElement.style.overflow = previousOverflow;

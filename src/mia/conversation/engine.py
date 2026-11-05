@@ -36,6 +36,7 @@ from mia.conversation.events import (
     TurnEvent,
     TurnResult,
 )
+from mia.conversation.focus import PERIOD_SLOT, FocusContext, invalidate_stale_focus
 from mia.conversation.memory_hint import memory_context_block
 from mia.conversation.orchestrator import select_modules
 from mia.conversation.persona import AvatarState, Persona
@@ -314,7 +315,11 @@ def describe_focus(state: dict[str, Any]) -> str:
     if isinstance(population, dict) and population.get("total") is not None:
         lines.append(
             f"- Último resultado con personas: {population.get('etiqueta')} ({population['total']}). "
-            "Para «de esos/ellas», «quiénes son» o «cuántos son», usa sobre_resultado_anterior=true."
+            "Para «de esos/ellas», «quiénes son» o «cuántos son», usa sobre_resultado_anterior=true. "
+            "Si en vez de un pronombre describes ese mismo grupo por departamento o puesto (p. ej. "
+            "«los de Recepción» cuando ya se mostró quién trabaja ahora), combina "
+            "sobre_resultado_anterior=true CON ese filtro -- nunca sustituyas el grupo ya mostrado por "
+            "todo el departamento entero, que puede tener más gente de la que realmente se mostró."
         )
     period = state.get("foco_periodo")
     if isinstance(period, dict) and period.get("desde"):
@@ -447,8 +452,7 @@ class ConversationEngine:
                 await repo.add_turn(session_id=session.id, request_id=request_id, role="user", content=message)
                 turn = _TurnState(time.perf_counter(), session.id, dict(session.state or {}))
                 memory_items = await self._load_memory_items(db, user)
-
-            self._restore_comparison(message, user, turn, history)
+                await self._restore_turn_context(db, message, user, turn, history)
 
             diag_emit(
                 EventStage.USER_CONTEXT,
@@ -929,7 +933,14 @@ class ConversationEngine:
         # La entrega de formatos dispone además de su recuperación determinista
         # posterior en run(); aquí se verifican los pasos explícitos del modelo.
         pending_steps = [item for item in missing if item.startswith("paso ")]
-        if planned and not plan.steps:
+        # Una consulta de un solo paso (p. ej. "tendencia de ausencias") puede resolverse
+        # llamando directamente a la herramienta correcta, sin pasar por planificar_tarea:
+        # eso no es una tarea sin empezar, es una más simple de lo que el plan exigía. Solo
+        # se exige el plan explícito cuando NO hay ninguna ejecución real y verificada detrás
+        # de la respuesta — si no, un turno ya resuelto con datos reales se descartaba y se
+        # sustituía por "Plan explícito pendiente" aunque el modelo hubiera acertado.
+        has_verified_execution = any(execution.result.status is ToolStatus.OK for execution in turn.executions)
+        if planned and not plan.steps and not has_verified_execution:
             pending_steps.insert(0, "Plan explícito pendiente; no se ha verificado la tarea.")
             missing = [*pending_steps, *missing]
         if native_completed and not pending_steps:
@@ -1159,13 +1170,22 @@ class ConversationEngine:
             today=ctx.now.date(),
         )
 
-    def _restore_comparison(
-        self, message: str, user: UserContext, turn: _TurnState, history: list[ConversationTurn]
+    async def _restore_turn_context(
+        self, db: AsyncSession, message: str, user: UserContext, turn: _TurnState, history: list[ConversationTurn]
     ) -> None:
+        from mia.modules.rrhh.common import entity_catalog, focus_slots  # noqa: PLC0415
+
+        # Descarta foco_periodo/foco_departamento/foco_persona cuando este mensaje trae su propio
+        # valor y es distinto del guardado (ver mia.conversation.focus: un solo mecanismo para los
+        # tres, y para cualquier otro foco futuro que se declare igual).
+        local_today = datetime.now(self._tz).date()
+        catalog = await entity_catalog(db)
+        focus_ctx = FocusContext(message=message, today=local_today, user=user)
+        invalidate_stale_focus((PERIOD_SLOT, *focus_slots(catalog)), turn.state, focus_ctx)
+
         # Un usuario puede analizar los dos ejercicios y solicitar el PDF en el turno siguiente.
         # Recuperar únicamente la última intención comparativa explícita (sin importes), nunca
         # depender de que ambos resultados estén «activos» en el buffer de una sola tabla.
-        local_today = datetime.now(self._tz).date()
         current_plan = planner.plan(message, user=user, today=local_today)
         competing_domain = any(m.field.domain != "payroll" for m in current_plan.metrics)
         if competing_domain or (current_plan.period and not explicit_month_comparison(message)):

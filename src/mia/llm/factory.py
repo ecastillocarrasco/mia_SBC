@@ -38,6 +38,7 @@ def build_llm_provider(settings: LLMSettings, privacy_settings: PrivacyGatewaySe
             # Corporate context must never become an implicit public web query.
             # Public search requires a separate, explicitly minimized operation.
             web_search=False,
+            temperature=settings.temperature,
         )
     return PrivacyGateway(
         inner,

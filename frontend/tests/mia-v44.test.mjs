@@ -158,12 +158,12 @@ test('permission failure turns off the mic; never loops the permission prompt', 
   m.destroy();
 });
 
-test('waiting: bored at >=35 s, circular walk at >=65 s, then return smoothly', () => {
+test('idle: bored at >=8 s, circular walk at >=20 s, then return smoothly', () => {
+  // El aburrimiento/paseo circular son de REPOSO ('idle'), nunca de 'thinking'/'waiting'
+  // (ver behavior-v4.js: THINKING_CYCLE no tiene casos especiales, dure lo que dure).
   setup();
   const played = [], movements = [];
-  const actions = ['mIA_IDLE_SAFE', 'mIA_THINK', 'mIA_SEQ_CONSULTANDO_DATOS',
-    'mIA_TYPING', 'mIA_SEQ_TRABAJANDO', 'mIA_IDLE_SAD',
-    'mIA_SEQ_ESPERA', 'mIA_WALK_CIRCLE'];
+  const actions = ['mIA_IDLE_SAFE', 'mIA_IDLE_BREATHING', 'mIA_IDLE_HAPPY', 'mIA_IDLE_SAD', 'mIA_WALK_CIRCLE'];
   const scene = {
     actions: new Map(actions.map(name => [name, true])),
     play: name => played.push(name), clipDuration: name => name === 'mIA_WALK_CIRCLE' ? 12.53 : 4,
@@ -177,13 +177,13 @@ test('waiting: bored at >=35 s, circular walk at >=65 s, then return smoothly', 
   Date.now = () => now;
   try {
     const behavior = new MiaBehaviorV4({ scene, mode: '3d' });
-    behavior.enter('thinking');
+    behavior.enter('idle');
     assert.ok(played.at(-1).startsWith('mIA_'));
-    now += 36000;
-    behavior._runCycle('thinking');
+    now += 9000;
+    behavior._runCycle('idle');
     assert.equal(played.at(-1), 'mIA_IDLE_SAD');
-    now += 31000;
-    behavior._runCycle('thinking');
+    now += 16000;
+    behavior._runCycle('idle');
     assert.equal(played.at(-1), 'mIA_WALK_CIRCLE');
     assert.equal(movements.at(-1)[0], 'start');
     behavior.enter('presenting');
@@ -195,7 +195,9 @@ test('waiting: bored at >=35 s, circular walk at >=65 s, then return smoothly', 
 test('hologram can show boredom, but not orbital physical movement', () => {
   setup();
   const played = [];
-  const actions = new Map(['mIA_THINK','mIA_IDLE_SAD','mIA_WALK_CIRCLE','mIA_IDLE_SAFE'].map(n=>[n,true]));
+  const actions = new Map(
+    ['mIA_IDLE_SAFE','mIA_IDLE_BREATHING','mIA_IDLE_HAPPY','mIA_IDLE_SAD','mIA_WALK_CIRCLE'].map(n=>[n,true]),
+  );
   const scene = {
     actions, play: n=>played.push(n), clipDuration:()=>5, stopGesture:()=>{},
     stopWaitOrbit:()=>{}, startWaitOrbit:()=>{throw new Error('HG must stay centered')},
@@ -205,9 +207,9 @@ test('hologram can show boredom, but not orbital physical movement', () => {
   Date.now = () => now;
   try {
     const b = new MiaBehaviorV4({ scene, mode:'hologram' });
-    b.enter('thinking');
-    now += 70000;
-    b._runCycle('thinking');
+    b.enter('idle');
+    now += 25000;
+    b._runCycle('idle');
     assert.ok(!played.includes('mIA_WALK_CIRCLE'));
     assert.ok(played.includes('mIA_IDLE_SAD'));
     b.destroy();

@@ -36,13 +36,18 @@ const IDLE_CYCLE = [
   'mIA_IDLE_SAFE', 'mIA_IDLE_BREATHING',
   'mIA_IDLE_SAFE', 'mIA_IDLE_HAPPY',
 ];
-// Los gestos especiales de espera solo aparecen si la consulta realmente tarda.
+// Espera ACTIVA (tramitando una consulta): solo pensar/escribir/mirar alrededor/buscar
+// datos, en bucle, dure lo que dure — nunca aburrimiento ni paseo circular aquí (eso es
+// de reposo, ver WAIT_BORED/WAIT_CIRCLE más abajo). mIA_SEQ_TRABAJANDO (variante de
+// "escribiendo" a mitad de pantalla) se retiró: no queda bien junto al resto —
+// mIA_TYPING (pies a la altura correcta) es la única animación de "escribiendo".
 const THINKING_CYCLE = [
-  'mIA_THINK', 'mIA_SEQ_CONSULTANDO_DATOS',
-  'mIA_TYPING', 'mIA_SEQ_TRABAJANDO',
+  'mIA_THINK', 'mIA_LOOK_AROUND', 'mIA_SEQ_CONSULTANDO_DATOS', 'mIA_TYPING', 'mIA_LOOK_AROUND_ALT',
 ];
+// Aburrimiento/paseo circular: SOLO durante el reposo (antes de la primera pregunta o
+// entre una respuesta y la siguiente), nunca mientras se tramita una consulta — ahí
+// solo piensa/escribe (THINKING_CYCLE, sin casos especiales).
 const WAIT_BORED = 'mIA_IDLE_SAD';
-const WAIT_COMPOSED = 'mIA_SEQ_ESPERA';
 const WAIT_CIRCLE = 'mIA_WALK_CIRCLE';
 // Los gestos muy girados se mantienen en la biblioteca para reproducción
 // manual, pero no se incluyen en los ciclos automáticos de conversación.
@@ -74,8 +79,8 @@ export class MiaBehaviorV4 {
     this._token = 0;
     this._cycles = new Map();
     this._destroyed = false;
-    this._queryStartedAt = null;
-    this._waitingRound = 0;
+    this._idleStartedAt = null;
+    this._idleRound = 0;
     this._boredShown = false;
     this._circleShown = false;
     this._frontPointing = false;
@@ -129,20 +134,22 @@ export class MiaBehaviorV4 {
     this._token += 1;
     window.clearTimeout(this._timer);
     this._timer = null;
-    const wasWaiting = this.state === 'thinking' || this.state === 'waiting';
+    const wasIdle = this.state === 'idle';
     this.state = next;
     this.context = { ...context };
     this._frontPointing = false;
-    // Conservar el tiempo de la consulta si solo cambiamos pensando/esperando.
-    if (next === 'thinking' || next === 'waiting') {
-      if (!wasWaiting || this._queryStartedAt == null) {
-        this._queryStartedAt = Date.now();
-        this._waitingRound = 0;
+    // El aburrimiento/paseo circular cuentan cuánto lleva mIA en reposo SEGUIDO (antes de
+    // la primera pregunta, o entre una respuesta y la siguiente) — nunca mientras tramita
+    // una consulta. Se reinicia el contador solo al ENTRAR en reposo, no en cada ciclo.
+    if (next === 'idle') {
+      if (!wasIdle || this._idleStartedAt == null) {
+        this._idleStartedAt = Date.now();
+        this._idleRound = 0;
         this._boredShown = false;
         this._circleShown = false;
       }
     } else {
-      this._queryStartedAt = null;
+      this._idleStartedAt = null;
       this.scene.stopWaitOrbit?.();
     }
     this.scene.stopGesture?.(0.2);
@@ -225,41 +232,42 @@ export class MiaBehaviorV4 {
       listening: LISTENING_CYCLE,
       speaking: SPEAKING_CYCLE,
     };
-    const isQueryWait = state === 'thinking' || state === 'waiting';
-    const elapsed = isQueryWait && this._queryStartedAt != null
-      ? Math.max(0, (Date.now() - this._queryStartedAt) / 1000) : 0;
     let name = this._next(cycles[state] || IDLE_CYCLE, state);
 
-    if (isQueryWait) {
-      const round = this._waitingRound++;
-      // 20 s: gestos suaves de espera. 35 s: un bostezo/aburrimiento
-      // discreto. 65 s: pequeño paseo circular en el mundo 3D.
-      // El holograma conserva siempre el avatar dentro de la proyección.
-      if (elapsed >= 65 && this.mode === '3d' && !reduced() &&
+    // Mientras se tramita una consulta ('thinking'/'waiting') el ciclo se queda SIEMPRE
+    // en THINKING_CYCLE (pensar/consultar datos/escribir), por larga que sea la espera —
+    // el aburrimiento y el paseo circular no pintan ahí, son cosas de reposo (abajo).
+    if (state === 'idle') {
+      const idleElapsed = this._idleStartedAt != null
+        ? Math.max(0, (Date.now() - this._idleStartedAt) / 1000) : 0;
+      const round = this._idleRound++;
+      // Cuánto lleva mIA sin que le pregunten nada, antes de la primera pregunta o
+      // entre una respuesta y la siguiente: 8 s para el bostezo/aburrimiento, 20 s
+      // para el paseo circular (solo mundo 3D; el holograma se queda siempre dentro
+      // de la proyección). Entre cada aparición hay varias rondas de reposo normal
+      // (IDLE_CYCLE: quieta/respirando/contenta) — round % 5 y % 8 en vez de % 2 y
+      // % 3, que salían casi seguidos uno de otro sin apenas reposo normal de por medio.
+      if (idleElapsed >= 20 && this.mode === '3d' && !reduced() &&
           this.scene.actions.has(WAIT_CIRCLE) &&
           (!this._circleShown || round % 8 === 0)) {
         name = WAIT_CIRCLE;
         this._circleShown = true;
-      } else if (elapsed >= 35 && this.scene.actions.has(WAIT_BORED) &&
-                 (!this._boredShown || round % 6 === 0)) {
+      } else if (idleElapsed >= 8 && this.scene.actions.has(WAIT_BORED) &&
+                 (!this._boredShown || round % 5 === 0)) {
         name = WAIT_BORED;
         this._boredShown = true;
-      } else if (elapsed >= 20 && this.scene.actions.has(WAIT_COMPOSED) &&
-                 round % 3 === 0) {
-        name = WAIT_COMPOSED;
       }
     }
 
     const seconds = Math.max(1, this.scene.clipDuration?.(name) || 5);
-    // Los clips especiales se reproducen una sola vez; no reiniciar sin parar
-    // una caminata circular de 12.5 s a mitad de recorrido.
+    // El paseo circular se reproduce una sola vez; no reiniciar sin parar una
+    // caminata de 12.5 s a mitad de recorrido.
     const maximum = name === WAIT_CIRCLE ? 12500 :
-      name === WAIT_COMPOSED ? 8500 :
       state === 'idle' ? 4600 : state === 'speaking' ? 4900 : 7100;
     const time = Math.max(1400, Math.min(maximum, seconds *
-      (name === WAIT_CIRCLE ? 0.95 : name === WAIT_COMPOSED ? 0.90 : 0.72) * 1000));
+      (name === WAIT_CIRCLE ? 0.95 : 0.72) * 1000));
 
-    this._start(name, { loop: name !== WAIT_CIRCLE && name !== WAIT_COMPOSED,
+    this._start(name, { loop: name !== WAIT_CIRCLE,
       fade: reduced() ? 0 : name === WAIT_CIRCLE ? 0.85 : 0.65 });
     if (name === WAIT_CIRCLE) this.scene.startWaitOrbit?.(time / 1000);
     if (reduced()) return;

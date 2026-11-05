@@ -7,14 +7,16 @@ import re
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from weakref import WeakKeyDictionary
 
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mia.conversation import ToolResult, ToolStatus
+from mia.conversation.focus import FocusContext, FocusSlot
 from mia.core.i18n import t
 from mia.data import Database, Employee, ShiftDay, Vacation
 from mia.data.sources import STALE_AFTER, freshness
@@ -375,6 +377,86 @@ def department_problem(match: DepartmentMatch, query: str | None) -> ToolResult:
         "Hay varios departamentos que encajan" if match.status is ToolStatus.AMBIGUOUS else "No existe ese departamento"
     )
     return ToolResult(match.status, {"mensaje": f"{verb} («{query}»).", "departamentos": list(match.options)})
+
+
+# ------------------------------------------------------------------ foco conversacional obsoleto
+_CATALOG_TTL = timedelta(minutes=5)
+"""Cuánto se tarda en reconocer una persona/departamento recién creado: solo decide si se LIMPIA
+un foco obsoleto (ver ``focus.py``), nunca qué datos se muestran, así que este margen es aceptable
+a cambio de no consultar la base de datos en cada turno de cada conversación."""
+
+
+@dataclass(frozen=True, slots=True)
+class EntityCatalog:
+    """Fotografía ligera (solo nombres, en memoria) de empleados y departamentos."""
+
+    departments: tuple[tuple[str, str], ...]
+    """(clave normalizada, nombre a mostrar)."""
+    employees: tuple[tuple[int, str, frozenset[str]], ...]
+    """(sp_id, nombre, tokens del nombre completo — solo nombres con 2+ tokens, para evitar
+    falsos positivos con una sola palabra común)."""
+
+
+_catalogs: WeakKeyDictionary[Any, tuple[EntityCatalog, datetime]] = WeakKeyDictionary()
+"""Por motor (``Engine``), nunca por sesión: cada turno abre y cierra su propia ``AsyncSession``
+(se invalidaría en cada llamada), mientras que el motor es el mismo durante toda la vida del
+proceso — y, en los tests, cada base de datos temporal tiene el suyo, así no se mezclan.
+``WeakKeyDictionary`` (en vez de indexar por ``id(engine)``) evita que, tras liberarse un motor
+de un test ya terminado, un motor nuevo reciba por azar la misma dirección de memoria y herede
+su catálogo."""
+
+
+async def entity_catalog(db: AsyncSession) -> EntityCatalog:
+    """Catálogo en memoria, refrescado como mucho cada ``_CATALOG_TTL`` (ver su docstring)."""
+    engine = db.get_bind()
+    now = datetime.now(UTC)
+    cached = _catalogs.get(engine)
+    if cached is not None and now - cached[1] < _CATALOG_TTL:
+        return cached[0]
+    dept_rows = (await db.execute(select(Employee.department, Employee.department_key).distinct())).all()
+    departments = tuple((key, name) for name, key in dept_rows if key and name)
+    emp_rows = (await db.execute(select(Employee.sp_id, Employee.name))).all()
+    employees = []
+    for sp_id, name in emp_rows:
+        tokens = frozenset(tok for tok in normalize_key(name).split() if len(tok) > 1)
+        if len(tokens) >= 2:
+            employees.append((sp_id, name, tokens))
+    catalog = EntityCatalog(departments, tuple(employees))
+    _catalogs[engine] = (catalog, now)
+    return catalog
+
+
+def _extract_department(ctx: FocusContext, catalog: EntityCatalog) -> str | None:
+    norm = normalize_key(ctx.message)
+    for key, name in catalog.departments:
+        if re.search(rf"\b{re.escape(key)}\b", norm):
+            return name
+    return None
+
+
+def _department_differs(current: str, stored: Any) -> bool:
+    return bool(stored) and current != stored
+
+
+def _extract_person(ctx: FocusContext, catalog: EntityCatalog) -> dict[str, Any] | None:
+    tokens = set(normalize_key(ctx.message).split())
+    for sp_id, name, name_tokens in catalog.employees:
+        if name_tokens <= tokens:
+            return {"empleado_id": sp_id, "nombre": name}
+    return None
+
+
+def _person_differs(current: dict[str, Any], stored: Any) -> bool:
+    return isinstance(stored, dict) and stored.get("empleado_id") not in (None, current["empleado_id"])
+
+
+def focus_slots(catalog: EntityCatalog) -> tuple[FocusSlot, ...]:
+    """``foco_departamento``/``foco_persona``: se descartan cuando el mensaje de este turno
+    nombra explícitamente OTRO departamento/persona (ver ``mia.conversation.focus``)."""
+    return (
+        FocusSlot("foco_departamento", lambda ctx: _extract_department(ctx, catalog), _department_differs),
+        FocusSlot("foco_persona", lambda ctx: _extract_person(ctx, catalog), _person_differs),
+    )
 
 
 # ------------------------------------------------------------------ cohortes (CTX-002)

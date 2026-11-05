@@ -79,12 +79,15 @@ def extract_web_sources(output_items: list[dict[str, Any]]) -> tuple[dict[str, s
     return tuple({"url": url, "title": title} for url, title in chosen.items())
 
 
-def build_payload(model: str, request: LLMRequest, *, web_search: bool | str = False) -> dict[str, Any]:
+def build_payload(
+    model: str, request: LLMRequest, *, web_search: bool | str = False, temperature: float = 0.0
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": model,
         "instructions": request.system,
         "input": _input_items(request.messages),
         "max_output_tokens": request.max_output_tokens,
+        "temperature": temperature,
         "stream": True,
         "store": False,
     }
@@ -134,11 +137,13 @@ class OpenAIResponsesProvider:
         azure: bool = False,
         transport: httpx.AsyncBaseTransport | None = None,
         web_search: bool = False,
+        temperature: float = 0.0,
     ) -> None:
         # Nombre de la herramienta de búsqueda que se prueba; si el proveedor la rechaza se prueba la
         # siguiente («web_search_preview» en modelos/despliegues más antiguos) y, si ninguna, se desactiva.
         self._web_search_options = ["web_search", "web_search_preview"] if web_search else []
         self._web_search: str | bool = self._web_search_options[0] if web_search else False
+        self._temperature = temperature
         headers = {"api-key": api_key} if azure else {"Authorization": f"Bearer {api_key}"}
         self._model = model
         self._client = httpx.AsyncClient(
@@ -194,7 +199,7 @@ class OpenAIResponsesProvider:
 
     async def stream(self, request: LLMRequest) -> AsyncIterator[LLMEvent]:
         model = request.model or self._model
-        payload = build_payload(model, request, web_search=self._web_search)
+        payload = build_payload(model, request, web_search=self._web_search, temperature=self._temperature)
         for attempt in range(self.MAX_RETRIES + 1):
             try:
                 async with self._client.stream("POST", "/responses", json=payload) as response:
@@ -212,7 +217,9 @@ class OpenAIResponsesProvider:
                             log.warning(
                                 "llm.web_search_changed", now=self._web_search or "desactivada", reason=body[:200]
                             )
-                            payload = build_payload(model, request, web_search=self._web_search)
+                            payload = build_payload(
+                                model, request, web_search=self._web_search, temperature=self._temperature
+                            )
                             continue
                         raise LLMError(f"HTTP {response.status_code}: {body}")
                     async for event in self._parse_sse(response):

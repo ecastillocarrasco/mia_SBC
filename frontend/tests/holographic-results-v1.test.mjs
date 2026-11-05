@@ -62,7 +62,9 @@ test('spatial visuals respect fallback and accessibility', () => {
 });
 
 test('prepare / reveal / reading / close preserve presentation and dispose', () => {
-  const {scene,panel,root,flush} = environment();
+  // holo3d está desactivado por defecto (ver holographic-results-v1.js): se activa explícitamente
+  // para probar el camino espacial, igual que ya hacía la demás suite con breakout3d.
+  const {scene,panel,root,flush} = environment(1440,'?holo3d=1');
   const prior = () => {};
   scene.onFrame = prior;
   const hologram = new HolographicResults3D({scene,panel,root});

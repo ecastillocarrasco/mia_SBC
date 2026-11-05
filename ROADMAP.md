@@ -13,6 +13,30 @@ Este fichero es solo el mapa: qué está hecho, qué está en marcha, qué está
 
 ## Hitos recientes
 
+**2026-11-05 — Limpieza de contexto conversacional y cierre de la incidencia P1 de población/filtros**
+- Nuevo mecanismo único de invalidación de foco obsoleto (persona/departamento/periodo):
+  cada dato se declara una vez (`mia.conversation.focus.FocusSlot`) con cómo leer su propio
+  valor en el mensaje de este turno y cómo compararlo con el guardado; añadir un caso futuro
+  es una entrada más en la lista, no código nuevo en el motor. Departamento y persona usan un
+  catálogo en memoria (`mia.modules.rrhh.common.entity_catalog`, refrescado cada 5 min) para no
+  consultar la base de datos en cada turno.
+- Revisada la incidencia P1 "continuidad de población y filtros en consultas de
+  empleados/salarios" (ver antes en "Aparcado"): **ambos escenarios reportados ya estaban
+  corregidos desde el 24/10** (commit `dd3d0428`, el mismo día de la última actualización de
+  este fichero — la nota no se había cerrado): `foco_departamento` se limpia explícitamente tras
+  reiniciar el backend (`test_fresh_workforce_question_ignores_stale_model_filters_after_reopening`),
+  y `comparativa_salarial` restringe correctamente al resultado anterior con
+  `sobre_resultado_anterior` (`test_comparativa_restricts_to_the_previous_population_not_the_whole_department`).
+  Verificado de nuevo en vivo (05/11), ambos tests en verde.
+  - **Matiz pendiente, no un bug confirmado**: si el usuario describe el mismo grupo ya mostrado
+    nombrando su departamento («las personas que trabajan en Recepción») en vez de con un
+    pronombre («esas personas»), nada obliga a que el modelo combine `sobre_resultado_anterior`
+    con ese filtro — podría sustituir el grupo mostrado por todo el departamento, que puede tener
+    más gente. Mitigado (05/11) reforzando la pista de población en el prompt
+    ([engine.py](src/mia/conversation/engine.py), `describe_focus`) y la descripción de
+    `comparativa_salarial` para que el modelo combine ambos filtros en vez de sustituir uno por
+    el otro. No reproducido contra un LLM real; si vuelve a observarse, retomar aquí.
+
 **2026-10-19/20 — Autenticación Entra ID (login real)**
 - Backend: proveedores de identidad (`dev`/`easyauth`/`entra`), validación de JWT contra Entra ID,
   App Roles reales mapeados a permisos (`Global`, `RRHH`, `RRHH.NoNominas`, `Administracion`, `Legal`),
@@ -33,23 +57,6 @@ Este fichero es solo el mapa: qué está hecho, qué está en marcha, qué está
   lenguaje visual premium de mIA para este caso y para errores reales de acceso.
 
 ## Aparcado
-
-- **Incidencia P1 — continuidad de población y filtros en consultas de empleados/salarios** —
-  retomarla después de cerrar la incidencia actual del correo. Casos reproducidos por el usuario en
-  mIA web privada:
-  1. «¿Quiénes están trabajando ahora mismo?» devuelve correctamente el listado general. En el
-     seguimiento, pide comparar el salario de agosto de 2026 de las seis personas que trabajan en
-     Recepción, pero la comparativa devuelve otras seis personas ajenas a la selección.
-  2. Tras cerrar y reiniciar el backend, la misma pregunta general «¿qué empleados están trabajando
-     ahora mismo?» devuelve solo empleados de Recepción, en vez de incluir todos los departamentos.
-  - Comportamiento esperado: una comparación de salarios debe conservar exactamente la población
-    seleccionada y validar que la respuesta pertenece a esas personas; una pregunta nueva y general
-    debe calcularse sin filtros residuales de una consulta anterior, incluso después de reiniciar.
-  - Al retomarlo, trazar el contexto/filtros entre turnos, las claves de sesión y el estado
-    recordado por las herramientas de fichajes y nóminas; revisar además qué estado persiste o se
-    reconstruye al reiniciar el backend. Prioridad alta por riesgo de atribuir importes salariales a
-    empleados equivocados. No dar por válida una comparativa si la población resultante no coincide
-    con la solicitada.
 
 - **Listado de buzones compartidos accesibles por usuario** — pospuesto hasta después de preparar
   preproducción y realizar la demo con el cliente. Actualmente, si la persona conoce la dirección

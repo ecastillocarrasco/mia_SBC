@@ -396,7 +396,10 @@ def comparativa_salarial(deps: Deps) -> Tool:
         f"Compara, persona a persona (nombre + importe de cada una, no ranking ni agregado), el salario de TODAS "
         f"las personas de un grupo concreto para un mes: «compara el salario de agosto de esos 6», «el sueldo de "
         f"julio de cada uno de Cocina». El grupo puede venir de departamento, puesto, o el resultado anterior con "
-        f"sobre_resultado_anterior. Grupos de {MIN_GROUP}+ personas (máximo {MAX_RANKING_GROUP}); solo en "
+        f"sobre_resultado_anterior. Si el usuario describe ESE MISMO grupo ya mostrado nombrando su departamento "
+        f"(en vez de «esos»), combina sobre_resultado_anterior=true CON departamento: el departamento completo "
+        f"puede tener más gente que la que realmente se mostró. Grupos de {MIN_GROUP}+ personas (máximo "
+        f"{MAX_RANKING_GROUP}); solo en "
         f"pantalla, con permiso y auditoría, nunca en voz alta. Para quién cobra más/menos usa ranking_salarial; "
         f"para agregados (media, mediana, percentiles) usa estadisticas_salariales.",
         ComparativaSalarialParams,

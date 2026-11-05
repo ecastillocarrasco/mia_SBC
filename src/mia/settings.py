@@ -74,6 +74,11 @@ class LLMSettings(BaseModel):
     turn_budget_seconds: float = 120.0
     """Tiempo máximo de un turno antes de dejar de llamar a herramientas y contestar con lo que haya (evita los
     «timed out» de las consultas encadenadas)."""
+    temperature: float = Field(default=0.1, ge=0.0, le=2.0)
+    """Ante la misma pregunta, el modelo podía elegir distinta herramienta (texto/tabla/gráfico) de
+    un turno a otro por puro muestreo (sin este ajuste, el proveedor usa su valor por defecto, ~1.0).
+    0.0 maximiza que una misma entrada produzca la misma elección de herramienta y formato
+    (``MIA_LLM__TEMPERATURE``)."""
     web_search: bool = True
     """Búsqueda web del proveedor para consultas generales (tiempo, actualidad). Si el proveedor no la
     admite, se desactiva sola."""

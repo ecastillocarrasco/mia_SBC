@@ -209,7 +209,11 @@ def panel(deps: Deps) -> Tool:
     return Tool(
         "panel_rrhh",
         "Panel ejecutivo de RRHH (o de un departamento: departamento 360) para un día: plantilla, quién "
-        "trabaja por franja, ausencias, bajas, reincorporaciones, saldos, pendientes, nóminas y ETT.",
+        "trabaja por franja, ausencias, bajas, reincorporaciones, saldos, pendientes, nóminas y ETT. "
+        "Para preguntas generales de vista general («cómo va RRHH», «panel/resumen/dashboard de hoy», "
+        "«cómo está el departamento X») esta ÚNICA llamada ya cubre todo eso: no planifiques pasos "
+        "sueltos (plantilla, bajas, trabajando, vacaciones, permisos…) con otras herramientas para "
+        "responderla, eso solo fragmenta en tareas que luego no da tiempo a verificar todas.",
         PanelParams,
         handler,
         permission=Permission.EMPLEADOS_LEER,

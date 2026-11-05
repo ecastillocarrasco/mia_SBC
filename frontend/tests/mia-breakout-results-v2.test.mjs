@@ -69,7 +69,9 @@ function setup({query='',width=1450,rows=0,bars=[],metrics=3}={}) {
   return {scene,panel,root:document.body,flush};
 }
 test('Breakout V2 uses actual Three.js extruded geometry and only source chart values', () => {
-  const ctx=setup({bars:[74,29,0],metrics:2});
+  // holo3d y breakout3d están desactivados por defecto (ver holographic-results-v1.js): se
+  // activan ambos explícitamente, igual que ya hacía la demás suite con este patrón.
+  const ctx=setup({query:'?holo3d=1&breakout3d=1',bars:[74,29,0],metrics:2});
   const engine=new HolographicResults3D(ctx);
   engine.prepare();engine.reveal();ctx.flush();ctx.flush();
   assert.equal(engine.breakout.visible,true);
@@ -94,18 +96,22 @@ test('Breakout V2 uses actual Three.js extruded geometry and only source chart v
   assert.equal(ctx.scene.scene.children.length,0);
 });
 test('Breakout off falls back to V1; spatial off disables all effects', () => {
-  for (const [query,oldActive] of [['?breakout3d=0',true],['?holo3d=0',false]]) {
+  // breakout3d no se activa aquí (queda en su valor por defecto, desactivado): holo3d=1 por sí
+  // solo ya prueba "breakout off cae a V1"; sin holo3d, todo el efecto espacial queda desactivado.
+  for (const [query,active] of [['?holo3d=1',true],['?holo3d=0',false]]) {
     const ctx=setup({query});
     const engine=new HolographicResults3D(ctx);
     engine.prepare();engine.reveal();ctx.flush();ctx.flush();
-    assert.equal(ctx.root.classList.contains('mia-holo-active'),oldActive);
+    assert.equal(ctx.root.classList.contains('mia-holo-active'),active);
     assert.equal(ctx.root.classList.contains('mia-breakout-active'),false);
     assert.equal(engine.breakout.visible,false);
     engine.destroy();
   }
 });
 test('long tables return to frontal reading automatically and timer clears on reset', async () => {
-  const ctx=setup({rows:16});
+  // El temporizador de lectura automática exige el breakout activo (_breakoutActive()), no solo
+  // el camino espacial base: ambas flags activadas explícitamente.
+  const ctx=setup({query:'?holo3d=1&breakout3d=1',rows:16});
   const engine=new HolographicResults3D(ctx);
   engine.prepare();engine.reveal();ctx.flush();ctx.flush();
   assert.ok(engine._readingTimer);

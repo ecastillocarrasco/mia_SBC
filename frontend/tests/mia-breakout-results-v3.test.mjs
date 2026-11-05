@@ -16,7 +16,9 @@ class Element extends EventTarget {
  querySelectorAll(q){return q==='table tbody tr'?this.rows:q==='.stat-bar-track i'?[]:this.metrics;}
 }
 function fake(height=260,rows=1) {
- const w=new EventTarget();w.innerWidth=1652;w.innerHeight=889;w.location={search:''};globalThis.window=w;
+ // holo3d/breakout3d están desactivados por defecto (ver holographic-results-v1.js); este
+ // fichero prueba justo el layout del breakout, así que ambos se activan explícitamente.
+ const w=new EventTarget();w.innerWidth=1652;w.innerHeight=889;w.location={search:'?holo3d=1&breakout3d=1'};globalThis.window=w;
  const body=new Element();globalThis.document={body,createElement:()=>new Element()};
  globalThis.getComputedStyle=()=>({right:'22px',top:'18px'});
  const q=[];globalThis.requestAnimationFrame=(f)=>{q.push(f);return q.length;};globalThis.cancelAnimationFrame=()=>{};
