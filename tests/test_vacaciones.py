@@ -107,10 +107,12 @@ async def test_person_without_upcoming_vacations_asks_for_a_period_instead_of_an
     que nunca haya tenido vacaciones — hay que decirlo, no devolver una tabla vacía sin más."""
     db = await fresh_database(tmp_path, "vac_sin_periodo.db")
     async with db.session() as s:
-        s.add_all([
-            _emp(1, "Elena", "Pisos", person_key="pk-elena", email="elena@x.test"),
-            _vac(1, "elena@x.test", "Elena", "Aceptada", -10, -8),  # ya pasada
-        ])
+        s.add_all(
+            [
+                _emp(1, "Elena", "Pisos", person_key="pk-elena", email="elena@x.test"),
+                _vac(1, "elena@x.test", "Elena", "Aceptada", -10, -8),  # ya pasada
+            ]
+        )
     registry = build_registry(db)
     try:
         sin_periodo = await call(registry, "vacaciones", nombre="Elena")

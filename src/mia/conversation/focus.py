@@ -20,6 +20,7 @@ from datetime import date
 from typing import Any
 
 from mia.auth import UserContext
+from mia.query.period import ResolvedPeriod
 from mia.reporting.planner import planner
 
 
@@ -50,15 +51,15 @@ def invalidate_stale_focus(slots: Sequence[FocusSlot], state: dict[str, Any], ct
             state.pop(slot.key, None)
 
 
-def _extract_period(ctx: FocusContext) -> Any | None:
+def _extract_period(ctx: FocusContext) -> ResolvedPeriod | None:
     return planner.plan(ctx.message, user=ctx.user, today=ctx.today).period
 
 
-def _period_differs(current: Any, stored: Any) -> bool:
+def _period_differs(current: ResolvedPeriod, stored: Any) -> bool:
     if not isinstance(stored, dict) or not stored.get("desde"):
         return False
     stored_end = stored.get("hasta", stored["desde"])
-    return current.start.isoformat() != stored["desde"] or current.end.isoformat() != stored_end
+    return bool(current.start.isoformat() != stored["desde"] or current.end.isoformat() != stored_end)
 
 
 PERIOD_SLOT = FocusSlot("foco_periodo", _extract_period, _period_differs)

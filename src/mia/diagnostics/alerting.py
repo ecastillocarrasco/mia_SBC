@@ -71,9 +71,7 @@ def _send(message: EmailMessage, smtp: SmtpSettings) -> None:
         client.send_message(message)
 
 
-async def notify_on_error(
-    record: TraceRecord, *, recipient: str, smtp: SmtpSettings, cooldown_seconds: int
-) -> None:
+async def notify_on_error(record: TraceRecord, *, recipient: str, smtp: SmtpSettings, cooldown_seconds: int) -> None:
     """Nunca lanza excepciones: un fallo al avisar no debe afectar a nada más."""
     global _last_sent_at  # noqa: PLW0603
     if not recipient or not smtp.configured or not _is_real_error(record):

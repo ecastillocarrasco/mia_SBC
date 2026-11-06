@@ -310,7 +310,9 @@ def test_leer_correo_direct_read_arguments_matches_an_explicit_open_request() ->
 
 
 def _ctx_with_message(message: str) -> ToolContext:
-    return ToolContext(user=ADMIN, request_id="req-1", now=datetime(2026, 10, 20, 9, 0), session_state={}, user_message=message)
+    return ToolContext(
+        user=ADMIN, request_id="req-1", now=datetime(2026, 10, 20, 9, 0), session_state={}, user_message=message
+    )
 
 
 async def test_leer_correo_returns_a_verified_answer_for_a_direct_open_request() -> None:

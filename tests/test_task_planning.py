@@ -222,9 +222,18 @@ def test_recovery_offers_the_analitica_tools():
     primera ronda no podía recuperarse nunca, porque analizar_departamento no estaba en la
     lista de recuperación aunque sea de solo lectura, igual que plantilla/estadisticas_salariales."""
     names = (
-        "ficha_departamento", "panel_rrhh", "comparar_departamentos", "cobertura_semanal",
-        "analitica_vacaciones", "altas_empleados", "tendencia_ausencias", "ranking_absentismo",
-        "proximos_jubilacion", "analizar_departamento", "tendencia_metrica", "comparar_universal",
+        "ficha_departamento",
+        "panel_rrhh",
+        "comparar_departamentos",
+        "cobertura_semanal",
+        "analitica_vacaciones",
+        "altas_empleados",
+        "tendencia_ausencias",
+        "ranking_absentismo",
+        "proximos_jubilacion",
+        "analizar_departamento",
+        "tendencia_metrica",
+        "comparar_universal",
         "distribucion_plantilla",
     )
     tools = [ToolSchema(name, "", {}) for name in names]

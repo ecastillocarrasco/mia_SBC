@@ -7,6 +7,9 @@ import json
 import httpx
 import pytest
 
+from mia.modules.rrhh.informes import persist
+from mia.reporting.verification import ReportVerificationError
+
 
 async def test_legacy_chat_shape(client: httpx.AsyncClient) -> None:
     for path in ("/api/mia/chat", "/api/mia/v4/chat"):
@@ -57,8 +60,6 @@ async def test_legacy_report_route_is_blocked_by_the_same_verification_as_the_ne
     """Esta ruta legacy reutiliza ahora `render_document` (el mismo helper que el pipeline nuevo
     de jobs): si el artefacto generado omite datos, debe bloquearse igual, nunca servirse como si
     hubiera ido bien."""
-    from mia.modules.rrhh.informes import persist
-    from mia.reporting.verification import ReportVerificationError
 
     def _always_fails(fmt: str, content: bytes, document: object) -> None:
         raise ReportVerificationError("el informe omite un indicador")

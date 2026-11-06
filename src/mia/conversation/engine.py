@@ -305,7 +305,7 @@ def describe_focus(state: dict[str, Any]) -> str:
         lines.append(
             f"- Persona: {person.get('nombre')} (empleado_id {person['empleado_id']}{extra}) "
             "-- del turno anterior. Úsala SOLO si esta pregunta no nombra a nadie o se refiere a "
-            "ella sin ambigüedad (\"ella\", \"su\", \"esa persona\"). Si la pregunta nombra a otra "
+            'ella sin ambigüedad ("ella", "su", "esa persona"). Si la pregunta nombra a otra '
             "persona distinta, esa persona nueva manda: resuélvela a partir de su nombre, ignora "
             "este foco por completo (CTX-001)."
         )
@@ -1115,8 +1115,10 @@ class ConversationEngine:
         # El enlace muestra el título real del informe, no solo el formato: la ruta cruda
         # (/api/reports/<id>) nunca debe quedar visible como texto ni locutarse (ver _MD_LINK
         # más abajo en parse_final_answer, que ya reduce "[etiqueta](url)" a solo la etiqueta).
-        link_labels = {fmt: f"{presentation['title']} ({labels[fmt]})" if presentation.get("title") else labels[fmt]
-                       for fmt, presentation in successes}
+        link_labels = {
+            fmt: f"{presentation['title']} ({labels[fmt]})" if presentation.get("title") else labels[fmt]
+            for fmt, presentation in successes
+        }
         lines = [f"- [{link_labels[fmt]}]({presentation['url']})" for fmt, presentation in successes]
         if missing:
             lines.append(

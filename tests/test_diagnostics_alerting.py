@@ -100,9 +100,7 @@ async def test_notify_on_error_sends_through_smtp_for_a_real_error(monkeypatch):
 
     monkeypatch.setattr(alerting.smtplib, "SMTP", FakeSMTP)
 
-    await notify_on_error(
-        _record(status="error"), recipient="admin@sbc.test", smtp=SMTP_READY, cooldown_seconds=60
-    )
+    await notify_on_error(_record(status="error"), recipient="admin@sbc.test", smtp=SMTP_READY, cooldown_seconds=60)
 
     assert sent == [("smtp.test", 587)]
     assert FakeSMTP.last_message["To"] == "admin@sbc.test"

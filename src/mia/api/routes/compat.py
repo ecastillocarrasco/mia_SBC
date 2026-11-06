@@ -186,9 +186,7 @@ async def legacy_report(body: dict[str, Any], services: ServicesDep, user: UserD
     # render_document (mismo helper que usa el pipeline nuevo de jobs) verifica el artefacto real
     # con verify_artifact antes de devolverlo: sin esto, esta ruta legacy servía igual un archivo
     # con cifras/tablas/KPIs omitidos aunque el pipeline nuevo lo hubiera bloqueado.
-    content = await asyncio.to_thread(
-        render_document, fmt, document, ctx.now, services.settings.reports.logo_path
-    )
+    content = await asyncio.to_thread(render_document, fmt, document, ctx.now, services.settings.reports.logo_path)
     name = re.sub(r"[^\w\- ]+", "", document.title).strip()[:60] or "informe"
     return Response(
         content,

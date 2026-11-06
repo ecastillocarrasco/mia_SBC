@@ -400,7 +400,7 @@ def test_analyzer_no_false_positive_when_the_called_tool_matches_the_domain():
 
 
 def test_analyzer_no_false_positive_when_only_generic_domains_matched():
-    """"rrhh"/"empleados" son el baseline siempre presente (ALWAYS_ON): por sí solos no implican
+    """ "rrhh"/"empleados" son el baseline siempre presente (ALWAYS_ON): por sí solos no implican
     que la pregunta necesitara una herramienta de dominio concreto."""
     record = _make_trace("hola, ¿qué tal?")
     record.status = "ok"
