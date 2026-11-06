@@ -1023,3 +1023,25 @@ async def test_analyze_department_without_the_trigger_phrase_has_no_verified_ans
     )
     assert result.status is ToolStatus.OK
     assert result.verified_answer is None
+
+
+async def test_general_vacation_question_ignores_a_model_supplied_interrogative_as_a_name(
+    registry: ToolRegistry,
+) -> None:
+    """Fallo real en PRE: "¿Quién está de vacaciones hoy?" (botón de pregunta rápida del 2D)
+    hacía que el modelo pasara nombre="Quién" literalmente, y la herramienta contestaba "no
+    localizo a nadie llamado así" en vez de responder a la pregunta general."""
+    result = await call(registry, "vacaciones", nombre="Quién", message="¿Quién está de vacaciones hoy?")
+    assert result.status is ToolStatus.OK
+
+
+async def test_vacation_direct_read_resolves_today_not_the_next_30_days(registry: ToolRegistry) -> None:
+    """Sin fechas explícitas, el valor por defecto del handler son los próximos 30 días (pensado
+    para "vacaciones de Juan" sin periodo) — equivocado para "hoy"; la lectura directa debe fijar
+    desde=hasta=hoy explícitamente."""
+    ctx = ToolContext(
+        user=ADMIN, request_id=None, now=NOW, session_state={}, user_message="¿Quién está de vacaciones hoy?"
+    )
+    calls = registry.direct_read_calls(ctx)
+    assert len(calls) == 1 and calls[0].name == "vacaciones"
+    assert json.loads(calls[0].arguments) == {"desde": TODAY.isoformat(), "hasta": TODAY.isoformat()}

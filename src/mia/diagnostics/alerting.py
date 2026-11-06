@@ -19,7 +19,13 @@ from mia.settings import SmtpSettings
 
 log = get_logger(__name__)
 
-_last_sent_at: float = 0.0
+_last_sent_at: float = float("-inf")
+"""``time.monotonic()`` no garantiza empezar cerca de 0 (en un proceso/contenedor recién
+arrancado puede valer, p. ej., unos pocos cientos de segundos) — con un valor inicial de 0.0,
+un reinicio reciente del servicio podía silenciar el primer aviso real si ocurría dentro de la
+primera ventana de cooldown tras arrancar. ``-inf`` garantiza que el primer aviso nunca se
+descarta por esto, sin alterar el cálculo de los siguientes (incidencia real: test en CI contra
+un contenedor recién iniciado, con ``time.monotonic()`` por debajo del cooldown de prueba)."""
 
 
 def _is_real_error(record: TraceRecord) -> bool:

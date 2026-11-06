@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, timedelta
 from itertools import pairwise
 from typing import Any, Literal
@@ -60,6 +62,42 @@ KEYWORDS = (
 """Ver `empleados.tools.KEYWORDS` para el criterio."""
 
 
+def general_vacation_request(message: str) -> bool:
+    """«¿Quién está de vacaciones hoy/esta semana?» (botón de pregunta rápida del 2D) no nombra
+    a nadie: "quién"/"quiénes" es el pronombre interrogativo, nunca un nombre a buscar.
+
+    Incidencia real: sin esto, el modelo podía rellenar ``nombre="Quién"`` literalmente e
+    intentar (sin éxito) localizar a una persona con ese nombre, devolviendo "no localizo a
+    ninguna persona llamada así" para una pregunta que no mencionaba a nadie en absoluto.
+    """
+    return bool(
+        re.fullmatch(
+            r"(?:que (?:empleados|personas|trabajadores)|quienes|quien) "
+            r"(?:(?:estan|esta) )?de vacaciones"
+            r"(?:\s+(?:hoy|esta semana))?",
+            normalize_key(message),
+        )
+    )
+
+
+def _vacation_verified_answer(ctx: ToolContext, persons: int) -> str | None:
+    if not general_vacation_request(ctx.user_message):
+        return None
+    plural = "s" if persons != 1 else ""
+    return f"{persons} persona{plural} de vacaciones en el periodo consultado. El listado completo está en la tabla."
+
+
+def _direct_vacation_request(ctx: ToolContext) -> dict[str, Any] | None:
+    """Fechas explícitas (hoy, o la semana pedida) para no depender del valor por defecto del
+    handler (próximos 30 días), que no es lo que pide esta pregunta."""
+    if not general_vacation_request(ctx.user_message):
+        return None
+    today = ctx.now.date()
+    week = requested_week(ctx.user_message, today)
+    start, end = week if week is not None else (today, today)
+    return {"desde": start.isoformat(), "hasta": end.isoformat()}
+
+
 class _OptionalPerson(BaseModel):
     empleado_id: int | None = Field(default=None, description="ID de la persona (foco o búsqueda previa)")
     nombre: str | None = Field(default=None, description="Nombre de la persona (opcional)")
@@ -105,122 +143,163 @@ def _people_and_overlaps(rows: list[Vacation], today: date) -> tuple[int, int]:
     return len(by_person), overlapping
 
 
-def solicitudes(deps: Deps) -> Tool:
-    async def query(p: VacacionesParams, ctx: ToolContext) -> ToolResult:
-        today = ctx.now.date()
-        state: dict[str, Any] = {}
-        async with deps.db.session() as db:
-            stmt = select(Vacation)
-            who = p.person()
-            employee: Employee | None = None
-            if who is not None:
-                match = await resolve_person(db, who, ctx=ctx)
-                if match.employee is None:
-                    return person_problem(match, who.nombre)
-                employee = match.employee
-                if not employee.email:
-                    return ToolResult(
-                        ToolStatus.NOT_FOUND,
-                        {"mensaje": f"{employee.name} no tiene email para cruzar sus vacaciones."},
-                    )
-                stmt = stmt.where(Vacation.employee_email == employee.email)
-                state.update(focus_person(employee))
-            dept = await resolve_department(db, p.departamento)
-            if dept.status is not ToolStatus.OK:
-                return department_problem(dept, p.departamento)
-            stmt = _scope(stmt, dept.key, group=employee is None and not p.incluir_inactivos)
-            period_given = bool(p.desde or p.hasta or employee is None)
-            if period_given:
-                start, end = p.resolve(today, default_days=30)
-                stmt = stmt.where(Vacation.start_date <= end, Vacation.end_date >= start)
-                state["foco_periodo"] = {"desde": start.isoformat(), "hasta": end.isoformat()}
-            else:
-                stmt = stmt.where(Vacation.end_date >= today)  # de una persona: en curso y próximas
-            if wants_previous(p, ctx):
-                if (previous := previous_population(ctx, p.resultado)) is None:
-                    return no_population()
-                stmt = stmt.where(Vacation.employee_email.in_(previous["emails"]))
-            rows = list((await db.scalars(stmt.order_by(Vacation.start_date))).all())
-            fresh = await deps.freshness(db, "vacaciones")
-            if p.estado == "aceptadas":
-                rows = await confirmed_vacations(db, rows)
-        if p.estado in ("pendientes", "rechazadas"):
-            rows = [v for v in rows if normalize_key(v.status) == ESTADOS[p.estado]]
-        if p.tipo != "todos":
-            rows = [v for v in rows if normalize_key(v.request_type) == normalize_key(p.tipo)]
-        async with deps.db.session() as db:
-            people = await employees_for(db, emails={v.employee_email for v in rows if v.employee_email})
-        state.update(population_state(f"vacaciones ({p.estado})", people))
-        directory = PeopleDirectory(people)
-        items = [
+@dataclass(frozen=True, slots=True)
+class _VacationScope:
+    rows: list[Vacation]
+    state: dict[str, Any]
+    employee: Employee | None
+    period_given: bool
+    fresh: dict[str, Any]
+
+
+async def _vacation_scope(
+    deps: Deps, p: VacacionesParams, ctx: ToolContext, today: date
+) -> ToolResult | _VacationScope:
+    """Resuelve persona/departamento/periodo y devuelve las solicitudes ya filtradas por
+    estado/tipo, o el ``ToolResult`` de error que debe devolverse tal cual."""
+    state: dict[str, Any] = {}
+    async with deps.db.session() as db:
+        stmt = select(Vacation)
+        who = p.person()
+        employee: Employee | None = None
+        if who is not None:
+            match = await resolve_person(db, who, ctx=ctx)
+            if match.employee is None:
+                return person_problem(match, who.nombre)
+            employee = match.employee
+            if not employee.email:
+                return ToolResult(
+                    ToolStatus.NOT_FOUND,
+                    {"mensaje": f"{employee.name} no tiene email para cruzar sus vacaciones."},
+                )
+            stmt = stmt.where(Vacation.employee_email == employee.email)
+            state.update(focus_person(employee))
+        dept = await resolve_department(db, p.departamento)
+        if dept.status is not ToolStatus.OK:
+            return department_problem(dept, p.departamento)
+        stmt = _scope(stmt, dept.key, group=employee is None and not p.incluir_inactivos)
+        period_given = bool(p.desde or p.hasta or employee is None)
+        if period_given:
+            start, end = p.resolve(today, default_days=30)
+            stmt = stmt.where(Vacation.start_date <= end, Vacation.end_date >= start)
+            state["foco_periodo"] = {"desde": start.isoformat(), "hasta": end.isoformat()}
+        else:
+            stmt = stmt.where(Vacation.end_date >= today)  # de una persona: en curso y próximas
+        if wants_previous(p, ctx):
+            if (previous := previous_population(ctx, p.resultado)) is None:
+                return no_population()
+            stmt = stmt.where(Vacation.employee_email.in_(previous["emails"]))
+        rows = list((await db.scalars(stmt.order_by(Vacation.start_date))).all())
+        fresh = await deps.freshness(db, "vacaciones")
+        if p.estado == "aceptadas":
+            rows = await confirmed_vacations(db, rows)
+    if p.estado in ("pendientes", "rechazadas"):
+        rows = [v for v in rows if normalize_key(v.status) == ESTADOS[p.estado]]
+    if p.tipo != "todos":
+        rows = [v for v in rows if normalize_key(v.request_type) == normalize_key(p.tipo)]
+    return _VacationScope(rows, state, employee, period_given, fresh)
+
+
+def _vacation_items(rows: list[Vacation], directory: PeopleDirectory) -> list[dict[str, Any]]:
+    return [
+        {
+            "persona": v.employee_name,
+            "puesto": directory.puesto(email=v.employee_email),
+            "departamento": v.department,
+            "desde": fmt_date(v.start_date),
+            "hasta": fmt_date(v.end_date),
+            "dias": v.total_days,
+            "estado": v.status,
+            "tipo": v.request_type,
+        }
+        for v in rows
+    ]
+
+
+async def _vacation_query(deps: Deps, p: VacacionesParams, ctx: ToolContext) -> ToolResult:
+    today = ctx.now.date()
+    scope = await _vacation_scope(deps, p, ctx, today)
+    if isinstance(scope, ToolResult):
+        return scope
+    rows, state, employee, period_given, fresh = (
+        scope.rows,
+        scope.state,
+        scope.employee,
+        scope.period_given,
+        scope.fresh,
+    )
+    async with deps.db.session() as db:
+        people = await employees_for(db, emails={v.employee_email for v in rows if v.employee_email})
+    state.update(population_state(f"vacaciones ({p.estado})", people))
+    directory = PeopleDirectory(people)
+    items = _vacation_items(rows, directory)
+    if employee is not None and not period_given and not items:
+        # Sin periodo, el alcance por defecto es "en curso y próximas" (línea de arriba): si no
+        # hay ninguna, el motivo real es la falta de periodo, no que la persona nunca haya
+        # tenido vacaciones — decirlo explícito en vez de devolver una tabla vacía sin más.
+        return ToolResult(
+            ToolStatus.NOT_FOUND,
             {
-                "persona": v.employee_name,
-                "puesto": directory.puesto(email=v.employee_email),
-                "departamento": v.department,
-                "desde": fmt_date(v.start_date),
-                "hasta": fmt_date(v.end_date),
-                "dias": v.total_days,
-                "estado": v.status,
-                "tipo": v.request_type,
-            }
-            for v in rows
-        ]
-        if employee is not None and not period_given and not items:
-            # Sin periodo, el alcance por defecto es "en curso y próximas" (línea de arriba): si no
-            # hay ninguna, el motivo real es la falta de periodo, no que la persona nunca haya
-            # tenido vacaciones — decirlo explícito en vez de devolver una tabla vacía sin más.
+                "mensaje": (
+                    f"{employee.name} no tiene vacaciones en curso ni próximas. "
+                    "Indica un año o un intervalo de fechas (por ejemplo «en 2026» o «de marzo a "
+                    "junio») para consultar un periodo concreto."
+                ),
+            },
+        )
+    persons, overlapping = _people_and_overlaps(rows, today)
+    summary: dict[str, Any] = {
+        "poblacion": population_label(p.incluir_inactivos) if not p.person() else "una persona",
+        "personas_distintas": persons,
+        "solicitudes": len(items),
+        "solicitudes_solapadas": overlapping,
+        "desde": (state.get("foco_periodo") or {}).get("desde"),
+        "hasta": (state.get("foco_periodo") or {}).get("hasta"),
+        "estado": p.estado,
+        "nota": "Cuenta personas con «personas_distintas»; una persona puede tener varias solicitudes.",
+        "sin_correspondencia_en_plantilla": sum(1 for v in rows if not directory.get(email=v.employee_email)),
+        **fresh,
+    }
+    if len(items) <= MAX_ROWS_FOR_MODEL:
+        summary["detalle"] = items
+    return ToolResult(
+        ToolStatus.OK,
+        summary,
+        table(
+            "Vacaciones",
+            ["Persona", "Puesto", "Departamento", "Desde", "Hasta", "Días", "Estado", "Tipo"],
+            [list(i.values()) for i in items],
+        ),
+        state,
+        verified_answer=_vacation_verified_answer(ctx, persons),
+    )
+
+
+async def _vacation_handler(deps: Deps, p: VacacionesParams, ctx: ToolContext) -> ToolResult:
+    if general_vacation_request(ctx.user_message):
+        # Una pregunta general no puede heredar un nombre/departamento inventado por el
+        # modelo (fallo real: nombre="Quién", tomando el pronombre interrogativo como dato).
+        p = p.model_copy(update={"nombre": None, "empleado_id": None, "departamento": None})
+    today = ctx.now.date()
+    week = requested_week(ctx.user_message, today)
+    if week is not None:
+        start, end = week
+        if (p.desde is not None and p.desde != start) or (p.hasta is not None and p.hasta != end):
             return ToolResult(
-                ToolStatus.NOT_FOUND,
+                ToolStatus.INVALID_ARGUMENTS,
                 {
-                    "mensaje": (
-                        f"{employee.name} no tiene vacaciones en curso ni próximas. "
-                        "Indica un año o un intervalo de fechas (por ejemplo «en 2026» o «de marzo a "
-                        "junio») para consultar un periodo concreto."
-                    ),
+                    "mensaje": "Las fechas no coinciden con la semana solicitada.",
+                    "desde_requerido": start.isoformat(),
+                    "hasta_requerido": end.isoformat(),
                 },
             )
-        persons, overlapping = _people_and_overlaps(rows, today)
-        summary: dict[str, Any] = {
-            "poblacion": population_label(p.incluir_inactivos) if not p.person() else "una persona",
-            "personas_distintas": persons,
-            "solicitudes": len(items),
-            "solicitudes_solapadas": overlapping,
-            "desde": (state.get("foco_periodo") or {}).get("desde"),
-            "hasta": (state.get("foco_periodo") or {}).get("hasta"),
-            "estado": p.estado,
-            "nota": "Cuenta personas con «personas_distintas»; una persona puede tener varias solicitudes.",
-            "sin_correspondencia_en_plantilla": sum(1 for v in rows if not directory.get(email=v.employee_email)),
-            **fresh,
-        }
-        if len(items) <= MAX_ROWS_FOR_MODEL:
-            summary["detalle"] = items
-        return ToolResult(
-            ToolStatus.OK,
-            summary,
-            table(
-                "Vacaciones",
-                ["Persona", "Puesto", "Departamento", "Desde", "Hasta", "Días", "Estado", "Tipo"],
-                [list(i.values()) for i in items],
-            ),
-            state,
-        )
+        p = p.model_copy(update={"desde": start, "hasta": end})
+    return await _vacation_query(deps, p, ctx)
 
+
+def solicitudes(deps: Deps) -> Tool:
     async def handler(p: VacacionesParams, ctx: ToolContext) -> ToolResult:
-        today = ctx.now.date()
-        week = requested_week(ctx.user_message, today)
-        if week is not None:
-            start, end = week
-            if (p.desde is not None and p.desde != start) or (p.hasta is not None and p.hasta != end):
-                return ToolResult(
-                    ToolStatus.INVALID_ARGUMENTS,
-                    {
-                        "mensaje": "Las fechas no coinciden con la semana solicitada.",
-                        "desde_requerido": start.isoformat(),
-                        "hasta_requerido": end.isoformat(),
-                    },
-                )
-            p = p.model_copy(update={"desde": start, "hasta": end})
-        return await query(p, ctx)
+        return await _vacation_handler(deps, p, ctx)
 
     return Tool(
         "vacaciones",
@@ -230,6 +309,7 @@ def solicitudes(deps: Deps) -> Tool:
         handler,
         permission=Permission.VACACIONES_LEER,
         audit_resource="vacaciones",
+        direct_read_arguments=_direct_vacation_request,
     )
 
 

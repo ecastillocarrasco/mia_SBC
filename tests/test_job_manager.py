@@ -124,6 +124,21 @@ async def test_a_zombie_workers_late_complete_cannot_overwrite_the_real_result(t
     apuntando al resultado equivocado según qué worker tardó más en escribir."""
     db = await fresh_database(tmp_path, "jobs_zombie_worker.db")
     async with db.session() as s:
+        # report_id es clave foránea real hacia "reports" (PostgreSQL la exige; SQLite no, lo
+        # que ocultó este fallo hasta ejecutar contra PostgreSQL de verdad).
+        s.add_all(
+            Report(
+                id=report_id,
+                user_id="u1",
+                title="Prueba",
+                format="pdf",
+                file_name="prueba.pdf",
+                path="prueba.pdf",
+                expires_at=datetime.now(UTC) + timedelta(days=1),
+            )
+            for report_id in ("report-de-A", "report-de-B")
+        )
+    async with db.session() as s:
         job_id = await jm.submit(s, user_id="u1", kind="x", params={})
     async with db.session() as s:
         await jm.claim_next(s, worker_id="worker-A", lease_seconds=1)

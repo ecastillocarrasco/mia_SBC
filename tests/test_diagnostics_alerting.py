@@ -9,6 +9,7 @@ Cubre:
 
 from __future__ import annotations
 
+import importlib
 from datetime import UTC, datetime
 
 import pytest
@@ -25,9 +26,9 @@ from mia.settings import DiagnosticsSettings, SmtpSettings
 
 @pytest.fixture(autouse=True)
 def _reset_cooldown():
-    alerting._last_sent_at = 0.0
+    alerting._last_sent_at = float("-inf")
     yield
-    alerting._last_sent_at = 0.0
+    alerting._last_sent_at = float("-inf")
 
 
 def _record(**overrides: object) -> TraceRecord:
@@ -161,6 +162,31 @@ async def test_notify_on_error_respects_the_cooldown_between_consecutive_alerts(
     monkeypatch.setattr(alerting.smtplib, "SMTP", lambda *a, **k: sent.append(1) or _NoopSMTP())
 
     await notify_on_error(_record(status="error"), recipient="admin@sbc.test", smtp=SMTP_READY, cooldown_seconds=3600)
+    await notify_on_error(_record(status="error"), recipient="admin@sbc.test", smtp=SMTP_READY, cooldown_seconds=3600)
+
+    assert len(sent) == 1
+
+
+def test_the_never_sent_default_is_minus_infinity_not_zero():
+    """La causa real de la incidencia: con 0.0 como valor inicial, un proceso recién arrancado
+    (``time.monotonic()`` por debajo del cooldown configurado) descartaba su primer aviso real
+    como si ya se hubiera enviado uno hace poco. Se comprueba el valor de fábrica del módulo
+    (antes de que el fixture de este fichero lo sobrescriba para los demás tests)."""
+    importlib.reload(alerting)
+    try:
+        assert alerting._last_sent_at == float("-inf")
+    finally:
+        alerting._last_sent_at = float("-inf")
+
+
+async def test_notify_on_error_sends_the_first_alert_even_right_after_process_start(monkeypatch):
+    """``time.monotonic()`` no garantiza empezar lejos de 0 (incidencia real en CI: un contenedor
+    recién arrancado le dio un valor por debajo del cooldown de prueba, y el primer aviso se
+    descartaba como si ya se hubiera enviado uno hace poco)."""
+    sent = []
+    monkeypatch.setattr(alerting.smtplib, "SMTP", lambda *a, **k: sent.append(1) or _NoopSMTP())
+    monkeypatch.setattr(alerting.time, "monotonic", lambda: 5.0)  # proceso recién arrancado
+
     await notify_on_error(_record(status="error"), recipient="admin@sbc.test", smtp=SMTP_READY, cooldown_seconds=3600)
 
     assert len(sent) == 1
